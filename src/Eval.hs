@@ -15,7 +15,7 @@ emptyEnv :: Env
 emptyEnv = Env []
 
 eval :: Env -> Expr -> Value
-eval env (Lambda param body) = Closure param body env
+eval env (Lambda param _ body) = Closure param body env
 eval env (App f arg) = apply (eval env f) (eval env arg)
 eval (Env env) (Atom (Var name)) = fromJust (lookup name env)
 eval _ (Atom (Const (ConstInt n)))  = Int n

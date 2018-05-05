@@ -1,7 +1,7 @@
 {
 module Parser (parser) where
 import Lexer (Token(..))
-import Ast (Expr(..), Atom(..), Const(..))
+import Ast (Expr(..), Type(..), Atom(..), Const(..))
 }
 
 %name parser
@@ -10,6 +10,8 @@ import Ast (Expr(..), Atom(..), Const(..))
 
 %token
   fn   { TokFn }
+  ':'  { TokHasType }
+  '->' { TokArrow }
   "=>" { TokDArrow }
   '('  { TokLParen }
   ')'  { TokRParen }
@@ -18,10 +20,13 @@ import Ast (Expr(..), Atom(..), Const(..))
 
 %%
 
-Expr : fn var "=>" Expr { Lambda $2 $4 }
-     | Expr Expr        { App $1 $2 }
-     | '(' Expr ')'     { $2 }
-     | Atom             { Atom $1 }
+Expr : fn var ':' Type "=>" Expr { Lambda $2 $4 $6 }
+     | Expr Expr    { App $1 $2 }
+     | '(' Expr ')' { $2 }
+     | Atom         { Atom $1 }
+
+Type : Type '->' Type { TypeArrow $1 $3 }
+     | var            { PrimType $1 }
 
 Atom : var   { Var $1 }
      | Const { Const $1 }

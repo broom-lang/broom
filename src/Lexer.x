@@ -9,15 +9,19 @@ $alpha = [a-zA-Z]
 
 tokens :-
   $white+ ;
-  fn { const TokFn }
-  => { const TokDArrow }
-  "(" { const TokLParen }
-  ")" { const TokRParen }
+  fn   { const TokFn }
+  :    { const TokHasType }
+  "->" { const TokArrow }
+  =>   { const TokDArrow }
+  "("  { const TokLParen }
+  ")"  { const TokRParen }
   $alpha [$alpha $digit \_ \']* { TokVar }
   $digit+ { TokInt . read }
 
 {
 data Token = TokFn
+           | TokHasType
+           | TokArrow
            | TokDArrow
            | TokLParen
            | TokRParen
