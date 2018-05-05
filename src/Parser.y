@@ -1,7 +1,7 @@
 {
 module Parser (parser) where
 import Lexer (Token(..))
-import Ast (Expr(..), Const(..))
+import Ast (Expr(..), Atom(..), Const(..))
 }
 
 %name parser
@@ -9,11 +9,24 @@ import Ast (Expr(..), Const(..))
 %error { parseError }
 
 %token
-  int { TokInt $$ }
+  fn   { TokFn }
+  "=>" { TokDArrow }
+  '('  { TokLParen }
+  ')'  { TokRParen }
+  var  { TokVar $$ }
+  int  { TokInt $$ }
 
 %%
 
-Expr : int { Const (Int $1) }
+Expr : fn var "=>" Expr { Lambda $2 $4 }
+     | Expr Expr        { App $1 $2 }
+     | '(' Expr ')'     { $2 }
+     | Atom             { Atom $1 }
+
+Atom : var   { Var $1 }
+     | Const { Const $1 }
+
+Const : int { ConstInt $1 }
 
 {
 parseError :: [Token] -> a

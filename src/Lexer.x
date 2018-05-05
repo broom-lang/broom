@@ -8,21 +8,20 @@ $digit = 0-9
 $alpha = [a-zA-Z]
 
 tokens :-
-
-  $white+				;
-  "--".*				;
-  let					{ \s -> Let }
-  in					{ \s -> In }
-  $digit+				{ \s -> TokInt (read s) }
-  [\=\+\-\*\/\(\)]			{ \s -> Sym (head s) }
-  $alpha [$alpha $digit \_ \']*		{ \s -> Var s }
+  $white+ ;
+  fn { const TokFn }
+  => { const TokDArrow }
+  "(" { const TokLParen }
+  ")" { const TokRParen }
+  $alpha [$alpha $digit \_ \']* { TokVar }
+  $digit+ { TokInt . read }
 
 {
-data Token =
-	Let 		|
-	In  		|
-	Sym Char	|
-	Var String	|
-	TokInt Int
-	deriving (Eq,Show)
+data Token = TokFn
+           | TokDArrow
+           | TokLParen
+           | TokRParen
+           | TokVar String
+           | TokInt Int
+	       deriving (Eq, Show)
 }
