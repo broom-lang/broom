@@ -1,6 +1,7 @@
 module Main where
 
-import Lib
+import Lexer (alexScanTokens)
+import Parser (parser)
 
 main :: IO ()
-main = someFunc
+main = parser . alexScanTokens <$> getContents >>= print

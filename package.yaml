@@ -20,9 +20,11 @@ description:         Please see the README on GitHub at <https://github.com/nile
 
 dependencies:
 - base >= 4.7 && < 5
+- array
 
 library:
   source-dirs: src
+  build-tools: [alex, happy]
 
 executables:
   mulled-exe:
