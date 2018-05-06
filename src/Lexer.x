@@ -13,6 +13,10 @@ tokens :-
   :    { const TokHasType }
   "->" { const TokArrow }
   =>   { const TokDArrow }
+  let  { const TokLet }
+  =    { const TokEq }
+  in   { const TokIn }
+  end  { const TokEnd }
   "("  { const TokLParen }
   ")"  { const TokRParen }
   $alpha [$alpha $digit \_ \']* { TokVar }
@@ -23,6 +27,10 @@ data Token = TokFn
            | TokHasType
            | TokArrow
            | TokDArrow
+           | TokLet
+           | TokEq
+           | TokIn
+           | TokEnd
            | TokLParen
            | TokRParen
            | TokVar String

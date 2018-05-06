@@ -2,6 +2,7 @@ module Ast where
 
 data Expr = Lambda String Type Expr
           | App Expr Expr
+          | Let String Type Expr Expr
           | Atom Atom
           deriving Show
 

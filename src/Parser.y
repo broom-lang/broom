@@ -13,6 +13,10 @@ import Ast (Expr(..), Type(..), Atom(..), Const(..))
   ':'  { TokHasType }
   '->' { TokArrow }
   "=>" { TokDArrow }
+  let  { TokLet }
+  '='  { TokEq }
+  in   { TokIn }
+  end  { TokEnd }
   '('  { TokLParen }
   ')'  { TokRParen }
   var  { TokVar $$ }
@@ -22,6 +26,7 @@ import Ast (Expr(..), Type(..), Atom(..), Const(..))
 
 Expr : fn var ':' Type "=>" Expr { Lambda $2 $4 $6 }
      | Expr Expr    { App $1 $2 }
+     | let var ':' Type '=' Expr in Expr end { Let $2 $4 $6 $8 }
      | '(' Expr ')' { $2 }
      | Atom         { Atom $1 }
 
