@@ -24,14 +24,11 @@ import Ast (Expr(..), Type(..), Atom(..), Const(..))
 
 %%
 
-Expr : fn var ':' Type "=>" Expr { Lambda $2 $4 $6 }
+Expr : fn var "=>" Expr { Lambda $2 $4 }
      | Expr Expr    { App $1 $2 }
-     | let var ':' Type '=' Expr in Expr end { Let $2 $4 $6 $8 }
+     | let var '=' Expr in Expr end { Let $2 $4 $6 }
      | '(' Expr ')' { $2 }
      | Atom         { Atom $1 }
-
-Type : Type '->' Type { TypeArrow $1 $3 }
-     | var            { PrimType $1 }
 
 Atom : var   { Var $1 }
      | Const { Const $1 }

@@ -2,11 +2,12 @@ module Main where
 
 import Lexer (alexScanTokens)
 import Parser (parser)
-import Typecheck (typeOf, emptyCtx)
+import Typecheck (typecheck)
 import Eval (eval, emptyEnv)
 
 main :: IO ()
 main = do src <- getContents
           let expr = parser (alexScanTokens src)
-          putStrLn (show expr ++ " : " ++ show (typeOf emptyCtx expr))
+          t <- typecheck expr
+          putStrLn (show expr ++ " : " ++ show t)
           print (eval emptyEnv expr)

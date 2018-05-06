@@ -1,14 +1,21 @@
-module Ast where
+module Ast (Expr(..), Type(..), Atom(..), Const(..)) where
 
-data Expr = Lambda String Type Expr
+import Data.Unique (Unique, hashUnique)
+
+instance Show Unique where
+    show uq = "t" ++ show (hashUnique uq)
+
+data Expr = Lambda String Expr
           | App Expr Expr
-          | Let String Type Expr Expr
+          | Let String Expr Expr
           | Atom Atom
           deriving Show
 
-data Type = TypeArrow Type Type
+data Type = TypeForAll [Unique] Type
+          | TypeArrow Type Type
+          | TypeVar Unique
           | PrimType String
-          deriving (Eq, Show)
+          deriving (Show, Eq)
 
 data Atom = Var String
           | Const Const

@@ -21,9 +21,9 @@ envLookup :: String -> Env -> Maybe Value
 envLookup name (Env bindings) = lookup name bindings
 
 eval :: Env -> Expr -> Value
-eval env (Lambda param _ body) = Closure param body env
+eval env (Lambda param body) = Closure param body env
 eval env (App f arg) = apply (eval env f) (eval env arg)
-eval env (Let name _ expr body) =
+eval env (Let name expr body) =
     let env' = envInsert env name (eval env expr)
     in  eval env' body
 eval env (Atom (Var name)) = fromJust (envLookup name env)
