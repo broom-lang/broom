@@ -19,6 +19,10 @@ tokens :-
   end  { const TokEnd }
   "("  { const TokLParen }
   ")"  { const TokRParen }
+  "{"  { const TokLBrace }
+  "}"  { const TokRBrace }
+  ","  { const TokComma }
+  "."  { const TokDot }
   $alpha [$alpha $digit \_ \']* { TokVar }
   $digit+ { TokInt . read }
 
@@ -33,7 +37,11 @@ data Token = TokFn
            | TokEnd
            | TokLParen
            | TokRParen
+           | TokLBrace
+           | TokRBrace
+           | TokComma
+           | TokDot
            | TokVar String
            | TokInt Int
-	       deriving (Eq, Show)
+           deriving (Eq, Show)
 }

@@ -3,12 +3,13 @@
 module Typecheck (typecheck) where
 
 import Data.Maybe (fromJust)
-import Data.List (foldl')
+import Data.List (foldl', find)
 import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Unique (Unique, newUnique, hashUnique)
+import Data.Foldable (traverse_)
 import Control.Monad.Trans (liftIO, lift)
 import Control.Monad.State.Lazy (StateT, runStateT, evalStateT, mapStateT, get, modify)
 import Control.Monad.Except (ExceptT, runExceptT, mapExceptT, throwError,
@@ -76,12 +77,15 @@ occursCheck name t =
        case t of
            TypeForAll _ _ -> throwError $ PolytypeUnification t
            TypeArrow d cd -> occursCheck name d >> occursCheck name cd
+           RecordType row -> traverse_ (occursCheck name . snd) row
            TypeVar name' | name' == name -> throwError $ Occurs name t
            TypeVar _ -> return ()
            PrimType _ -> return ()
 
 data TypeError = MonotypeSpecialization Type
                | UnificationError UnificationError
+               | InexistentField String Type
+               | NonRecord Type
                deriving Show
 
 type Typing a = StateT Substitution (ExceptT TypeError IO) a
@@ -111,6 +115,8 @@ typeFrees (TypeForAll params t) =
     HashSet.difference (typeFrees t) (HashSet.fromList params)
 typeFrees (TypeArrow d cd) =
     HashSet.union (typeFrees d) (typeFrees cd)
+typeFrees (RecordType row) =
+    foldl' (\frees (_, t) -> HashSet.union frees (typeFrees t)) HashSet.empty row
 typeFrees (TypeVar name) = HashSet.singleton name
 typeFrees (PrimType _) = HashSet.empty
 
@@ -125,6 +131,8 @@ specialize (TypeForAll params t) =
     where replace env (TypeForAll _ t) = replace env t
           replace env (TypeArrow d cd) =
               TypeArrow (replace env d) (replace env cd)
+          replace env (RecordType row) =
+              RecordType $ second (replace env) <$> row
           replace env (TypeVar name) =
               TypeVar (maybe name id (HashMap.lookup name env))
           replace _ (t @ (PrimType _)) = t
@@ -134,6 +142,7 @@ applySubst :: Substitution -> Type -> Type
 applySubst subst (TypeForAll params t) = TypeForAll params $ applySubst subst t
 applySubst subst (TypeArrow d cd) =
     TypeArrow (applySubst subst d) (applySubst subst cd)
+applySubst subst (RecordType row) = RecordType $ second (applySubst subst) <$> row
 applySubst subst (t @ (TypeVar name)) =
     case HashMap.lookup name subst of
         Just t -> applySubst subst t
@@ -145,6 +154,8 @@ exprSubst subst (Lambda param t body) = Lambda param (applySubst subst t) (exprS
 exprSubst subst (App f arg) = App (exprSubst subst f) (exprSubst subst arg)
 exprSubst subst (Let name t expr body) =
     Let name (applySubst subst t) (exprSubst subst expr) (exprSubst subst body)
+exprSubst subst (Record fields) = Record (map (second (exprSubst subst)) fields)
+exprSubst subst (Select record label) = Select (exprSubst subst record) label
 exprSubst subst (Atom atom) = Atom $ case atom of
                                          Var name -> Var name
                                          Const c -> Const c
@@ -166,6 +177,18 @@ typed ctx (Let name () expr body) =
        let ctx' = ctxInsert ctx name (quantifyFrees ctx exprType)
        (body', bodyType) <- typed ctx' body
        return (Let name exprType expr' body', bodyType)
+typed ctx (Record fields) =
+    do (fields', row) <- unzip <$> traverse typedField fields
+       return (Record fields', RecordType row)
+    where typedField (name, expr) = do (expr', exprType) <- typed ctx expr
+                                       return ((name, expr'), (name, exprType))
+typed ctx (Select record label) =
+    do (record', recType) <- typed ctx record
+       case recType of
+           RecordType row -> case find ((== label) . fst) row of
+                                 Just (_, fieldType) -> return (Select record' label, fieldType)
+                                 Nothing -> throwError $ InexistentField label recType
+           _ -> throwError $ NonRecord recType
 typed ctx (Atom atom) =
     case atom of
         Var name -> (Atom $ Var name,) <$> lift (specialize (fromJust (ctxLookup name ctx)))
