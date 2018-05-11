@@ -104,8 +104,7 @@ quantifyFrees ctx t =
     case frees of
         _:_ -> TypeForAll frees t
         [] -> t
-    where frees = HashSet.toList $ HashSet.difference (typeFrees t)
-                                                      (ctxBounds ctx)
+    where frees = HashSet.toList $ HashSet.difference (typeFrees t) (ctxFrees ctx)
 
 typeFrees :: Type -> HashSet Unique
 typeFrees (TypeForAll params t) =
@@ -115,16 +114,9 @@ typeFrees (TypeArrow d cd) =
 typeFrees (TypeVar name) = HashSet.singleton name
 typeFrees (PrimType _) = HashSet.empty
 
-ctxBounds :: Ctx -> HashSet Unique
-ctxBounds (Ctx ctx) =
-    foldl' (\frees (_, t) -> HashSet.union (typeBounds t) frees)
-           HashSet.empty ctx
-    where typeBounds (TypeForAll params t) =
-              HashSet.union (HashSet.fromList params) (typeBounds t)
-          typeBounds (TypeArrow d cd) =
-              HashSet.union (typeBounds d) (typeBounds cd)
-          typeBounds (TypeVar _) = HashSet.empty
-          typeBounds (PrimType _) = HashSet.empty
+ctxFrees :: Ctx -> HashSet Unique
+ctxFrees (Ctx ctx) =
+    foldl' (\frees (_, t) -> HashSet.union (typeFrees t) frees) HashSet.empty ctx
 
 specialize :: Type -> ExceptT TypeError IO Type
 specialize (TypeForAll params t) =
