@@ -5,11 +5,11 @@ import Data.Unique (Unique, hashUnique)
 instance Show Unique where
     show uq = "t" ++ show (hashUnique uq)
 
-data Expr = Lambda String Expr
-          | App Expr Expr
-          | Let String Expr Expr
-          | Atom Atom
-          deriving Show
+data Expr t = Lambda String t (Expr t)
+            | App (Expr t) (Expr t)
+            | Let String t (Expr t) (Expr t)
+            | Atom Atom
+            deriving Show
 
 data Type = TypeForAll [Unique] Type
           | TypeArrow Type Type

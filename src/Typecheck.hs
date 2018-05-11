@@ -1,3 +1,5 @@
+{-# LANGUAGE TupleSections #-}
+
 module Typecheck (typecheck) where
 
 import Data.Maybe (fromJust)
@@ -12,7 +14,7 @@ import Control.Monad.State.Lazy (StateT, runStateT, evalStateT, mapStateT, get, 
 import Control.Monad.Except (ExceptT, runExceptT, mapExceptT, throwError,
                              Except)
 import Control.Monad.Identity (Identity(..))
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (bimap, second)
 
 import Ast (Expr(..), Type(..), Atom(..), Const(..))
 
@@ -84,12 +86,12 @@ data TypeError = MonotypeSpecialization Type
 
 type Typing a = StateT Substitution (ExceptT TypeError IO) a
 
-runTyping :: Typing Type -> IO (Either TypeError Type)
+runTyping :: Typing (Expr Type, Type) -> IO (Either TypeError (Expr Type, Type))
 runTyping ting =
     do res <- runExceptT (runStateT ting HashMap.empty)
        return $ case res of
-           Right (t, subst) ->
-               Right $ quantifyFrees emptyCtx $ applySubst subst t
+           Right (typing, subst) ->
+               Right $ second (quantifyFrees emptyCtx . applySubst subst) typing
            Left err -> Left err
 
 freshType :: Typing Type
@@ -144,26 +146,27 @@ applySubst subst (t @ (TypeVar name)) =
         Nothing -> t
 applySubst _ (t @ (PrimType _)) = t
 
-typeOf :: Ctx -> Expr -> Typing Type
-typeOf ctx (Lambda param body) =
+typed :: Ctx -> Expr () -> Typing (Expr Type, Type)
+typed ctx (Lambda param () body) =
     do domain <- freshType
        let ctx' = ctxInsert ctx param domain
-       codomain <- typeOf ctx' body
-       return $ TypeArrow domain codomain
-typeOf ctx (App f arg) =
-    do calleeType <- typeOf ctx f
-       argType <- typeOf ctx arg
+       (body', codomain) <- typed ctx' body
+       return (Lambda param domain body', TypeArrow domain codomain)
+typed ctx (App f arg) =
+    do (f', calleeType) <- typed ctx f
+       (arg', argType) <- typed ctx arg
        codomain <- freshType
        runUnification (unify calleeType (TypeArrow argType codomain))
-       return codomain
-typeOf ctx (Let name expr body) =
-    do exprType <- typeOf ctx expr
+       return (App f' arg', codomain)
+typed ctx (Let name () expr body) =
+    do (expr', exprType) <- typed ctx expr
        let ctx' = ctxInsert ctx name (quantifyFrees ctx exprType)
-       typeOf ctx' body
-typeOf ctx (Atom atom) =
+       (body', bodyType) <- typed ctx' body
+       return (Let name exprType expr' body', bodyType)
+typed ctx (Atom atom) =
     case atom of
-        Var name -> lift $ specialize (fromJust (ctxLookup name ctx))
-        Const (ConstInt _) -> return $ PrimType "Int"
+        Var name -> (Atom $ Var name,) <$> lift (specialize (fromJust (ctxLookup name ctx)))
+        Const (ConstInt n) -> return (Atom $ Const $ ConstInt n, PrimType "Int")
 
-typecheck :: Expr -> IO (Either TypeError Type)
-typecheck = runTyping . typeOf emptyCtx
+typecheck :: Expr () -> IO (Either TypeError (Expr Type, Type))
+typecheck = runTyping . typed emptyCtx

@@ -24,9 +24,9 @@ import Ast (Expr(..), Type(..), Atom(..), Const(..))
 
 %%
 
-Expr : fn var "=>" Expr { Lambda $2 $4 }
+Expr : fn var "=>" Expr { Lambda $2 () $4 }
      | Expr Expr    { App $1 $2 }
-     | let var '=' Expr in Expr end { Let $2 $4 $6 }
+     | let var '=' Expr in Expr end { Let $2 () $4 $6 }
      | '(' Expr ')' { $2 }
      | Atom         { Atom $1 }
 

@@ -2,12 +2,12 @@ module Eval (eval, emptyEnv) where
 
 import Data.Maybe (fromJust)
 
-import Ast (Expr(..), Atom(..), Const(..))
+import Ast (Expr(..), Atom(..), Const(..), Type)
 
 newtype Env = Env [(String, Value)]
             deriving Show
 
-data Value = Closure String Expr Env
+data Value = Closure String (Expr Type) Env
            | Int Int
            deriving Show
 
@@ -20,10 +20,10 @@ envInsert (Env bindings) name value = Env $ (name, value) : bindings
 envLookup :: String -> Env -> Maybe Value
 envLookup name (Env bindings) = lookup name bindings
 
-eval :: Env -> Expr -> Value
-eval env (Lambda param body) = Closure param body env
+eval :: Env -> Expr Type -> Value
+eval env (Lambda param _ body) = Closure param body env
 eval env (App f arg) = apply (eval env f) (eval env arg)
-eval env (Let name expr body) =
+eval env (Let name _ expr body) =
     let env' = envInsert env name (eval env expr)
     in  eval env' body
 eval env (Atom (Var name)) = fromJust (envLookup name env)

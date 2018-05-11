@@ -8,6 +8,9 @@ import Eval (eval, emptyEnv)
 main :: IO ()
 main = do src <- getContents
           let expr = parser (alexScanTokens src)
-          t <- typecheck expr
-          putStrLn (show expr ++ " : " ++ show t)
-          print (eval emptyEnv expr)
+          print expr
+          typingRes <- typecheck expr
+          case typingRes of
+              Right (expr, t) -> do putStrLn (show expr ++ " : " ++ show t)
+                                    print (eval emptyEnv expr)
+              Left err -> putStrLn ("TypeError: " ++ show err)
