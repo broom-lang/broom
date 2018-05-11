@@ -91,7 +91,9 @@ runTyping ting =
     do res <- runExceptT (runStateT ting HashMap.empty)
        return $ case res of
            Right (typing, subst) ->
-               Right $ second (quantifyFrees emptyCtx . applySubst subst) typing
+               Right $ bimap (exprSubst subst)
+                             (quantifyFrees emptyCtx . applySubst subst)
+                             typing
            Left err -> Left err
 
 freshType :: Typing Type
@@ -145,6 +147,15 @@ applySubst subst (t @ (TypeVar name)) =
         Just t -> applySubst subst t
         Nothing -> t
 applySubst _ (t @ (PrimType _)) = t
+
+exprSubst :: Substitution -> Expr Type -> Expr Type
+exprSubst subst (Lambda param t body) = Lambda param (applySubst subst t) (exprSubst subst body)
+exprSubst subst (App f arg) = App (exprSubst subst f) (exprSubst subst arg)
+exprSubst subst (Let name t expr body) =
+    Let name (applySubst subst t) (exprSubst subst expr) (exprSubst subst body)
+exprSubst subst (Atom atom) = Atom $ case atom of
+                                         Var name -> Var name
+                                         Const c -> Const c
 
 typed :: Ctx -> Expr () -> Typing (Expr Type, Type)
 typed ctx (Lambda param () body) =
