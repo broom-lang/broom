@@ -9,6 +9,8 @@ $alpha = [a-zA-Z]
 
 tokens :-
   $white+ ;
+  data { const TokData }
+  "|"  { const TokBar }
   fn   { const TokFn }
   :    { const TokHasType }
   "->" { const TokArrow }
@@ -17,6 +19,8 @@ tokens :-
   =    { const TokEq }
   in   { const TokIn }
   end  { const TokEnd }
+  case { const TokCase }
+  of   { const TokOf }
   "("  { const TokLParen }
   ")"  { const TokRParen }
   "{"  { const TokLBrace }
@@ -27,7 +31,9 @@ tokens :-
   $digit+ { TokInt . read }
 
 {
-data Token = TokFn
+data Token = TokData
+           | TokBar
+           | TokFn
            | TokHasType
            | TokArrow
            | TokDArrow
@@ -35,6 +41,8 @@ data Token = TokFn
            | TokEq
            | TokIn
            | TokEnd
+           | TokCase
+           | TokOf
            | TokLParen
            | TokRParen
            | TokLBrace

@@ -1,4 +1,4 @@
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TupleSections, FlexibleContexts #-}
 
 module Typecheck (typecheck) where
 
@@ -10,12 +10,13 @@ import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
 import Data.Unique (Unique, newUnique, hashUnique)
 import Data.Foldable (traverse_)
+import Control.Monad (foldM)
 import Control.Monad.Trans (liftIO, lift)
 import Control.Monad.State.Lazy (StateT, runStateT, evalStateT, mapStateT, get, modify)
 import Control.Monad.Except (ExceptT, runExceptT, mapExceptT, throwError,
                              Except)
 import Control.Monad.Identity (Identity(..))
-import Data.Bifunctor (bimap, second)
+import Data.Bifunctor (bimap, first, second)
 
 import Ast (Expr(..), Type(..), Atom(..), Const(..))
 
@@ -39,8 +40,8 @@ data UnificationError = PolytypeUnification Type
 
 type Unification a = StateT Substitution (Except UnificationError) a
 
-runUnification :: Unification () -> Typing ()
-runUnification uf = mapStateT toTypeError uf
+liftUnify :: Unification a -> Typing a
+liftUnify uf = mapStateT toTypeError uf
     where toTypeError exn = mapExceptT toIO exn
           toIO (Identity res) = return (bimap UnificationError id res)
 
@@ -77,15 +78,19 @@ occursCheck name t =
        case t of
            TypeForAll _ _ -> throwError $ PolytypeUnification t
            TypeArrow d cd -> occursCheck name d >> occursCheck name cd
-           RecordType row -> traverse_ (occursCheck name . snd) row
+           RecordType row -> checkRow row
+           DataType _ row -> checkRow row
            TypeVar name' | name' == name -> throwError $ Occurs name t
            TypeVar _ -> return ()
            PrimType _ -> return ()
+    where checkRow = traverse_ (occursCheck name . snd)
 
 data TypeError = MonotypeSpecialization Type
                | UnificationError UnificationError
                | InexistentField String Type
                | NonRecord Type
+               | NonSum Type
+               | CaseTags (HashSet String) (HashSet String)
                deriving Show
 
 type Typing a = StateT Substitution (ExceptT TypeError IO) a
@@ -115,10 +120,13 @@ typeFrees (TypeForAll params t) =
     HashSet.difference (typeFrees t) (HashSet.fromList params)
 typeFrees (TypeArrow d cd) =
     HashSet.union (typeFrees d) (typeFrees cd)
-typeFrees (RecordType row) =
-    foldl' (\frees (_, t) -> HashSet.union frees (typeFrees t)) HashSet.empty row
+typeFrees (RecordType row) = rowFrees row
+typeFrees (DataType i row) = rowFrees row
 typeFrees (TypeVar name) = HashSet.singleton name
 typeFrees (PrimType _) = HashSet.empty
+
+rowFrees :: [(String, Type)] -> HashSet Unique
+rowFrees = foldl' (\frees (_, t) -> HashSet.union frees (typeFrees t)) HashSet.empty
 
 ctxFrees :: Ctx -> HashSet Unique
 ctxFrees (Ctx ctx) =
@@ -143,6 +151,7 @@ applySubst subst (TypeForAll params t) = TypeForAll params $ applySubst subst t
 applySubst subst (TypeArrow d cd) =
     TypeArrow (applySubst subst d) (applySubst subst cd)
 applySubst subst (RecordType row) = RecordType $ second (applySubst subst) <$> row
+applySubst subst (DataType i row) = DataType i $ second (applySubst subst) <$> row
 applySubst subst (t @ (TypeVar name)) =
     case HashMap.lookup name subst of
         Just t -> applySubst subst t
@@ -150,10 +159,14 @@ applySubst subst (t @ (TypeVar name)) =
 applySubst _ (t @ (PrimType _)) = t
 
 exprSubst :: Substitution -> Expr Type -> Expr Type
+exprSubst subst (Data name variants body) =
+    Data name (map (second (applySubst subst)) variants) (exprSubst subst body)
 exprSubst subst (Lambda param t body) = Lambda param (applySubst subst t) (exprSubst subst body)
 exprSubst subst (App f arg) = App (exprSubst subst f) (exprSubst subst arg)
 exprSubst subst (Let name t expr body) =
     Let name (applySubst subst t) (exprSubst subst expr) (exprSubst subst body)
+exprSubst subst (Case matchee cases) =
+    Case (exprSubst subst matchee) (map (second (exprSubst subst)) cases)
 exprSubst subst (Record fields) = Record (map (second (exprSubst subst)) fields)
 exprSubst subst (Select record label) = Select (exprSubst subst record) label
 exprSubst subst (Atom atom) = Atom $ case atom of
@@ -161,6 +174,11 @@ exprSubst subst (Atom atom) = Atom $ case atom of
                                          Const c -> Const c
 
 typed :: Ctx -> Expr () -> Typing (Expr Type, Type)
+typed ctx (Data name variants body) =
+    do dataType <- DataType <$> liftIO newUnique <*> pure variants
+       let ctx' = foldl' (insertCtorType dataType) (ctxInsert ctx name dataType) variants
+       first (Data name variants) <$> typed ctx' body
+    where insertCtorType dataType ctx (tag, domain) = ctxInsert ctx tag (TypeArrow domain dataType)
 typed ctx (Lambda param () body) =
     do domain <- freshType
        let ctx' = ctxInsert ctx param domain
@@ -170,13 +188,31 @@ typed ctx (App f arg) =
     do (f', calleeType) <- typed ctx f
        (arg', argType) <- typed ctx arg
        codomain <- freshType
-       runUnification (unify calleeType (TypeArrow argType codomain))
+       liftUnify (unify calleeType (TypeArrow argType codomain))
        return (App f' arg', codomain)
 typed ctx (Let name () expr body) =
     do (expr', exprType) <- typed ctx expr
        let ctx' = ctxInsert ctx name (quantifyFrees ctx exprType)
        (body', bodyType) <- typed ctx' body
        return (Let name exprType expr' body', bodyType)
+typed ctx (Case matchee cases) =
+    do (matchee', matcheeType) <- typed ctx matchee
+       (cases', sumType, resultType) <- typedCases cases
+       liftUnify (unify matcheeType sumType)
+       return (Case matchee' (reverse cases'), resultType)
+    where typedCases (match:matches) =
+              do (match', sumType, resultType) <- typeCase match
+                 foldM (\(matches', sumType, resultType) match ->
+                            do (match', sumType', resultType') <- typeCase match
+                               liftUnify (unify sumType sumType')
+                               liftUnify (unify resultType resultType')
+                               return (match':matches', sumType', resultType'))
+                       ([match'], sumType, resultType) matches
+          typeCase (ctor, param, body) =
+              let TypeArrow paramType sumType = fromJust $ ctxLookup ctor ctx
+                  ctx' = ctxInsert ctx param paramType
+              in  do (body', resultType) <- typed ctx' body
+                     return ((ctor, param, body'), sumType, resultType)
 typed ctx (Record fields) =
     do (fields', row) <- unzip <$> traverse typedField fields
        return (Record fields', RecordType row)

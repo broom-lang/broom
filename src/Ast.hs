@@ -5,9 +5,11 @@ import Data.Unique (Unique, hashUnique)
 instance Show Unique where
     show uq = "t" ++ show (hashUnique uq)
 
-data Expr t = Lambda String t (Expr t)
+data Expr t = Data String [(String, Type)] (Expr t)
+            | Lambda String t (Expr t)
             | App (Expr t) (Expr t)
             | Let String t (Expr t) (Expr t)
+            | Case (Expr t) [(String, String, Expr t)]
             | Record [(String, Expr t)]
             | Select (Expr t) String
             | Atom Atom
@@ -16,6 +18,7 @@ data Expr t = Lambda String t (Expr t)
 data Type = TypeForAll [Unique] Type
           | TypeArrow Type Type
           | RecordType Row
+          | DataType Unique Row
           | TypeVar Unique
           | PrimType String
           deriving (Show, Eq)
