@@ -8,11 +8,11 @@ import Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.HashSet (HashSet)
 import qualified Data.HashSet as HashSet
-import Data.Unique (Unique, newUnique, hashUnique)
+import Data.Unique (Unique, newUnique)
 import Data.Foldable (traverse_)
 import Control.Monad (foldM)
 import Control.Monad.Trans (liftIO, lift)
-import Control.Monad.State.Lazy (StateT, runStateT, evalStateT, mapStateT, get, modify)
+import Control.Monad.State.Lazy (StateT, runStateT, mapStateT, get, modify)
 import Control.Monad.Except (ExceptT, runExceptT, mapExceptT, throwError,
                              Except)
 import Control.Monad.Identity (Identity(..))
@@ -121,7 +121,7 @@ typeFrees (TypeForAll params t) =
 typeFrees (TypeArrow d cd) =
     HashSet.union (typeFrees d) (typeFrees cd)
 typeFrees (RecordType row) = rowFrees row
-typeFrees (DataType i row) = rowFrees row
+typeFrees (DataType _ row) = rowFrees row
 typeFrees (TypeVar name) = HashSet.singleton name
 typeFrees (PrimType _) = HashSet.empty
 
@@ -139,11 +139,12 @@ specialize (TypeForAll params t) =
     where replace env (TypeForAll _ t) = replace env t
           replace env (TypeArrow d cd) =
               TypeArrow (replace env d) (replace env cd)
-          replace env (RecordType row) =
-              RecordType $ second (replace env) <$> row
+          replace env (DataType i row) = DataType i (replaceRow env row)
+          replace env (RecordType row) = RecordType (replaceRow env row)
           replace env (TypeVar name) =
               TypeVar (maybe name id (HashMap.lookup name env))
           replace _ (t @ (PrimType _)) = t
+          replaceRow env = map (second (replace env))
 specialize t = return t
 
 applySubst :: Substitution -> Type -> Type
@@ -169,9 +170,9 @@ exprSubst subst (Case matchee cases) =
     Case (exprSubst subst matchee) (map (second (exprSubst subst)) cases)
 exprSubst subst (Record fields) = Record (map (second (exprSubst subst)) fields)
 exprSubst subst (Select record label) = Select (exprSubst subst record) label
-exprSubst subst (Atom atom) = Atom $ case atom of
-                                         Var name -> Var name
-                                         Const c -> Const c
+exprSubst _ (Atom atom) = Atom $ case atom of
+                                     Var name -> Var name
+                                     Const c -> Const c
 
 typed :: Ctx -> Expr () -> Typing (Expr Type, Type)
 typed ctx (Data name variants body) =
@@ -208,6 +209,7 @@ typed ctx (Case matchee cases) =
                                liftUnify (unify resultType resultType')
                                return (match':matches', sumType', resultType'))
                        ([match'], sumType, resultType) matches
+          typedCases [] = error "unreachable"
           typeCase (ctor, param, body) =
               let TypeArrow paramType sumType = fromJust $ ctxLookup ctor ctx
                   ctx' = ctxInsert ctx param paramType

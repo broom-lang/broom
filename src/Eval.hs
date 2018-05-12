@@ -38,7 +38,7 @@ eval env (Let name _ expr body) =
 eval env (Case matchee matches) =
     case eval env matchee of
         Variant tag contents ->
-            let evalMatch ((matchTag, param, body):matches) | tag == matchTag =
+            let evalMatch ((matchTag, param, body):_) | tag == matchTag =
                     let env' = envInsert env param contents
                     in  eval env' body
                 evalMatch (_:matches) = evalMatch matches
@@ -58,3 +58,4 @@ apply (Closure param body env) arg =
     let env' = envInsert env param arg
     in  eval env' body
 apply (Constructor tag) arg = Variant tag arg
+apply _ arg = error $ "Noncallable: " ++ show arg
