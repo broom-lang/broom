@@ -164,6 +164,7 @@ exprSubst subst (Data name variants body) =
     Data name (map (second (applySubst subst)) variants) (exprSubst subst body)
 exprSubst subst (Lambda param t body) = Lambda param (applySubst subst t) (exprSubst subst body)
 exprSubst subst (App f arg) = App (exprSubst subst f) (exprSubst subst arg)
+exprSubst subst (PrimApp op l r) = PrimApp op (exprSubst subst l) (exprSubst subst r)
 exprSubst subst (Let name t expr body) =
     Let name (applySubst subst t) (exprSubst subst expr) (exprSubst subst body)
 exprSubst subst (Case matchee cases) =
@@ -191,6 +192,12 @@ typed ctx (App f arg) =
        codomain <- freshType
        liftUnify (unify calleeType (TypeArrow argType codomain))
        return (App f' arg', codomain)
+typed ctx (PrimApp op l r) =
+    do (l', lType) <- typed ctx l
+       (r', rType) <- typed ctx r
+       liftUnify (unify lType (PrimType "Int"))
+       liftUnify (unify rType (PrimType "Int"))
+       return (PrimApp op l' r', PrimType "Int")
 typed ctx (Let name () expr body) =
     do (expr', exprType) <- typed ctx expr
        let ctx' = ctxInsert ctx name (quantifyFrees ctx exprType)

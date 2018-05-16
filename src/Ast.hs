@@ -2,12 +2,15 @@ module Ast (Expr(..), Type(..), Atom(..), Const(..)) where
 
 import Data.Unique (Unique, hashUnique)
 
+import Primop (Primop)
+
 instance Show Unique where
     show uq = "t" ++ show (hashUnique uq)
 
 data Expr t = Data String [(String, Type)] (Expr t)
             | Lambda String t (Expr t)
             | App (Expr t) (Expr t)
+            | PrimApp Primop (Expr t) (Expr t)
             | Let String t (Expr t) (Expr t)
             | Case (Expr t) [(String, String, Expr t)]
             | Record [(String, Expr t)]

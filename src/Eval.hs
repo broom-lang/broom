@@ -5,6 +5,7 @@ import Data.Bifunctor (second)
 import Data.Foldable (foldl')
 
 import Ast (Expr(..), Atom(..), Const(..), Type)
+import Primop (Primop(..))
 
 newtype Env = Env [(String, Value)]
             deriving Show
@@ -14,6 +15,7 @@ data Value = Closure String (Expr Type) Env
            | Constructor String
            | Variant String Value
            | Int Int
+           | Bool Bool
            deriving Show
 
 emptyEnv :: Env
@@ -32,6 +34,13 @@ eval env (Data _ variants body) =
     where insertCtor env (tag, _) = envInsert env tag (Constructor tag)
 eval env (Lambda param _ body) = Closure param body env
 eval env (App f arg) = apply (eval env f) (eval env arg)
+eval env (PrimApp op l r) = operate (eval env l) (eval env r)
+    where operate = case op of
+                        Eq  -> \(Int a) (Int b) -> Bool $ a == b
+                        Add -> \(Int a) (Int b) -> Int $ a + b
+                        Sub -> \(Int a) (Int b) -> Int $ a - b
+                        Mul -> \(Int a) (Int b) -> Int $ a * b
+                        Div -> \(Int a) (Int b) -> Int $ div a b
 eval env (Let name _ expr body) =
     let env' = envInsert env name (eval env expr)
     in  eval env' body

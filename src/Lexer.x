@@ -16,6 +16,11 @@ tokens :-
   "->" { const TokArrow }
   =>   { const TokDArrow }
   let  { const TokLet }
+  ==   { TokBinOp }
+  "+"  { TokBinOp }
+  "-"  { TokBinOp }
+  "*"  { TokBinOp }
+  "/"  { TokBinOp }
   =    { const TokEq }
   in   { const TokIn }
   end  { const TokEnd }
@@ -49,6 +54,7 @@ data Token = TokData
            | TokRBrace
            | TokComma
            | TokDot
+           | TokBinOp String
            | TokVar String
            | TokInt Int
            deriving (Eq, Show)
