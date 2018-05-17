@@ -16,6 +16,10 @@ tokens :-
   "->" { const TokArrow }
   =>   { const TokDArrow }
   let  { const TokLet }
+  rec  { const TokRec }
+  if   { const TokIf }
+  then { const TokThen }
+  else { const TokElse }
   ==   { TokBinOp }
   "+"  { TokBinOp }
   "-"  { TokBinOp }
@@ -43,6 +47,10 @@ data Token = TokData
            | TokArrow
            | TokDArrow
            | TokLet
+           | TokRec
+           | TokIf
+           | TokThen
+           | TokElse
            | TokEq
            | TokIn
            | TokEnd

@@ -17,6 +17,10 @@ import qualified Primop
   '->' { TokArrow }
   "=>" { TokDArrow }
   let  { TokLet }
+  rec  { TokRec }
+  if   { TokIf }
+  then { TokThen }
+  else { TokElse }
   '='  { TokEq }
   in   { TokIn }
   end  { TokEnd }
@@ -44,7 +48,9 @@ Expr : Nestable { $1 }
 Nestable : data var '=' Variants in Expr end { Data $2 $4 $6 }
          | fn var "=>" Expr { Lambda $2 () $4 }
          | let var '=' Expr in Expr end { Let $2 () $4 $6 }
+         | let rec var '=' Expr in Expr end { LetRec $3 () $5 $7 }
          | case Expr of Matches end { Case $2 $4 }
+         | if Expr then Expr else Expr { If $2 $4 $6 }
          | '(' Expr ')' { $2 }
          | '{' Fields '}' { Record $2 }
          | Nestable '.' var { Select $1 $3 }

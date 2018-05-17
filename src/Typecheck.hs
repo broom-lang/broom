@@ -19,6 +19,7 @@ import Control.Monad.Identity (Identity(..))
 import Data.Bifunctor (bimap, first, second)
 
 import Ast (Expr(..), Type(..), Atom(..), Const(..))
+import qualified Primop
 
 newtype Ctx = Ctx [(String, Type)]
 
@@ -167,8 +168,12 @@ exprSubst subst (App f arg) = App (exprSubst subst f) (exprSubst subst arg)
 exprSubst subst (PrimApp op l r) = PrimApp op (exprSubst subst l) (exprSubst subst r)
 exprSubst subst (Let name t expr body) =
     Let name (applySubst subst t) (exprSubst subst expr) (exprSubst subst body)
+exprSubst subst (LetRec name t expr body) =
+    LetRec name (applySubst subst t) (exprSubst subst expr) (exprSubst subst body)
 exprSubst subst (Case matchee cases) =
     Case (exprSubst subst matchee) (map (second (exprSubst subst)) cases)
+exprSubst subst (If cond conseq alt) =
+    If (exprSubst subst cond) (exprSubst subst conseq) (exprSubst subst alt)
 exprSubst subst (Record fields) = Record (map (second (exprSubst subst)) fields)
 exprSubst subst (Select record label) = Select (exprSubst subst record) label
 exprSubst _ (Atom atom) = Atom $ case atom of
@@ -197,12 +202,21 @@ typed ctx (PrimApp op l r) =
        (r', rType) <- typed ctx r
        liftUnify (unify lType (PrimType "Int"))
        liftUnify (unify rType (PrimType "Int"))
-       return (PrimApp op l' r', PrimType "Int")
+       let t = case op of
+                   Primop.Eq -> PrimType "Bool"
+                   _ -> PrimType "Int"
+       return (PrimApp op l' r', t)
 typed ctx (Let name () expr body) =
     do (expr', exprType) <- typed ctx expr
        let ctx' = ctxInsert ctx name (quantifyFrees ctx exprType)
        (body', bodyType) <- typed ctx' body
        return (Let name exprType expr' body', bodyType)
+typed ctx (LetRec name () expr body) =
+    do exprType <- freshType
+       (expr', exprType') <- typed (ctxInsert ctx name exprType) expr
+       let ctx' = ctxInsert ctx name (quantifyFrees ctx exprType')
+       (body', bodyType) <- typed ctx' body
+       return (LetRec name exprType expr' body', bodyType)
 typed ctx (Case matchee cases) =
     do (matchee', matcheeType) <- typed ctx matchee
        (cases', sumType, resultType) <- typedCases cases
@@ -222,6 +236,13 @@ typed ctx (Case matchee cases) =
                   ctx' = ctxInsert ctx param paramType
               in  do (body', resultType) <- typed ctx' body
                      return ((ctor, param, body'), sumType, resultType)
+typed ctx (If cond conseq alt) =
+    do (cond', condType) <- typed ctx cond
+       liftUnify (unify condType (PrimType "Bool"))
+       (conseq', conseqType) <- typed ctx conseq
+       (alt', altType) <- typed ctx alt
+       liftUnify (unify conseqType altType)
+       return (If cond' conseq' alt', conseqType)
 typed ctx (Record fields) =
     do (fields', row) <- unzip <$> traverse typedField fields
        return (Record fields', RecordType row)

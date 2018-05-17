@@ -12,7 +12,9 @@ data Expr t = Data String [(String, Type)] (Expr t)
             | App (Expr t) (Expr t)
             | PrimApp Primop (Expr t) (Expr t)
             | Let String t (Expr t) (Expr t)
+            | LetRec String t (Expr t) (Expr t)
             | Case (Expr t) [(String, String, Expr t)]
+            | If (Expr t) (Expr t) (Expr t)
             | Record [(String, Expr t)]
             | Select (Expr t) String
             | Atom Atom

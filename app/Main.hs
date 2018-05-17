@@ -12,5 +12,5 @@ main = do src <- getContents
           typingRes <- typecheck expr
           case typingRes of
               Right (expr, t) -> do putStrLn (show expr ++ " : " ++ show t)
-                                    print (eval emptyEnv expr)
+                                    print =<< eval emptyEnv expr
               Left err -> putStrLn ("TypeError: " ++ show err)
