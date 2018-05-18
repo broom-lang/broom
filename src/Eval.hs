@@ -1,15 +1,29 @@
 {-# LANGUAGE TupleSections #-}
 
-module Eval (eval, emptyEnv) where
+module Eval (eval, runEvaluation, emptyEnv) where
 
 import Data.Maybe (fromJust)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Bifunctor (second)
 import Data.Foldable (foldl')
 import Control.Monad (foldM)
+import Control.Monad.Trans (liftIO)
+import Control.Monad.Except (ExceptT, runExceptT, throwError)
 
 import Ast (Expr(..), Atom(..), Const(..), Type)
 import Primop (Primop(..))
+
+data EvalError = Match String
+               | NonVariant Value
+               | NonBoolean Value
+               | NonRecord Value
+               | NonCallable Value
+               deriving Show
+
+type Evaluation a = ExceptT EvalError IO a
+
+runEvaluation :: Evaluation a -> IO (Either EvalError a)
+runEvaluation = runExceptT
 
 newtype Env = Env [(String, IORef (Maybe Value))]
 
@@ -39,9 +53,9 @@ envLookup name (Env bindings) =
         Just var -> readIORef var
         Nothing -> return Nothing
 
-eval :: Env -> Expr Type -> IO Value
+eval :: Env -> Expr Type -> Evaluation Value
 eval env (Data _ variants body) =
-    do env' <- foldM insertCtor env variants
+    do env' <- liftIO $ foldM insertCtor env variants
        eval env' body
     where insertCtor env (tag, _) = envDefine env tag (Constructor tag)
 eval env (Lambda param _ body) = return $ Closure param body env
@@ -56,44 +70,44 @@ eval env (PrimApp op l r) = operate <$> eval env l <*> eval env r
                         Mul -> \(Int a) (Int b) -> Int $ a * b
                         Div -> \(Int a) (Int b) -> Int $ div a b
 eval env (Let name _ expr body) =
-    do env' <- envDefine env name =<< eval env expr
+    do env' <- liftIO . envDefine env name =<< eval env expr
        eval env' body
 eval env (LetRec name _ expr body) =
-    do var <- newIORef Nothing
+    do var <- liftIO $ newIORef Nothing
        let env' = envInsert env name var
        exprv <- eval env' expr
-       writeIORef var (Just exprv)
+       liftIO $ writeIORef var (Just exprv)
        eval env' body
 eval env (Case matchee matches) =
     do matcheev <- eval env matchee
        case matcheev of
            Variant tag contents ->
                let evalMatch ((matchTag, param, body):_) | tag == matchTag =
-                       do env' <- envDefine env param contents
+                       do env' <- liftIO $ envDefine env param contents
                           eval env' body
                    evalMatch (_:matches) = evalMatch matches
-                   evalMatch [] = error $ "No branch for tag " ++ tag
+                   evalMatch [] = throwError $ Match tag
                in evalMatch matches
-           _ -> error $ "Tried to match nonvariant " ++ show matchee
+           _ -> throwError $ NonVariant matcheev
 eval env (If cond conseq alt) =
     do condv <- eval env cond
        case condv of
            Bool True -> eval env conseq
            Bool False -> eval env alt
-           v -> error $ "Not a boolean: " ++ show v
+           v -> throwError $ NonBoolean v
 eval env (Record fields) =
     Struct <$> traverse (\(l, v) -> (l,) <$> eval env v) fields
 eval env (Select record label) =
     do struct <- eval env record
        case struct of
            Struct fields -> return $ fromJust (lookup label fields)
-           _ -> error $ "Not a record: " ++ show record
-eval env (Atom (Var name)) = fromJust <$> envLookup name env
+           _ -> throwError $ NonRecord struct
+eval env (Atom (Var name)) = liftIO $ fromJust <$> envLookup name env
 eval _ (Atom (Const (ConstInt n)))  = return $ Int n
 
-apply :: Value -> Value -> IO Value
+apply :: Value -> Value -> Evaluation Value
 apply (Closure param body env) arg =
-    do env' <- envDefine env param arg
+    do env' <- liftIO $ envDefine env param arg
        eval env' body
 apply (Constructor tag) arg = return $ Variant tag arg
-apply _ arg = error $ "Noncallable: " ++ show arg
+apply f _ = throwError $ NonCallable f
