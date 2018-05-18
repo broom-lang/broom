@@ -1,0 +1,4 @@
+- [ ] Type elaboration (Ast.Type -> Typecheck.Type)
+- [ ] Recursive datatypes
+- [ ] Variant arities from [1] to [0..]
+- [ ] Type constructors
