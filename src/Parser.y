@@ -1,7 +1,7 @@
 {
 module Parser (parser) where
 import Lexer (Token(..))
-import Ast (Expr(..), Type(..), Atom(..), Const(..))
+import Ast (Expr(..), Decl(..), Type(..), Atom(..), Const(..))
 import qualified Primop
 }
 
@@ -10,6 +10,7 @@ import qualified Primop
 %error { parseError }
 
 %token
+  val  { TokVal }
   data { TokData }
   '|'  { TokBar }
   fn   { TokFn }
@@ -45,16 +46,20 @@ import qualified Primop
 Expr : Nestable { $1 }
      | Equal { $1 }
 
-Nestable : data var '=' Variants in Expr end { Data $2 $4 $6 }
-         | fn var "=>" Expr { Lambda $2 () $4 }
-         | let var '=' Expr in Expr end { Let $2 () $4 $6 }
-         | let rec var '=' Expr in Expr end { LetRec $3 () $5 $7 }
+Nestable : fn var "=>" Expr { Lambda $2 () $4 }
+         | let Declarations in Expr end { Let $2 $4 }
          | case Expr of Matches end { Case $2 $4 }
          | if Expr then Expr else Expr { If $2 $4 $6 }
          | '(' Expr ')' { $2 }
          | '{' Fields '}' { Record $2 }
          | Nestable '.' var { Select $1 $3 }
-         | Atom         { Atom $1 }
+         | Atom { Atom $1 }
+
+Declarations : Declaration Declarations { $1 : $2 }
+             | Declaration { [$1] }
+
+Declaration : val var '=' Expr { Val $2 () $4 }
+            | data var '=' Variants { Data $2 $4 }
 
 Variants : var Type { [($1, $2)] }
          | var Type '|' Variants { ($1, $2) : $4 }

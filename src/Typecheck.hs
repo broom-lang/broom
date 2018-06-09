@@ -4,10 +4,8 @@ module Typecheck (typecheck) where
 
 import Data.Maybe (fromJust)
 import Data.List (foldl', find)
-import Data.HashMap.Lazy (HashMap)
-import qualified Data.HashMap.Lazy as HashMap
-import Data.HashSet (HashSet)
-import qualified Data.HashSet as HashSet
+import qualified Data.HashMap.Lazy as Map
+import qualified Data.HashSet as Set
 import Data.Unique (Unique, newUnique)
 import Data.Foldable (traverse_)
 import Control.Monad (foldM)
@@ -18,21 +16,15 @@ import Control.Monad.Except (ExceptT, runExceptT, mapExceptT, throwError,
 import Control.Monad.Identity (Identity(..))
 import Data.Bifunctor (bimap, first, second)
 
-import Ast (Expr(..), Type(..), Atom(..), Const(..))
+import Ast (Expr(..), Decl(..), Type(..), Atom(..), Const(..))
 import qualified Primop
 
-newtype Ctx = Ctx [(String, Type)]
+type Map = Map.HashMap
+type Set = Set.HashSet
 
-emptyCtx :: Ctx
-emptyCtx = Ctx []
+-- Unification
 
-ctxInsert :: Ctx -> String -> Type -> Ctx
-ctxInsert (Ctx bindings) name typ = Ctx $ (name, typ) : bindings
-
-ctxLookup :: String -> Ctx -> Maybe Type
-ctxLookup name (Ctx bindings) = lookup name bindings
-
-type Substitution = HashMap Unique Type
+type Substitution = Map Unique Type
 
 data UnificationError = PolytypeUnification Type
                       | UnificationShapes Type Type
@@ -63,12 +55,12 @@ unify t1 t2 =
 unifyVar :: Unique -> Type -> Unification ()
 unifyVar name t =
     do occursCheck name t
-       modify (HashMap.insert name t)
+       modify (Map.insert name t)
 
 walk :: Type -> Unification Type
 walk (t @ (TypeVar name)) =
     do subst <- get
-       case HashMap.lookup name subst of
+       case Map.lookup name subst of
            Just val -> walk val
            Nothing -> return t
 walk t = return t
@@ -86,19 +78,34 @@ occursCheck name t =
            PrimType _ -> return ()
     where checkRow = traverse_ (occursCheck name . snd)
 
+-- Context
+
+newtype Ctx = Ctx (Map String Type)
+
+emptyCtx :: Ctx
+emptyCtx = Ctx Map.empty
+
+ctxInsert :: Ctx -> String -> Type -> Ctx
+ctxInsert (Ctx bindings) name typ = Ctx $ Map.insert name typ bindings
+
+ctxLookup :: String -> Ctx -> Maybe Type
+ctxLookup name (Ctx bindings) = Map.lookup name bindings
+
+-- Type checking utils
+
 data TypeError = MonotypeSpecialization Type
                | UnificationError UnificationError
                | InexistentField String Type
                | NonRecord Type
                | NonSum Type
-               | CaseTags (HashSet String) (HashSet String)
+               | CaseTags (Set String) (Set String)
                deriving Show
 
 type Typing a = StateT Substitution (ExceptT TypeError IO) a
 
 runTyping :: Typing (Expr Type, Type) -> IO (Either TypeError (Expr Type, Type))
 runTyping ting =
-    do res <- runExceptT (runStateT ting HashMap.empty)
+    do res <- runExceptT (runStateT ting Map.empty)
        return $ case res of
            Right (typing, subst) ->
                Right $ bimap (exprSubst subst)
@@ -114,36 +121,36 @@ quantifyFrees ctx t =
     case frees of
         _:_ -> TypeForAll frees t
         [] -> t
-    where frees = HashSet.toList $ HashSet.difference (typeFrees t) (ctxFrees ctx)
+    where frees = Set.toList $ Set.difference (typeFrees t) (ctxFrees ctx)
 
-typeFrees :: Type -> HashSet Unique
+typeFrees :: Type -> Set Unique
 typeFrees (TypeForAll params t) =
-    HashSet.difference (typeFrees t) (HashSet.fromList params)
+    Set.difference (typeFrees t) (Set.fromList params)
 typeFrees (TypeArrow d cd) =
-    HashSet.union (typeFrees d) (typeFrees cd)
+    Set.union (typeFrees d) (typeFrees cd)
 typeFrees (RecordType row) = rowFrees row
 typeFrees (DataType _ row) = rowFrees row
-typeFrees (TypeVar name) = HashSet.singleton name
-typeFrees (PrimType _) = HashSet.empty
+typeFrees (TypeVar name) = Set.singleton name
+typeFrees (PrimType _) = Set.empty
 
-rowFrees :: [(String, Type)] -> HashSet Unique
-rowFrees = foldl' (\frees (_, t) -> HashSet.union frees (typeFrees t)) HashSet.empty
+rowFrees :: [(String, Type)] -> Set Unique
+rowFrees = foldl' (\frees (_, t) -> Set.union frees (typeFrees t)) Set.empty
 
-ctxFrees :: Ctx -> HashSet Unique
+ctxFrees :: Ctx -> Set Unique
 ctxFrees (Ctx ctx) =
-    foldl' (\frees (_, t) -> HashSet.union (typeFrees t) frees) HashSet.empty ctx
+    Map.foldl' (\frees t -> Set.union (typeFrees t) frees) Set.empty ctx
 
 specialize :: Type -> ExceptT TypeError IO Type
 specialize (TypeForAll params t) =
     do params' <- liftIO $ traverse (const newUnique) params
-       return $ replace (HashMap.fromList (zip params params')) t
+       return $ replace (Map.fromList (zip params params')) t
     where replace env (TypeForAll _ t) = replace env t
           replace env (TypeArrow d cd) =
               TypeArrow (replace env d) (replace env cd)
           replace env (DataType i row) = DataType i (replaceRow env row)
           replace env (RecordType row) = RecordType (replaceRow env row)
           replace env (TypeVar name) =
-              TypeVar (maybe name id (HashMap.lookup name env))
+              TypeVar (maybe name id (Map.lookup name env))
           replace _ (t @ (PrimType _)) = t
           replaceRow env = map (second (replace env))
 specialize t = return t
@@ -155,21 +162,16 @@ applySubst subst (TypeArrow d cd) =
 applySubst subst (RecordType row) = RecordType $ second (applySubst subst) <$> row
 applySubst subst (DataType i row) = DataType i $ second (applySubst subst) <$> row
 applySubst subst (t @ (TypeVar name)) =
-    case HashMap.lookup name subst of
+    case Map.lookup name subst of
         Just t -> applySubst subst t
         Nothing -> t
 applySubst _ (t @ (PrimType _)) = t
 
 exprSubst :: Substitution -> Expr Type -> Expr Type
-exprSubst subst (Data name variants body) =
-    Data name (map (second (applySubst subst)) variants) (exprSubst subst body)
 exprSubst subst (Lambda param t body) = Lambda param (applySubst subst t) (exprSubst subst body)
 exprSubst subst (App f arg) = App (exprSubst subst f) (exprSubst subst arg)
 exprSubst subst (PrimApp op l r) = PrimApp op (exprSubst subst l) (exprSubst subst r)
-exprSubst subst (Let name t expr body) =
-    Let name (applySubst subst t) (exprSubst subst expr) (exprSubst subst body)
-exprSubst subst (LetRec name t expr body) =
-    LetRec name (applySubst subst t) (exprSubst subst expr) (exprSubst subst body)
+exprSubst subst (Let decls body) = Let (map (declSubst subst) decls) (exprSubst subst body)
 exprSubst subst (Case matchee cases) =
     Case (exprSubst subst matchee) (map (second (exprSubst subst)) cases)
 exprSubst subst (If cond conseq alt) =
@@ -180,12 +182,13 @@ exprSubst _ (Atom atom) = Atom $ case atom of
                                      Var name -> Var name
                                      Const c -> Const c
 
+declSubst :: Substitution -> Decl Type -> Decl Type
+declSubst subst (Val name t expr) = Val name (applySubst subst t) (exprSubst subst expr)
+declSubst subst (Data name variants) = Data name (map (second (applySubst subst)) variants)
+
+-- The actual type checking
+
 typed :: Ctx -> Expr () -> Typing (Expr Type, Type)
-typed ctx (Data name variants body) =
-    do dataType <- DataType <$> liftIO newUnique <*> pure variants
-       let ctx' = foldl' (insertCtorType dataType) (ctxInsert ctx name dataType) variants
-       first (Data name variants) <$> typed ctx' body
-    where insertCtorType dataType ctx (tag, domain) = ctxInsert ctx tag (TypeArrow domain dataType)
 typed ctx (Lambda param () body) =
     do domain <- freshType
        let ctx' = ctxInsert ctx param domain
@@ -206,17 +209,13 @@ typed ctx (PrimApp op l r) =
                    Primop.Eq -> PrimType "Bool"
                    _ -> PrimType "Int"
        return (PrimApp op l' r', t)
-typed ctx (Let name () expr body) =
-    do (expr', exprType) <- typed ctx expr
-       let ctx' = ctxInsert ctx name (quantifyFrees ctx exprType)
-       (body', bodyType) <- typed ctx' body
-       return (Let name exprType expr' body', bodyType)
-typed ctx (LetRec name () expr body) =
-    do exprType <- freshType
-       (expr', exprType') <- typed (ctxInsert ctx name exprType) expr
-       let ctx' = ctxInsert ctx name (quantifyFrees ctx exprType')
-       (body', bodyType) <- typed ctx' body
-       return (LetRec name exprType expr' body', bodyType)
+typed (Ctx ctx) (Let decls body) =
+    do Ctx ctxExtension <- liftIO $ declsCtx decls
+       let ctx' = Ctx $ Map.union ctxExtension ctx
+       decls' <- traverse (typedDecl ctx') decls
+       let ctx'' = Ctx $ Map.union (quantifyFrees (Ctx ctx) <$> ctxExtension) ctx
+       (body', bodyType) <- typed ctx'' body
+       return (Let decls' body', bodyType)
 typed ctx (Case matchee cases) =
     do (matchee', matcheeType) <- typed ctx matchee
        (cases', sumType, resultType) <- typedCases cases
@@ -259,6 +258,32 @@ typed ctx (Atom atom) =
     case atom of
         Var name -> (Atom $ Var name,) <$> lift (specialize (fromJust (ctxLookup name ctx)))
         Const (ConstInt n) -> return (Atom $ Const $ ConstInt n, PrimType "Int")
+
+typedDecl :: Ctx -> Decl () -> Typing (Decl Type)
+typedDecl ctx (Val name _ expr) = do (expr', exprType) <- typed ctx expr
+                                     return $ Val name (quantifyFrees ctx exprType) expr'
+typedDecl ctx (Data name variants) = pure $ Data name variants
+
+declsCtx :: [Decl ()] -> IO Ctx
+declsCtx decls = Ctx . (\ctx -> foldl' (flip Map.union) Map.empty ctx) <$> traverse declCtx decls
+    where declCtx (Val name _  _) = Map.singleton name . TypeVar <$> newUnique
+          declCtx (Data name variants) =
+              do dataType <- DataType <$> newUnique <*> pure variants
+                 return $ foldl' (insertCtorType dataType) (Map.singleton name dataType) variants
+              where insertCtorType dataType ctx (tag, domain) =
+                        Map.insert tag (TypeArrow domain dataType) ctx
+
+-- typed ctx (LetRec name () expr body) =
+--     do exprType <- freshType
+--        (expr', exprType') <- typed (ctxInsert ctx name exprType) expr
+--        let ctx' = ctxInsert ctx name (quantifyFrees ctx exprType')
+--        (body', bodyType) <- typed ctx' body
+--        return (LetRec name exprType expr' body', bodyType)
+-- typed ctx (Data name variants body) =
+--     do dataType <- DataType <$> liftIO newUnique <*> pure variants
+--        let ctx' = foldl' (insertCtorType dataType) (ctxInsert ctx name dataType) variants
+--        first (Data name variants) <$> typed ctx' body
+--     where insertCtorType dataType ctx (tag, domain) = ctxInsert ctx tag (TypeArrow domain dataType)
 
 typecheck :: Expr () -> IO (Either TypeError (Expr Type, Type))
 typecheck = runTyping . typed emptyCtx

@@ -2,16 +2,15 @@
 
 module Eval (eval, emptyEnv) where
 
-import Data.Maybe (fromJust)
+import qualified Data.HashMap.Lazy as Map
+import Data.Maybe (fromJust) -- FIXME
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import Data.Bifunctor (second)
-import Data.Foldable (foldl')
-import Control.Monad (foldM)
+import Data.Foldable (traverse_)
 
-import Ast (Expr(..), Atom(..), Const(..), Type)
+import Ast (Expr(..), Decl(..), definiends, Atom(..), Const(..), Type)
 import Primop (Primop(..))
 
-newtype Env = Env [(String, IORef (Maybe Value))]
+newtype Env = Env (Map.HashMap String (IORef (Maybe Value)))
 
 instance Show Env where
     show = const "#<env>"
@@ -25,25 +24,27 @@ data Value = Closure String (Expr Type) Env
            deriving Show
 
 emptyEnv :: Env
-emptyEnv = Env []
+emptyEnv = Env Map.empty
 
-envInsert :: Env -> String -> IORef (Maybe Value) -> Env
-envInsert (Env bindings) name var = Env ((name, var) : bindings)
+envDeclare :: [String] -> Env -> IO Env
+envDeclare names (Env bindings) = Env <$> (Map.union <$> newBindings <*> pure bindings)
+    where newBindings = Map.fromList <$> traverse newBinding names
+          newBinding name = (name,) <$> newIORef Nothing
 
-envDefine :: Env -> String -> Value -> IO Env
-envDefine env name value = envInsert env name <$> newIORef (Just value)
+envInit :: String -> Value -> Env -> IO ()
+envInit name value (Env bindings) = writeIORef (fromJust (Map.lookup name bindings)) (Just value)
+
+envDefine :: String -> Value -> Env -> IO Env
+envDefine name value (Env bindings) = do var <- newIORef (Just value)
+                                         return $ Env (Map.insert name var bindings)
 
 envLookup :: String -> Env -> IO (Maybe Value)
 envLookup name (Env bindings) =
-    case lookup name bindings of
+    case Map.lookup name bindings of
         Just var -> readIORef var
         Nothing -> return Nothing
 
 eval :: Env -> Expr Type -> IO Value
-eval env (Data _ variants body) =
-    do env' <- foldM insertCtor env variants
-       eval env' body
-    where insertCtor env (tag, _) = envDefine env tag (Constructor tag)
 eval env (Lambda param _ body) = return $ Closure param body env
 eval env (App f arg) = do f <- eval env f
                           arg <- eval env arg
@@ -55,21 +56,15 @@ eval env (PrimApp op l r) = operate <$> eval env l <*> eval env r
                         Sub -> \(Int a) (Int b) -> Int $ a - b
                         Mul -> \(Int a) (Int b) -> Int $ a * b
                         Div -> \(Int a) (Int b) -> Int $ div a b
-eval env (Let name _ expr body) =
-    do env' <- envDefine env name =<< eval env expr
-       eval env' body
-eval env (LetRec name _ expr body) =
-    do var <- newIORef Nothing
-       let env' = envInsert env name var
-       exprv <- eval env' expr
-       writeIORef var (Just exprv)
-       eval env' body
+eval env (Let decls body) = do env <- envDeclare (definiends =<< decls) env
+                               traverse_ (exec env) decls
+                               eval env body
 eval env (Case matchee matches) =
     do matcheev <- eval env matchee
        case matcheev of
            Variant tag contents ->
                let evalMatch ((matchTag, param, body):_) | tag == matchTag =
-                       do env' <- envDefine env param contents
+                       do env' <- envDefine param contents env
                           eval env' body
                    evalMatch (_:matches) = evalMatch matches
                    evalMatch [] = error $ "No branch for tag " ++ tag
@@ -91,9 +86,15 @@ eval env (Select record label) =
 eval env (Atom (Var name)) = fromJust <$> envLookup name env
 eval _ (Atom (Const (ConstInt n)))  = return $ Int n
 
+exec :: Env -> Decl Type -> IO ()
+exec env (Val name _ expr) = do v <- eval env expr
+                                envInit name v env
+exec env (Data name variants) = traverse_ (initCtor env) variants
+    where initCtor env (tag, _) = envInit tag (Constructor tag) env
+
 apply :: Value -> Value -> IO Value
 apply (Closure param body env) arg =
-    do env' <- envDefine env param arg
+    do env' <- envDefine param arg env
        eval env' body
 apply (Constructor tag) arg = return $ Variant tag arg
-apply _ arg = error $ "Noncallable: " ++ show arg
+apply _ arg = error $ "Noncallable: " ++ show arg -- FIXME

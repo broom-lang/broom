@@ -9,6 +9,7 @@ $alpha = [a-zA-Z]
 
 tokens :-
   $white+ ;
+  val  { const TokVal }
   data { const TokData }
   "|"  { const TokBar }
   fn   { const TokFn }
@@ -40,7 +41,8 @@ tokens :-
   $digit+ { TokInt . read }
 
 {
-data Token = TokData
+data Token = TokVal
+           | TokData
            | TokBar
            | TokFn
            | TokHasType
