@@ -111,4 +111,4 @@ apply (Closure param body env) arg =
     do env' <- liftIO $ envDefine param arg env
        eval env' body
 apply (Constructor tag) arg = return $ Variant tag arg
-apply _ arg = error $ "Noncallable: " ++ show arg -- FIXME
+apply f _ = throwError $ NonCallable f
