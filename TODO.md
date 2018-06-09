@@ -1,0 +1,4 @@
+- [x] Make `let` have multiple mutually recursive declarations
+- [ ] Explicit type annotations for variables
+- [ ] Scoped type variables and type ascription
+- [ ] Proper error handling
