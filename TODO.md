@@ -2,3 +2,7 @@
 - [ ] Explicit type annotations for variables
 - [ ] Scoped type variables and type ascription
 - [ ] Proper error handling
+- [ ] Type elaboration (Ast.Type -> Typecheck.Type)
+- [ ] Recursive datatypes
+- [ ] Variant arities from [1] to [0..]
+- [ ] Type constructors

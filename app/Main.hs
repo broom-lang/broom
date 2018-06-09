@@ -3,7 +3,7 @@ module Main where
 import Lexer (alexScanTokens)
 import Parser (parser)
 import Typecheck (typecheck)
-import Eval (eval, emptyEnv)
+import Eval (eval, runEvaluation, emptyEnv)
 
 main :: IO ()
 main = do src <- getContents
@@ -11,6 +11,10 @@ main = do src <- getContents
           print expr
           typingRes <- typecheck expr
           case typingRes of
-              Right (expr, t) -> do putStrLn (show expr ++ " : " ++ show t)
-                                    print =<< eval emptyEnv expr
+              Right (expr, t) ->
+                  do putStrLn (show expr ++ " : " ++ show t)
+                     value <- runEvaluation $ eval emptyEnv expr
+                     case value of
+                         Right value -> print value
+                         Left err -> putStrLn ("EvalError: " ++ show err)
               Left err -> putStrLn ("TypeError: " ++ show err)
