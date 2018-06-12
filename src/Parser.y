@@ -1,7 +1,7 @@
 {
 module Parser (parser) where
 import Lexer (Token(..))
-import Ast (Expr(..), Decl(..), Type(..), Atom(..), Const(..))
+import Ast (Expr(..), Decl(..), Type(..), MonoType(..), Atom(..), Const(..))
 import qualified Primop
 }
 
@@ -61,8 +61,8 @@ Declarations : Declaration Declarations { $1 : $2 }
 Declaration : val var '=' Expr { Val $2 () $4 }
             | data var '=' Variants { Data $2 $4 }
 
-Variants : var Type { [($1, $2)] }
-         | var Type '|' Variants { ($1, $2) : $4 }
+Variants : var MonoType              { [($1, $2)] }
+         | var MonoType '|' Variants { ($1, $2) : $4 }
 
 Equal : Equal '==' Sum { PrimApp Primop.Eq $1 $3 }
       | Sum { $1 }
@@ -92,15 +92,15 @@ Atom : var   { Var $1 }
 
 Const : int { ConstInt $1 }
 
-Type : var { PrimType $1 }
-     | Type '->' Type { TypeArrow $1 $3 }
-     | '{' Row '}' { RecordType $2 }
+MonoType : var { TypeName $1 }
+         | MonoType '->' MonoType { TypeArrow $1 $3 }
+         | '{' Row '}' { RecordType $2 }
 
 Row : { [] }
     | NonEmptyRow { $1 }
 
-NonEmptyRow : var ':' Type                 { [($1, $3)] }
-            | var ':' Type ',' NonEmptyRow { ($1, $3) : $5 }
+NonEmptyRow : var ':' MonoType                 { [($1, $3)] }
+            | var ':' MonoType ',' NonEmptyRow { ($1, $3) : $5 }
 
 {
 parseError :: [Token] -> a

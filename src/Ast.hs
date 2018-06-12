@@ -1,11 +1,7 @@
-module Ast (Expr(..), Decl(..), definiends, Type(..), Atom(..), Const(..)) where
-
-import Data.Unique (Unique, hashUnique)
+module Ast (Expr(..), Decl(..), definiends, Atom(..), Const(..),
+            Type(..), MonoType(..), Row) where
 
 import Primop (Primop)
-
-instance Show Unique where
-    show uq = "t" ++ show (hashUnique uq)
 
 data Expr t = Lambda String t (Expr t)
             | App (Expr t) (Expr t)
@@ -19,22 +15,12 @@ data Expr t = Lambda String t (Expr t)
             deriving Show
 
 data Decl t = Val String t (Expr t)
-            | Data String [(String, Type)]
+            | Data String Row
             deriving Show
 
 definiends :: Decl t -> [String]
 definiends (Val name _ _) = pure name
 definiends (Data _ variants) = fst <$> variants
-
-data Type = TypeForAll [Unique] Type
-          | TypeArrow Type Type
-          | RecordType Row
-          | DataType Unique Row
-          | TypeVar Unique
-          | PrimType String
-          deriving (Show, Eq)
-
-type Row = [(String, Type)]
 
 data Atom = Var String
           | Const Const
@@ -42,3 +28,14 @@ data Atom = Var String
 
 data Const = ConstInt Int
            deriving Show
+
+data Type = TypeForAll [String] MonoType
+          | MonoType MonoType
+          deriving (Show, Eq)
+
+data MonoType = TypeArrow MonoType MonoType
+              | RecordType Row
+              | TypeName String
+              deriving (Show, Eq)
+
+type Row = [(String, MonoType)]

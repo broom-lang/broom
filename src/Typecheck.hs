@@ -14,7 +14,10 @@ import Control.Monad.Except (ExceptT, runExceptT, mapExceptT, throwError, Except
 import Control.Monad.Identity (Identity(..))
 import Data.Bifunctor (bimap, first, second)
 
-import Ast (Expr(..), Decl(..), Type(..), Atom(..), Const(..))
+import Util (Name, nameFromString)
+import qualified Ast
+import Ast (Expr(..), Decl(..), Atom(..), Const(..))
+import Type (Type(..), MonoType(..), Row)
 import qualified Primop
 import Unify (Substitution, Unification, UnificationError, unify)
 
@@ -22,6 +25,7 @@ type Map = Map.HashMap
 type Set = Set.HashSet
 
 -- Context
+-- TODO: `type Ctx = Map String Type` should be enough
 
 newtype Ctx = Ctx (Map String Type)
 
@@ -36,17 +40,14 @@ ctxLookup name (Ctx bindings) = Map.lookup name bindings
 
 -- Type checking utils
 
-data TypeError = MonotypeSpecialization Type
-               | UnificationError UnificationError
+data TypeError = UnificationError UnificationError
                | InexistentField String Type
                | NonRecord Type
-               | NonSum Type
-               | CaseTags (Set String) (Set String)
                deriving Show
 
 type Typing a = StateT Substitution (ExceptT TypeError IO) a
 
-runTyping :: Typing (Expr Type, Type) -> IO (Either TypeError (Expr Type, Type))
+runTyping :: Typing (Expr Type, MonoType) -> IO (Either TypeError (Expr Type, MonoType))
 runTyping ting =
     do res <- runExceptT (runStateT ting Map.empty)
        return $ case res of
@@ -56,8 +57,6 @@ runTyping ting =
                              typing
            Left err -> Left err
 
-
-
 liftUnify :: Unification a -> Typing a
 liftUnify uf = mapStateT toTypeError uf
     where toTypeError exn = mapExceptT toIO exn
@@ -66,25 +65,26 @@ liftUnify uf = mapStateT toTypeError uf
 freshType :: Typing Type
 freshType = TypeVar <$> liftIO newUnique
 
-quantifyFrees :: Ctx -> Type -> Type
+quantifyFrees :: Ctx -> MonoType -> Type
 quantifyFrees ctx t =
     case frees of
         _:_ -> TypeForAll frees t
         [] -> t
     where frees = Set.toList $ Set.difference (typeFrees t) (ctxFrees ctx)
 
-typeFrees :: Type -> Set Unique
-typeFrees (TypeForAll params t) =
-    Set.difference (typeFrees t) (Set.fromList params)
-typeFrees (TypeArrow d cd) =
-    Set.union (typeFrees d) (typeFrees cd)
-typeFrees (RecordType row) = rowFrees row
-typeFrees (DataType _ row) = rowFrees row
-typeFrees (TypeVar name) = Set.singleton name
-typeFrees (PrimType _) = Set.empty
+typeFrees :: Type -> Set Name
+typeFrees (TypeForAll params t) = Set.difference (monoTypeFrees t) (Set.fromList params)
+typeFrees (MonoType t) = monoTypeFrees t
 
-rowFrees :: [(String, Type)] -> Set Unique
-rowFrees = foldl' (\frees (_, t) -> Set.union frees (typeFrees t)) Set.empty
+monoTypeFrees :: MonoType -> Set Name
+monoTypeFrees (TypeArrow d cd) = Set.union (monoTypeFrees d) (monoTypeFrees cd)
+monoTypeFrees (RecordType row) = rowFrees row
+monoTypeFrees (DataType _ row) = rowFrees row
+monoTypeFrees (TypeVar name) = Set.singleton name
+monoTypeFrees (PrimType _) = Set.empty
+
+rowFrees :: Row -> Set Unique
+rowFrees = foldl' (\frees (_, t) -> Set.union frees (monoTypeFrees t)) Set.empty
 
 ctxFrees :: Ctx -> Set Unique
 ctxFrees (Ctx ctx) =
@@ -94,8 +94,7 @@ specialize :: Type -> ExceptT TypeError IO Type
 specialize (TypeForAll params t) =
     do params' <- liftIO $ traverse (const newUnique) params
        return $ replace (Map.fromList (zip params params')) t
-    where replace env (TypeForAll _ t) = replace env t
-          replace env (TypeArrow d cd) =
+    where replace env (TypeArrow d cd) =
               TypeArrow (replace env d) (replace env cd)
           replace env (DataType i row) = DataType i (replaceRow env row)
           replace env (RecordType row) = RecordType (replaceRow env row)
@@ -138,7 +137,10 @@ declSubst subst (Data name variants) = Data name (map (second (applySubst subst)
 
 -- The actual type checking
 
-typed :: Ctx -> Expr () -> Typing (Expr Type, Type)
+elabRow :: Ctx -> Ast.Row -> Row
+elabRow = undefined
+
+typed :: Ctx -> Expr () -> Typing (Expr Type, MonoType)
 typed ctx (Lambda param () body) =
     do domain <- freshType
        let ctx' = ctxInsert ctx param domain
@@ -218,8 +220,10 @@ declsCtx :: [Decl ()] -> IO Ctx
 declsCtx decls = Ctx . (\ctx -> foldl' (flip Map.union) Map.empty ctx) <$> traverse declCtx decls
     where declCtx (Val name _  _) = Map.singleton name . TypeVar <$> newUnique
           declCtx (Data name variants) =
-              do dataType <- DataType <$> newUnique <*> pure variants
-                 return $ foldl' (insertCtorType dataType) (Map.singleton name dataType) variants
+              do dataType <- DataType <$> newUnique <*> pure variants'
+                 return $ foldl' (insertCtorType dataType)
+                                 (Map.singleton (nameFromString name) dataType)
+                                 variants'
               where insertCtorType dataType ctx (tag, domain) =
                         Map.insert tag (TypeArrow domain dataType) ctx
 
