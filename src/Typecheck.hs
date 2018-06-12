@@ -7,76 +7,19 @@ import Data.List (foldl', find)
 import qualified Data.HashMap.Lazy as Map
 import qualified Data.HashSet as Set
 import Data.Unique (Unique, newUnique)
-import Data.Foldable (traverse_)
 import Control.Monad (foldM)
 import Control.Monad.Trans (liftIO, lift)
-import Control.Monad.State.Lazy (StateT, runStateT, mapStateT, get, modify)
-import Control.Monad.Except (ExceptT, runExceptT, mapExceptT, throwError,
-                             Except)
+import Control.Monad.State.Lazy (StateT, runStateT, mapStateT)
+import Control.Monad.Except (ExceptT, runExceptT, mapExceptT, throwError, Except)
 import Control.Monad.Identity (Identity(..))
 import Data.Bifunctor (bimap, first, second)
 
 import Ast (Expr(..), Decl(..), Type(..), Atom(..), Const(..))
 import qualified Primop
+import Unify (Substitution, Unification, UnificationError, unify)
 
 type Map = Map.HashMap
 type Set = Set.HashSet
-
--- Unification
-
-type Substitution = Map Unique Type
-
-data UnificationError = PolytypeUnification Type
-                      | UnificationShapes Type Type
-                      | Occurs Unique Type
-                      deriving Show
-
-type Unification a = StateT Substitution (Except UnificationError) a
-
-liftUnify :: Unification a -> Typing a
-liftUnify uf = mapStateT toTypeError uf
-    where toTypeError exn = mapExceptT toIO exn
-          toIO (Identity res) = return (bimap UnificationError id res)
-
-unify :: Type -> Type -> Unification ()
-unify (t @ (TypeForAll _ _)) _ = throwError $ PolytypeUnification t
-unify _ (t @ (TypeForAll _ _)) = throwError $ PolytypeUnification t
-unify t1 t2 =
-    do t1 <- walk t1
-       t2 <- walk t2
-       unifyWalked t1 t2
-    where unifyWalked t1 t2 | t1 == t2 = return ()
-          unifyWalked (TypeVar name1) t2 = unifyVar name1 t2
-          unifyWalked t1 (TypeVar name2) = unifyVar name2 t1
-          unifyWalked (TypeArrow d1 cd1) (TypeArrow d2 cd2) =
-              unify d1 d2 >> unify cd1 cd2
-          unifyWalked t1 t2 = throwError $ UnificationShapes t1 t2
-
-unifyVar :: Unique -> Type -> Unification ()
-unifyVar name t =
-    do occursCheck name t
-       modify (Map.insert name t)
-
-walk :: Type -> Unification Type
-walk (t @ (TypeVar name)) =
-    do subst <- get
-       case Map.lookup name subst of
-           Just val -> walk val
-           Nothing -> return t
-walk t = return t
-
-occursCheck :: Unique -> Type -> Unification ()
-occursCheck name t =
-    do t <- walk t
-       case t of
-           TypeForAll _ _ -> throwError $ PolytypeUnification t
-           TypeArrow d cd -> occursCheck name d >> occursCheck name cd
-           RecordType row -> checkRow row
-           DataType _ row -> checkRow row
-           TypeVar name' | name' == name -> throwError $ Occurs name t
-           TypeVar _ -> return ()
-           PrimType _ -> return ()
-    where checkRow = traverse_ (occursCheck name . snd)
 
 -- Context
 
@@ -112,6 +55,13 @@ runTyping ting =
                              (quantifyFrees emptyCtx . applySubst subst)
                              typing
            Left err -> Left err
+
+
+
+liftUnify :: Unification a -> Typing a
+liftUnify uf = mapStateT toTypeError uf
+    where toTypeError exn = mapExceptT toIO exn
+          toIO (Identity res) = return (bimap UnificationError id res)
 
 freshType :: Typing Type
 freshType = TypeVar <$> liftIO newUnique
