@@ -223,17 +223,5 @@ declsCtx decls = Ctx . (\ctx -> foldl' (flip Map.union) Map.empty ctx) <$> trave
               where insertCtorType dataType ctx (tag, domain) =
                         Map.insert tag (TypeArrow domain dataType) ctx
 
--- typed ctx (LetRec name () expr body) =
---     do exprType <- freshType
---        (expr', exprType') <- typed (ctxInsert ctx name exprType) expr
---        let ctx' = ctxInsert ctx name (quantifyFrees ctx exprType')
---        (body', bodyType) <- typed ctx' body
---        return (LetRec name exprType expr' body', bodyType)
--- typed ctx (Data name variants body) =
---     do dataType <- DataType <$> liftIO newUnique <*> pure variants
---        let ctx' = foldl' (insertCtorType dataType) (ctxInsert ctx name dataType) variants
---        first (Data name variants) <$> typed ctx' body
---     where insertCtorType dataType ctx (tag, domain) = ctxInsert ctx tag (TypeArrow domain dataType)
-
 typecheck :: Expr () -> IO (Either TypeError (Expr Type, Type))
 typecheck = runTyping . typed emptyCtx
