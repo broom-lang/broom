@@ -8,7 +8,7 @@ import GHC.Generics (Generic)
 
 data Name = String String
           | Unique String Unique
-          deriving (Eq, Generic)
+          deriving (Eq, Ord, Generic)
 
 instance Show Name where
     show (String s) = s

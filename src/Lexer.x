@@ -1,5 +1,7 @@
 {
 module Lexer (Token(..), alexScanTokens) where
+
+import qualified Util
 }
 
 %wrapper "basic"
@@ -37,7 +39,7 @@ tokens :-
   "}"  { const TokRBrace }
   ","  { const TokComma }
   "."  { const TokDot }
-  $alpha [$alpha $digit \_ \']* { TokVar }
+  $alpha [$alpha $digit \_ \']* { TokVar . Util.nameFromString }
   $digit+ { TokInt . read }
 
 {
@@ -65,7 +67,7 @@ data Token = TokVal
            | TokComma
            | TokDot
            | TokBinOp String
-           | TokVar String
+           | TokVar Util.Name
            | TokInt Int
            deriving (Eq, Show)
 }

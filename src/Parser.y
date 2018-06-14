@@ -1,5 +1,6 @@
 {
 module Parser (parser) where
+
 import Lexer (Token(..))
 import Ast (Expr(..), Decl(..), Type(..), MonoType(..), Atom(..), Const(..))
 import qualified Primop
