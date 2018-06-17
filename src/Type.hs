@@ -1,6 +1,6 @@
-module Type (Type(..), MonoType(..), TypeVar, Row, readTypeVar, writeTypeVar) where
+module Type (Type(..), MonoType(..), TypeVar, Row, newTypeVar, readTypeVar, writeTypeVar) where
 
-import Data.IORef (IORef, readIORef, writeIORef)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 
 import Util (Name)
 
@@ -11,6 +11,7 @@ data Type = TypeForAll [Name] MonoType
 data MonoType = TypeArrow MonoType MonoType
               | RecordType Row
               | DataType Name Row
+              | TypeName Name
               | TypeVar TypeVar
               | PrimType Name
               deriving (Show, Eq)
@@ -20,6 +21,9 @@ newtype TypeVar = TV (IORef (Maybe MonoType))
 
 instance Show TypeVar where
     show = const "??"
+
+newTypeVar :: IO TypeVar
+newTypeVar = TV <$> newIORef Nothing
 
 readTypeVar :: TypeVar -> IO (Maybe MonoType)
 readTypeVar (TV r) = readIORef r

@@ -11,8 +11,8 @@ main = do src <- getContents
           print expr
           typingRes <- typecheck expr
           case typingRes of
-              Right (expr, t) ->
-                  do putStrLn (show expr ++ " : " ++ show t)
+              Right (texpr, t) ->
+                  do putStrLn (show texpr ++ " : " ++ show t)
                      -- value <- runEvaluation $ eval emptyEnv expr
                      -- case value of
                      --     Right value -> print value
