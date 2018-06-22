@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 
-module Util (Name, nameFromString) where
+module Util (Name, nameFromString, freshName) where
 
 import Data.Unique (Unique, newUnique, hashUnique)
 import Data.Hashable (Hashable)
