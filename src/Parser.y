@@ -47,7 +47,8 @@ import qualified Primop
 Expr : Nestable { $1 }
      | Equal { $1 }
 
-Nestable : fn var "=>" Expr { Lambda $2 () $4 }
+Nestable : fn var "=>" Expr { Lambda $2 Nothing $4 }
+         | fn var ':' Type "=>" Expr { Lambda $2 (Just $4) $6 }
          | let Declarations in Expr end { Let $2 $4 }
          | case Expr of Matches end { Case $2 $4 }
          | if Expr then Expr else Expr { If $2 $4 $6 }
@@ -59,7 +60,8 @@ Nestable : fn var "=>" Expr { Lambda $2 () $4 }
 Declarations : Declaration Declarations { $1 : $2 }
              | Declaration { [$1] }
 
-Declaration : val var '=' Expr { Val $2 () $4 }
+Declaration : val var '=' Expr { Val $2 Nothing $4 }
+            | val var ':' Type '=' Expr { Val $2 (Just $4) $6 }
             | data var '=' Variants { Data $2 $4 }
 
 Variants : var MonoType              { [($1, $2)] }
@@ -93,9 +95,11 @@ Atom : var   { Var $1 }
 
 Const : int { ConstInt $1 }
 
-MonoType : var { TypeName $1 }
-         | MonoType '->' MonoType { TypeArrow $1 $3 }
+Type : MonoType { MonoType $1 }
+
+MonoType : MonoType '->' MonoType { TypeArrow $1 $3 }
          | '{' Row '}' { RecordType $2 }
+         | var { TypeName $1 }
 
 Row : { [] }
     | NonEmptyRow { $1 }

@@ -11,6 +11,7 @@ import Control.Monad.Trans (liftIO)
 import Control.Monad.Except (ExceptT, runExceptT, withExceptT, throwError)
 
 import Util (Name, nameFromString, freshName)
+import qualified Ast
 import Ast (Expr(..), Decl(..), Atom(..), Const(..))
 import Primop (Primop(..))
 import Type (Type(..), MonoType(..), TypeVar, newTypeVar, readTypeVar, writeTypeVar, Row)
@@ -90,9 +91,20 @@ instantiate (TypeForAll params t) =
     do params' <- traverse (const freshType) params
        liftIO $ substitute (Map.fromList (zip params params')) t
 
-typed :: Ctx -> Expr () -> Typing (Expr Type, MonoType)
-typed ctx (Lambda param _ body) =
-    do monoDomain <- freshType
+hydrate :: Ast.Type -> MonoType
+hydrate (Ast.MonoType t) = monoHydrate t
+
+monoHydrate :: Ast.MonoType -> MonoType
+monoHydrate (Ast.TypeArrow domain codomain) = TypeArrow (monoHydrate domain) (monoHydrate codomain)
+monoHydrate (Ast.RecordType row) = RecordType $ fmap (second monoHydrate) row
+monoHydrate (Ast.TypeName name) =
+    case show name of
+        "Int" -> PrimType $ nameFromString "Int"
+        "Bool" -> PrimType $ nameFromString "Bool"
+
+typed :: Ctx -> Expr (Maybe Ast.Type) -> Typing (Expr Type, MonoType)
+typed ctx (Lambda param synDomain body) =
+    do monoDomain <- maybe freshType (pure . hydrate) synDomain
        let domain = MonoType monoDomain
        let ctx' = Map.insert param domain ctx
        (body', codomain) <- typed ctx' body
@@ -165,10 +177,13 @@ typed ctx (Atom (Var name)) =
 typed _ e @ (Atom (Const (ConstInt n))) =
     pure (Atom $ Const $ ConstInt n, PrimType $ nameFromString "Int")
 
-typedDecl :: Ctx -> Decl () -> Typing (Decl Type, Ctx)
-typedDecl ctx (Val name _ expr) =
+typedDecl :: Ctx -> Decl (Maybe Ast.Type) -> Typing (Decl Type, Ctx)
+typedDecl ctx (Val name synT expr) =
     do (expr', exprMonoType) <- typed ctx expr
        exprType <- liftIO $ generalize ctx exprMonoType
+       case synT of
+           Just declType -> liftUnify $ unify exprMonoType (hydrate declType)
+           Nothing -> pure ()
        return (Val name exprType expr', Map.insert name exprType ctx)
 
 resolve :: Expr Type -> IO (Expr Type)
@@ -194,7 +209,7 @@ resolveMonoType :: MonoType -> IO (MonoType)
 resolveMonoType t @ (TypeVar r) = maybe t id <$> readTypeVar r
 resolveMonoType t = pure t
 
-typecheck :: Expr () -> IO (Either TypeError (Expr Type, Type))
+typecheck :: Expr (Maybe Ast.Type) -> IO (Either TypeError (Expr Type, Type))
 typecheck expr =
     let ctx = Map.empty
         typing = do (expr, monoT) <- typed ctx expr
