@@ -6,7 +6,6 @@ import Data.List (foldl', find, nub, (\\))
 import qualified Data.HashMap.Lazy as Map
 import qualified Data.HashSet as Set
 import Data.Bifunctor (first, second)
-import Data.Monoid ((<>))
 import Control.Monad (foldM)
 import Control.Monad.Trans (liftIO)
 import Control.Monad.Except (ExceptT, runExceptT, withExceptT, throwError)
@@ -14,7 +13,7 @@ import Control.Monad.Except (ExceptT, runExceptT, withExceptT, throwError)
 import Util (Name, nameFromString, freshName)
 import Ast (Expr(..), Decl(..), Atom(..), Const(..))
 import Primop (Primop(..))
-import Type (Type(..), MonoType(..), TypeVar, newTypeVar, readTypeVar, Row)
+import Type (Type(..), MonoType(..), TypeVar, newTypeVar, readTypeVar, writeTypeVar, Row)
 import Unify (UnificationError, Unification, unify)
 
 type Set = Set.HashSet
@@ -42,54 +41,54 @@ lookupType name ctx =
         Just t -> pure t
         Nothing -> throwError $ Unbound name
 
-typeFrees :: Type -> [TypeVar]
+typeFrees :: Type -> IO [TypeVar]
 typeFrees (TypeForAll _ t) = monoTypeFrees t
 typeFrees (MonoType t) = monoTypeFrees t
 
-monoTypeFrees :: MonoType -> [TypeVar]
-monoTypeFrees (TypeArrow d cd) = monoTypeFrees d <> monoTypeFrees cd
+monoTypeFrees :: MonoType -> IO [TypeVar]
+monoTypeFrees (TypeArrow d cd) = mappend <$> monoTypeFrees d <*> monoTypeFrees cd
 monoTypeFrees (RecordType row) = rowFrees row
 monoTypeFrees (DataType _ row) = rowFrees row
-monoTypeFrees (TypeName _) = mempty
-monoTypeFrees (TypeVar r) = pure r
-monoTypeFrees (PrimType _) = mempty
+monoTypeFrees (TypeName _) = pure []
+monoTypeFrees (TypeVar r) = maybe [r] (const []) <$> readTypeVar r
+monoTypeFrees (PrimType _) = pure []
 
-rowFrees :: Row -> [TypeVar]
+rowFrees :: Row -> IO [TypeVar]
 rowFrees = foldMap (monoTypeFrees . snd)
 
-ctxFrees :: Ctx -> [TypeVar]
+ctxFrees :: Ctx -> IO [TypeVar]
 ctxFrees = foldMap typeFrees
 
 generalize :: Ctx -> MonoType -> IO Type
 generalize ctx t =
-    case nub (monoTypeFrees t) \\ nub (ctxFrees ctx) of
-        frees @ (_ : _) ->
-            do names <- traverse (const $ freshName "t") frees
-               let bounds = fmap TypeName names
-               return $ TypeForAll names (substitute' (zip frees bounds) t)
-        [] -> pure $ MonoType t
+    do frees <- (\\) <$> (nub <$> monoTypeFrees t) <*> (nub <$> ctxFrees ctx)
+       case frees of
+           frees @ (_ : _) -> flip TypeForAll t <$> traverse bind frees
+               where bind r = do name <- freshName "t"
+                                 writeTypeVar r (TypeName name)
+                                 return name
+           [] -> pure $ MonoType t
 
-substitute :: Map.HashMap Name MonoType -> MonoType -> MonoType
-substitute subst (TypeArrow t u) = TypeArrow (substitute subst t) (substitute subst u)
-substitute subst (RecordType row) = RecordType (second (substitute subst) <$> row)
-substitute subst (DataType name row) = DataType name (second (substitute subst) <$> row)
-substitute subst t @ (TypeName name) = maybe t id (Map.lookup name subst)
-substitute _ t @ (TypeVar _) = t
-substitute _ t @ (PrimType _) = t
+substitute :: Map.HashMap Name MonoType -> MonoType -> IO MonoType
+substitute subst (TypeArrow t u) = TypeArrow <$> substitute subst t <*> substitute subst u
+substitute subst (RecordType row) = RecordType <$> substituteRow subst row
+substitute subst (DataType name row) = DataType name <$> substituteRow subst row
+substitute subst t @ (TypeName name) = pure $ maybe t id (Map.lookup name subst)
+substitute subst t @ (TypeVar r) =
+    do ot <- readTypeVar r
+       case ot of
+           Just t -> substitute subst t
+           Nothing -> pure t
+substitute _ t @ (PrimType _) = pure t
 
-substitute' :: [(TypeVar, MonoType)] -> MonoType -> MonoType
-substitute' subst (TypeArrow t u) = TypeArrow (substitute' subst t) (substitute' subst u)
-substitute' subst (RecordType row) = RecordType (second (substitute' subst) <$> row)
-substitute' subst (DataType name row) = DataType name (second (substitute' subst) <$> row)
-substitute' _ t @ (TypeName name) = t
-substitute' subst t @ (TypeVar ref) = maybe t id (lookup ref subst)
-substitute' _ t @ (PrimType _) = t
+substituteRow :: Map.HashMap Name MonoType -> Row -> IO Row
+substituteRow subst row = traverse (\(label, t) -> (label,) <$> substitute subst t) row
 
 instantiate :: Type -> Typing MonoType
 instantiate (MonoType t) = pure t
 instantiate (TypeForAll params t) =
     do params' <- traverse (const freshType) params
-       return $ substitute (Map.fromList (zip params params')) t
+       liftIO $ substitute (Map.fromList (zip params params')) t
 
 typed :: Ctx -> Expr () -> Typing (Expr Type, MonoType)
 typed ctx (Lambda param _ body) =
@@ -181,7 +180,7 @@ resolve (Case matchee cases) = Case <$> resolve matchee <*> traverse resolveCase
     where resolveCase (label, var, body) = (label, var,) <$> resolve body
 resolve (If cond conseq alt) = If <$> resolve cond <*> resolve conseq <*> resolve alt
 resolve (Record row) = Record <$> traverse (\(k, v) -> (k,) <$> resolve v) row
-resolve (Select record label) = (\r -> Select r label) <$> resolve record
+resolve (Select record label) = flip Select label <$> resolve record
 resolve expr @ (Atom _) = pure expr
 
 resolveDecl :: Decl Type -> IO (Decl Type)

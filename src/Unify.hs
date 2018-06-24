@@ -26,9 +26,11 @@ unifyWalked (RecordType r1) (RecordType r2) = unifyRows r1 r2
 unifyWalked t1 @ (DataType n1 _) t2 @ (DataType n2 _) =
     if n1 == n2 then pure () else throwError $ InEqNames t1 t2
 unifyWalked t1 @ (TypeVar r1) t2 @ (TypeVar r2) =
-    if r1 == r2 then pure () else throwError $ InEqNames t1 t2
+    if r1 == r2 then pure () else defineVar r1 t2
 unifyWalked (TypeVar r) t = defineVar r t
 unifyWalked t (TypeVar r) = defineVar r t
+unifyWalked t1 @ (TypeName name1) t2 @ (TypeName name2) =
+    if name1 == name2 then pure () else throwError $ InEqNames t1 t2
 unifyWalked t1 @ (PrimType n1) t2 @ (PrimType n2) =
     if n1 == n2 then pure () else throwError $ InEqNames t1 t2
 unifyWalked t1 t2 = throwError $ TypeShapes t1 t2
@@ -40,8 +42,9 @@ defineVar r t = occursCheck r t >> liftIO (writeTypeVar r t)
           occursCheck v (RecordType r) = traverse_ (occursCheck v . snd) r
           occursCheck v (DataType _ r) = traverse_ (occursCheck v . snd) r
           occursCheck v (TypeVar v') | v == v' = throwError $ Occurs v
-          occursCheck v (TypeVar _) = pure ()
-          occursCheck v (PrimType _) = pure ()
+          occursCheck _ (TypeVar _) = pure ()
+          occursCheck _ (TypeName _) = pure ()
+          occursCheck _ (PrimType _) = pure ()
 
 unifyRows :: Row -> Row -> Unification ()
 unifyRows r1 r2 = unifySorted (sortRow r1) (sortRow r2)
