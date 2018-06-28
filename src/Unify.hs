@@ -1,8 +1,8 @@
-module Unify (UnificationError, Unification, unify) where
+module Unify (UnificationError, Unification, runUnify, unify) where
 
 import Data.List (sortBy)
 import Data.Foldable (traverse_)
-import Control.Monad.Except (ExceptT, throwError, liftIO)
+import Control.Monad.Except (ExceptT, runExceptT, throwError, liftIO)
 
 import Util (Name)
 import Type (MonoType(..), TypeVar, Row, readTypeVar, writeTypeVar)
@@ -14,6 +14,9 @@ data UnificationError = InEqNames MonoType MonoType
                       deriving Show
 
 type Unification a = ExceptT UnificationError IO a
+
+runUnify :: Unification a -> IO (Either UnificationError a)
+runUnify = runExceptT
 
 unify :: MonoType -> MonoType -> Unification ()
 unify t1 t2 = do t1 <- walk t1

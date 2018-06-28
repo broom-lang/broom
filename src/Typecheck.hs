@@ -2,36 +2,49 @@
 
 module Typecheck (TypeError, Typing, typecheck) where
 
+import Data.Maybe (isJust)
 import Data.List (foldl', find, nub, (\\))
 import qualified Data.HashMap.Lazy as Map
 import qualified Data.HashSet as Set
 import Data.Bifunctor (first, second)
 import Control.Monad (foldM)
-import Control.Monad.Trans (liftIO)
+import Control.Monad.Trans (lift, liftIO)
 import Control.Monad.Except (ExceptT, runExceptT, withExceptT, throwError)
+import Control.Monad.Reader (ReaderT, runReaderT, ask, local)
 
 import Util (Name, nameFromString, freshName)
 import qualified Ast
 import Ast (Expr(..), Decl(..), Atom(..), Const(..))
 import Primop (Primop(..))
-import Type (Type(..), MonoType(..), TypeVar, newTypeVar, readTypeVar, writeTypeVar, Row)
-import Unify (UnificationError, Unification, unify)
+import Type (Kind(..), Type(..), MonoType(..), TypeVar, newTypeVar, readTypeVar, writeTypeVar, Row)
+import Unify (UnificationError, Unification, runUnify, unify)
 
 type Set = Set.HashSet
 
 type Ctx = Map.HashMap Name Type
 
-data TypeError = UnificationError UnificationError
+type TypeCtx = Map.HashMap Name Kind
+
+data TypeError = Rank2 Name Ast.Type
+               | UnificationError UnificationError
                | InexistentField Name MonoType
                | NonArrow Type
                | NonRecord MonoType
                | Unbound Name
+               | UnboundType Name
                deriving Show
 
-type Typing a = ExceptT TypeError IO a
+type Typing a = ExceptT TypeError (ReaderT TypeCtx IO) a
+
+getTypeCtx :: Typing TypeCtx
+getTypeCtx = lift ask
 
 liftUnify :: Unification a -> Typing a
-liftUnify = withExceptT UnificationError
+liftUnify unification =
+    do ures <- liftIO $ runUnify unification
+       case ures of
+           Left err -> throwError $ UnificationError err
+           Right v -> pure v
 
 freshType :: Typing MonoType
 freshType = liftIO $ TypeVar <$> newTypeVar
@@ -41,6 +54,9 @@ lookupType name ctx =
     case Map.lookup name ctx of
         Just t -> pure t
         Nothing -> throwError $ Unbound name
+
+pushKinds :: TypeCtx -> [Name] -> TypeCtx
+pushKinds = foldl' (\kinder name -> Map.insert name Type kinder)
 
 typeFrees :: Type -> IO [TypeVar]
 typeFrees (TypeForAll _ t) = monoTypeFrees t
@@ -91,20 +107,30 @@ instantiate (TypeForAll params t) =
     do params' <- traverse (const freshType) params
        liftIO $ substitute (Map.fromList (zip params params')) t
 
-hydrate :: Ast.Type -> MonoType
-hydrate (Ast.MonoType t) = monoHydrate t
+hydrate :: TypeCtx -> Ast.Type -> Typing Type
+hydrate kinder (Ast.TypeForAll params t) =
+    TypeForAll params <$> monoHydrate (pushKinds kinder params) t
+hydrate kinder (Ast.MonoType t) = MonoType <$> monoHydrate kinder t
 
-monoHydrate :: Ast.MonoType -> MonoType
-monoHydrate (Ast.TypeArrow domain codomain) = TypeArrow (monoHydrate domain) (monoHydrate codomain)
-monoHydrate (Ast.RecordType row) = RecordType $ fmap (second monoHydrate) row
-monoHydrate (Ast.TypeName name) =
+monoHydrate :: TypeCtx -> Ast.MonoType -> Typing MonoType
+monoHydrate kinder (Ast.TypeArrow domain codomain) =
+    TypeArrow <$> monoHydrate kinder domain <*> monoHydrate kinder codomain
+monoHydrate kinder (Ast.RecordType row) = RecordType <$> traverse hydrateEntry row
+    where hydrateEntry (k, v) = (k,) <$> monoHydrate kinder v
+monoHydrate kinder (Ast.TypeName name) =
     case show name of
-        "Int" -> PrimType $ nameFromString "Int"
-        "Bool" -> PrimType $ nameFromString "Bool"
+        _ | isJust (Map.lookup name kinder) -> pure $ TypeName name
+        "Int" -> pure $ PrimType $ nameFromString "Int"
+        "Bool" -> pure $ PrimType $ nameFromString "Bool"
+        _ -> throwError $ UnboundType name
 
 typed :: Ctx -> Expr (Maybe Ast.Type) -> Typing (Expr Type, MonoType)
 typed ctx (Lambda param synDomain body) =
-    do monoDomain <- maybe freshType (pure . hydrate) synDomain
+    do kinder <- getTypeCtx
+       monoDomain <- case synDomain of
+                         Just (Ast.MonoType t) -> monoHydrate kinder t
+                         Just t @ (Ast.TypeForAll _ _) -> throwError $ Rank2 param t
+                         Nothing -> freshType
        let domain = MonoType monoDomain
        let ctx' = Map.insert param domain ctx
        (body', codomain) <- typed ctx' body
@@ -179,12 +205,24 @@ typed _ e @ (Atom (Const (ConstInt n))) =
 
 typedDecl :: Ctx -> Decl (Maybe Ast.Type) -> Typing (Decl Type, Ctx)
 typedDecl ctx (Val name synT expr) =
-    do (expr', exprMonoType) <- typed ctx expr
-       exprType <- liftIO $ generalize ctx exprMonoType
-       case synT of
-           Just declType -> liftUnify $ unify exprMonoType (hydrate declType)
-           Nothing -> pure ()
-       return (Val name exprType expr', Map.insert name exprType ctx)
+    do kinder <- getTypeCtx
+       srcType <- traverse (hydrate kinder) synT
+       local (maybePushKinds srcType) (k srcType)
+    where maybePushKinds (Just (TypeForAll params _)) kinder = pushKinds kinder params
+          maybePushKinds _ kinder = kinder
+          k srcType =
+              do (expr', exprMonoType) <- typed ctx expr
+                 exprType <- liftIO $ generalize ctx exprMonoType
+                 finalType <- case srcType of
+                                  Just srcType -> do
+                                      srcMonoType <- instantiate srcType
+                                      -- FIXME: `val f: forall a . a = fn x => x` passes :(
+                                      --   FIX: use unidirectional unification that can only alter
+                                      --        `exprMonoType`
+                                      liftUnify $ unify exprMonoType srcMonoType
+                                      return srcType
+                                  Nothing -> pure exprType
+                 return (Val name finalType expr', Map.insert name finalType ctx)
 
 resolve :: Expr Type -> IO (Expr Type)
 resolve (Lambda name t body) = Lambda name <$> resolveType t <*> resolve body
@@ -211,8 +249,9 @@ resolveMonoType t = pure t
 
 typecheck :: Expr (Maybe Ast.Type) -> IO (Either TypeError (Expr Type, Type))
 typecheck expr =
-    let ctx = Map.empty
+    let kinder = Map.empty
+        ctx = Map.empty
         typing = do (expr, monoT) <- typed ctx expr
                     t <- liftIO $ generalize ctx monoT
                     liftIO $ (,) <$> resolve expr <*> resolveType t
-    in  runExceptT typing
+    in  runReaderT (runExceptT typing) kinder

@@ -1,6 +1,7 @@
-- [x] Make `let` have multiple mutually recursive declarations
-- [ ] Explicit type annotations for variables
-- [ ] Scoped type variables and type ascription
+- [x] Explicit type annotations for variables
+- [ ] Scoped type variables (need to read paper!)
+- [ ] Recursive val decls
+- [ ] Type ascription
 - [ ] Proper error handling
 - [ ] Type elaboration (Ast.Type -> Typecheck.Type)
 - [ ] Recursive datatypes

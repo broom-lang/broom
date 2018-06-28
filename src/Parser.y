@@ -16,6 +16,7 @@ import qualified Primop
   '|'  { TokBar }
   fn   { TokFn }
   ':'  { TokHasType }
+  forall { TokForAll }
   '->' { TokArrow }
   "=>" { TokDArrow }
   let  { TokLet }
@@ -95,7 +96,8 @@ Atom : var   { Var $1 }
 
 Const : int { ConstInt $1 }
 
-Type : MonoType { MonoType $1 }
+Type : forall var '.' MonoType { TypeForAll [$2] $4 }
+     | MonoType                { MonoType $1 }
 
 MonoType : MonoType '->' MonoType { TypeArrow $1 $3 }
          | '{' Row '}' { RecordType $2 }

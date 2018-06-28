@@ -1,8 +1,11 @@
-module Type (Type(..), MonoType(..), TypeVar, Row, newTypeVar, readTypeVar, writeTypeVar) where
+module Type (Kind(..), Type(..), MonoType(..), TypeVar, Row,
+             newTypeVar, readTypeVar, writeTypeVar) where
 
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 
 import Util (Name)
+
+data Kind = Type
 
 data Type = TypeForAll [Name] MonoType
           | MonoType MonoType

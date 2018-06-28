@@ -16,6 +16,7 @@ tokens :-
   "|"  { const TokBar }
   fn   { const TokFn }
   :    { const TokHasType }
+  forall { const TokForAll }
   "->" { const TokArrow }
   =>   { const TokDArrow }
   let  { const TokLet }
@@ -48,6 +49,7 @@ data Token = TokVal
            | TokBar
            | TokFn
            | TokHasType
+           | TokForAll
            | TokArrow
            | TokDArrow
            | TokLet
