@@ -1,6 +1,6 @@
 - [x] Explicit type annotations for variables
 - [x] Proper error handling
-- [ ] Eval Comeback
+- [x] Eval Comeback
 - [x] Type elaboration (Ast.Type -> Typecheck.Type)
 - [ ] Scoped type variables (need to read paper!)
 - [ ] Recursive val decls
