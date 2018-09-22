@@ -1,35 +1,36 @@
 module JSBackend (JSExpr, selectInstructions) where
 
 import Data.Semigroup ((<>))
-import Data.Text (Text, pack, intercalate)
 import Data.Text.Prettyprint.Doc ( Pretty, pretty
-                                 , (<+>), line, vsep, braces, tupled, indent)
+                                 , (<+>), line, vsep, parens, braces, tupled, indent)
 
-import Util (Name, nameToText)
+import Util (Name)
 import qualified Ast
 import Ast (Expr, Const)
-import Type (ClosedType)
 
 data JSExpr = Function [Name] [JSStmt]
             | Call JSExpr [JSExpr]
+            | Ref Name
             | Const Const
 
 data JSStmt = Def Name JSExpr
             | Expr JSExpr
             | Return JSExpr
 
-selectInstructions :: Expr ClosedType -> JSExpr
+selectInstructions :: Expr a -> JSExpr
 selectInstructions =
     \case Ast.Lambda param _ body -> Function [param] [Return (selectInstructions body)]
           Ast.App callee arg -> Call (selectInstructions callee) [selectInstructions arg]
-          Ast.Atom (Ast.Const c) -> Const c
+          Ast.Var name -> Ref name
+          Ast.Const c -> Const c
 
 instance Pretty JSExpr where
     pretty (Function params stmts) =
-        "function" <+> tupled (fmap pretty params) <+>
-            braces (line <> indent 4 (vsep (fmap pretty stmts)) <> line)
+        parens ("function" <+> tupled (fmap pretty params) <+>
+                   braces (line <> indent 4 (vsep (fmap pretty stmts)) <> line))
     pretty (Call callee args) = pretty callee <> tupled (fmap pretty args)
-    pretty (Const (Ast.ConstInt n)) = pretty n
+    pretty (Ref name) = pretty name
+    pretty (Const (Ast.IntConst n)) = pretty n
 
 instance Pretty JSStmt where
     pretty (Def name expr) = "var" <+> pretty name <+> "=" <+> pretty expr <> ";"

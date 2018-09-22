@@ -1,29 +1,30 @@
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TypeApplications, DeriveGeneric #-}
 
-module Util (Name, nameFromString, nameFromIntVar, nameToText) where
+module Util (Name) where
 
-import Data.Monoid ((<>))
-import Data.Text (Text, pack)
+import Data.Semigroup ((<>))
+import Data.Convertible (Convertible, safeConvert, convert)
+import Data.Text (Text, pack, unpack)
 import Data.Hashable (Hashable)
-import Control.Unification.IntVar (IntVar(..))
 import GHC.Generics (Generic)
 import Data.Text.Prettyprint.Doc (Pretty, pretty)
 
-data Name = String String
+data Name = String Text
           | Unique Int
-          deriving (Show, Eq, Ord, Generic)
+          deriving (Eq, Ord, Generic)
 
 instance Hashable Name
 
-nameFromString :: String -> Name
-nameFromString = String
+instance Show Name where
+    show (String t) = unpack t
+    show (Unique n) = "$$" <> show n
 
-nameFromIntVar :: IntVar -> Name
-nameFromIntVar (IntVar n) = Unique n
+instance Convertible Text Name where
+    safeConvert = pure . String
 
-nameToText :: Name -> Text
-nameToText = \case String s -> pack s
-                   Unique n -> pack $ "$$" <> show n
+instance Convertible Name Text where
+    safeConvert (String s) = pure s
+    safeConvert (Unique n) = pure (pack ("$$" <> show n))
 
 instance Pretty Name where
-    pretty = pretty . nameToText
+    pretty = pretty . convert @Name @Text

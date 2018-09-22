@@ -33,13 +33,13 @@ default-extensions:
 - ScopedTypeVariables
 
 dependencies:
-- base >= 4.7 && < 5
-- text
+- base
 - array
 - hashable
+- text
 - unordered-containers
+- convertible
 - mtl
-- unification-fd
 - prettyprinter
 
 library:

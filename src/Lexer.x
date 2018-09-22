@@ -1,7 +1,10 @@
 {
 module Lexer (Token(..), alexScanTokens) where
 
-import qualified Util
+import Data.Convertible (convert)
+import Data.Text (pack)
+
+import Util (Name)
 }
 
 %wrapper "basic"
@@ -40,7 +43,7 @@ tokens :-
   "}"  { const TokRBrace }
   ","  { const TokComma }
   "."  { const TokDot }
-  $alpha [$alpha $digit \_ \']* { TokVar . Util.nameFromString }
+  $alpha [$alpha $digit \_ \']* { TokVar . convert . pack }
   $digit+ { TokInt . read }
 
 {
@@ -69,7 +72,7 @@ data Token = TokVal
            | TokComma
            | TokDot
            | TokBinOp String
-           | TokVar Util.Name
+           | TokVar Name
            | TokInt Int
-           deriving (Eq, Show)
+           deriving (Show, Eq)
 }
