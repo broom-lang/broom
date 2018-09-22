@@ -4,18 +4,17 @@ import Data.Maybe (fromJust)
 import Data.List (foldl', nub, (\\))
 import qualified Data.HashMap.Lazy as Map
 import Control.Monad (foldM)
-import Control.Unification ( BindingMonad(..), Fallible(..), UTerm(..), bindVar, unify, getFreeVars
+import Control.Unification ( BindingMonad(..), Fallible(..), UTerm(..), bindVar, getFreeVars
                            , freshen, applyBindings, freeze )
 import Control.Unification.IntVar (IntVar, IntBindingT, evalIntBindingT)
-import Control.Monad.Trans (lift, liftIO)
+import Control.Monad.Trans (lift)
 import Control.Monad.Except (MonadError, ExceptT, runExceptT, throwError)
 import Control.Monad.Reader (MonadReader, ReaderT, runReaderT, asks, local)
 
 import Util (Name, nameFromIntVar, nameFromString)
 import qualified Ast
 import Ast (Expr(..), Atom(..), Const(..))
-import Type (Type(..), MonoType(..), PrimType(..),
-             OpenType, ClosedType, OpenMonoType, ClosedMonoType)
+import Type (Type(..), MonoType(..), PrimType(..), OpenType, ClosedType, OpenMonoType)
 
 type Map = Map.HashMap
 
@@ -65,7 +64,7 @@ envLookup :: Name -> Env -> Maybe OpenMonoType
 envLookup name (Env kvs) = Map.lookup name kvs
 
 envPush :: [Name] -> [OpenMonoType] -> (Env, Ctx) -> (Env, Ctx)
-envPush names types (Env kvs, ctx) = (Env $ foldl' step kvs (zip names types), ctx)
+envPush names types (Env bindings, ctx) = (Env $ foldl' step bindings (zip names types), ctx)
     where step kvs (k, v) = Map.insert k v kvs
 
 newtype Ctx = Ctx (Map Name OpenType)
@@ -108,12 +107,12 @@ getCtx = asks snd
 -- =================================================================================================
 
 hydrate :: Env -> Ast.Type -> Typing OpenType
-hydrate env (Ast.TypeForAll params t) =
+hydrate _ (Ast.TypeForAll params t) =
     -- Create OpaqueType:s bound at the TypeForAll for params, add them to the Env and monoHydrate t
     do params' <- liftUnify $ traverse (const $ nameFromIntVar <$> freeVar) params
        let paramRefs = fmap (UTerm . OpaqueType) params'
        local (envPush params paramRefs) (TypeForAll params' <$> monoHydrate t)
-hydrate env (Ast.MonoType t) = TypeForAll [] <$> monoHydrate t
+hydrate _ (Ast.MonoType t) = TypeForAll [] <$> monoHydrate t
 
 monoHydrate :: Ast.MonoType -> Typing OpenMonoType
 monoHydrate =
@@ -135,7 +134,7 @@ generalize t = do frees <- liftUnify $ getFreeVars t
                                  return param
 
 instantiate :: OpenType -> Typing OpenMonoType
-instantiate (TypeForAll params t) = Typing $ lift $ freshen t
+instantiate (TypeForAll _ t) = Typing $ lift $ freshen t
 
 typed :: Expr (Maybe Ast.Type) -> Typing (Expr OpenType, OpenMonoType)
 typed =
