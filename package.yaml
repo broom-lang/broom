@@ -62,15 +62,3 @@ executables:
     - -Wall
     dependencies:
     - mulled
-
-tests:
-  mulled-test:
-    main:                Spec.hs
-    source-dirs:         test
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    - -Wall
-    dependencies:
-    - mulled
