@@ -18,12 +18,26 @@ extra-source-files:
 # common to point users to the README.md file.
 description:         Please see the README on GitHub at <https://github.com/nilern/mulled#readme>
 
+default-extensions:
+- TupleSections
+- LambdaCase
+- DeriveFunctor
+- DeriveFoldable
+- DeriveTraversable
+- GeneralizedNewtypeDeriving
+- StandaloneDeriving
+- MultiParamTypeClasses
+- FlexibleInstances
+- FlexibleContexts
+- ScopedTypeVariables
+
 dependencies:
 - base >= 4.7 && < 5
 - array
 - hashable
 - unordered-containers
 - mtl
+- unification-fd
 
 library:
   source-dirs: src

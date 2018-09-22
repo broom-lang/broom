@@ -11,7 +11,7 @@ import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Util (Name)
 import Ast (Expr(..), Decl(..), Atom(..), Const(..))
 import Primop (Primop(..))
-import Type (Type)
+import Type (ClosedType)
 
 type Map = Map.HashMap
 
@@ -48,7 +48,7 @@ insert :: Name -> Value -> Env -> Evaluation Env
 insert k v (Env bindings) = do v <- liftIO (newIORef (Just v))
                                return $ Env $ Map.insert k v bindings
 
-data Value = Closure Name (Expr Type) Env
+data Value = Closure Name (Expr ClosedType) Env
            | Struct [(Name, Value)]
            | Int Int
            | Bool Bool
@@ -56,7 +56,7 @@ data Value = Closure Name (Expr Type) Env
 
 type Row = [(Name, Value)]
 
-eval :: Env -> Expr Type -> Evaluation Value
+eval :: Env -> Expr ClosedType -> Evaluation Value
 eval env expr =
     case expr of
         Lambda param _ body -> pure $ Closure param body env
@@ -86,5 +86,5 @@ eval env expr =
         Atom (Var name) -> lookupVar name env
         Atom (Const (ConstInt n)) -> pure $ Int n
 
-exec :: Env -> Decl Type -> Evaluation Env
+exec :: Env -> Decl ClosedType -> Evaluation Env
 exec env (Val name _ expr) = flip (insert name) env =<< eval env expr

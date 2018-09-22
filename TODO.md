@@ -2,9 +2,10 @@
 - [x] Proper error handling
 - [x] Eval Comeback
 - [x] Type elaboration (Ast.Type -> Typecheck.Type)
+- [x] unification-fd
+- [ ] Type ascription
 - [ ] Scoped type variables (need to read paper!)
 - [ ] Recursive val decls
-- [ ] Type ascription
 - [ ] Recursive datatypes
 - [ ] Variant arities from [1] to [0..]
 - [ ] Type constructors

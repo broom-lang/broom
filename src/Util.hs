@@ -1,23 +1,19 @@
 {-# LANGUAGE DeriveGeneric #-}
 
-module Util (Name, nameFromString, freshName) where
+module Util (Name, nameFromString, nameFromIntVar) where
 
-import Data.Unique (Unique, newUnique, hashUnique)
 import Data.Hashable (Hashable)
+import Control.Unification.IntVar (IntVar(..))
 import GHC.Generics (Generic)
 
 data Name = String String
-          | Unique String Unique
-          deriving (Eq, Ord, Generic)
-
-instance Show Name where
-    show (String s) = s
-    show (Unique s n) = s ++ show (hashUnique n)
+          | Unique Int
+          deriving (Show, Eq, Ord, Generic)
 
 instance Hashable Name
 
 nameFromString :: String -> Name
 nameFromString = String
 
-freshName :: String -> IO Name
-freshName s = Unique s <$> newUnique
+nameFromIntVar :: IntVar -> Name
+nameFromIntVar (IntVar n) = Unique n

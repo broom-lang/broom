@@ -1,257 +1,162 @@
-{-# LANGUAGE TupleSections #-}
+module Typecheck (TypeError, typecheck) where
 
-module Typecheck (TypeError, Typing, typecheck) where
-
-import Data.Maybe (isJust)
-import Data.List (foldl', find, nub, (\\))
+import Data.Maybe (fromJust)
+import Data.List (foldl', nub, (\\))
 import qualified Data.HashMap.Lazy as Map
-import qualified Data.HashSet as Set
-import Data.Bifunctor (first, second)
 import Control.Monad (foldM)
+import Control.Unification ( BindingMonad(..), Fallible(..), UTerm(..), bindVar, unify, getFreeVars
+                           , freshen, applyBindings, freeze )
+import Control.Unification.IntVar (IntVar, IntBindingT, evalIntBindingT)
 import Control.Monad.Trans (lift, liftIO)
-import Control.Monad.Except (ExceptT, runExceptT, withExceptT, throwError)
-import Control.Monad.Reader (ReaderT, runReaderT, ask, local)
+import Control.Monad.Except (MonadError, ExceptT, runExceptT, throwError)
+import Control.Monad.Reader (MonadReader, ReaderT, runReaderT, asks, local)
 
-import Util (Name, nameFromString, freshName)
+import Util (Name, nameFromIntVar, nameFromString)
 import qualified Ast
-import Ast (Expr(..), Decl(..), Atom(..), Const(..))
-import Primop (Primop(..))
-import Type (Kind(..), Type(..), MonoType(..), TypeVar, newTypeVar, readTypeVar, writeTypeVar, Row)
-import Unify (UnificationError, Unification, runUnify, unify)
+import Ast (Expr(..), Atom(..), Const(..))
+import Type (Type(..), MonoType(..), PrimType(..),
+             OpenType, ClosedType, OpenMonoType, ClosedMonoType)
 
-type Set = Set.HashSet
+type Map = Map.HashMap
 
-type Ctx = Map.HashMap Name Type
+-- Utils for Control.Unification
+-- =================================================================================================
 
-type TypeCtx = Map.HashMap Name Kind
+applyExprBindings :: Expr OpenType -> Typing (Expr OpenType)
+applyExprBindings =
+    \case Lambda param (TypeForAll [] t) body ->
+              Lambda param <$> (TypeForAll [] <$> Typing (lift (applyBindings t)))
+                           <*> applyExprBindings body
+          expr @ (Atom _) -> pure expr
 
-data TypeError = Rank2 Name Ast.Type
-               | UnificationError UnificationError
-               | InexistentField Name MonoType
-               | NonArrow Type
-               | NonRecord MonoType
+freezeExpr :: Expr OpenType -> Expr ClosedType
+freezeExpr =
+    \case Lambda param (TypeForAll [] t) body ->
+              Lambda param (TypeForAll [] $ fromJust $ freeze t) (freezeExpr body)
+          Atom a -> Atom a
+
+ctxFreeVars :: Ctx -> Typing [IntVar]
+ctxFreeVars (Ctx kvs) = foldM step [] kvs
+    where step frees (TypeForAll _ t) = (++ frees) <$> liftUnify (getFreeVars t)
+
+-- Errors
+-- =================================================================================================
+
+data TypeError = Occurs IntVar OpenMonoType
+               | TypeShapes (MonoType OpenMonoType) (MonoType OpenMonoType)
+               | Rank2 Name Ast.Type
                | Unbound Name
                | UnboundType Name
                deriving Show
 
-type Typing a = ExceptT TypeError (ReaderT TypeCtx IO) a
+instance Fallible MonoType IntVar TypeError where
+    occursFailure = Occurs
+    mismatchFailure = TypeShapes
 
-getTypeCtx :: Typing TypeCtx
-getTypeCtx = lift ask
+-- Contexts
+-- =================================================================================================
 
-liftUnify :: Unification a -> Typing a
-liftUnify unification =
-    do ures <- liftIO $ runUnify unification
-       case ures of
-           Left err -> throwError $ UnificationError err
-           Right v -> pure v
+newtype Env = Env (Map Name OpenMonoType)
 
-freshType :: Typing MonoType
-freshType = liftIO $ TypeVar <$> newTypeVar
+builtinEnv :: Env
+builtinEnv = Env $ Map.fromList $ [(nameFromString "Int", UTerm $ PrimType TypeInt)]
 
-lookupType :: Name -> Ctx -> Typing Type
-lookupType name ctx =
-    case Map.lookup name ctx of
-        Just t -> pure t
-        Nothing -> throwError $ Unbound name
+envLookup :: Name -> Env -> Maybe OpenMonoType
+envLookup name (Env kvs) = Map.lookup name kvs
 
-pushKinds :: TypeCtx -> [Name] -> TypeCtx
-pushKinds = foldl' (\kinder name -> Map.insert name Type kinder)
+envPush :: [Name] -> [OpenMonoType] -> (Env, Ctx) -> (Env, Ctx)
+envPush names types (Env kvs, ctx) = (Env $ foldl' step kvs (zip names types), ctx)
+    where step kvs (k, v) = Map.insert k v kvs
 
-typeFrees :: Type -> IO [TypeVar]
-typeFrees (TypeForAll _ t) = monoTypeFrees t
-typeFrees (MonoType t) = monoTypeFrees t
+newtype Ctx = Ctx (Map Name OpenType)
 
-monoTypeFrees :: MonoType -> IO [TypeVar]
-monoTypeFrees (TypeArrow d cd) = mappend <$> monoTypeFrees d <*> monoTypeFrees cd
-monoTypeFrees (RecordType row) = rowFrees row
-monoTypeFrees (DataType _ row) = rowFrees row
-monoTypeFrees (TypeName _) = pure []
-monoTypeFrees (TypeVar r) = maybe [r] (const []) <$> readTypeVar r
-monoTypeFrees (PrimType _) = pure []
+emptyCtx :: Ctx
+emptyCtx = Ctx Map.empty
 
-rowFrees :: Row -> IO [TypeVar]
-rowFrees = foldMap (monoTypeFrees . snd)
+lookupType :: Name -> Ctx -> Typing OpenType
+lookupType name (Ctx kvs) = case Map.lookup name kvs of
+                                Just t -> pure t
+                                Nothing -> throwError $ Unbound name
 
-ctxFrees :: Ctx -> IO [TypeVar]
-ctxFrees = foldMap typeFrees
+ctxPush :: Name -> OpenType -> (Env, Ctx) -> (Env, Ctx)
+ctxPush name t (env, Ctx kvs) = (env, Ctx $ Map.insert name t kvs)
 
-generalize :: Ctx -> MonoType -> IO Type
-generalize ctx t =
-    do frees <- (\\) <$> (nub <$> monoTypeFrees t) <*> (nub <$> ctxFrees ctx)
-       case frees of
-           frees @ (_ : _) -> flip TypeForAll t <$> traverse bind frees
-               where bind r = do name <- freshName "t"
-                                 writeTypeVar r (TypeName name)
-                                 return name
-           [] -> pure $ MonoType t
+-- The Monad
+-- =================================================================================================
 
-substitute :: Map.HashMap Name MonoType -> MonoType -> IO MonoType
-substitute subst (TypeArrow t u) = TypeArrow <$> substitute subst t <*> substitute subst u
-substitute subst (RecordType row) = RecordType <$> substituteRow subst row
-substitute subst (DataType name row) = DataType name <$> substituteRow subst row
-substitute subst t @ (TypeName name) = pure $ maybe t id (Map.lookup name subst)
-substitute subst t @ (TypeVar r) =
-    do ot <- readTypeVar r
-       case ot of
-           Just t -> substitute subst t
-           Nothing -> pure t
-substitute _ t @ (PrimType _) = pure t
+newtype Typing a = Typing { unTyping :: ReaderT (Env, Ctx)
+                                                (ExceptT TypeError (IntBindingT MonoType IO)) a }
+                 deriving (Functor, Applicative, Monad)
 
-substituteRow :: Map.HashMap Name MonoType -> Row -> IO Row
-substituteRow subst row = traverse (\(label, t) -> (label,) <$> substitute subst t) row
+deriving instance MonadReader (Env, Ctx) Typing
 
-instantiate :: Type -> Typing MonoType
-instantiate (MonoType t) = pure t
-instantiate (TypeForAll params t) =
-    do params' <- traverse (const freshType) params
-       liftIO $ substitute (Map.fromList (zip params params')) t
+deriving instance MonadError TypeError Typing
 
-hydrate :: TypeCtx -> Ast.Type -> Typing Type
-hydrate kinder (Ast.TypeForAll params t) =
-    TypeForAll params <$> monoHydrate (pushKinds kinder params) t
-hydrate kinder (Ast.MonoType t) = MonoType <$> monoHydrate kinder t
+runTyping :: Env -> Ctx -> Typing a -> IO (Either TypeError a)
+runTyping env ctx = evalIntBindingT . runExceptT . flip runReaderT (env, ctx) . unTyping
 
-monoHydrate :: TypeCtx -> Ast.MonoType -> Typing MonoType
-monoHydrate kinder (Ast.TypeArrow domain codomain) =
-    TypeArrow <$> monoHydrate kinder domain <*> monoHydrate kinder codomain
-monoHydrate kinder (Ast.RecordType row) = RecordType <$> traverse hydrateEntry row
-    where hydrateEntry (k, v) = (k,) <$> monoHydrate kinder v
-monoHydrate kinder (Ast.TypeName name) =
-    case show name of
-        _ | isJust (Map.lookup name kinder) -> pure $ TypeName name
-        "Int" -> pure $ PrimType $ nameFromString "Int"
-        "Bool" -> pure $ PrimType $ nameFromString "Bool"
-        _ -> throwError $ UnboundType name
+liftUnify :: IntBindingT MonoType IO a -> Typing a
+liftUnify = Typing . lift . lift
 
-typed :: Ctx -> Expr (Maybe Ast.Type) -> Typing (Expr Type, MonoType)
-typed ctx (Lambda param synDomain body) =
-    do kinder <- getTypeCtx
-       monoDomain <- case synDomain of
-                         Just (Ast.MonoType t) -> monoHydrate kinder t
-                         Just t @ (Ast.TypeForAll _ _) -> throwError $ Rank2 param t
-                         Nothing -> freshType
-       let domain = MonoType monoDomain
-       let ctx' = Map.insert param domain ctx
-       (body', codomain) <- typed ctx' body
-       return (Lambda param domain body', TypeArrow monoDomain codomain)
-typed ctx (App f arg) =
-    do (f', calleeType) <- typed ctx f
-       (arg', domain) <- typed ctx arg
-       codomain <- freshType
-       liftUnify (unify calleeType (TypeArrow domain codomain))
-       return (App f' arg', codomain)
-typed ctx (PrimApp op l r) =
-    do (l', lType) <- typed ctx l
-       (r', rType) <- typed ctx r
-       liftUnify (unify lType (PrimType (nameFromString "Int")))
-       liftUnify (unify rType (PrimType (nameFromString "Int")))
-       let t = case op of
-                   Primop.Eq -> PrimType (nameFromString "Bool")
-                   _ -> PrimType (nameFromString "Int")
-       return (PrimApp op l' r', t)
-typed ctx (Let decls body) =
-    do (decls', ctx') <- foldM declStep ([], ctx) decls
-       (body', bodyType) <- typed ctx' body
-       return (Let (reverse decls') body', bodyType)
-    where declStep (decls', ctx) decl = first (: decls') <$> typedDecl ctx decl
-typed ctx (Case matchee cases) =
-    do (matchee', matcheeType) <- typed ctx matchee
-       (cases', sumType, resultType) <- typedCases cases
-       liftUnify (unify matcheeType sumType)
-       return (Case matchee' (reverse cases'), resultType)
-    where typedCases (match:matches) =
-              do (match', sumType, resultType) <- typeCase match
-                 foldM (\(matches', sumType, resultType) match ->
-                            do (match', sumType', resultType') <- typeCase match
-                               liftUnify (unify sumType sumType')
-                               liftUnify (unify resultType resultType')
-                               return (match':matches', sumType', resultType'))
-                       ([match'], sumType, resultType) matches
-          typedCases [] = error "unreachable"
-          typeCase (ctor, param, body) =
-              do ctorType <- lookupType ctor ctx
-                 case ctorType of
-                     MonoType (TypeArrow paramType sumType) ->
-                         let ctx' = Map.insert param (MonoType paramType) ctx
-                         in do (body', resultType) <- typed ctx' body
-                               return ((ctor, param, body'), sumType, resultType)
-                     _ -> throwError $ NonArrow ctorType
-typed ctx (If cond conseq alt) =
-    do (cond', condType) <- typed ctx cond
-       liftUnify (unify condType (PrimType (nameFromString "Bool")))
-       (conseq', conseqType) <- typed ctx conseq
-       (alt', altType) <- typed ctx alt
-       liftUnify (unify conseqType altType)
-       return (If cond' conseq' alt', conseqType)
-typed ctx (Record fields) =
-    do (fields', row) <- unzip <$> traverse typedField fields
-       return (Record fields', RecordType row)
-    where typedField (name, expr) = do (expr', exprType) <- typed ctx expr
-                                       return ((name, expr'), (name, exprType))
-typed ctx (Select record label) =
-    do (record', recType) <- typed ctx record
-       case recType of
-           RecordType row ->
-               case find ((== label) . fst) row of
-                   Just (_, fieldType) -> return (Select record' label, fieldType)
-                   Nothing -> throwError $ InexistentField label recType
-           _ -> throwError $ NonRecord recType
-typed ctx (Atom (Var name)) =
-    do t <- instantiate =<< lookupType name ctx
-       return (Atom (Var name), t)
-typed _ e @ (Atom (Const (ConstInt n))) =
-    pure (Atom $ Const $ ConstInt n, PrimType $ nameFromString "Int")
+getEnv :: Typing Env
+getEnv = asks fst
 
-typedDecl :: Ctx -> Decl (Maybe Ast.Type) -> Typing (Decl Type, Ctx)
-typedDecl ctx (Val name synT expr) =
-    do kinder <- getTypeCtx
-       srcType <- traverse (hydrate kinder) synT
-       local (maybePushKinds srcType) (k srcType)
-    where maybePushKinds (Just (TypeForAll params _)) kinder = pushKinds kinder params
-          maybePushKinds _ kinder = kinder
-          k srcType =
-              do (expr', exprMonoType) <- typed ctx expr
-                 exprType <- liftIO $ generalize ctx exprMonoType
-                 finalType <- case srcType of
-                                  Just srcType -> do
-                                      srcMonoType <- instantiate srcType
-                                      -- FIXME: `val f: forall a . a = fn x => x` passes :(
-                                      --   FIX: use unidirectional unification that can only alter
-                                      --        `exprMonoType`
-                                      liftUnify $ unify exprMonoType srcMonoType
-                                      return srcType
-                                  Nothing -> pure exprType
-                 return (Val name finalType expr', Map.insert name finalType ctx)
+getCtx :: Typing Ctx
+getCtx = asks snd
 
-resolve :: Expr Type -> IO (Expr Type)
-resolve (Lambda name t body) = Lambda name <$> resolveType t <*> resolve body
-resolve (App f arg) = App <$> resolve f <*> resolve arg
-resolve (PrimApp op l r) = PrimApp op <$> resolve l <*> resolve r
-resolve (Let decls body) = Let <$> traverse resolveDecl decls <*> resolve body
-resolve (Case matchee cases) = Case <$> resolve matchee <*> traverse resolveCase cases
-    where resolveCase (label, var, body) = (label, var,) <$> resolve body
-resolve (If cond conseq alt) = If <$> resolve cond <*> resolve conseq <*> resolve alt
-resolve (Record row) = Record <$> traverse (\(k, v) -> (k,) <$> resolve v) row
-resolve (Select record label) = flip Select label <$> resolve record
-resolve expr @ (Atom _) = pure expr
+-- Type Checking Algorithms
+-- =================================================================================================
 
-resolveDecl :: Decl Type -> IO (Decl Type)
-resolveDecl (Val name t expr) = Val name <$> resolveType t <*> resolve expr
+hydrate :: Env -> Ast.Type -> Typing OpenType
+hydrate env (Ast.TypeForAll params t) =
+    -- Create OpaqueType:s bound at the TypeForAll for params, add them to the Env and monoHydrate t
+    do params' <- liftUnify $ traverse (const $ nameFromIntVar <$> freeVar) params
+       let paramRefs = fmap (UTerm . OpaqueType) params'
+       local (envPush params paramRefs) (TypeForAll params' <$> monoHydrate t)
+hydrate env (Ast.MonoType t) = TypeForAll [] <$> monoHydrate t
 
-resolveType :: Type -> IO Type
-resolveType (MonoType t) = MonoType <$> resolveMonoType t
-resolveType t = pure t
+monoHydrate :: Ast.MonoType -> Typing OpenMonoType
+monoHydrate =
+    \case Ast.TypeArrow d cd -> UTerm <$> (TypeArrow <$> monoHydrate d <*> monoHydrate cd)
+          Ast.RecordType row -> UTerm . RecordType <$> traverse hydrateEntry row
+              where hydrateEntry (k, v) = (k,) <$> monoHydrate v
+          Ast.TypeName name -> do ot <- envLookup name <$> getEnv
+                                  case ot of
+                                      Just t -> pure t
+                                      Nothing -> throwError $ UnboundType name
 
-resolveMonoType :: MonoType -> IO (MonoType)
-resolveMonoType t @ (TypeVar r) = maybe t id <$> readTypeVar r
-resolveMonoType t = pure t
+generalize :: OpenMonoType -> Typing OpenType
+generalize t = do frees <- liftUnify $ getFreeVars t
+                  nonLocals <- ctxFreeVars =<< getCtx
+                  let bindables = nub frees \\ nub nonLocals
+                  flip TypeForAll t <$> traverse bind bindables
+               where bind v = do let param = nameFromIntVar v
+                                 liftUnify $ bindVar v (UTerm $ OpaqueType param)
+                                 return param
 
-typecheck :: Expr (Maybe Ast.Type) -> IO (Either TypeError (Expr Type, Type))
-typecheck expr =
-    let kinder = Map.empty
-        ctx = Map.empty
-        typing = do (expr, monoT) <- typed ctx expr
-                    t <- liftIO $ generalize ctx monoT
-                    liftIO $ (,) <$> resolve expr <*> resolveType t
-    in  runReaderT (runExceptT typing) kinder
+instantiate :: OpenType -> Typing OpenMonoType
+instantiate (TypeForAll params t) = Typing $ lift $ freshen t
+
+typed :: Expr (Maybe Ast.Type) -> Typing (Expr OpenType, OpenMonoType)
+typed =
+    \case Lambda param srcT body ->
+              do monoDomain <- case srcT of
+                                   Just (Ast.MonoType t) -> monoHydrate t
+                                   Just t @ (Ast.TypeForAll _ _) -> throwError $ Rank2 param t
+                                   Nothing -> UVar <$> liftUnify freeVar
+                 let domain = TypeForAll [] monoDomain
+                 (body', codomain) <- local (ctxPush param domain) (typed body)
+                 return (Lambda param domain body', UTerm $ TypeArrow monoDomain codomain)
+          Atom v @ (Var name) -> (Atom v,) <$> (instantiate =<< lookupType name =<< getCtx)
+          Atom c @ (Const (ConstInt _)) -> pure (Atom c, UTerm $ PrimType TypeInt)
+
+-- Connecting the Wires
+-- =================================================================================================
+
+typecheck :: Expr (Maybe Ast.Type) -> IO (Either TypeError (Expr ClosedType, ClosedType))
+typecheck expr = runTyping builtinEnv emptyCtx typing
+    where typing = do (expr', t) <- typed expr
+                      TypeForAll params t' <- generalize t
+                      t'' <- fromJust . freeze <$> Typing (lift (applyBindings t'))
+                      expr'' <- freezeExpr <$> applyExprBindings expr'
+                      return (expr'', TypeForAll params t'')
