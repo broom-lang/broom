@@ -48,7 +48,7 @@ Expr : Nestable { $1 }
      | Equal { $1 }
 
 Nestable : fn var "=>" Expr { Lambda $2 Nothing $4 }
-         | fn var ':' Type "=>" Expr { Lambda $2 (Just $4) $6 }
+         | fn var ':' MonoType "=>" Expr { Lambda $2 (Just $4) $6 }
          | let Declarations in Expr end { Let $2 $4 }
          | if Expr then Expr else Expr { If $2 $4 $6 }
          | '(' Expr ')' { $2 }

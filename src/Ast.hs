@@ -1,20 +1,21 @@
-module Ast (Expr(..), Decl(..), Primop(..), Const(..), Type(..), MonoType(..)) where
+module Ast (Expr(..), Decl(..), Primop(..), Const(..), Type(..), MonoType(..), typeCon) where
 
 import Data.Semigroup ((<>))
+import Data.Convertible (Convertible, convert)
 import Data.Text.Prettyprint.Doc ( Pretty, pretty, (<+>), line, hsep, vsep, parens
                                  , align, indent)
 
 import Util (Name)
 
-data Expr t = Lambda Name t (Expr t)
-            | App (Expr t) (Expr t)
-            | PrimApp Primop [Expr t]
-            | Let [Decl t] (Expr t)
-            | If (Expr t) (Expr t) (Expr t)
-            | Var Name
-            | Const Const
+data Expr m t = Lambda Name m (Expr m t)
+              | App (Expr m t) (Expr m t)
+              | PrimApp Primop [Expr m t]
+              | Let [Decl m t] (Expr m t)
+              | If (Expr m t) (Expr m t) (Expr m t)
+              | Var Name
+              | Const Const
 
-data Decl t = Val Name t (Expr t)
+data Decl m t = Val Name t (Expr m t)
 
 data Primop = Eq | Add | Sub | Mul | Div
             deriving Show
@@ -23,11 +24,16 @@ data Const = IntConst Int
 
 data Type = TypeForAll [Name] MonoType
           | MonoType MonoType
+          deriving Eq
 
 data MonoType = TypeArrow MonoType MonoType
               | TypeName Name
+              deriving Eq
 
-instance Pretty t => Pretty (Expr t) where
+typeCon :: Convertible n Name => n -> MonoType
+typeCon = TypeName . convert
+
+instance (Pretty m, Pretty t) => Pretty (Expr m t) where
     pretty (Lambda param paramType body) =
         "fn" <+> pretty param <> ":" <+> pretty paramType <+> "=>" <+> pretty body
     pretty (App callee arg) = parens $ pretty callee <+> pretty arg
@@ -41,7 +47,7 @@ instance Pretty t => Pretty (Expr t) where
     pretty (Var name) = pretty name
     pretty (Const c) = pretty c
 
-instance Pretty t => Pretty (Decl t) where
+instance (Pretty m, Pretty t) => Pretty (Decl m t) where
     pretty (Val pattern t valueExpr) =
         "val" <+> pretty pattern <> ":" <+> pretty t <+> "=" <+> pretty valueExpr
 

@@ -31,6 +31,7 @@ default-extensions:
 - FlexibleInstances
 - FlexibleContexts
 - ScopedTypeVariables
+- MonoLocalBinds
 
 dependencies:
 - base
@@ -39,7 +40,7 @@ dependencies:
 - text
 - unordered-containers
 - convertible
-- mtl
+- extensible-effects
 - prettyprinter
 
 library:

@@ -17,7 +17,7 @@ data JSStmt = Def Name JSExpr
             | Expr JSExpr
             | Return JSExpr
 
-selectInstructions :: Expr a -> JSExpr
+selectInstructions :: Expr m t -> JSExpr
 selectInstructions =
     \case Ast.Lambda param _ body -> Function [param] [Return (selectInstructions body)]
           Ast.App callee arg -> Call (selectInstructions callee) [selectInstructions arg]
