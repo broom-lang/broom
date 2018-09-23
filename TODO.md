@@ -1,11 +1,1 @@
-- [x] Explicit type annotations for variables
-- [x] Proper error handling
-- [x] Eval Comeback
-- [x] Type elaboration (Ast.Type -> Typecheck.Type)
-- [x] unification-fd
-- [ ] Type ascription
-- [ ] Scoped type variables (need to read paper!)
-- [ ] Recursive val decls
-- [ ] Recursive datatypes
-- [ ] Variant arities from [1] to [0..]
-- [ ] Type constructors
+- [ ] Alphatization
