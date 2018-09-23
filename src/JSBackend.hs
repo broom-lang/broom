@@ -12,7 +12,6 @@ import Ast (Expr, Decl, Primop, Const)
 data JSExpr = Function [Name] [JSStmt]
             | Call JSExpr [JSExpr]
             | BinApp Binop JSExpr JSExpr
-            | Block [JSStmt]
             | If JSExpr JSExpr JSExpr
             | Ref Name
             | Const Const
@@ -32,9 +31,10 @@ selectInstructions =
           Ast.PrimApp op [l, r] ->
               BinApp (convertOp op) (selectInstructions l) (selectInstructions r)
           Ast.Let decls body ->
-              Block (fwdDecls decls :
-                     fmap selectDecl decls <>
-                     pure (Expr (selectInstructions body)))
+              Call (Function [] (fwdDecls decls :
+                                fmap selectDecl decls <>
+                                [Return (selectInstructions body)]))
+                   []
           Ast.If cond conseq alt -> If (selectInstructions cond)
                                        (selectInstructions conseq)
                                        (selectInstructions alt)
@@ -62,8 +62,6 @@ instance Pretty JSExpr where
                    braces (line <> indent 4 (vsep (fmap pretty stmts)) <> line))
     pretty (Call callee args) = pretty callee <> tupled (fmap pretty args)
     pretty (BinApp op l r) = pretty l <+> pretty op <+> pretty r
-    pretty (Block stmts) =
-        braces (line <> indent 4 (vsep (fmap pretty stmts)) <> line)
     pretty (If cond conseq alt) =
         pretty cond <+> "?" <+> pretty conseq <+> ":" <+> pretty alt
     pretty (Ref name) = pretty name
