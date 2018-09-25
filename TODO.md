@@ -1,4 +1,4 @@
-- [ ] Alphatization
+- [x] Alphatization
 - [ ] De-`rec` let:s
 - [ ] CPS conversion
 - [ ] Expression tree restoration (single-use var inlining)

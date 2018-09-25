@@ -31,6 +31,7 @@ default-extensions:
 - FlexibleInstances
 - FlexibleContexts
 - ScopedTypeVariables
+- RankNTypes
 - MonoLocalBinds
 
 dependencies:

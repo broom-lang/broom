@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeApplications #-}
 
-module Typecheck (TypeError, typecheck) where
+module Typecheck (TypeError, TypedExpr, TypedDecl, typecheck) where
 
 import Data.Foldable (foldl')
 import Data.Semigroup ((<>))
