@@ -1,5 +1,14 @@
 - [ ] Alphatization
+- [ ] De-`rec` let:s
 - [ ] CPS conversion
+- [ ] Expression tree restoration (single-use var inlining)
+- [ ] CPS -> JSExpr conversion
+- [ ] Cheney on the MTA mini-runtime
+
+# Maybe Later
+
+## Continuation Closure Avoidance
+
 - [ ] Continuation closurification
     * [ ] Functions can be nested; traverse function tree in post order.
     * [ ] Call/escape analysis for continuations
@@ -12,7 +21,7 @@
           of uses)
     * [ ] Sanity check: defs still dominate uses (i.e. no closure has been hoisted over its
           free variables)
+
+## Output Quality Assurance
+
 - [ ] Control structure restoration (structural analysis; assume CFG to be a DAG)
-- [ ] Expression tree restoration (single-use var inlining)
-- [ ] CPS -> JSExpr conversion
-- [ ] Cheney on the MTA mini-runtime
