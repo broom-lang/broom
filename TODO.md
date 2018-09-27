@@ -1,6 +1,8 @@
 - [x] Alphatization
 - [ ] De-`rec` let:s
+- [ ] dyn-env 'Reader' xform
 - [ ] CPS conversion
+- [ ] cont-stack 'State' xform
 - [ ] Expression tree restoration (single-use var inlining)
 - [ ] CPS -> JSExpr conversion
 - [ ] Cheney on the MTA mini-runtime
