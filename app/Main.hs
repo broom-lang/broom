@@ -14,7 +14,7 @@ import Parser (parser)
 import Typecheck (typecheck)
 import Alphatize (alphatize)
 import qualified CPS
-import CPS (cpsConvert)
+import CPSConvert (cpsConvert)
 import qualified JSBackend as JS
 
 data CommandLine = CommandLine { dumpCPS :: Bool }
@@ -35,7 +35,7 @@ main = do CommandLine { dumpCPS } <- Argv.execParser optParser
               Right typedExpr ->
                  runLift $ flip runFresh' 0 $ do
                     alphatizedExpr <- alphatize typedExpr
-                    cps :: CPS.Expr <- CPS.cpsConvert alphatizedExpr
+                    cps :: CPS.Expr <- cpsConvert alphatizedExpr
                     if dumpCPS
                     then lift $ putDoc (pretty cps)
                     else let js = JS.selectInstructions alphatizedExpr
