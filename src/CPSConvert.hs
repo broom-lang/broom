@@ -14,7 +14,7 @@ import Control.Eff.State.Lazy (State, evalState, get, modify)
 
 import Util (Name, gensym)
 import qualified Ast
-import Ast (Primop(..), Const(..), primopResMonoType)
+import Ast (Const(..), primopResMonoType)
 import Typecheck (TypedExpr)
 import CPS ( Block(..), Stmt(..), Expr(..), Transfer(..), Atom(..), Type(..), int, bool
            , primopResType )
@@ -79,16 +79,22 @@ popBlock transfer = do (stmts : _) <- get
                        modify (\(_ : builders :: BlockBuilders) -> builders)
                        pure $ Block (reverse stmts) transfer
 
-data Cont r = ContFn Type (Expr -> Eff r Block)
+data Cont r = ContFn (Maybe Name) Type (Atom -> Eff r Block)
             | TrivCont Name
 
+contParamHint :: Cont r -> Maybe (Name, Type)
+contParamHint = \case ContFn nameHint t _ -> (, t) <$> nameHint
+                      TrivCont _ -> Nothing
+
 continue :: ConversionEffs r => Cont r -> Expr -> Eff r Block
-continue (ContFn _ k) expr = k expr
-continue (TrivCont k) expr = do aExpr <- trivialize expr
-                                popBlock $ App k [aExpr]
+continue cont expr = do aExpr <- trivialize (contParamHint cont) expr
+                        case cont of
+                            ContFn _ _ k -> k aExpr
+                            TrivCont k -> popBlock $ App k [aExpr]
 
 type ConversionEffs r = (Member Fresh r, Member (State BlockBuilders) r, Member (State Ctx) r)
 
+-- FIXME: Use mutable Block builder, scoping it with Reader
 conv :: ConversionEffs r => Cont r -> TypedExpr -> Eff r Block
 conv cont = \case
     Ast.Lambda params body ->
@@ -102,9 +108,9 @@ conv cont = \case
     Ast.App callee args ->
         do ret <- nominalizeCont cont
            calleeType <- typeOf callee
-           let cont' = ContFn calleeType $ \cpsCallee ->
-                   do aCallee <- nominalize cpsCallee
-                      let k = \aArgs -> popBlock $ App aCallee (Use ret : aArgs)
+           let cont' = ContFn Nothing calleeType $ \aCallee ->
+                   do nCallee <- nominalize Nothing (Atom aCallee)
+                      let k = \aArgs -> popBlock $ App nCallee (Use ret : aArgs)
                       convArgs k args
            conv cont' callee
     Ast.PrimApp op args ->
@@ -113,16 +119,14 @@ conv cont = \case
     Ast.Let (Ast.Val name (Ast.MonoType t) expr : decls) body ->
         do modify (Ctx.insert name t)
            let t' = convert t
-               cont' = ContFn t' $ \cpsExpr ->
-                   do pushStmt $ Def name t' cpsExpr
-                      conv cont $ Ast.Let decls body
+               cont' = ContFn (Just name) t' $ \_ ->
+                  conv cont $ Ast.Let decls body
            conv cont' expr
     Ast.Let [] body -> conv cont body
     Ast.If cond conseq alt ->
         do k <- TrivCont <$> nominalizeCont cont
-           let cont' = ContFn bool $ \cpsCond ->
-                   do aCond <- trivialize cpsCond
-                      pushBlock
+           let cont' = ContFn Nothing bool $ \aCond ->
+                   do pushBlock
                       conseqBlock <- conv k conseq
                       pushBlock
                       altBlock <- conv k alt
@@ -137,27 +141,32 @@ convArgs cont arguments = loop arguments []
           loop (arg : args) aArgs =
               do argType <- typeOf arg
                  let cont' :: Cont r
-                     cont' = ContFn argType $ \cpsArg ->
-                         do aArg <- trivialize cpsArg
-                            loop args (aArg : aArgs)
+                     cont' = ContFn Nothing argType $ \aArg ->
+                         loop args (aArg : aArgs)
                  conv cont' arg
 
-nominalize :: ConversionEffs r => Expr -> Eff r Name
-nominalize = \case
+nominalize :: ConversionEffs r => Maybe (Name, Type) -> Expr -> Eff r Name
+nominalize (Just (name, t)) expr = do pushStmt $ Def name t expr
+                                      pure name
+nominalize Nothing expr = case expr of
     Atom (Use name) -> pure name
-    expr -> do name <- gensym (convert @Text "v")
-               t <- typeOf expr
-               pushStmt $ Def name t expr
-               pure name
+    _ -> do name <- gensym (convert @Text "v")
+            t <- typeOf expr
+            pushStmt $ Def name t expr
+            pure name
 
 nominalizeCont :: ConversionEffs r => Cont r -> Eff r Name
-nominalizeCont = \case ContFn paramType k ->
-                           do param <- gensym (convert @Text "x")
+nominalizeCont = \case ContFn paramHint paramType k ->
+                           do param <- case paramHint of
+                                  Just param -> pure param
+                                  Nothing -> gensym (convert @Text "x")
                               pushBlock
-                              body <- k (Atom (Use param))
-                              nominalize $ Fn [(param, paramType)] body
+                              body <- k (Use param)
+                              nominalize Nothing $ Fn [(param, paramType)] body
                        TrivCont k -> pure k
 
-trivialize :: ConversionEffs r => Expr -> Eff r Atom
-trivialize = \case Atom a -> pure a
-                   expr -> Use <$> nominalize expr
+trivialize :: ConversionEffs r => Maybe (Name, Type) -> Expr -> Eff r Atom
+trivialize (Just hint) expr = Use <$> nominalize (Just hint) expr
+trivialize Nothing expr = case expr of
+    Atom a -> pure a
+    _ -> Use <$> nominalize Nothing expr
