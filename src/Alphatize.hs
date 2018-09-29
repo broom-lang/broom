@@ -2,9 +2,9 @@ module Alphatize (alphatize) where
 
 import Data.Maybe (fromJust)
 import qualified Data.HashMap.Lazy as Env
-import Control.Eff (Eff, Member, run)
+import Control.Eff (Eff, Member)
 import Control.Eff.Reader.Lazy (Reader, runReader, local, ask)
-import Control.Eff.Fresh (Fresh, runFresh')
+import Control.Eff.Fresh (Fresh)
 
 import Util (Name, gensym)
 import Ast (Expr(..), Decl(..))
@@ -14,15 +14,15 @@ type Env = Env.HashMap Name Name
 
 type Alphatization a = forall r . (Member (Reader Env) r, Member Fresh r) => Eff r a
 
-alphatize :: TypedExpr -> TypedExpr
-alphatize expr = run $ runReader (runFresh' (alpha expr) 0) (Env.empty :: Env)
+alphatize :: Member Fresh r => TypedExpr -> Eff r TypedExpr
+alphatize expr = runReader (alpha expr) (Env.empty :: Env)
 
 alpha :: TypedExpr -> Alphatization TypedExpr
 alpha =
-    \case Lambda param _ body -> do param' <- gensym param
-                                    local (Env.insert param param')
-                                          (alpha body)
-          App callee arg -> App <$> alpha callee <*> alpha arg
+    \case Lambda [(param, _)] body -> do param' <- gensym param
+                                         local (Env.insert param param')
+                                               (alpha body)
+          App callee [arg] -> App <$> alpha callee <*> ((: []) <$> alpha arg)
           PrimApp op args -> PrimApp op <$> traverse alpha args
           Let decls body -> do let binders = letBinders decls
                                binders' <- traverse gensym binders

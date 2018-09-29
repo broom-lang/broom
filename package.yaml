@@ -22,6 +22,7 @@ default-extensions:
 - TupleSections
 - LambdaCase
 - OverloadedStrings
+- NamedFieldPuns
 - DeriveFunctor
 - DeriveFoldable
 - DeriveTraversable
@@ -43,6 +44,7 @@ dependencies:
 - convertible
 - extensible-effects
 - prettyprinter
+- optparse-applicative
 
 library:
   source-dirs: src

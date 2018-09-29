@@ -55,18 +55,18 @@ typecheck expr = fst <$> run (runError (runReader (check expr) builtinCtx))
 check :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
       => SrcExpr -> Eff r (TypedExpr, MonoType)
 check =
-    \case Lambda param (Just domain) body ->
+    \case Lambda [(param, Just domain)] body ->
               local (ctxInsert param (MonoType domain))
                     (do (typedBody, codomain) <- check body
-                        pure ( Lambda param domain typedBody
+                        pure ( Lambda [(param, domain)] typedBody
                              , TypeArrow domain codomain ))
-          Lambda _ _ _ -> error "type inference unimplemented"
-          App callee arg ->
+          Lambda _ _ -> error "type inference unimplemented"
+          App callee [arg] ->
               do (typedCallee, calleeType) <- check callee
                  case calleeType of
                      TypeArrow domain codomain ->
                          do typedArg <- checkAs domain arg
-                            pure (App typedCallee typedArg, codomain)
+                            pure (App typedCallee [typedArg], codomain)
                      _ -> throwError $ UnCallable callee calleeType
           PrimApp Add args -> checkArithmetic Add args $ typeCon @Text "Int"
           PrimApp Sub args -> checkArithmetic Sub args $ typeCon @Text "Int"

@@ -26,8 +26,8 @@ data Binop = Eq | Add | Sub | Mul | Div
 
 selectInstructions :: Expr m t -> JSExpr
 selectInstructions =
-    \case Ast.Lambda param _ body -> Function [param] [Return (selectInstructions body)]
-          Ast.App callee arg -> Call (selectInstructions callee) [selectInstructions arg]
+    \case Ast.Lambda [(param, _)] body -> Function [param] [Return (selectInstructions body)]
+          Ast.App callee args -> Call (selectInstructions callee) (fmap selectInstructions args)
           Ast.PrimApp op [l, r] ->
               BinApp (convertOp op) (selectInstructions l) (selectInstructions r)
           Ast.Let decls body ->

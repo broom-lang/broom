@@ -47,8 +47,8 @@ import Ast (Expr(..), Decl(..), Type(..), MonoType(..), Primop(..), Const(..))
 Expr : Nestable { $1 }
      | Equal { $1 }
 
-Nestable : fn var "=>" Expr { Lambda $2 Nothing $4 }
-         | fn var ':' MonoType "=>" Expr { Lambda $2 (Just $4) $6 }
+Nestable : fn var "=>" Expr { Lambda [($2, Nothing)] $4 }
+         | fn var ':' MonoType "=>" Expr { Lambda [($2, Just $4)] $6 }
          | let Declarations in Expr end { Let $2 $4 }
          | if Expr then Expr else Expr { If $2 $4 $6 }
          | '(' Expr ')' { $2 }
@@ -72,7 +72,7 @@ Product : Product '*' App { PrimApp Mul [$1, $3] }
         | Product '/' App { PrimApp Div [$1, $3] }
         | App { $1 }
 
-App : App Nestable      { App $1 $2 }
+App : App Nestable      { App $1 [$2] }
     | Nestable { $1 }
 
 Matches : var var "=>" Expr             { [($1, $2, $4)] }

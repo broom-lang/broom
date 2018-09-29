@@ -1,14 +1,18 @@
-module Ast (Expr(..), Decl(..), Primop(..), Const(..), Type(..), MonoType(..), typeCon) where
+{-# LANGUAGE TypeApplications #-}
+
+module Ast ( Expr(..), Decl(..), Primop(..), Const(..), Type(..), MonoType(..)
+           , typeCon, int, bool ) where
 
 import Data.Semigroup ((<>))
 import Data.Convertible (Convertible, convert)
+import Data.Text (Text)
 import Data.Text.Prettyprint.Doc ( Pretty, pretty, (<+>), line, hsep, vsep, parens
                                  , align, indent)
 
 import Util (Name)
 
-data Expr m t = Lambda Name m (Expr m t)
-              | App (Expr m t) (Expr m t)
+data Expr m t = Lambda [(Name, m)] (Expr m t)
+              | App (Expr m t) [Expr m t]
               | PrimApp Primop [Expr m t]
               | Let [Decl m t] (Expr m t)
               | If (Expr m t) (Expr m t) (Expr m t)
@@ -33,9 +37,16 @@ data MonoType = TypeArrow MonoType MonoType
 typeCon :: Convertible n Name => n -> MonoType
 typeCon = TypeName . convert
 
+int :: MonoType
+int = typeCon @Text "Int"
+
+bool :: MonoType
+bool = typeCon @Text "Bool"
+
 instance (Pretty m, Pretty t) => Pretty (Expr m t) where
-    pretty (Lambda param paramType body) =
-        "fn" <+> pretty param <> ":" <+> pretty paramType <+> "=>" <+> pretty body
+    pretty (Lambda params body) =
+        "fn" <+> hsep (fmap prettyParam params) <+> "=>" <+> pretty body
+        where prettyParam (param, paramType) = pretty param <> ":" <+> pretty paramType
     pretty (App callee arg) = parens $ pretty callee <+> pretty arg
     pretty (PrimApp op args) = parens $ pretty op <+> hsep (fmap pretty args)
     pretty (Let decls body) =
