@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeApplications #-}
 
 module Ast ( Expr(..), Decl(..), Primop(..), Const(..), Type(..), MonoType(..)
-           , typeCon, int, bool ) where
+           , typeCon, int, bool, primopResMonoType ) where
 
 import Data.Semigroup ((<>))
 import Data.Convertible (Convertible, convert)
@@ -42,6 +42,13 @@ int = typeCon @Text "Int"
 
 bool :: MonoType
 bool = typeCon @Text "Bool"
+
+primopResMonoType :: Primop -> MonoType
+primopResMonoType = \case Add -> int
+                          Sub -> int
+                          Mul -> int
+                          Div -> int
+                          Eq -> bool
 
 instance (Pretty m, Pretty t) => Pretty (Expr m t) where
     pretty (Lambda params body) =

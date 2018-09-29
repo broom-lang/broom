@@ -1,10 +1,10 @@
 {-# LANGUAGE TypeApplications #-}
 
-module CPS (Block(..), Transfer(..), Stmt(..), Expr(..), Atom(..), Type(..), int, bool) where
+module CPS ( Block(..), Transfer(..), Stmt(..), Expr(..), Atom(..), Type(..)
+           , int, bool, primopResType ) where
 
 import Data.Semigroup ((<>))
-import qualified Data.Convertible as Convertible
-import Data.Convertible (safeConvert)
+import Data.Convertible (Convertible, safeConvert, convert)
 import Data.Text (Text)
 import Data.Text.Prettyprint.Doc ( Pretty, pretty, line, (<+>), hsep, vsep, indent
                                  , parens, braces )
@@ -31,7 +31,7 @@ data Atom = Use Name
 data Type = FnType [Type]
           | TypeName Name
 
-instance Convertible.Convertible Ast.MonoType Type where
+instance Convertible Ast.MonoType Type where
     safeConvert = \case
         Ast.TypeArrow domain codomain ->
             do domain' <- safeConvert domain
@@ -40,10 +40,17 @@ instance Convertible.Convertible Ast.MonoType Type where
         Ast.TypeName name -> pure (TypeName name)
 
 int :: Type
-int = TypeName (Convertible.convert @Text "Int")
+int = TypeName (convert @Text "Int")
 
 bool :: Type
-bool = TypeName (Convertible.convert @Text "Bool")
+bool = TypeName (convert @Text "Bool")
+
+primopResType :: Primop -> Type
+primopResType = \case Add -> int
+                      Sub -> int
+                      Mul -> int
+                      Div -> int
+                      Eq -> bool
 
 instance Pretty Block where
     pretty (Block stmts transfer) =
