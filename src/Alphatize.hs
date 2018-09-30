@@ -4,7 +4,7 @@ module Alphatize (alphatize) where
 
 import Data.Foldable (foldl')
 import qualified Data.HashMap.Lazy as Env
-import Data.Generics.Uniplate.Data (descendM)
+import Data.Generics.Uniplate.Data (descendM, descendBiM)
 import Data.Text.Prettyprint.Doc (Pretty, pretty, (<+>))
 import Control.Eff (Eff, Member)
 import Control.Eff.Reader.Lazy (Reader, runReader, local, ask)
@@ -42,16 +42,17 @@ alpha expr = case expr of
                           where genParam (p, t) = (, t) <$> gensym p
     App _ _ -> descendM alpha expr
     PrimApp _ _ -> descendM alpha expr
-    Let decls body -> do let binders = letBinders decls
-                         binders' <- traverse gensym binders
-                         local (Env.union (Env.fromList (zip binders binders')))
-                               (Let <$> traverse alphaDecl decls <*> alpha body)
+    Let decls _ -> do let binders = letBinders decls
+                      binders' <- traverse gensym binders
+                      local (Env.union (Env.fromList (zip binders binders')))
+                            (descendBiM alphaDecl expr >>= descendM alpha)
     If _ _ _ -> descendM alpha expr
     Var name -> Var <$> replace name
     Const _ -> pure expr
 
 alphaDecl :: AlphaEffs r => TypedDecl -> Eff r TypedDecl
-alphaDecl (Val name t valueExpr) = Val <$> replace name <*> pure t <*> alpha valueExpr
+alphaDecl (Val name t valueExpr) = do name' <- replace name
+                                      descendBiM alpha (Val name' t valueExpr)
 
 letBinders :: [TypedDecl] -> [Name]
 letBinders decls = fmap declBinder decls
