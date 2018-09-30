@@ -4,7 +4,7 @@ import Data.Maybe (fromJust)
 import qualified Data.HashMap.Lazy as Env
 import Control.Eff (Eff, Member)
 import Control.Eff.Reader.Lazy (Reader, runReader, local, ask)
-import Control.Eff.Fresh (Fresh)
+import Control.Eff.State.Strict (State)
 
 import Util (Name, gensym)
 import Ast (Expr(..), Decl(..))
@@ -12,16 +12,17 @@ import Typecheck (TypedExpr, TypedDecl)
 
 type Env = Env.HashMap Name Name
 
-type Alphatization a = forall r . (Member (Reader Env) r, Member Fresh r) => Eff r a
+type Alphatization a = forall r . (Member (Reader Env) r, Member (State Int) r) => Eff r a
 
-alphatize :: Member Fresh r => TypedExpr -> Eff r TypedExpr
-alphatize expr = runReader (alpha expr) (Env.empty :: Env)
+alphatize :: Member (State Int) r => TypedExpr -> Eff r TypedExpr
+alphatize expr = runReader (Env.empty :: Env) (alpha expr)
 
 alpha :: TypedExpr -> Alphatization TypedExpr
 alpha =
-    \case Lambda [(param, _)] body -> do param' <- gensym param
-                                         local (Env.insert param param')
-                                               (alpha body)
+    \case Lambda [(param, t)] body -> do param' <- gensym param
+                                         body' <- local (Env.insert param param')
+                                                        (alpha body)
+                                         pure $ Lambda [(param', t)] body'
           App callee [arg] -> App <$> alpha callee <*> ((: []) <$> alpha arg)
           PrimApp op args -> PrimApp op <$> traverse alpha args
           Let decls body -> do let binders = letBinders decls

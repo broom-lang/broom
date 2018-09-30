@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeApplications, DeriveGeneric #-}
 
-module Util (Name, gensym) where
+module Util (Name, fresh, gensym) where
 
 import Data.Semigroup ((<>))
 import Data.Convertible (Convertible, safeConvert, convert)
@@ -9,7 +9,7 @@ import Data.Hashable (Hashable)
 import GHC.Generics (Generic)
 import Data.Text.Prettyprint.Doc (Pretty, pretty)
 import Control.Eff (Eff, Member)
-import Control.Eff.Fresh (Fresh, fresh)
+import Control.Eff.State.Strict (State, get, modify)
 
 data Name = String Text
           | Unique Int
@@ -34,7 +34,10 @@ instance Convertible Name Text where
 instance Pretty Name where
     pretty = pretty . convert @Name @Text
 
-gensym :: Member Fresh r => Name -> Eff r Name
+fresh :: Member (State Int) r => Eff r Int
+fresh = do { res <- get; modify (\(counter :: Int) -> counter + 1); pure res }
+
+gensym :: Member (State Int) r => Name -> Eff r Name
 gensym (String t) = Uniquefied t <$> fresh
 gensym (Unique _) = Unique <$> fresh
 gensym (Uniquefied t _) = Uniquefied t <$> fresh

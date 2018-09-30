@@ -50,7 +50,7 @@ ctxLookup :: Name -> Ctx -> Maybe Type
 ctxLookup name (Ctx bindings) = HashMap.lookup name bindings
 
 typecheck :: SrcExpr -> Either TypeError TypedExpr
-typecheck expr = fst <$> run (runError (runReader (check expr) builtinCtx))
+typecheck expr = fst <$> run (runError (runReader builtinCtx (check expr)))
 
 check :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
       => SrcExpr -> Eff r (TypedExpr, MonoType)

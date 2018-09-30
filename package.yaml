@@ -41,6 +41,7 @@ dependencies:
 - hashable
 - text
 - unordered-containers
+- hashtables
 - convertible
 - extensible-effects
 - prettyprinter

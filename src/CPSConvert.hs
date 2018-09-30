@@ -1,172 +1,203 @@
 {-# LANGUAGE TypeApplications, ConstraintKinds #-}
 
-module CPSConvert (Block(..), Transfer(..), Stmt(..), Expr(..), Atom(..), cpsConvert) where
+module CPSConvert (STEff, cpsConvert) where
 
 import Data.Bifunctor (second)
 import Data.Foldable (traverse_)
-import Data.Maybe (fromJust)
 import Data.Convertible (convert)
 import Data.Text (Text)
-import qualified Data.HashMap.Lazy as Ctx
-import Control.Eff (Eff, Member)
-import Control.Eff.Fresh (Fresh)
-import Control.Eff.State.Lazy (State, evalState, get, modify)
+import Data.STRef.Strict (STRef, newSTRef, modifySTRef, readSTRef)
+import qualified Data.HashTable.ST.Basic as Ctx
+import Control.Monad.ST.Strict (ST)
+import Control.Eff (Eff, Member, SetMember)
+import Control.Eff.State.Strict (State)
+import Control.Eff.Reader.Strict (Reader, runReader, local, ask)
+import Control.Eff.Lift (Lift, lift)
 
 import Util (Name, gensym)
 import qualified Ast
-import Ast (Const(..), primopResMonoType)
+import Ast (Const(..))
 import Typecheck (TypedExpr)
 import CPS ( Block(..), Stmt(..), Expr(..), Transfer(..), Atom(..), Type(..), int, bool
            , primopResType )
 
-type Ctx = Ctx.HashMap Name Ast.MonoType
+type STEff s r = SetMember Lift (Lift (ST s)) r
 
-lookupMonoType :: Member (State Ctx) r => Name -> Eff r Ast.MonoType
-lookupMonoType name = do ctx :: Ctx <- get
-                         pure $ fromJust (Ctx.lookup name ctx)
+-- Type Context for generating type annotations
 
-lookupType :: Member (State Ctx) r => Name -> Eff r Type
-lookupType name = convert <$> lookupMonoType name
+type Ctx s = Ctx.HashTable s Name Type
 
-class CPSTypable a where
-    typeOf :: Member (State Ctx) r => a -> Eff r Type
+emptyCtx :: STEff s r => Eff r (Ctx s)
+emptyCtx = lift Ctx.new
 
-instance CPSTypable TypedExpr where
-    typeOf expr = convert <$> monoTypeOf expr
+hasType :: (STEff s r, Member (Reader (Ctx s)) r) => Name -> Type -> Eff r ()
+hasType name t = do ctx <- ask
+                    lift (Ctx.insert ctx name t)
 
-instance CPSTypable Expr where
-    typeOf = \case Fn params _ -> pure $ FnType (fmap snd params)
-                   PrimApp op _ -> pure (primopResType op)
-                   Atom a -> typeOf a
+lookupType :: forall s r . (STEff s r, Member (Reader (Ctx s)) r) => Name -> Eff r Type
+lookupType name = do ctx :: Ctx s <- ask
+                     ot <- lift (Ctx.lookup ctx name)
+                     case ot of
+                         Just t -> pure t
+                         Nothing -> error $ "unbound " <> show name
 
-instance CPSTypable Atom where
-    typeOf = \case Use name -> lookupType name
-                   Const c -> typeOf c
+-- BlockBuilder for pushing statements in
 
-instance CPSTypable Const where
-    typeOf = \case IntConst _ -> pure $ TypeName (convert @Text "Int")
+type BlockBuilder s = STRef s [Stmt]
 
--- OPTIMIZE
-monoTypeOf :: Member (State Ctx) r => TypedExpr -> Eff r Ast.MonoType
-monoTypeOf = \case Ast.Lambda [(_, domain)] body ->
-                       do codomain <- monoTypeOf body
-                          pure $ Ast.TypeArrow domain codomain
-                   Ast.App callee _ -> monoTypeOf callee >>= \case
-                       Ast.TypeArrow _ codomain -> pure codomain
-                       _ -> error "unreachable"
-                   Ast.PrimApp op _ -> pure (primopResMonoType op)
-                   Ast.Let _ body -> monoTypeOf body
-                   Ast.If _ conseq _ -> monoTypeOf conseq
-                   Ast.Var name -> lookupMonoType name
-                   Ast.Const (IntConst _) -> pure (Ast.typeCon @Text "Int")
+emptyBlockBuilder :: STEff s r => Eff r (BlockBuilder s)
+emptyBlockBuilder = lift (newSTRef [])
 
-cpsConvert :: Member Fresh r => TypedExpr -> Eff r Expr
-cpsConvert expr = evalState (evalState m ([[]] :: BlockBuilders)) (Ctx.empty :: Ctx)
-    where m = do halt <- gensym (convert @Text "halt")
-                 Fn [(halt, FnType [int])] <$> conv (TrivCont halt) expr
+pushStmt :: (STEff s r, Member (Reader (BlockBuilder s)) r) => Stmt -> Eff r ()
+pushStmt stmt = do builder :: BlockBuilder s <- ask
+                   lift $ modifySTRef builder (stmt :)
 
-type BlockBuilder = [Stmt]
-type BlockBuilders = [BlockBuilder]
+buildBlock :: STEff s r => BlockBuilder s -> Transfer -> Eff r Block
+buildBlock builder transfer = do stmts <- reverse <$> lift (readSTRef builder)
+                                 pure $ Block stmts transfer
 
-pushStmt :: (Member (State BlockBuilders) r) => Stmt -> Eff r ()
-pushStmt stmt = modify (\(stmts : builders) -> (stmt : stmts) : builders)
+-- Continuation for continuing conversion
 
-pushBlock :: (Member (State BlockBuilders) r) => Eff r ()
-pushBlock = modify (\builders -> [] : builders :: BlockBuilders)
-
-popBlock :: (Member (State BlockBuilders) r) => Transfer -> Eff r Block
-popBlock transfer = do (stmts : _) <- get
-                       modify (\(_ : builders :: BlockBuilders) -> builders)
-                       pure $ Block (reverse stmts) transfer
-
-data Cont r = ContFn (Maybe Name) Type (Atom -> Eff r Block)
+data Cont r = ContFn (Maybe Name) Type (Atom -> Eff r Transfer)
             | TrivCont Name
 
 contParamHint :: Cont r -> Maybe (Name, Type)
 contParamHint = \case ContFn nameHint t _ -> (, t) <$> nameHint
                       TrivCont _ -> Nothing
 
-continue :: ConversionEffs r => Cont r -> Expr -> Eff r Block
-continue cont expr = do aExpr <- trivialize (contParamHint cont) expr
-                        case cont of
-                            ContFn _ _ k -> k aExpr
-                            TrivCont k -> popBlock $ App k [aExpr]
+-- CPS Convert program
 
-type ConversionEffs r = (Member Fresh r, Member (State BlockBuilders) r, Member (State Ctx) r)
+type ConvEffs s r = ( Member (State Int) r
+                    , Member (Reader (Ctx s)) r
+                    , Member (Reader (BlockBuilder s)) r
+                    , SetMember Lift (Lift (ST s)) r )
 
--- FIXME: Use mutable Block builder, scoping it with Reader
-conv :: ConversionEffs r => Cont r -> TypedExpr -> Eff r Block
-conv cont = \case
-    Ast.Lambda params body ->
-        do traverse_ (\(name, t) -> modify (Ctx.insert name t)) params
+cpsConvert :: (STEff s r, Member (State Int) r) => TypedExpr -> Eff r Expr
+cpsConvert expr = do ctx <- emptyCtx
+                     builder <- emptyBlockBuilder
+                     runReader builder (runReader ctx m)
+    where m = do builder <- ask
+                 halt <- gensym (convert @Text "halt")
+                 transfer <- doConvert (TrivCont halt) expr
+                 body <- buildBlock builder transfer
+                 pure $ Fn [(halt, FnType [int])] body         
+
+-- Implementation of CPS conversion
+
+convertToBlock :: ConvEffs s r => Cont r -> TypedExpr -> Eff r Block
+convertToBlock cont expr = do builder <- emptyBlockBuilder
+                              transfer <- local (const builder)
+                                                (doConvert cont expr)
+                              buildBlock builder transfer
+
+doConvert :: ConvEffs s r => Cont r -> TypedExpr -> Eff r Transfer
+doConvert cont = \case
+    Ast.Lambda parameters body ->
+        do let params = fmap (second convert) parameters
+           traverse_ (\(name, t) -> hasType name t) params
            ret <- gensym (convert @Text "r")
-           let params' = fmap (second convert) params
-           bodyType <- typeOf body
-           pushBlock
-           cpsBody <- conv (TrivCont ret) body
-           continue cont $ Fn ((ret, FnType [bodyType]) : params') cpsBody
+           codomain <- typeOf body
+           hasType ret codomain
+           body' <- convertToBlock (TrivCont ret) body
+           continue cont $ Fn ((ret, FnType [codomain]) : params) body'
     Ast.App callee args ->
         do ret <- nominalizeCont cont
            calleeType <- typeOf callee
            let cont' = ContFn Nothing calleeType $ \aCallee ->
                    do nCallee <- nominalize Nothing (Atom aCallee)
-                      let k = \aArgs -> popBlock $ App nCallee (Use ret : aArgs)
-                      convArgs k args
-           conv cont' callee
+                      let k = \aArgs -> pure $ App nCallee (Use ret : aArgs)
+                      doConvertArgs k args
+           doConvert cont' callee
     Ast.PrimApp op args ->
         let k = \aArgs -> continue cont (PrimApp op aArgs)
-        in convArgs k args
+        in doConvertArgs k args
     Ast.Let (Ast.Val name (Ast.MonoType t) expr : decls) body ->
-        do modify (Ctx.insert name t)
-           let t' = convert t
-               cont' = ContFn (Just name) t' $ \_ ->
-                  conv cont $ Ast.Let decls body
-           conv cont' expr
-    Ast.Let [] body -> conv cont body
+        let t' = convert t
+            cont' = ContFn (Just name) t' $ \_ ->
+                doConvert cont $ Ast.Let decls body
+        in doConvert cont' expr
+    Ast.Let [] body -> doConvert cont body
     Ast.If cond conseq alt ->
         do k <- TrivCont <$> nominalizeCont cont
            let cont' = ContFn Nothing bool $ \aCond ->
-                   do pushBlock
-                      conseqBlock <- conv k conseq
-                      pushBlock
-                      altBlock <- conv k alt
-                      popBlock $ If aCond conseqBlock altBlock
-           conv cont' cond
+                   If aCond <$> convertToBlock k conseq <*> convertToBlock k alt
+           doConvert cont' cond
     Ast.Var name -> continue cont (Atom (Use name))
     Ast.Const c -> continue cont (Atom (Const c))
 
-convArgs :: forall r . ConversionEffs r => ([Atom] -> Eff r Block) -> [TypedExpr] -> Eff r Block
-convArgs cont arguments = loop arguments []
+doConvertArgs :: ConvEffs s r => ([Atom] -> Eff r Transfer) -> [TypedExpr] -> Eff r Transfer
+doConvertArgs cont arguments = loop arguments []
     where loop [] aArgs = cont (reverse aArgs)
-          loop (arg : args) aArgs =
-              do argType <- typeOf arg
-                 let cont' :: Cont r
-                     cont' = ContFn Nothing argType $ \aArg ->
-                         loop args (aArg : aArgs)
-                 conv cont' arg
+          loop (arg : args) aArgs = do argType <- typeOf arg
+                                       let cont' = ContFn Nothing argType $ \aArg ->
+                                               loop args (aArg : aArgs)
+                                       doConvert cont' arg
 
-nominalize :: ConversionEffs r => Maybe (Name, Type) -> Expr -> Eff r Name
+continue :: ConvEffs s r => Cont r -> Expr -> Eff r Transfer
+continue cont expr = do aExpr <- trivialize (contParamHint cont) expr
+                        case cont of
+                            ContFn _ _ k -> k aExpr
+                            TrivCont k -> pure (App k [aExpr])
+
+-- Reducing Expr:s to Atoms of Names
+
+trivialize :: ConvEffs s r => Maybe (Name, Type) -> Expr -> Eff r Atom
+trivialize (Just hint) expr = Use <$> nominalize (Just hint) expr
+trivialize Nothing expr = case expr of
+    Atom a -> pure a
+    _ -> Use <$> nominalize Nothing expr
+
+nominalize :: ConvEffs s r => Maybe (Name, Type) -> Expr -> Eff r Name
 nominalize (Just (name, t)) expr = do pushStmt $ Def name t expr
+                                      hasType name t
                                       pure name
 nominalize Nothing expr = case expr of
     Atom (Use name) -> pure name
     _ -> do name <- gensym (convert @Text "v")
             t <- typeOf expr
-            pushStmt $ Def name t expr
-            pure name
+            nominalize (Just (name, t)) expr
 
-nominalizeCont :: ConversionEffs r => Cont r -> Eff r Name
+nominalizeCont :: ConvEffs s r => Cont r -> Eff r Name
 nominalizeCont = \case ContFn paramHint paramType k ->
                            do param <- case paramHint of
-                                  Just param -> pure param
-                                  Nothing -> gensym (convert @Text "x")
-                              pushBlock
-                              body <- k (Use param)
-                              nominalize Nothing $ Fn [(param, paramType)] body
+                                           Just param -> pure param
+                                           Nothing -> gensym (convert @Text "x")
+                              hasType param paramType
+                              builder <- emptyBlockBuilder
+                              transfer <- local (const builder)
+                                                (k (Use param))
+                              body <- buildBlock builder transfer
+                              nominalize Nothing (Fn [(param, paramType)] body)
                        TrivCont k -> pure k
 
-trivialize :: ConversionEffs r => Maybe (Name, Type) -> Expr -> Eff r Atom
-trivialize (Just hint) expr = Use <$> nominalize (Just hint) expr
-trivialize Nothing expr = case expr of
-    Atom a -> pure a
-    _ -> Use <$> nominalize Nothing expr
+-- Type inference
+
+class CPSTypable s a where
+    typeOf :: (STEff s r, Member (Reader (Ctx s)) r) => a -> Eff r Type
+
+instance CPSTypable s Expr where
+    typeOf = \case Fn params _ -> pure $ FnType (fmap snd params)
+                   PrimApp op _ -> pure (primopResType op)
+                   Atom a -> typeOf a
+
+instance CPSTypable s Atom where
+    typeOf = \case Use name -> lookupType name
+                   Const c -> typeOf c
+
+instance CPSTypable s Const where
+    typeOf = \case IntConst _ -> pure $ TypeName (convert @Text "Int")
+
+-- OPTIMIZE
+instance CPSTypable s TypedExpr where
+    typeOf = \case
+        Ast.Lambda [(_, domain)] body ->
+            do codomain <- typeOf body
+               pure (FnType [FnType [codomain], convert domain])
+        Ast.App callee _ -> typeOf callee >>= \case
+            FnType (FnType [codomain] : _) -> pure codomain
+            _ -> error "unreachable"
+        Ast.PrimApp op _ -> pure (primopResType op)
+        Ast.Let _ body -> typeOf body
+        Ast.If _ conseq _ -> typeOf conseq
+        Ast.Var name -> lookupType name
+        Ast.Const (IntConst _) -> pure int
