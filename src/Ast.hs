@@ -3,6 +3,8 @@
 module Ast ( Expr(..), Decl(..), Primop(..), Const(..), Type(..), MonoType(..)
            , typeCon, int, bool, primopResMonoType ) where
 
+import Data.Data (Data, Typeable)
+
 import Data.Semigroup ((<>))
 import Data.Convertible (Convertible, convert)
 import Data.Text (Text)
@@ -18,21 +20,24 @@ data Expr m t = Lambda [(Name, m)] (Expr m t)
               | If (Expr m t) (Expr m t) (Expr m t)
               | Var Name
               | Const Const
+              deriving (Data, Typeable)
 
 data Decl m t = Val Name t (Expr m t)
+              deriving (Data, Typeable)
 
 data Primop = Eq | Add | Sub | Mul | Div
-            deriving Show
+            deriving (Show, Data, Typeable)
 
 data Const = IntConst Int
+           deriving (Data, Typeable)
 
 data Type = TypeForAll [Name] MonoType
           | MonoType MonoType
-          deriving Eq
+          deriving (Eq, Data, Typeable)
 
 data MonoType = TypeArrow MonoType MonoType
               | TypeName Name
-              deriving Eq
+              deriving (Eq, Data, Typeable)
 
 typeCon :: Convertible n Name => n -> MonoType
 typeCon = TypeName . convert

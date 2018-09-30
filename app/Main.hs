@@ -35,12 +35,16 @@ main = do CommandLine { dumpCPS } <- Argv.execParser optParser
           case typecheck expr of
               Left typeError -> hPutDoc stderr (pretty typeError)
               Right typedExpr ->
-                 let m :: (STEff s r, Member (State Int) r) => Eff r (Doc ann)
-                     m = do alphatizedExpr <- alphatize typedExpr
-                            cps :: CPS.Expr <- cpsConvert alphatizedExpr
-                            if dumpCPS
-                            then pure (pretty cps)
-                            else let js = JS.selectInstructions alphatizedExpr
-                                 in pure (pretty js)
-                     doc = runST $ runLift $ evalState (0 :: Int) m
-                 in putDoc doc
+                 let m :: (STEff s r, Member (State Int) r)
+                       => Eff r (Either (Doc ann) (Doc ann))
+                     m = alphatize typedExpr >>= \case
+                             Left alphaErr -> pure $ Left $ pretty alphaErr
+                             Right alphatizedExpr ->
+                                 do cps :: CPS.Expr <- cpsConvert alphatizedExpr
+                                    if dumpCPS
+                                    then pure $ Right $ pretty cps
+                                    else let js = JS.selectInstructions alphatizedExpr
+                                         in pure $ Right $ pretty js
+                 in case runST $ runLift $ evalState (0 :: Int) m of
+                        Left errDoc -> hPutDoc stderr errDoc
+                        Right exprDoc -> putDoc exprDoc

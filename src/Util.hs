@@ -2,6 +2,8 @@
 
 module Util (Name, fresh, gensym) where
 
+import Data.Data (Data, Typeable)
+
 import Data.Semigroup ((<>))
 import Data.Convertible (Convertible, safeConvert, convert)
 import Data.Text (Text, pack, unpack)
@@ -14,7 +16,7 @@ import Control.Eff.State.Strict (State, get, modify)
 data Name = String Text
           | Unique Int
           | Uniquefied Text Int
-          deriving (Eq, Ord, Generic)
+          deriving (Eq, Ord, Generic, Data, Typeable)
 
 instance Hashable Name
 
