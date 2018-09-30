@@ -1,11 +1,17 @@
 - [x] Alphatization
 - [ ] De-`rec` let:s
 - [ ] dyn-env 'Reader' xform
-- [ ] CPS conversion
+- [x] CPS conversion
 - [ ] cont-stack 'State' xform
 - [ ] Expression tree restoration (single-use var inlining)
 - [ ] CPS -> JSExpr conversion
 - [ ] Cheney on the MTA mini-runtime
+
+# QA
+
+- [ ] Type checkers for every IR
+- [ ] Correct by construction (PrimApp is especially bad atm.)
+- [ ] Tests (QuickCheck)
 
 # Maybe Later
 
@@ -28,4 +34,4 @@
 
 - [ ] Avoid generating ternary statements
 - [ ] Use newer JS features (let scoping + ReferenceError, TCO) when requested via flag
-- [ ] Control structure restoration (structural analysis; assume CFG to be a DAG)
+- [ ] Control structure restoration (see "No More Gotos: Decompilation Using ...")
