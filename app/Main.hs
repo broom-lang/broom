@@ -15,6 +15,7 @@ import Lexer (alexScanTokens)
 import Parser (parser)
 import Typecheck (typecheck)
 import Alphatize (alphatize)
+import Linearize (linearize)
 import qualified CPS
 import CPSConvert (STEff, cpsConvert)
 import qualified JSBackend as JS
@@ -40,11 +41,14 @@ main = do CommandLine { dumpCPS } <- Argv.execParser optParser
                      m = alphatize typedExpr >>= \case
                              Left alphaErr -> pure $ Left $ pretty alphaErr
                              Right alphatizedExpr ->
-                                 do cps :: CPS.Expr <- cpsConvert alphatizedExpr
-                                    if dumpCPS
-                                    then pure $ Right $ pretty cps
-                                    else let js = JS.selectInstructions alphatizedExpr
-                                         in pure $ Right $ pretty js
+                                 case linearize alphatizedExpr of
+                                    Left err -> pure $ Left $ pretty err
+                                    Right linear ->
+                                        do cps :: CPS.Expr <- cpsConvert linear
+                                           if dumpCPS
+                                           then pure $ Right $ pretty cps
+                                           else let js = JS.selectInstructions alphatizedExpr
+                                                in pure $ Right $ pretty js
                  in case runST $ runLift $ evalState (0 :: Int) m of
                         Left errDoc -> hPutDoc stderr errDoc
                         Right exprDoc -> putDoc exprDoc
