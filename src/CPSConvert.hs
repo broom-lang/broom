@@ -80,7 +80,7 @@ cpsConvert expr = do ctx <- emptyCtx
                  halt <- gensym (convert @Text "halt")
                  transfer <- doConvert (TrivCont halt) expr
                  body <- buildBlock builder transfer
-                 pure $ Fn [(halt, FnType [int])] body         
+                 pure $ Fn [(halt, FnType [int])] body
 
 -- Implementation of CPS conversion
 

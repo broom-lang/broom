@@ -23,9 +23,10 @@ data Expr m t = Lambda [(Name, m)] (Expr m t)
               deriving (Data, Typeable)
 
 data Decl m t = Val Name t (Expr m t)
+              | Expr (Expr m t)
               deriving (Data, Typeable)
 
-data Primop = Eq | Add | Sub | Mul | Div
+data Primop = VarNew | VarInit | VarLoad | Eq | Add | Sub | Mul | Div
             deriving (Show, Data, Typeable)
 
 data Const = IntConst Int
@@ -59,10 +60,10 @@ instance (Pretty m, Pretty t) => Pretty (Expr m t) where
     pretty (Lambda params body) =
         "fn" <+> hsep (fmap prettyParam params) <+> "=>" <+> pretty body
         where prettyParam (param, paramType) = pretty param <> ":" <+> pretty paramType
-    pretty (App callee arg) = parens $ pretty callee <+> pretty arg
+    pretty (App callee args) = parens $ pretty callee <+> hsep (fmap pretty args)
     pretty (PrimApp op args) = parens $ pretty op <+> hsep (fmap pretty args)
     pretty (Let decls body) =
-        "let" <+> vsep (fmap pretty decls) <> line <> "in" <> line <>
+        "let" <+> align (vsep (fmap pretty decls)) <> line <> "in" <> line <>
             indent 4 (pretty body) <> line <> "end"
     pretty (If cond conseq alt) = align ("if" <+> pretty cond <> line <>
                                          "then" <+> pretty conseq <> line <>
@@ -73,6 +74,7 @@ instance (Pretty m, Pretty t) => Pretty (Expr m t) where
 instance (Pretty m, Pretty t) => Pretty (Decl m t) where
     pretty (Val pattern t valueExpr) =
         "val" <+> pretty pattern <> ":" <+> pretty t <+> "=" <+> pretty valueExpr
+    pretty (Expr expr) = pretty expr
 
 instance Pretty Primop where
     pretty op = "__" <> pretty (show op)

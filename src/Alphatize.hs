@@ -42,10 +42,10 @@ alpha expr = case expr of
                           where genParam (p, t) = (, t) <$> gensym p
     App _ _ -> descendM alpha expr
     PrimApp _ _ -> descendM alpha expr
-    Let decls _ -> do let binders = letBinders decls
-                      binders' <- traverse gensym binders
-                      local (Env.union (Env.fromList (zip binders binders')))
-                            (descendBiM alphaDecl expr >>= descendM alpha)
+    Let decls body -> do let binders = letBinders decls
+                         binders' <- traverse gensym binders
+                         local (Env.union (Env.fromList (zip binders binders')))
+                               (Let <$> traverse alphaDecl decls <*> alpha body)
     If _ _ _ -> descendM alpha expr
     Var name -> Var <$> replace name
     Const _ -> pure expr

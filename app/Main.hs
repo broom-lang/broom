@@ -20,17 +20,18 @@ import qualified CPS
 import CPSConvert (STEff, cpsConvert)
 import qualified JSBackend as JS
 
-data CommandLine = CommandLine { dumpCPS :: Bool }
+data CommandLine = CommandLine { dumpLinear :: Bool, dumpCPS :: Bool }
 
 optParser :: Argv.ParserInfo CommandLine
 optParser = info (parseArgs <**> helper)
-                 (fullDesc 
+                 (fullDesc
                   <> header "Mulled compiler"
                   <> progDesc "Compile Mulled code from stdin")
-    where parseArgs = CommandLine <$> switch (long "cps" <> help "Dump CPS IR")
+    where parseArgs = CommandLine <$> switch (long "lin" <> help "Dump linearized AST")
+                                  <*> switch (long "cps" <> help "Dump CPS IR")
 
 main :: IO ()
-main = do CommandLine { dumpCPS } <- Argv.execParser optParser
+main = do CommandLine { dumpLinear, dumpCPS } <- Argv.execParser optParser
           src <- getContents
           let expr = parser (alexScanTokens src)
           case typecheck expr of
@@ -44,11 +45,13 @@ main = do CommandLine { dumpCPS } <- Argv.execParser optParser
                                  case linearize alphatizedExpr of
                                     Left err -> pure $ Left $ pretty err
                                     Right linear ->
-                                        do cps :: CPS.Expr <- cpsConvert linear
-                                           if dumpCPS
-                                           then pure $ Right $ pretty cps
-                                           else let js = JS.selectInstructions alphatizedExpr
-                                                in pure $ Right $ pretty js
+                                        if dumpLinear
+                                        then pure $ Right $ pretty linear
+                                        else do cps :: CPS.Expr <- cpsConvert linear
+                                                if dumpCPS
+                                                then pure $ Right $ pretty cps
+                                                else let js = JS.selectInstructions alphatizedExpr
+                                                     in pure $ Right $ pretty js
                  in case runST $ runLift $ evalState (0 :: Int) m of
                         Left errDoc -> hPutDoc stderr errDoc
                         Right exprDoc -> putDoc exprDoc
