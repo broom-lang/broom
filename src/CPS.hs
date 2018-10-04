@@ -30,6 +30,7 @@ data Atom = Use Name
 
 data Type = FnType [Type]
           | TypeName Name
+          | Unit
 
 instance Convertible Ast.MonoType Type where
     safeConvert = \case
@@ -61,7 +62,7 @@ instance Pretty Stmt where
     pretty = \case Def name t expr ->
                        pretty name <> ":" <+> pretty t <+> "=" <+> pretty expr
                    Expr expr -> pretty expr
-                   
+
 instance Pretty Transfer where
     pretty = \case App dest args -> pretty dest <+> hsep (fmap pretty args)
                    If cond dest alt ->

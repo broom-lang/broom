@@ -5,6 +5,7 @@ module CPSConvert (STEff, cpsConvert) where
 import Data.Bifunctor (second)
 import Data.Foldable (traverse_)
 import Data.Convertible (convert)
+import Data.Maybe (fromJust)
 import Data.Text (Text)
 import Data.STRef.Strict (STRef, newSTRef, modifySTRef, readSTRef)
 import qualified Data.HashTable.ST.Basic as Ctx
@@ -58,12 +59,16 @@ buildBlock builder transfer = do stmts <- reverse <$> lift (readSTRef builder)
 
 -- Continuation for continuing conversion
 
-data Cont r = ContFn (Maybe Name) Type (Atom -> Eff r Transfer)
+data ContParamHint = Exactly Name Type
+                   | Temp Type
+                   | Anon
+
+data Cont r = ContFn ContParamHint (Maybe Atom -> Eff r Transfer)
             | TrivCont Name
 
-contParamHint :: Cont r -> Maybe (Name, Type)
-contParamHint = \case ContFn nameHint t _ -> (, t) <$> nameHint
-                      TrivCont _ -> Nothing
+contParamHint :: Cont r -> ContParamHint
+contParamHint = \case ContFn hint _ -> hint
+                      TrivCont _ -> Anon
 
 -- CPS Convert program
 
@@ -103,8 +108,8 @@ doConvert cont = \case
     Ast.App callee args ->
         do ret <- nominalizeCont cont
            calleeType <- typeOf callee
-           let cont' = ContFn Nothing calleeType $ \aCallee ->
-                   do nCallee <- nominalize Nothing (Atom aCallee)
+           let cont' = ContFn (Temp calleeType) $ \(Just aCallee) ->
+                   do nCallee <- fromJust <$> nominalize (Temp calleeType) (Atom aCallee)
                       let k = \aArgs -> pure $ App nCallee (Use ret : aArgs)
                       doConvertArgs k args
            doConvert cont' callee
@@ -113,13 +118,17 @@ doConvert cont = \case
         in doConvertArgs k args
     Ast.Let (Ast.Val name (Ast.MonoType t) expr : decls) body ->
         let t' = convert t
-            cont' = ContFn (Just name) t' $ \_ ->
+            cont' = ContFn (Exactly name t') $ \_ ->
+                doConvert cont $ Ast.Let decls body
+        in doConvert cont' expr
+    Ast.Let (Ast.Expr expr : decls) body ->
+        let cont' = ContFn Anon $ \_ ->
                 doConvert cont $ Ast.Let decls body
         in doConvert cont' expr
     Ast.Let [] body -> doConvert cont body
     Ast.If cond conseq alt ->
         do k <- TrivCont <$> nominalizeCont cont
-           let cont' = ContFn Nothing bool $ \aCond ->
+           let cont' = ContFn (Temp bool) $ \(Just aCond) ->
                    If aCond <$> convertToBlock k conseq <*> convertToBlock k alt
            doConvert cont' cond
     Ast.Var name -> continue cont (Atom (Use name))
@@ -129,45 +138,50 @@ doConvertArgs :: ConvEffs s r => ([Atom] -> Eff r Transfer) -> [TypedExpr] -> Ef
 doConvertArgs cont arguments = loop arguments []
     where loop [] aArgs = cont (reverse aArgs)
           loop (arg : args) aArgs = do argType <- typeOf arg
-                                       let cont' = ContFn Nothing argType $ \aArg ->
+                                       let cont' = ContFn (Temp argType) $ \(Just aArg) ->
                                                loop args (aArg : aArgs)
                                        doConvert cont' arg
 
 continue :: ConvEffs s r => Cont r -> Expr -> Eff r Transfer
-continue cont expr = do aExpr <- trivialize (contParamHint cont) expr
+continue cont expr = do maExpr <- trivialize (contParamHint cont) expr
                         case cont of
-                            ContFn _ _ k -> k aExpr
-                            TrivCont k -> pure (App k [aExpr])
+                            ContFn _ k -> k maExpr
+                            TrivCont k -> case maExpr of
+                                              Just aExpr -> pure (App k [aExpr])
+                                              Nothing -> pure (App k [Const UnitConst])
 
 -- Reducing Expr:s to Atoms of Names
 
-trivialize :: ConvEffs s r => Maybe (Name, Type) -> Expr -> Eff r Atom
-trivialize (Just hint) expr = Use <$> nominalize (Just hint) expr
-trivialize Nothing expr = case expr of
-    Atom a -> pure a
-    _ -> Use <$> nominalize Nothing expr
+trivialize :: ConvEffs s r => ContParamHint -> Expr -> Eff r (Maybe Atom)
+trivialize (Exactly name t) expr = (Use <$>) <$> nominalize (Exactly name t) expr
+trivialize hint expr = case expr of
+    Atom a -> pure (Just a)
+    _ -> (Use <$>) <$> nominalize hint expr
 
-nominalize :: ConvEffs s r => Maybe (Name, Type) -> Expr -> Eff r Name
-nominalize (Just (name, t)) expr = do pushStmt $ Def name t expr
+nominalize :: ConvEffs s r => ContParamHint -> Expr -> Eff r (Maybe Name)
+nominalize (Exactly name t) expr = do pushStmt $ Def name t expr
                                       hasType name t
-                                      pure name
-nominalize Nothing expr = case expr of
-    Atom (Use name) -> pure name
+                                      pure (Just name)
+nominalize (Temp t) expr = case expr of
+    Atom (Use name) -> pure (Just name)
     _ -> do name <- gensym (convert @Text "v")
-            t <- typeOf expr
-            nominalize (Just (name, t)) expr
+            nominalize (Exactly name t) expr
+nominalize Anon expr = do pushStmt $ Expr expr
+                          pure Nothing
 
 nominalizeCont :: ConvEffs s r => Cont r -> Eff r Name
-nominalizeCont = \case ContFn paramHint paramType k ->
-                           do param <- case paramHint of
-                                           Just param -> pure param
-                                           Nothing -> gensym (convert @Text "x")
+nominalizeCont = \case ContFn paramHint k ->
+                           do (param, paramType) <- case paramHint of
+                                  Exactly name t -> pure (name, t)
+                                  Temp t -> (, t) <$> gensym (convert @Text "x")
+                                  Anon -> (, Unit) <$> gensym (convert @Text "_")
                               hasType param paramType
                               builder <- emptyBlockBuilder
                               transfer <- local (const builder)
-                                                (k (Use param))
+                                                (k $ Just (Use param))
                               body <- buildBlock builder transfer
-                              nominalize Nothing (Fn [(param, paramType)] body)
+                              fromJust <$> nominalize (Temp $ FnType [paramType])
+                                                      (Fn [(param, paramType)] body)
                        TrivCont k -> pure k
 
 -- Type inference

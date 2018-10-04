@@ -30,6 +30,7 @@ data Primop = VarNew | VarInit | VarLoad | Eq | Add | Sub | Mul | Div
             deriving (Show, Data, Typeable)
 
 data Const = IntConst Int
+           | UnitConst
            deriving (Data, Typeable)
 
 data Type = TypeForAll [Name] MonoType
@@ -38,6 +39,7 @@ data Type = TypeForAll [Name] MonoType
 
 data MonoType = TypeArrow MonoType MonoType
               | TypeName Name
+              | Unit
               deriving (Eq, Data, Typeable)
 
 typeCon :: Convertible n Name => n -> MonoType
