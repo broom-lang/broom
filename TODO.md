@@ -1,6 +1,15 @@
+# Type Checking
+
+- [ ] Complete and Easy Bidirectional...
+- [ ] Row types for records
+- [ ] Row types for effects
+- [ ] Modules
+- [ ] Monomorphization
+
+# Translation
+
 - [x] Alphatization
-- [ ] De-`rec` let:s
-- [ ] dyn-env 'Reader' xform
+- [x] De-`rec` let:s
 - [x] CPS conversion
 - [ ] cont-stack 'State' xform
 - [ ] Expression tree restoration (single-use var inlining)
