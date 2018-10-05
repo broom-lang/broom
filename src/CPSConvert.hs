@@ -19,7 +19,7 @@ import Util (Name, gensym)
 import qualified Ast
 import Ast (Const(..))
 import Typecheck (TypedExpr)
-import CPS ( Block(..), Stmt(..), Expr(..), Transfer(..), Atom(..), Type(..), primopResType )
+import CPS (Block(..), Stmt(..), Expr(..), Transfer(..), Atom(..), Type(..), primopResType)
 
 type STEff s r = SetMember Lift (Lift (ST s)) r
 
@@ -190,7 +190,7 @@ class CPSTypable s a where
 
 instance CPSTypable s Expr where
     typeOf = \case Fn params _ -> pure $ FnType (fmap snd params)
-                   PrimApp op _ -> pure (primopResType op)
+                   PrimApp op args -> primopResType op <$> traverse typeOf args
                    Atom a -> typeOf a
 
 instance CPSTypable s Atom where
@@ -210,7 +210,7 @@ instance CPSTypable s TypedExpr where
         Ast.App callee _ -> typeOf callee >>= \case
             FnType (FnType [codomain] : _) -> pure codomain
             _ -> error "unreachable"
-        Ast.PrimApp op _ -> pure (primopResType op)
+        Ast.PrimApp op args -> primopResType op <$> traverse typeOf args
         Ast.Let _ body -> typeOf body
         Ast.If _ conseq _ -> typeOf conseq
         Ast.Var name -> lookupType name

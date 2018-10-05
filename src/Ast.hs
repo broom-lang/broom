@@ -31,6 +31,7 @@ data Const = IntConst Int
 
 data Type = TypeForAll Name Type
           | TypeArrow Type Type
+          | TypeApp Type Type
           | TypeName Name
           | PrimType PrimType
           deriving (Eq, Data, Typeable)
@@ -38,15 +39,23 @@ data Type = TypeForAll Name Type
 data PrimType = TypeInt
               | TypeBool
               | TypeUnit
+              | VarBox
               deriving (Eq, Data, Typeable)
 
-primopResType :: Primop -> Type
-primopResType = PrimType . \case
-    Add -> TypeInt
-    Sub -> TypeInt
-    Mul -> TypeInt
-    Div -> TypeInt
-    Eq -> TypeBool
+primopResType :: Primop -> [Type] -> Type
+primopResType op argTypes = case op of
+    VarNew -> case argTypes of
+                  [argType] -> TypeApp (PrimType VarBox) argType
+                  _ -> undefined
+    VarInit -> PrimType TypeUnit
+    VarLoad -> case argTypes of
+                   [TypeApp (PrimType VarBox) contentType] -> contentType
+                   _ -> error $ "tried a VarLoad from " <> show (pretty argTypes)
+    Add -> PrimType TypeInt
+    Sub -> PrimType TypeInt
+    Mul -> PrimType TypeInt
+    Div -> PrimType TypeInt
+    Eq -> PrimType TypeBool
 
 instance (Pretty m, Pretty t) => Pretty (Expr m t) where
     pretty (Lambda params body) =
@@ -79,6 +88,7 @@ instance Pretty Type where
     pretty (TypeForAll param t) =
         "forall" <+> pretty param <+> "." <+> pretty t
     pretty (TypeArrow domain codomain) = pretty domain <+> "->" <+> pretty codomain
+    pretty (TypeApp t arg) = parens (pretty t <+> pretty arg)
     pretty (TypeName name) = pretty name
     pretty (PrimType p) = pretty p
 
@@ -86,3 +96,4 @@ instance Pretty PrimType where
     pretty TypeInt = "Int"
     pretty TypeBool = "Bool"
     pretty TypeUnit = "()"
+    pretty VarBox = "__VarBox"

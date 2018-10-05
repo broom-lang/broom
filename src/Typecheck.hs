@@ -66,7 +66,9 @@ check =
                          do typedArg <- checkAs domain arg
                             pure (App typedCallee [typedArg], codomain)
                      _ -> throwError $ UnCallable callee calleeType
-          PrimApp op args -> checkArithmetic op args $ primopResType op
+          -- OPTIMIZE:
+          PrimApp op args -> do argTypes <- map snd <$> traverse check args
+                                checkArithmetic op args (primopResType op argTypes)
           Let decls body ->
               local (ctxInsertDecls decls)
                     (do typedDecls <- traverse checkDecl decls

@@ -1,4 +1,4 @@
-module CPS ( Block(..), Transfer(..), Stmt(..), Expr(..), Atom(..), Type(..), primopResType ) where
+module CPS (Block(..), Transfer(..), Stmt(..), Expr(..), Atom(..), Type(..), primopResType) where
 
 import Data.Semigroup ((<>))
 import Data.Convertible (Convertible, safeConvert)
@@ -26,6 +26,7 @@ data Atom = Use Name
 
 data Type = TypeForAll Name Type
           | FnType [Type]
+          | TypeApp Type Type
           | TypeName Name
           | PrimType Ast.PrimType
 
@@ -36,16 +37,24 @@ instance Convertible Ast.Type Type where
             do domain' <- safeConvert domain
                codomain' <- safeConvert codomain
                pure $ FnType [FnType [codomain'], domain']
+        Ast.TypeApp t arg -> TypeApp <$> safeConvert t <*> safeConvert arg
         Ast.TypeName name -> pure (TypeName name)
         Ast.PrimType p -> pure (PrimType p)
 
-primopResType :: Primop -> Type
-primopResType = PrimType . \case
-    Add -> Ast.TypeInt
-    Sub -> Ast.TypeInt
-    Mul -> Ast.TypeInt
-    Div -> Ast.TypeInt
-    Eq -> Ast.TypeBool
+primopResType :: Primop -> [Type] -> Type
+primopResType op argTypes = case op of
+    VarNew -> case argTypes of
+                  [argType] -> TypeApp (PrimType Ast.VarBox) argType
+                  _ -> undefined
+    VarInit -> PrimType Ast.TypeUnit
+    VarLoad -> case argTypes of
+                   [TypeApp (PrimType Ast.VarBox) contentType] -> contentType
+                   _ -> error $ "tried a VarLoad from " <> show (pretty argTypes)
+    Add -> PrimType Ast.TypeInt
+    Sub -> PrimType Ast.TypeInt
+    Mul -> PrimType Ast.TypeInt
+    Div -> PrimType Ast.TypeInt
+    Eq -> PrimType Ast.TypeBool
 
 instance Pretty Block where
     pretty (Block stmts transfer) =
@@ -78,5 +87,6 @@ instance Pretty Type where
     pretty = \case TypeForAll param t ->
                        "forall" <+> pretty param <+> "." <+> pretty t
                    FnType domains -> parens ("fn" <+> hsep (fmap pretty domains))
+                   TypeApp t arg -> parens (pretty t <+> pretty arg)
                    TypeName name -> pretty name
                    PrimType p -> pretty p

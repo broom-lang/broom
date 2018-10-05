@@ -15,7 +15,7 @@ import Control.Eff.Reader.Strict (Reader, runReader, ask)
 import Control.Eff.Lift (Lifted, runLift, lift)
 
 import Util (Name)
-import Ast(Expr(..), Decl(..), Primop(..))
+import Ast(Expr(..), Decl(..), Primop(..), Type(..), PrimType(..))
 import Typecheck (TypedExpr, TypedDecl)
 
 data Err = Unbound Name
@@ -93,7 +93,8 @@ linearized = transformM replace
           linearizeStmt (creates, stmts) stmt @ (Val name t valueExpr) =
               bindKindOf name >>= \case
                   Linear -> pure (creates, stmt : stmts)
-                  Recursive -> let creation = Val name t (PrimApp VarNew []) -- FIXME: t
+                  Recursive -> let creation = Val name (TypeApp (PrimType VarBox) t)
+                                                       (PrimApp VarNew [])
                                    initialization = Expr (PrimApp VarInit [Var name, valueExpr])
                                in pure (creation : creates, initialization : stmts)
           linearizeStmt (creates, stmts) stmt @ (Expr _) = pure (creates, stmt : stmts)
