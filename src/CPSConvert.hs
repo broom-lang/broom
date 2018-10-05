@@ -199,13 +199,14 @@ instance CPSTypable s Atom where
 
 instance CPSTypable s Const where
     typeOf = \case IntConst _ -> pure $ PrimType Ast.TypeInt
+                   UnitConst -> pure $ PrimType Ast.TypeUnit
 
 -- OPTIMIZE
 instance CPSTypable s TypedExpr where
     typeOf = \case
-        Ast.Lambda [(_, domain)] body ->
+        Ast.Lambda params body ->
             do codomain <- typeOf body
-               pure (FnType [FnType [codomain], convert domain])
+               pure $ FnType (FnType [codomain] : map (convert . snd) params)
         Ast.App callee _ -> typeOf callee >>= \case
             FnType (FnType [codomain] : _) -> pure codomain
             _ -> error "unreachable"
@@ -213,4 +214,4 @@ instance CPSTypable s TypedExpr where
         Ast.Let _ body -> typeOf body
         Ast.If _ conseq _ -> typeOf conseq
         Ast.Var name -> lookupType name
-        Ast.Const (IntConst _) -> pure $ PrimType Ast.TypeInt
+        Ast.Const c -> typeOf c

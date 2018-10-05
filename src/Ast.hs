@@ -4,8 +4,6 @@ module Ast ( Expr(..), Decl(..), Primop(..), Const(..), Type(..), PrimType(..)
 import Data.Data (Data, Typeable)
 
 import Data.Semigroup ((<>))
-import Data.Convertible (Convertible, convert)
-import Data.Text (Text)
 import Data.Text.Prettyprint.Doc ( Pretty, pretty, (<+>), line, hsep, vsep, parens
                                  , align, indent)
 
@@ -75,6 +73,7 @@ instance Pretty Primop where
 
 instance Pretty Const where
     pretty (IntConst n) = pretty n
+    pretty UnitConst = "()"
 
 instance Pretty Type where
     pretty (TypeForAll param t) =

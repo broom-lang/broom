@@ -2,7 +2,6 @@ module Typecheck (TypeError, TypedExpr, TypedDecl, typecheck) where
 
 import Data.Foldable (foldl')
 import Data.Semigroup ((<>))
-import Data.Text (Text)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.Text.Prettyprint.Doc (Pretty, pretty, (<+>))
 import Control.Eff (Eff, Member, run)
@@ -43,6 +42,7 @@ ctxInsertDecls :: [SrcDecl] -> Ctx -> Ctx
 ctxInsertDecls decls ctx = foldl' insertDecl ctx decls
     where insertDecl kvs (Val name (Just t) _) = ctxInsert name t kvs
           insertDecl _ (Val _ Nothing _) = error "type inference unimplemented"
+          insertDecl kvs (Expr _) = kvs
 
 ctxLookup :: Name -> Ctx -> Maybe Type
 ctxLookup name (Ctx bindings) = HashMap.lookup name bindings
@@ -82,11 +82,13 @@ check =
                              Just t -> pure (Var name, t)
                              Nothing -> throwError (Unbound name)
           Const (IntConst n) -> pure (Const (IntConst n), PrimType TypeInt)
+          Const UnitConst -> pure (Const UnitConst, PrimType TypeUnit)
 
 checkDecl :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
           => SrcDecl -> Eff r TypedDecl
 checkDecl (Val name (Just t) valueExpr) = Val name t <$> checkAs t valueExpr
 checkDecl (Val _ _ _) = error "type inference unimplemented"
+checkDecl (Expr expr) = Expr <$> checkAs (PrimType TypeUnit) expr
 
 checkAs :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
         => Type -> SrcExpr -> Eff r TypedExpr

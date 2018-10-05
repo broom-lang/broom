@@ -1,8 +1,7 @@
 module CPS ( Block(..), Transfer(..), Stmt(..), Expr(..), Atom(..), Type(..), primopResType ) where
 
 import Data.Semigroup ((<>))
-import Data.Convertible (Convertible, safeConvert, convert)
-import Data.Text (Text)
+import Data.Convertible (Convertible, safeConvert)
 import Data.Text.Prettyprint.Doc ( Pretty, pretty, line, (<+>), hsep, vsep, indent
                                  , parens, braces )
 
@@ -25,12 +24,14 @@ data Expr = Fn [(Name, Type)] Block
 data Atom = Use Name
           | Const Const
 
-data Type = FnType [Type]
+data Type = TypeForAll Name Type
+          | FnType [Type]
           | TypeName Name
           | PrimType Ast.PrimType
 
 instance Convertible Ast.Type Type where
     safeConvert = \case
+        Ast.TypeForAll param t -> TypeForAll param <$> safeConvert t
         Ast.TypeArrow domain codomain ->
             do domain' <- safeConvert domain
                codomain' <- safeConvert codomain
@@ -74,5 +75,8 @@ instance Pretty Atom where
     pretty (Const c) = pretty c
 
 instance Pretty Type where
-    pretty = \case FnType domains -> parens ("fn" <+> hsep (fmap pretty domains))
+    pretty = \case TypeForAll param t ->
+                       "forall" <+> pretty param <+> "." <+> pretty t
+                   FnType domains -> parens ("fn" <+> hsep (fmap pretty domains))
                    TypeName name -> pretty name
+                   PrimType p -> pretty p

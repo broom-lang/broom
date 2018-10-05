@@ -53,7 +53,9 @@ alpha expr = case expr of
 alphaDecl :: AlphaEffs r => TypedDecl -> Eff r TypedDecl
 alphaDecl (Val name t valueExpr) = do name' <- replace name
                                       descendBiM alpha (Val name' t valueExpr)
+alphaDecl decl @ (Expr _) = descendBiM alpha decl
 
 letBinders :: [TypedDecl] -> [Name]
-letBinders decls = fmap declBinder decls
-    where declBinder (Val name _ _) = name
+letBinders decls = decls >>= declBinder
+    where declBinder (Val name _ _) = pure name
+          declBinder (Expr _) = mempty
