@@ -1,7 +1,4 @@
-{-# LANGUAGE TypeApplications #-}
-
-module CPS ( Block(..), Transfer(..), Stmt(..), Expr(..), Atom(..), Type(..)
-           , int, bool, primopResType ) where
+module CPS ( Block(..), Transfer(..), Stmt(..), Expr(..), Atom(..), Type(..), primopResType ) where
 
 import Data.Semigroup ((<>))
 import Data.Convertible (Convertible, safeConvert, convert)
@@ -30,28 +27,24 @@ data Atom = Use Name
 
 data Type = FnType [Type]
           | TypeName Name
-          | Unit
+          | PrimType Ast.PrimType
 
-instance Convertible Ast.MonoType Type where
+instance Convertible Ast.Type Type where
     safeConvert = \case
         Ast.TypeArrow domain codomain ->
             do domain' <- safeConvert domain
                codomain' <- safeConvert codomain
                pure $ FnType [FnType [codomain'], domain']
         Ast.TypeName name -> pure (TypeName name)
-
-int :: Type
-int = TypeName (convert @Text "Int")
-
-bool :: Type
-bool = TypeName (convert @Text "Bool")
+        Ast.PrimType p -> pure (PrimType p)
 
 primopResType :: Primop -> Type
-primopResType = \case Add -> int
-                      Sub -> int
-                      Mul -> int
-                      Div -> int
-                      Eq -> bool
+primopResType = PrimType . \case
+    Add -> Ast.TypeInt
+    Sub -> Ast.TypeInt
+    Mul -> Ast.TypeInt
+    Div -> Ast.TypeInt
+    Eq -> Ast.TypeBool
 
 instance Pretty Block where
     pretty (Block stmts transfer) =

@@ -1,7 +1,5 @@
-{-# LANGUAGE TypeApplications #-}
-
-module Ast ( Expr(..), Decl(..), Primop(..), Const(..), Type(..), MonoType(..)
-           , typeCon, int, bool, primopResMonoType ) where
+module Ast ( Expr(..), Decl(..), Primop(..), Const(..), Type(..), PrimType(..)
+           , primopResType ) where
 
 import Data.Data (Data, Typeable)
 
@@ -33,30 +31,24 @@ data Const = IntConst Int
            | UnitConst
            deriving (Data, Typeable)
 
-data Type = TypeForAll [Name] MonoType
-          | MonoType MonoType
+data Type = TypeForAll Name Type
+          | TypeArrow Type Type
+          | TypeName Name
+          | PrimType PrimType
           deriving (Eq, Data, Typeable)
 
-data MonoType = TypeArrow MonoType MonoType
-              | TypeName Name
-              | Unit
+data PrimType = TypeInt
+              | TypeBool
+              | TypeUnit
               deriving (Eq, Data, Typeable)
 
-typeCon :: Convertible n Name => n -> MonoType
-typeCon = TypeName . convert
-
-int :: MonoType
-int = typeCon @Text "Int"
-
-bool :: MonoType
-bool = typeCon @Text "Bool"
-
-primopResMonoType :: Primop -> MonoType
-primopResMonoType = \case Add -> int
-                          Sub -> int
-                          Mul -> int
-                          Div -> int
-                          Eq -> bool
+primopResType :: Primop -> Type
+primopResType = PrimType . \case
+    Add -> TypeInt
+    Sub -> TypeInt
+    Mul -> TypeInt
+    Div -> TypeInt
+    Eq -> TypeBool
 
 instance (Pretty m, Pretty t) => Pretty (Expr m t) where
     pretty (Lambda params body) =
@@ -85,10 +77,13 @@ instance Pretty Const where
     pretty (IntConst n) = pretty n
 
 instance Pretty Type where
-    pretty (TypeForAll params t) =
-        "forall" <+> hsep (fmap pretty params) <+> "." <+> pretty t
-    pretty (MonoType t) = pretty t
-
-instance Pretty MonoType where
+    pretty (TypeForAll param t) =
+        "forall" <+> pretty param <+> "." <+> pretty t
     pretty (TypeArrow domain codomain) = pretty domain <+> "->" <+> pretty codomain
     pretty (TypeName name) = pretty name
+    pretty (PrimType p) = pretty p
+
+instance Pretty PrimType where
+    pretty TypeInt = "Int"
+    pretty TypeBool = "Bool"
+    pretty TypeUnit = "()"

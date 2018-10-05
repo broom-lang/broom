@@ -19,8 +19,7 @@ import Util (Name, gensym)
 import qualified Ast
 import Ast (Const(..))
 import Typecheck (TypedExpr)
-import CPS ( Block(..), Stmt(..), Expr(..), Transfer(..), Atom(..), Type(..), int, bool
-           , primopResType )
+import CPS ( Block(..), Stmt(..), Expr(..), Transfer(..), Atom(..), Type(..), primopResType )
 
 type STEff s r = SetMember Lift (Lift (ST s)) r
 
@@ -85,7 +84,7 @@ cpsConvert expr = do ctx <- emptyCtx
                  halt <- gensym (convert @Text "halt")
                  transfer <- doConvert (TrivCont halt) expr
                  body <- buildBlock builder transfer
-                 pure $ Fn [(halt, FnType [int])] body
+                 pure $ Fn [(halt, FnType [PrimType Ast.TypeInt])] body
 
 -- Implementation of CPS conversion
 
@@ -116,7 +115,7 @@ doConvert cont = \case
     Ast.PrimApp op args ->
         let k = \aArgs -> continue cont (PrimApp op aArgs)
         in doConvertArgs k args
-    Ast.Let (Ast.Val name (Ast.MonoType t) expr : decls) body ->
+    Ast.Let (Ast.Val name t expr : decls) body ->
         let t' = convert t
             cont' = ContFn (Exactly name t') $ \_ ->
                 doConvert cont $ Ast.Let decls body
@@ -128,7 +127,7 @@ doConvert cont = \case
     Ast.Let [] body -> doConvert cont body
     Ast.If cond conseq alt ->
         do k <- TrivCont <$> nominalizeCont cont
-           let cont' = ContFn (Temp bool) $ \(Just aCond) ->
+           let cont' = ContFn (Temp $ PrimType Ast.TypeBool) $ \(Just aCond) ->
                    If aCond <$> convertToBlock k conseq <*> convertToBlock k alt
            doConvert cont' cond
     Ast.Var name -> continue cont (Atom (Use name))
@@ -174,7 +173,7 @@ nominalizeCont = \case ContFn paramHint k ->
                            do (param, paramType) <- case paramHint of
                                   Exactly name t -> pure (name, t)
                                   Temp t -> (, t) <$> gensym (convert @Text "x")
-                                  Anon -> (, Unit) <$> gensym (convert @Text "_")
+                                  Anon -> (, PrimType Ast.TypeUnit) <$> gensym (convert @Text "_")
                               hasType param paramType
                               builder <- emptyBlockBuilder
                               transfer <- local (const builder)
@@ -199,7 +198,7 @@ instance CPSTypable s Atom where
                    Const c -> typeOf c
 
 instance CPSTypable s Const where
-    typeOf = \case IntConst _ -> pure $ TypeName (convert @Text "Int")
+    typeOf = \case IntConst _ -> pure $ PrimType Ast.TypeInt
 
 -- OPTIMIZE
 instance CPSTypable s TypedExpr where
@@ -214,4 +213,4 @@ instance CPSTypable s TypedExpr where
         Ast.Let _ body -> typeOf body
         Ast.If _ conseq _ -> typeOf conseq
         Ast.Var name -> lookupType name
-        Ast.Const (IntConst _) -> pure int
+        Ast.Const (IntConst _) -> pure $ PrimType Ast.TypeInt

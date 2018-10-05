@@ -1,5 +1,3 @@
-{-# LANGUAGE TypeApplications #-}
-
 module Typecheck (TypeError, TypedExpr, TypedDecl, typecheck) where
 
 import Data.Foldable (foldl')
@@ -12,16 +10,16 @@ import Control.Eff.Reader.Lazy (Reader, runReader, ask, local)
 import Control.Eff.Exception (Exc, runError, throwError)
 
 import Util (Name)
-import Ast (Expr(..), Decl(..), Const(..), Primop(..), Type(..), MonoType(..), typeCon)
+import Ast (Expr(..), Decl(..), Const(..), Primop(..), Type(..), PrimType(..), primopResType)
 
-type SrcExpr = Expr (Maybe MonoType) (Maybe Type)
-type TypedExpr = Expr MonoType Type
-type SrcDecl = Decl (Maybe MonoType) (Maybe Type)
-type TypedDecl = Decl MonoType Type
+type SrcExpr = Expr (Maybe Type) (Maybe Type)
+type TypedExpr = Expr Type Type
+type SrcDecl = Decl (Maybe Type) (Maybe Type)
+type TypedDecl = Decl Type Type
 
 data TypeError = Unbound Name
-               | TypeMismatch MonoType MonoType
-               | UnCallable SrcExpr MonoType
+               | TypeMismatch Type Type
+               | UnCallable SrcExpr Type
                | Argc Int Int
 
 instance Pretty TypeError where
@@ -53,10 +51,10 @@ typecheck :: SrcExpr -> Either TypeError TypedExpr
 typecheck expr = fst <$> run (runError (runReader builtinCtx (check expr)))
 
 check :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
-      => SrcExpr -> Eff r (TypedExpr, MonoType)
+      => SrcExpr -> Eff r (TypedExpr, Type)
 check =
     \case Lambda [(param, Just domain)] body ->
-              local (ctxInsert param (MonoType domain))
+              local (ctxInsert param domain)
                     (do (typedBody, codomain) <- check body
                         pure ( Lambda [(param, domain)] typedBody
                              , TypeArrow domain codomain ))
@@ -68,43 +66,38 @@ check =
                          do typedArg <- checkAs domain arg
                             pure (App typedCallee [typedArg], codomain)
                      _ -> throwError $ UnCallable callee calleeType
-          PrimApp Add args -> checkArithmetic Add args $ typeCon @Text "Int"
-          PrimApp Sub args -> checkArithmetic Sub args $ typeCon @Text "Int"
-          PrimApp Mul args -> checkArithmetic Mul args $ typeCon @Text "Int"
-          PrimApp Div args -> checkArithmetic Div args $ typeCon @Text "Int"
-          PrimApp Eq args -> checkArithmetic Eq args $ typeCon @Text "Bool"
+          PrimApp op args -> checkArithmetic op args $ primopResType op
           Let decls body ->
               local (ctxInsertDecls decls)
                     (do typedDecls <- traverse checkDecl decls
                         (typedBody, bodyType) <- check body
                         pure (Let typedDecls typedBody, bodyType))
           If cond conseq alt ->
-              do typedCond <- checkAs (typeCon @Text "Bool") cond
+              do typedCond <- checkAs (PrimType TypeBool) cond
                  (typedConseq, resType) <- check conseq
                  typedAlt <- checkAs resType alt
                  pure (If typedCond typedConseq typedAlt, resType)
           Var name -> do maybeType <- ctxLookup name <$> ask
                          case maybeType of
-                             Just (MonoType t) -> pure (Var name, t)
-                             Just (TypeForAll _ _) -> error "type inference unimplemented"
+                             Just t -> pure (Var name, t)
                              Nothing -> throwError (Unbound name)
-          Const (IntConst n) -> pure (Const (IntConst n), typeCon @Text "Int")
+          Const (IntConst n) -> pure (Const (IntConst n), PrimType TypeInt)
 
 checkDecl :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
           => SrcDecl -> Eff r TypedDecl
-checkDecl (Val name (Just (MonoType t)) valueExpr) = Val name (MonoType t) <$> checkAs t valueExpr
+checkDecl (Val name (Just t) valueExpr) = Val name t <$> checkAs t valueExpr
 checkDecl (Val _ _ _) = error "type inference unimplemented"
 
 checkAs :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
-        => MonoType -> SrcExpr -> Eff r TypedExpr
+        => Type -> SrcExpr -> Eff r TypedExpr
 checkAs goalType expr = do (typed, t) <- check expr
-                           if t == goalType
+                           if t == goalType -- HACK
                            then pure typed
                            else throwError (TypeMismatch goalType t)
 
 checkArithmetic :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
-                => Primop -> [SrcExpr] -> MonoType -> Eff r (TypedExpr, MonoType)
-checkArithmetic op [l, r] t = do typedL <- checkAs (typeCon @Text "Int") l
-                                 typedR <- checkAs (typeCon @Text "Int") r
+                => Primop -> [SrcExpr] -> Type -> Eff r (TypedExpr, Type)
+checkArithmetic op [l, r] t = do typedL <- checkAs (PrimType TypeInt) l
+                                 typedR <- checkAs (PrimType TypeInt) r
                                  pure (PrimApp op [typedL, typedR], t)
 checkArithmetic _ args _ = throwError $ Argc 2 (length args)
