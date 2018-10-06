@@ -41,6 +41,6 @@
 
 ## Output Quality Assurance
 
-- [ ] Avoid generating ternary statements
+- [x] Avoid generating ternary statements
 - [ ] Use newer JS features (let scoping + ReferenceError, TCO) when requested via flag
 - [ ] Control structure restoration (see "No More Gotos: Decompilation Using ...")
