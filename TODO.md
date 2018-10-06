@@ -13,7 +13,7 @@
 - [x] CPS conversion
 - [ ] cont-stack 'State' xform
 - [ ] Expression tree restoration (single-use var inlining)
-- [ ] CPS -> JSExpr conversion
+- [x] CPS -> JSExpr conversion
 - [ ] Cheney on the MTA mini-runtime
 
 # QA

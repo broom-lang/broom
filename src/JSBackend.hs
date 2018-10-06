@@ -1,4 +1,4 @@
-module JSBackend (JSExpr, selectInstructions) where
+module JSBackend (JSExpr, selectInstrs) where
 
 import Data.Semigroup ((<>))
 import Data.Text.Prettyprint.Doc ( Pretty, pretty
@@ -7,7 +7,8 @@ import Data.Text.Prettyprint.Doc ( Pretty, pretty
 
 import Util (Name)
 import qualified Ast
-import Ast (Expr, Decl, Primop, Const)
+import Ast (Primop, Const)
+import qualified CPS
 
 data JSExpr = Function [Name] [JSStmt]
             | Call JSExpr [JSExpr]
@@ -24,29 +25,41 @@ data JSStmt = FwdDef [Name]
 
 data Binop = Eq | Add | Sub | Mul | Div
 
-selectInstructions :: Expr m t -> JSExpr
-selectInstructions =
-    \case Ast.Lambda [(param, _)] body -> Function [param] [Return (selectInstructions body)]
-          Ast.App callee args -> Call (selectInstructions callee) (fmap selectInstructions args)
-          Ast.PrimApp op [l, r] ->
-              BinApp (convertOp op) (selectInstructions l) (selectInstructions r)
-          Ast.Let decls body ->
-              Call (Function [] (fwdDecls decls :
-                                fmap selectDecl decls <>
-                                [Return (selectInstructions body)]))
-                   []
-          Ast.If cond conseq alt -> If (selectInstructions cond)
-                                       (selectInstructions conseq)
-                                       (selectInstructions alt)
-          Ast.Var name -> Ref name
-          Ast.Const c -> Const c
+class ISel c j where
+    selectInstrs :: c -> j
 
-fwdDecls :: [Decl m t] -> JSStmt
-fwdDecls decls = FwdDef (fmap declName decls)
-    where declName (Ast.Val name _ _) = name
+instance ISel CPS.Block [JSStmt] where
+    selectInstrs (CPS.Block stmts transfer) =
+        fmap selectInstrs stmts <> [Return $ selectInstrs transfer]
 
-selectDecl :: Decl m t -> JSStmt
-selectDecl (Ast.Val name _ valueExpr) = Assign name (selectInstructions valueExpr)
+instance ISel CPS.Block JSExpr where
+    selectInstrs block = Call (Function [] $ selectInstrs block) []
+
+-- FIXME: Emit code that throws on unbound (and rebound?) vars
+instance ISel CPS.Stmt JSStmt where
+    selectInstrs = \case
+        CPS.Def name _ (CPS.PrimApp Ast.VarNew []) -> FwdDef [name]
+        CPS.Def name _ valExpr -> Def name (selectInstrs valExpr)
+        CPS.Expr (CPS.PrimApp Ast.VarInit [CPS.Use name, valExpr]) ->
+            Assign name (selectInstrs valExpr)
+        CPS.Expr expr -> Expr (selectInstrs expr)
+
+instance ISel CPS.Expr JSExpr where
+    selectInstrs = \case
+        CPS.Fn params body -> Function (fmap fst params) (selectInstrs body)
+        CPS.PrimApp Ast.VarLoad [CPS.Use name] -> Ref name
+        CPS.PrimApp op [l, r] -> BinApp (convertOp op) (selectInstrs l) (selectInstrs r)
+        CPS.Atom a -> selectInstrs a
+
+instance ISel CPS.Transfer JSExpr where
+    selectInstrs = \case
+        CPS.App callee args -> Call (Ref callee) (fmap selectInstrs args)
+        CPS.If cond conseq alt ->
+            If (selectInstrs cond) (selectInstrs conseq) (selectInstrs alt)
+
+instance ISel CPS.Atom JSExpr where
+    selectInstrs = \case CPS.Use name -> Ref name
+                         CPS.Const c -> Const c
 
 convertOp :: Primop -> Binop
 convertOp =
@@ -66,6 +79,7 @@ instance Pretty JSExpr where
         pretty cond <+> "?" <+> pretty conseq <+> ":" <+> pretty alt
     pretty (Ref name) = pretty name
     pretty (Const (Ast.IntConst n)) = pretty n
+    pretty (Const Ast.UnitConst) = "undefined"
 
 instance Pretty JSStmt where
     pretty (FwdDef names) = "var" <+> hsep (punctuate comma (fmap pretty names)) <> ";"

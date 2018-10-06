@@ -63,11 +63,11 @@ data ContParamHint = Exactly Name Type
                    | Anon
 
 data Cont r = ContFn ContParamHint (Maybe Atom -> Eff r Transfer)
-            | TrivCont Name
+            | TrivCont Type Name
 
 contParamHint :: Cont r -> ContParamHint
 contParamHint = \case ContFn hint _ -> hint
-                      TrivCont _ -> Anon
+                      TrivCont t _ -> Temp t
 
 -- CPS Convert program
 
@@ -82,7 +82,7 @@ cpsConvert expr = do ctx <- emptyCtx
                      runReader builder (runReader ctx m)
     where m = do builder <- ask
                  halt <- gensym (convert @Text "halt")
-                 transfer <- doConvert (TrivCont halt) expr
+                 transfer <- doConvert (TrivCont (PrimType Ast.TypeInt) halt) expr
                  body <- buildBlock builder transfer
                  pure $ Fn [(halt, FnType [PrimType Ast.TypeInt])] body
 
@@ -102,7 +102,7 @@ doConvert cont = \case
            ret <- gensym (convert @Text "r")
            codomain <- typeOf body
            hasType ret codomain
-           body' <- convertToBlock (TrivCont ret) body
+           body' <- convertToBlock (TrivCont codomain ret) body
            continue cont $ Fn ((ret, FnType [codomain]) : params) body'
     Ast.App callee args ->
         do ret <- nominalizeCont cont
@@ -126,7 +126,7 @@ doConvert cont = \case
         in doConvert cont' expr
     Ast.Let [] body -> doConvert cont body
     Ast.If cond conseq alt ->
-        do k <- TrivCont <$> nominalizeCont cont
+        do k <- TrivCont (PrimType Ast.TypeBool) <$> nominalizeCont cont
            let cont' = ContFn (Temp $ PrimType Ast.TypeBool) $ \(Just aCond) ->
                    If aCond <$> convertToBlock k conseq <*> convertToBlock k alt
            doConvert cont' cond
@@ -145,9 +145,9 @@ continue :: ConvEffs s r => Cont r -> Expr -> Eff r Transfer
 continue cont expr = do maExpr <- trivialize (contParamHint cont) expr
                         case cont of
                             ContFn _ k -> k maExpr
-                            TrivCont k -> case maExpr of
-                                              Just aExpr -> pure (App k [aExpr])
-                                              Nothing -> pure (App k [Const UnitConst])
+                            TrivCont _ k -> case maExpr of
+                                                Just aExpr -> pure (App k [aExpr])
+                                                Nothing -> pure (App k [Const UnitConst])
 
 -- Reducing Expr:s to Atoms of Names
 
@@ -181,7 +181,7 @@ nominalizeCont = \case ContFn paramHint k ->
                               body <- buildBlock builder transfer
                               fromJust <$> nominalize (Temp $ FnType [paramType])
                                                       (Fn [(param, paramType)] body)
-                       TrivCont k -> pure k
+                       TrivCont _ k -> pure k
 
 -- Type inference
 
