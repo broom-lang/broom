@@ -12,6 +12,7 @@
 - [x] De-`rec` let:s
 - [x] CPS conversion
 - [ ] cont-stack 'State' xform
+- [ ] Safe point insertion
 - [ ] Expression tree restoration (single-use var inlining)
 - [x] CPS -> JSExpr conversion
 - [ ] Cheney on the MTA mini-runtime
