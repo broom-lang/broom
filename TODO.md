@@ -12,10 +12,12 @@
 - [x] De-`rec` let:s
 - [x] CPS conversion
 - [ ] cont-stack 'State' xform
-- [ ] Safe point insertion
+    * [x] Thread it through
+    * [ ] Implement delimcc (see "A Monadic Framework for Delimited Continuations")
+- [x] Safe point insertion
 - [ ] Expression tree restoration (single-use var inlining)
 - [x] CPS -> JSExpr conversion
-- [ ] Cheney on the MTA mini-runtime
+- [x] Cheney on the MTA mini-runtime
 
 # QA
 

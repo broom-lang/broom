@@ -18,6 +18,7 @@ import Alphatize (alphatize)
 import Linearize (linearize)
 import qualified CPS
 import CPSConvert (STEff, cpsConvert)
+import MetaCont (threadMetaCont)
 import qualified JSBackend as JS
 
 data CommandLine = CommandLine { dumpLinear :: Bool, dumpCPS :: Bool }
@@ -47,7 +48,8 @@ main = do CommandLine { dumpLinear, dumpCPS } <- Argv.execParser optParser
                                     Right linear ->
                                         if dumpLinear
                                         then pure $ Right $ pretty linear
-                                        else do cps :: CPS.Expr <- cpsConvert linear
+                                        else do cps0 :: CPS.Expr <- cpsConvert linear
+                                                cps <- threadMetaCont cps0
                                                 if dumpCPS
                                                 then pure $ Right $ pretty cps
                                                 else let js = JS.selectInstructions cps

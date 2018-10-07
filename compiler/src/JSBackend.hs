@@ -52,6 +52,8 @@ instance ISel CPS.Stmt JSStmt where
 instance ISel CPS.Expr JSExpr where
     selectInstrs = \case
         CPS.Fn params body -> Function (fmap fst params) (selectInstrs body)
+        CPS.PrimApp Ast.SafePoint args -> Call (Ref (convert ("safePoint" :: Text)))
+                                               (fmap selectInstrs args)
         CPS.PrimApp Ast.VarLoad [CPS.Use name] -> Ref name
         CPS.PrimApp op [l, r] -> BinApp (convertOp op) (selectInstrs l) (selectInstrs r)
         CPS.Atom a -> selectInstrs a

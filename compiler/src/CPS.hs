@@ -43,6 +43,7 @@ instance Convertible Ast.Type Type where
 
 primopResType :: Primop -> [Type] -> Type
 primopResType op argTypes = case op of
+    SafePoint -> PrimType Ast.TypeMetaCont
     VarNew -> case argTypes of
                   [argType] -> TypeApp (PrimType Ast.VarBox) argType
                   _ -> undefined

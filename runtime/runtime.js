@@ -21,18 +21,18 @@ var safePoint = function (f, metaCont) {
         return metaCont;
     } else {
         metaCont.frameCount = 0;
-        throw new Bounce(f, Array.prototype.slice.call(arguments, 1))
+        throw new Bounce(f, Array.prototype.slice.call(arguments))
     }
 };
 
-var halt = function (_, result) {
+var halt = function (_self, _mk, result) {
     throw new Land(result);
 };
 
 var run = function (f/*, ...args */) {
     var metaCont = new MetaContinuation();
     var args = Array.prototype.slice.call(arguments, 1);
-    var bounce = new Bounce(f, [metaCont, halt].concat(args));
+    var bounce = new Bounce(f, [f, metaCont, halt].concat(args));
     for (; /* ever */;) {
         try {
             bounce.callee.apply(this, bounce.arguments);

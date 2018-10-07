@@ -22,7 +22,7 @@ data Decl m t = Val Name t (Expr m t)
               | Expr (Expr m t)
               deriving (Data, Typeable)
 
-data Primop = VarNew | VarInit | VarLoad | Eq | Add | Sub | Mul | Div
+data Primop = SafePoint | VarNew | VarInit | VarLoad | Eq | Add | Sub | Mul | Div
             deriving (Show, Data, Typeable)
 
 data Const = IntConst Int
@@ -40,10 +40,12 @@ data PrimType = TypeInt
               | TypeBool
               | TypeUnit
               | VarBox
+              | TypeMetaCont
               deriving (Eq, Data, Typeable)
 
 primopResType :: Primop -> [Type] -> Type
 primopResType op argTypes = case op of
+    SafePoint -> PrimType TypeMetaCont
     VarNew -> case argTypes of
                   [argType] -> TypeApp (PrimType VarBox) argType
                   _ -> undefined
@@ -97,3 +99,4 @@ instance Pretty PrimType where
     pretty TypeBool = "Bool"
     pretty TypeUnit = "()"
     pretty VarBox = "__VarBox"
+    pretty TypeMetaCont = "__MetaCont"
