@@ -1,6 +1,8 @@
-module JSBackend (JSExpr, selectInstrs) where
+module JSBackend (JSExpr, selectInstructions) where
 
 import Data.Semigroup ((<>))
+import Data.Convertible (convert)
+import Data.Text (Text)
 import Data.Text.Prettyprint.Doc ( Doc, Pretty, pretty
                                  , (<+>), line, hsep, vsep, parens, braces, tupled, indent
                                  , comma, punctuate )
@@ -22,10 +24,14 @@ data JSStmt = FwdDef [Name]
             | Def Name JSExpr
             | Assign Name JSExpr
             | Expr JSExpr
-            | Return JSExpr
             | If JSExpr [JSStmt] [JSStmt]
 
 data Binop = Eq | Add | Sub | Mul | Div
+
+selectInstructions :: CPS.Expr -> JSStmt
+selectInstructions expr = Def (convert ("main" :: Text))
+                              (Call (Ref (convert ("wean" :: Text)))
+                                    [selectInstrs expr])
 
 class ISel c j where
     selectInstrs :: c -> j
@@ -52,7 +58,7 @@ instance ISel CPS.Expr JSExpr where
 
 instance ISel CPS.Transfer JSStmt where
     selectInstrs = \case
-        CPS.App callee args -> Return $ Call (Ref callee) (fmap selectInstrs args)
+        CPS.App callee args -> Expr $ Call (Ref callee) (fmap selectInstrs args)
         CPS.If cond conseq alt ->
             If (selectInstrs cond) (selectInstrs conseq) (selectInstrs alt)
 
@@ -82,7 +88,6 @@ instance Pretty JSStmt where
     pretty (Def name expr) = "var" <+> pretty name <+> "=" <+> pretty expr <> ";"
     pretty (Assign name expr) = pretty name <+> "=" <+> pretty expr <> ";"
     pretty (Expr expr) = pretty expr <> ";"
-    pretty (Return expr) = "return" <+> pretty expr <> ";"
     pretty (If cond conseq alt) =
         "if" <+> parens (pretty cond) <+> prettyBlock conseq <+> "else" <+> prettyBlock alt
 

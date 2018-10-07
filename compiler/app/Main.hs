@@ -50,7 +50,7 @@ main = do CommandLine { dumpLinear, dumpCPS } <- Argv.execParser optParser
                                         else do cps :: CPS.Expr <- cpsConvert linear
                                                 if dumpCPS
                                                 then pure $ Right $ pretty cps
-                                                else let js :: JS.JSExpr = JS.selectInstrs cps
+                                                else let js = JS.selectInstructions cps
                                                      in pure $ Right $ pretty js
                  in case runST $ runLift $ evalState (0 :: Int) m of
                         Left errDoc -> hPutDoc stderr errDoc
