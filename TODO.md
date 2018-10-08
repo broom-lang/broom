@@ -21,6 +21,12 @@
     * [x] Write in JS
     * [x] Embed into compiler output
 
+# UX
+
+- [ ] Refactor app/Main and make CLI usable
+- [ ] Source location tracking for errors
+- [ ] Replace Exc-style errors with Writer-style ones
+
 # QA
 
 - [ ] Type checkers for every IR

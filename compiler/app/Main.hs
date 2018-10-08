@@ -28,8 +28,8 @@ data CommandLine = CommandLine { dumpLinear :: Bool, dumpCPS :: Bool }
 optParser :: Argv.ParserInfo CommandLine
 optParser = info (parseArgs <**> helper)
                  (fullDesc
-                  <> header "Mulled compiler"
-                  <> progDesc "Compile Mulled code from stdin")
+                  <> header "Broom compiler"
+                  <> progDesc "Compile Broom code from stdin")
     where parseArgs = CommandLine <$> switch (long "lin" <> help "Dump linearized AST")
                                   <*> switch (long "cps" <> help "Dump CPS IR")
 
