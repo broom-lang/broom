@@ -18,12 +18,18 @@
 - [ ] Expression tree restoration (single-use var inlining)
 - [x] CPS -> JSExpr conversion
 - [x] Cheney on the MTA mini-runtime
+    * [x] Write in JS
+    * [x] Embed into compiler output
 
 # QA
 
 - [ ] Type checkers for every IR
 - [ ] Correct by construction (PrimApp is especially bad atm.)
 - [ ] Tests (QuickCheck)
+
+# Organization
+
+- [ ] Language.Broom
 
 # Maybe Later
 

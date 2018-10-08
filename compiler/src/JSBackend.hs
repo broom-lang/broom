@@ -29,9 +29,9 @@ data JSStmt = FwdDef [Name]
 data Binop = Eq | Add | Sub | Mul | Div
 
 selectInstructions :: CPS.Expr -> JSStmt
-selectInstructions expr = Def (convert ("main" :: Text))
-                              (Call (Ref (convert ("wean" :: Text)))
-                                    [selectInstrs expr])
+selectInstructions expr = -- Hardcoded wrapper that enabled node `require(...).main()`
+    Assign (convert ("module.exports.main" :: Text))
+           (Call (Ref (convert ("wean" :: Text))) [selectInstrs expr])
 
 class ISel c j where
     selectInstrs :: c -> j

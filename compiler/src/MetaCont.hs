@@ -24,6 +24,7 @@ instance ThreadMC Expr where
                              mk0 <- gensym (convert ("mk" :: Text))
                              mk <- gensym (convert ("mk" :: Text))
                              Block stmts transfer <- local (const mk) (doThreadMC body)
+                             -- HACK: self type is self referential :S
                              let params' = (self, FnType $ fmap snd params')
                                            : (mk0, PrimType TypeMetaCont)
                                            : params

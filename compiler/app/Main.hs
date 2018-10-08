@@ -1,8 +1,9 @@
 module Main where
 
 import System.IO (stderr)
+import qualified Data.Text.IO as TextIO
 import Data.Semigroup ((<>))
-import Data.Text.Prettyprint.Doc (Doc, pretty)
+import Data.Text.Prettyprint.Doc (Doc, pretty, line)
 import Data.Text.Prettyprint.Doc.Render.Text (putDoc, hPutDoc)
 import Control.Monad.ST.Strict (runST)
 import Control.Eff (Eff, Member)
@@ -20,6 +21,7 @@ import qualified CPS
 import CPSConvert (STEff, cpsConvert)
 import MetaCont (threadMetaCont)
 import qualified JSBackend as JS
+import Paths_mulled (getDataFileName)
 
 data CommandLine = CommandLine { dumpLinear :: Bool, dumpCPS :: Bool }
 
@@ -33,6 +35,7 @@ optParser = info (parseArgs <**> helper)
 
 main :: IO ()
 main = do CommandLine { dumpLinear, dumpCPS } <- Argv.execParser optParser
+          runtime <- TextIO.readFile =<< getDataFileName "../runtime/runtime.js"
           src <- getContents
           let expr = parser (alexScanTokens src)
           case typecheck expr of
@@ -53,7 +56,8 @@ main = do CommandLine { dumpLinear, dumpCPS } <- Argv.execParser optParser
                                                 if dumpCPS
                                                 then pure $ Right $ pretty cps
                                                 else let js = JS.selectInstructions cps
-                                                     in pure $ Right $ pretty js
+                                                     in pure $ Right (pretty runtime <> line
+                                                                      <> pretty js)
                  in case runST $ runLift $ evalState (0 :: Int) m of
                         Left errDoc -> hPutDoc stderr errDoc
                         Right exprDoc -> putDoc exprDoc
