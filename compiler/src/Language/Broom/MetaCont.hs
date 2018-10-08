@@ -1,4 +1,4 @@
-module MetaCont (threadMetaCont) where
+module Language.Broom.MetaCont (threadMetaCont) where
 
 import Data.Convertible (convert)
 import Data.Text (Text)
@@ -6,9 +6,9 @@ import Control.Eff (Eff, Member)
 import Control.Eff.Reader.Lazy (Reader, runReader, local, ask)
 import Control.Eff.State.Strict (State)
 
-import Util (Name, gensym)
-import Ast (PrimType(..), Primop(..))
-import CPS (Block(..), Stmt(..), Transfer(..), Expr(..), Atom(..), Type(..))
+import Language.Broom.Util (Name, gensym)
+import Language.Broom.Ast (PrimType(..), Primop(..))
+import Language.Broom.CPS (Block(..), Stmt(..), Transfer(..), Expr(..), Atom(..), Type(..))
 
 -- Thread the metacontinuation through, insert safepoints and self-inject fns/conts:
 threadMetaCont :: Member (State Int) r => Expr -> Eff r Expr

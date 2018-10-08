@@ -1,13 +1,14 @@
-module CPS (Block(..), Transfer(..), Stmt(..), Expr(..), Atom(..), Type(..), primopResType) where
+module Language.Broom.CPS ( Block(..), Transfer(..), Stmt(..), Expr(..), Atom(..), Type(..)
+                          , primopResType ) where
 
 import Data.Semigroup ((<>))
 import Data.Convertible (Convertible, safeConvert)
 import Data.Text.Prettyprint.Doc ( Pretty, pretty, line, (<+>), hsep, vsep, indent
                                  , parens, braces )
 
-import Util (Name)
-import qualified Ast
-import Ast (Primop(..), Const(..))
+import Language.Broom.Util (Name)
+import qualified Language.Broom.Ast as Ast
+import Language.Broom.Ast (Primop(..), Const(..))
 
 data Block = Block [Stmt] Transfer
 

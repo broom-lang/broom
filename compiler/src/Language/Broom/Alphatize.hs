@@ -1,6 +1,6 @@
 {-# LANGUAGE ConstraintKinds #-}
 
-module Alphatize (alphatize) where
+module Language.Broom.Alphatize (alphatize) where
 
 import Data.Foldable (foldl')
 import qualified Data.HashMap.Lazy as Env
@@ -11,9 +11,9 @@ import Control.Eff.Reader.Lazy (Reader, runReader, local, ask)
 import Control.Eff.State.Strict (State)
 import Control.Eff.Exception (Exc, runError, throwError)
 
-import Util (Name, gensym)
-import Ast (Expr(..), Decl(..))
-import Typecheck (TypedExpr, TypedDecl)
+import Language.Broom.Util (Name, gensym)
+import Language.Broom.Ast (Expr(..), Decl(..))
+import Language.Broom.Typecheck (TypedExpr, TypedDecl)
 
 type Env = Env.HashMap Name Name
 

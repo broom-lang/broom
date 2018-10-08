@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeApplications, ConstraintKinds #-}
 
-module CPSConvert (STEff, cpsConvert) where
+module Language.Broom.CPSConvert (STEff, cpsConvert) where
 
 import Data.Bifunctor (second)
 import Data.Foldable (traverse_)
@@ -15,11 +15,12 @@ import Control.Eff.State.Strict (State)
 import Control.Eff.Reader.Strict (Reader, runReader, local, ask)
 import Control.Eff.Lift (Lift, lift)
 
-import Util (Name, gensym)
-import qualified Ast
-import Ast (Const(..))
-import Typecheck (TypedExpr)
-import CPS (Block(..), Stmt(..), Expr(..), Transfer(..), Atom(..), Type(..), primopResType)
+import Language.Broom.Util (Name, gensym)
+import qualified Language.Broom.Ast as Ast
+import Language.Broom.Ast (Const(..))
+import Language.Broom.Typecheck (TypedExpr)
+import Language.Broom.CPS ( Block(..), Stmt(..), Expr(..), Transfer(..), Atom(..), Type(..)
+                          , primopResType )
 
 type STEff s r = SetMember Lift (Lift (ST s)) r
 

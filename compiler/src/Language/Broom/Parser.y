@@ -1,8 +1,8 @@
 {
-module Parser (parser) where
+module Language.Broom.Parser (parser) where
 
-import Lexer (Token(..))
-import Ast (Expr(..), Decl(..), Type(..), PrimType(..), Primop(..), Const(..))
+import Language.Broom.Lexer (Token(..))
+import Language.Broom.Ast (Expr(..), Decl(..), Type(..), PrimType(..), Primop(..), Const(..))
 }
 
 %name parser

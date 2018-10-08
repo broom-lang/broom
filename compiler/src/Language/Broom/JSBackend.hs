@@ -1,4 +1,4 @@
-module JSBackend (JSExpr, selectInstructions) where
+module Language.Broom.JSBackend (JSExpr, selectInstructions) where
 
 import Data.Semigroup ((<>))
 import Data.Convertible (convert)
@@ -7,10 +7,10 @@ import Data.Text.Prettyprint.Doc ( Doc, Pretty, pretty
                                  , (<+>), line, hsep, vsep, parens, braces, tupled, indent
                                  , comma, punctuate )
 
-import Util (Name)
-import qualified Ast
-import Ast (Primop, Const)
-import qualified CPS
+import Language.Broom.Util (Name)
+import qualified Language.Broom.Ast as Ast
+import Language.Broom.Ast (Primop, Const)
+import qualified Language.Broom.CPS as CPS
 
 -- FIXME: Correct by construction / more like the CPS types
 

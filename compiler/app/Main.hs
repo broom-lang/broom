@@ -12,16 +12,16 @@ import Control.Eff.State.Strict (State, evalState)
 import qualified Options.Applicative as Argv
 import Options.Applicative ((<**>), switch, long, help, info, helper, fullDesc, header, progDesc)
 
-import Lexer (alexScanTokens)
-import Parser (parser)
-import Typecheck (typecheck)
-import Alphatize (alphatize)
-import Linearize (linearize)
-import qualified CPS
-import CPSConvert (STEff, cpsConvert)
-import MetaCont (threadMetaCont)
-import qualified JSBackend as JS
-import Paths_mulled (getDataFileName)
+import Language.Broom.Lexer (alexScanTokens)
+import Language.Broom.Parser (parser)
+import Language.Broom.Typecheck (typecheck)
+import Language.Broom.Alphatize (alphatize)
+import Language.Broom.Linearize (linearize)
+import qualified Language.Broom.CPS as CPS
+import Language.Broom.CPSConvert (STEff, cpsConvert)
+import Language.Broom.MetaCont (threadMetaCont)
+import qualified Language.Broom.JSBackend as JS
+import Paths_broom (getDataFileName)
 
 data CommandLine = CommandLine { dumpLinear :: Bool, dumpCPS :: Bool }
 

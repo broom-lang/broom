@@ -1,6 +1,6 @@
 {-# LANGUAGE ConstraintKinds #-}
 
-module Linearize (Err, linearize) where
+module Language.Broom.Linearize (Err, linearize) where
 
 import qualified Data.HashTable.ST.Basic as Env
 import Data.Text.Prettyprint.Doc (Pretty, pretty, (<+>))
@@ -14,9 +14,9 @@ import Control.Eff.Exception (Exc, runError, throwError)
 import Control.Eff.Reader.Strict (Reader, runReader, ask)
 import Control.Eff.Lift (Lifted, runLift, lift)
 
-import Util (Name)
-import Ast(Expr(..), Decl(..), Primop(..), Type(..), PrimType(..))
-import Typecheck (TypedExpr, TypedDecl)
+import Language.Broom.Util (Name)
+import Language.Broom.Ast(Expr(..), Decl(..), Primop(..), Type(..), PrimType(..))
+import Language.Broom.Typecheck (TypedExpr, TypedDecl)
 
 data Err = Unbound Name
 

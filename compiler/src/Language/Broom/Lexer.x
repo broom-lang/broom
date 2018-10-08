@@ -1,10 +1,10 @@
 {
-module Lexer (Token(..), alexScanTokens) where
+module Language.Broom.Lexer (Token(..), alexScanTokens) where
 
 import Data.Convertible (convert)
 import Data.Text (pack)
 
-import Util (Name)
+import Language.Broom.Util (Name)
 }
 
 %wrapper "basic"

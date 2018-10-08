@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeApplications, DeriveGeneric #-}
 
-module Util (Name, fresh, gensym) where
+module Language.Broom.Util (Name, fresh, gensym) where
 
 import Data.Data (Data, Typeable)
 

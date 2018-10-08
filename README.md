@@ -1,3 +1,3 @@
-# mulled
+# Broom
 
-Learning about ML implementation.
+Effective, modular, functional programming language. WIP.

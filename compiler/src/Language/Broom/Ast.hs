@@ -1,4 +1,4 @@
-module Ast ( Expr(..), Decl(..), Primop(..), Const(..), Type(..), PrimType(..)
+module Language.Broom.Ast ( Expr(..), Decl(..), Primop(..), Const(..), Type(..), PrimType(..)
            , primopResType ) where
 
 import Data.Data (Data, Typeable)
@@ -7,7 +7,7 @@ import Data.Semigroup ((<>))
 import Data.Text.Prettyprint.Doc ( Pretty, pretty, (<+>), line, hsep, vsep, parens
                                  , align, indent)
 
-import Util (Name)
+import Language.Broom.Util (Name)
 
 data Expr m t = Lambda [(Name, m)] (Expr m t)
               | App (Expr m t) [Expr m t]

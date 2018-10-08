@@ -1,4 +1,4 @@
-module Typecheck (TypeError, TypedExpr, TypedDecl, typecheck) where
+module Language.Broom.Typecheck (TypeError, TypedExpr, TypedDecl, typecheck) where
 
 import Data.Foldable (foldl')
 import Data.Semigroup ((<>))
@@ -8,8 +8,9 @@ import Control.Eff (Eff, Member, run)
 import Control.Eff.Reader.Lazy (Reader, runReader, ask, local)
 import Control.Eff.Exception (Exc, runError, throwError)
 
-import Util (Name)
-import Ast (Expr(..), Decl(..), Const(..), Primop(..), Type(..), PrimType(..), primopResType)
+import Language.Broom.Util (Name)
+import Language.Broom.Ast ( Expr(..), Decl(..), Const(..), Primop(..), Type(..), PrimType(..)
+                          , primopResType )
 
 type SrcExpr = Expr (Maybe Type) (Maybe Type)
 type TypedExpr = Expr Type Type
