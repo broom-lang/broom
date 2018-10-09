@@ -14,6 +14,7 @@ data Expr t = Lambda Name t (Expr t)
             | PrimApp Primop [Expr t]
             | Let [Decl t] (Expr t)
             | If (Expr t) (Expr t) (Expr t)
+            | IsA (Expr t) Type
             | Var Name
             | Const Const
             deriving (Data, Typeable)
@@ -70,6 +71,7 @@ instance (Pretty t) => Pretty (Expr t) where
     pretty (If cond conseq alt) = align ("if" <+> pretty cond <> line <>
                                          "then" <+> pretty conseq <> line <>
                                          "else" <+> pretty alt)
+    pretty (IsA expr t) = pretty expr <> ":" <+> pretty t
     pretty (Var name) = pretty name
     pretty (Const c) = pretty c
 

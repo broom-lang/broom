@@ -129,6 +129,7 @@ doConvert cont = \case
            let cont' = ContFn (Temp $ PrimType Ast.TypeBool) $ \(Just aCond) ->
                    If aCond <$> convertToBlock k conseq <*> convertToBlock k alt
            doConvert cont' cond
+    Ast.IsA expr _ -> doConvert cont expr
     Ast.Var name -> continue cont (Atom (Use name))
     Ast.Const c -> continue cont (Atom (Const c))
 
@@ -213,5 +214,6 @@ instance CPSTypable s TypedExpr where
         Ast.PrimApp op args -> primopResType op <$> traverse typeOf args
         Ast.Let _ body -> typeOf body
         Ast.If _ conseq _ -> typeOf conseq
+        Ast.IsA _ t -> pure (convert t)
         Ast.Var name -> lookupType name
         Ast.Const c -> typeOf c

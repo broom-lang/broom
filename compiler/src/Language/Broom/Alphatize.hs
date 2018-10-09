@@ -14,6 +14,8 @@ import Language.Broom.Util (Name, gensym)
 import Language.Broom.Ast (Expr(..), Decl(..))
 import Language.Broom.Typecheck (TypedExpr, TypedDecl)
 
+-- TODO: Type variables
+
 type Env = Env.HashMap Name Name
 
 replace :: (Member (Reader Env) r, Member (Exc Err) r) => Name -> Eff r Name
@@ -44,6 +46,7 @@ alpha expr = case expr of
                          local (Env.union (Env.fromList (zip binders binders')))
                                (Let <$> traverse alphaDecl decls <*> alpha body)
     If _ _ _ -> descendM alpha expr
+    IsA _ _ -> descendM alpha expr
     Var name -> Var <$> replace name
     Const _ -> pure expr
 

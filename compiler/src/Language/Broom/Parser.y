@@ -45,7 +45,7 @@ import Language.Broom.Ast (Expr(..), Decl(..), Type(..), PrimType(..), Primop(..
 %%
 
 Expr : Nestable { $1 }
-     | Equal { $1 }
+     | Ascription { $1 }
 
 Nestable : fn var "=>" Expr { Lambda $2 Nothing $4 }
          | fn var ':' Type "=>" Expr { Lambda $2 (Just $4) $6 }
@@ -60,6 +60,9 @@ Declarations : Declaration Declarations { $1 : $2 }
 
 Declaration : val var '=' Expr { Val $2 Nothing $4 }
             | val var ':' Type '=' Expr { Val $2 (Just $4) $6 }
+
+Ascription : Equal ':' Type { IsA $1 $3 }
+           | Equal { $1 }
 
 Equal : Equal '==' Sum { PrimApp Eq [$1, $3] }
       | Sum { $1 }

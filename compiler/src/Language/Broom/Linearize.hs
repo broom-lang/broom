@@ -53,6 +53,7 @@ analyzeVars expr = case expr of
     PrimApp _ args -> traverse_ analyzeVars args
     Let decls body -> traverse_ analyzeDeclVars decls *> analyzeVars body
     If cond conseq alt -> analyzeVars cond *> analyzeVars conseq *> analyzeVars alt
+    IsA expr' _ -> analyzeVars expr'
     Var name -> updateBindKind Use name
     Const _ -> pure ()
 
@@ -87,6 +88,7 @@ linearized = transformM replace
                                                                            ([], []) stmts
                      pure $ Let (declares <> stmts') body
               If _ _ _ -> pure expr
+              IsA _ _ -> pure expr
               Var name -> emitLoad name
               Const _ -> pure expr
           linearizeStmt (creates, stmts) stmt @ (Val name t valueExpr) =
