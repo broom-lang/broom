@@ -2,7 +2,6 @@
 
 module Language.Broom.Alphatize (alphatize) where
 
-import Data.Foldable (foldl')
 import qualified Data.HashMap.Lazy as Env
 import Data.Generics.Uniplate.Data (descendM, descendBiM)
 import Data.Text.Prettyprint.Doc (Pretty, pretty, (<+>))
@@ -35,11 +34,9 @@ alphatize expr = runError $ runReader (Env.empty :: Env) (alpha expr)
 
 alpha :: AlphaEffs r => TypedExpr -> Eff r TypedExpr
 alpha expr = case expr of
-    Lambda params body -> do params' <- traverse genParam params
-                             local (\env -> foldl' (\e ((p, _), (p', _)) -> Env.insert p p' e)
-                                                   env (zip params params'))
-                                   (descendM alpha (Lambda params' body))
-                          where genParam (p, t) = (, t) <$> gensym p
+    Lambda param paramType body -> do param' <- gensym param
+                                      local (Env.insert param param')
+                                            (descendM alpha (Lambda param' paramType body))
     App _ _ -> descendM alpha expr
     PrimApp _ _ -> descendM alpha expr
     Let decls body -> do let binders = letBinders decls

@@ -48,9 +48,8 @@ updateBindKind occ name = do env :: Env s <- ask
 -- Collect the BindKinds of each variable into the `Env s` in the Reader:
 analyzeVars :: AnaEffs s r => TypedExpr -> Eff r ()
 analyzeVars expr = case expr of
-    Lambda params body -> do traverse_ (updateBindKind Param . fst) params
-                             analyzeVars body
-    App callee args -> analyzeVars callee *> traverse_ analyzeVars args
+    Lambda param _ body -> updateBindKind Param param *> analyzeVars body
+    App callee arg -> analyzeVars callee *> analyzeVars arg
     PrimApp _ args -> traverse_ analyzeVars args
     Let decls body -> traverse_ analyzeDeclVars decls *> analyzeVars body
     If cond conseq alt -> analyzeVars cond *> analyzeVars conseq *> analyzeVars alt
@@ -80,7 +79,7 @@ emitLoad name = bindKindOf name >>= \case
 linearized :: ApplyEffs s r => TypedExpr -> Eff r TypedExpr
 linearized = transformM replace
     where replace expr = case expr of
-              Lambda _ _ -> pure expr
+              Lambda _ _ _ -> pure expr
               App _ _ -> pure expr
               PrimApp _ _ -> pure expr
               Let stmts body ->

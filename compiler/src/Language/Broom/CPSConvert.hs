@@ -2,8 +2,6 @@
 
 module Language.Broom.CPSConvert (STEff, cpsConvert) where
 
-import Data.Bifunctor (second)
-import Data.Foldable (traverse_)
 import Data.Convertible (convert)
 import Data.Maybe (fromJust)
 import Data.Text (Text)
@@ -97,21 +95,21 @@ convertToBlock cont expr = do builder <- emptyBlockBuilder
 
 doConvert :: ConvEffs s r => Cont r -> TypedExpr -> Eff r Transfer
 doConvert cont = \case
-    Ast.Lambda parameters body ->
-        do let params = fmap (second convert) parameters
-           traverse_ (\(name, t) -> hasType name t) params
+    Ast.Lambda param paramType body ->
+        do let paramType' = convert paramType
+           hasType param paramType'
            ret <- gensym (convert @Text "r")
            codomain <- typeOf body
            hasType ret codomain
            body' <- convertToBlock (TrivCont codomain ret) body
-           continue cont $ Fn ((ret, FnType [codomain]) : params) body'
-    Ast.App callee args ->
+           continue cont $ Fn [(ret, FnType [codomain]), (param, paramType')] body'
+    Ast.App callee arg ->
         do ret <- nominalizeCont cont
            calleeType <- typeOf callee
            let cont' = ContFn (Temp calleeType) $ \(Just aCallee) ->
                    do nCallee <- fromJust <$> nominalize (Temp calleeType) (Atom aCallee)
                       let k = \aArgs -> pure $ App nCallee (Use ret : aArgs)
-                      doConvertArgs k args
+                      doConvertArgs k [arg]
            doConvert cont' callee
     Ast.PrimApp op args ->
         let k = \aArgs -> continue cont (PrimApp op aArgs)
@@ -184,6 +182,7 @@ nominalizeCont = \case ContFn paramHint k ->
                                                       (Fn [(param, paramType)] body)
                        TrivCont _ k -> pure k
 
+-- FIXME: Make this unnecessary by storing more types into the Ast in Typecheck:
 -- Type inference
 
 class CPSTypable s a where
@@ -205,9 +204,9 @@ instance CPSTypable s Const where
 -- OPTIMIZE
 instance CPSTypable s TypedExpr where
     typeOf = \case
-        Ast.Lambda params body ->
+        Ast.Lambda _ paramType body ->
             do codomain <- typeOf body
-               pure $ FnType (FnType [codomain] : map (convert . snd) params)
+               pure $ FnType [FnType [codomain], (convert paramType)]
         Ast.App callee _ -> typeOf callee >>= \case
             FnType (FnType [codomain] : _) -> pure codomain
             _ -> error "unreachable"

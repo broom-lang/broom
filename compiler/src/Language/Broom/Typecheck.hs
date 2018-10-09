@@ -12,10 +12,10 @@ import Language.Broom.Util (Name)
 import Language.Broom.Ast ( Expr(..), Decl(..), Const(..), Primop(..), Type(..), PrimType(..)
                           , primopResType )
 
-type SrcExpr = Expr (Maybe Type) (Maybe Type)
-type TypedExpr = Expr Type Type
-type SrcDecl = Decl (Maybe Type) (Maybe Type)
-type TypedDecl = Decl Type Type
+type SrcExpr = Expr (Maybe Type)
+type TypedExpr = Expr Type
+type SrcDecl = Decl (Maybe Type)
+type TypedDecl = Decl Type
 
 data TypeError = Unbound Name
                | TypeMismatch Type Type
@@ -54,18 +54,17 @@ typecheck expr = fst <$> run (runError (runReader builtinCtx (check expr)))
 check :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
       => SrcExpr -> Eff r (TypedExpr, Type)
 check =
-    \case Lambda [(param, Just domain)] body ->
+    \case Lambda param (Just domain) body ->
               local (ctxInsert param domain)
                     (do (typedBody, codomain) <- check body
-                        pure ( Lambda [(param, domain)] typedBody
-                             , TypeArrow domain codomain ))
-          Lambda _ _ -> error "type inference unimplemented"
-          App callee [arg] ->
+                        pure (Lambda param domain typedBody, TypeArrow domain codomain))
+          Lambda _ Nothing _ -> error "type inference unimplemented"
+          App callee arg ->
               do (typedCallee, calleeType) <- check callee
                  case calleeType of
                      TypeArrow domain codomain ->
                          do typedArg <- checkAs domain arg
-                            pure (App typedCallee [typedArg], codomain)
+                            pure (App typedCallee typedArg, codomain)
                      _ -> throwError $ UnCallable callee calleeType
           -- OPTIMIZE:
           PrimApp op args -> do argTypes <- map snd <$> traverse check args
