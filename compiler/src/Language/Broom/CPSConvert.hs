@@ -7,6 +7,7 @@ import Data.Maybe (fromJust)
 import Data.Text (Text)
 import Data.STRef.Strict (STRef, newSTRef, modifySTRef, readSTRef)
 import qualified Data.HashTable.ST.Basic as Ctx
+import Data.Text.Prettyprint.Doc (pretty)
 import Control.Monad.ST.Strict (ST)
 import Control.Eff (Eff, Member, SetMember)
 import Control.Eff.State.Strict (State)
@@ -17,8 +18,7 @@ import Language.Broom.Util (Name, gensym)
 import qualified Language.Broom.Ast as Ast
 import Language.Broom.Ast (Const(..))
 import Language.Broom.Typecheck (TypedExpr)
-import Language.Broom.CPS ( Block(..), Stmt(..), Expr(..), Transfer(..), Atom(..), Type(..)
-                          , primopResType )
+import Language.Broom.CPS (Block(..), Stmt(..), Expr(..), Transfer(..), Atom(..), Type(..))
 
 type STEff s r = SetMember Lift (Lift (ST s)) r
 
@@ -189,31 +189,17 @@ nominalizeCont = \case ContFn paramHint k ->
 class CPSTypable s a where
     typeOf :: (STEff s r, Member (Reader (Ctx s)) r) => a -> Eff r Type
 
-instance CPSTypable s Expr where
-    typeOf = \case Fn params _ -> pure $ FnType (fmap snd params)
-                   PrimApp op args -> primopResType op <$> traverse typeOf args
-                   Atom a -> typeOf a
-
-instance CPSTypable s Atom where
-    typeOf = \case Use name -> lookupType name
-                   Const c -> typeOf c
-
 instance CPSTypable s Const where
     typeOf = \case IntConst _ -> pure $ PrimType Ast.TypeInt
                    UnitConst -> pure $ PrimType Ast.TypeUnit
 
--- OPTIMIZE
 instance CPSTypable s TypedExpr where
     typeOf = \case
         Ast.Lambda _ paramType body ->
             do codomain <- typeOf body
                pure $ FnType [FnType [codomain], (convert paramType)]
-        Ast.App callee _ -> typeOf callee >>= \case
-            FnType (FnType [codomain] : _) -> pure codomain
-            _ -> error "unreachable"
-        Ast.PrimApp op args -> primopResType op <$> traverse typeOf args
         Ast.Let _ body -> typeOf body
-        Ast.If _ conseq _ -> typeOf conseq
         Ast.IsA _ t -> pure (convert t)
         Ast.Var name -> lookupType name
         Ast.Const c -> typeOf c
+        expr -> error $ "unreachable: " <> show (pretty expr)

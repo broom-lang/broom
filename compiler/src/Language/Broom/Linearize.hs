@@ -72,7 +72,7 @@ bindKindOf name = ask >>= lift . flip Env.lookup name >>= \case
 emitLoad :: ApplyEffs s r => Name -> Eff r TypedExpr
 emitLoad name = bindKindOf name >>= \case
     Linear -> pure (Var name)
-    Recursive -> pure (PrimApp VarLoad [Var name])
+    Recursive -> pure $ IsA (PrimApp VarLoad [Var name]) (PrimType TypeInt) -- FIXME
 
 -- OPTIMIZE: "Fixing Letrec" or some trivial variant thereof.
 -- Transform `Let`:s so that `BindKind.Recursive` variables get allocated, initialized and
