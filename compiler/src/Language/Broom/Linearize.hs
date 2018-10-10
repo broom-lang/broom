@@ -15,22 +15,23 @@ import Control.Eff.Reader.Strict (Reader, runReader, ask)
 import Control.Eff.Lift (Lifted, runLift, lift)
 
 import Language.Broom.Util (Name)
-import Language.Broom.Ast(Expr(..), Decl(..), Primop(..), Type(..), PrimType(..))
-import Language.Broom.Typecheck (TypedExpr, TypedDecl)
+import Language.Broom.Cst (Primop(..), Type(..), PrimType(..))
+import qualified Language.Broom.Ast as Ast
+import Language.Broom.Ast (Expr(..), Stmt(..))
 
 data Err = Unbound Name
 
 instance Pretty Err where
     pretty (Unbound name) = "Unbound:" <+> pretty name
 
-linearize :: TypedExpr -> Either Err TypedExpr
+linearize :: Expr -> Either Err Expr
 linearize expr = runST $ runLift $ do env :: Env s <- lift Env.new
                                       runReader env (analyzeVars expr)
                                       runError $ runReader env (linearized expr)
 
 data BindKind = Linear | Recursive
 
-data Occurrence = Param | Declare | Use
+data Occurrence = Param | Stmtare | Use
 
 type Env s = Env.HashTable s Name BindKind
 
@@ -41,25 +42,25 @@ updateBindKind occ name = do env :: Env s <- ask
                              lift $ Env.mutate env name ((, ()) . updated)
     where updated Nothing = Just $ case occ of
                                        Param -> Linear
-                                       Declare -> Linear
+                                       Stmtare -> Linear
                                        Use -> Recursive
           updated old = old
 
 -- Collect the BindKinds of each variable into the `Env s` in the Reader:
-analyzeVars :: AnaEffs s r => TypedExpr -> Eff r ()
+analyzeVars :: AnaEffs s r => Expr -> Eff r ()
 analyzeVars expr = case expr of
     Lambda param _ body -> updateBindKind Param param *> analyzeVars body
     App callee arg -> analyzeVars callee *> analyzeVars arg
     PrimApp _ args -> traverse_ analyzeVars args
-    Let decls body -> traverse_ analyzeDeclVars decls *> analyzeVars body
+    Let decls body -> traverse_ analyzeStmtVars decls *> analyzeVars body
     If cond conseq alt -> analyzeVars cond *> analyzeVars conseq *> analyzeVars alt
     IsA expr' _ -> analyzeVars expr'
     Var name -> updateBindKind Use name
     Const _ -> pure ()
 
-analyzeDeclVars :: AnaEffs s r => TypedDecl -> Eff r ()
-analyzeDeclVars = \case
-    Val name _ valueExpr -> analyzeVars valueExpr *> updateBindKind Declare name
+analyzeStmtVars :: AnaEffs s r => Ast.Stmt -> Eff r ()
+analyzeStmtVars = \case
+    Val name _ valueExpr -> analyzeVars valueExpr *> updateBindKind Stmtare name
     Expr expr -> analyzeVars expr
 
 type ApplyEffs s r = (Member (Exc Err) r, Member (Reader (Env s)) r, Lifted (ST s) r)
@@ -69,7 +70,7 @@ bindKindOf name = ask >>= lift . flip Env.lookup name >>= \case
     Just bindKind -> pure bindKind
     Nothing -> throwError $ Unbound name
 
-emitLoad :: ApplyEffs s r => Name -> Eff r TypedExpr
+emitLoad :: ApplyEffs s r => Name -> Eff r Expr
 emitLoad name = bindKindOf name >>= \case
     Linear -> pure (Var name)
     Recursive -> pure $ IsA (PrimApp VarLoad [Var name]) (PrimType TypeInt) -- FIXME
@@ -77,7 +78,7 @@ emitLoad name = bindKindOf name >>= \case
 -- OPTIMIZE: "Fixing Letrec" or some trivial variant thereof.
 -- Transform `Let`:s so that `BindKind.Recursive` variables get allocated, initialized and
 -- dereferenced explicitly:
-linearized :: ApplyEffs s r => TypedExpr -> Eff r TypedExpr
+linearized :: ApplyEffs s r => Expr -> Eff r Expr
 linearized = transformM replace
     where replace expr = case expr of
               Lambda _ _ _ -> pure expr

@@ -8,8 +8,8 @@ import Data.Text.Prettyprint.Doc ( Doc, Pretty, pretty
                                  , comma, punctuate )
 
 import Language.Broom.Util (Name)
-import qualified Language.Broom.Ast as Ast
-import Language.Broom.Ast (Primop, Const)
+import qualified Language.Broom.Cst as Cst
+import Language.Broom.Cst (Primop, Const)
 import qualified Language.Broom.CPS as CPS
 
 -- FIXME: Correct by construction / more like the CPS types
@@ -43,18 +43,18 @@ instance ISel CPS.Block [JSStmt] where
 -- FIXME: Emit code that throws on unbound (and rebound?) vars
 instance ISel CPS.Stmt JSStmt where
     selectInstrs = \case
-        CPS.Def name _ (CPS.PrimApp Ast.VarNew []) -> FwdDef [name]
+        CPS.Def name _ (CPS.PrimApp Cst.VarNew []) -> FwdDef [name]
         CPS.Def name _ valExpr -> Def name (selectInstrs valExpr)
-        CPS.Expr (CPS.PrimApp Ast.VarInit [CPS.Use name, valExpr]) ->
+        CPS.Expr (CPS.PrimApp Cst.VarInit [CPS.Use name, valExpr]) ->
             Assign name (selectInstrs valExpr)
         CPS.Expr expr -> Expr (selectInstrs expr)
 
 instance ISel CPS.Expr JSExpr where
     selectInstrs = \case
         CPS.Fn params body -> Function (fmap fst params) (selectInstrs body)
-        CPS.PrimApp Ast.SafePoint args -> Call (Ref (convert ("safePoint" :: Text)))
+        CPS.PrimApp Cst.SafePoint args -> Call (Ref (convert ("safePoint" :: Text)))
                                                (fmap selectInstrs args)
-        CPS.PrimApp Ast.VarLoad [CPS.Use name] -> Ref name
+        CPS.PrimApp Cst.VarLoad [CPS.Use name] -> Ref name
         CPS.PrimApp op [l, r] -> BinApp (convertOp op) (selectInstrs l) (selectInstrs r)
         CPS.Atom a -> selectInstrs a
 
@@ -70,11 +70,11 @@ instance ISel CPS.Atom JSExpr where
 
 convertOp :: Primop -> Binop
 convertOp =
-    \case Ast.Eq -> Eq
-          Ast.Add -> Add
-          Ast.Sub -> Sub
-          Ast.Mul -> Mul
-          Ast.Div -> Div
+    \case Cst.Eq -> Eq
+          Cst.Add -> Add
+          Cst.Sub -> Sub
+          Cst.Mul -> Mul
+          Cst.Div -> Div
 
 instance Pretty JSExpr where
     pretty (Function params stmts) =
@@ -82,8 +82,8 @@ instance Pretty JSExpr where
     pretty (Call callee args) = pretty callee <> tupled (fmap pretty args)
     pretty (BinApp op l r) = pretty l <+> pretty op <+> pretty r
     pretty (Ref name) = pretty name
-    pretty (Const (Ast.IntConst n)) = pretty n
-    pretty (Const Ast.UnitConst) = "undefined"
+    pretty (Const (Cst.IntConst n)) = pretty n
+    pretty (Const Cst.UnitConst) = "undefined"
 
 instance Pretty JSStmt where
     pretty (FwdDef names) = "var" <+> hsep (punctuate comma (fmap pretty names)) <> ";"

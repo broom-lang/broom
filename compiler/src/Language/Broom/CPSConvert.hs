@@ -15,9 +15,9 @@ import Control.Eff.Reader.Strict (Reader, runReader, local, ask)
 import Control.Eff.Lift (Lift, lift)
 
 import Language.Broom.Util (Name, gensym)
+import qualified Language.Broom.Cst as Cst
+import Language.Broom.Cst (Const(..))
 import qualified Language.Broom.Ast as Ast
-import Language.Broom.Ast (Const(..))
-import Language.Broom.Typecheck (TypedExpr)
 import Language.Broom.CPS (Block(..), Stmt(..), Expr(..), Transfer(..), Atom(..), Type(..))
 
 type STEff s r = SetMember Lift (Lift (ST s)) r
@@ -75,25 +75,25 @@ type ConvEffs s r = ( Member (State Int) r
                     , Member (Reader (BlockBuilder s)) r
                     , SetMember Lift (Lift (ST s)) r )
 
-cpsConvert :: (STEff s r, Member (State Int) r) => TypedExpr -> Eff r Expr
+cpsConvert :: (STEff s r, Member (State Int) r) => Ast.Expr -> Eff r Expr
 cpsConvert expr = do ctx <- emptyCtx
                      builder <- emptyBlockBuilder
                      runReader builder (runReader ctx m)
     where m = do builder <- ask
                  halt <- gensym (convert @Text "halt")
-                 transfer <- doConvert (TrivCont (PrimType Ast.TypeInt) halt) expr
+                 transfer <- doConvert (TrivCont (PrimType Cst.TypeInt) halt) expr
                  body <- buildBlock builder transfer
-                 pure $ Fn [(halt, FnType [PrimType Ast.TypeInt])] body
+                 pure $ Fn [(halt, FnType [PrimType Cst.TypeInt])] body
 
 -- Implementation of CPS conversion
 
-convertToBlock :: ConvEffs s r => Cont r -> TypedExpr -> Eff r Block
+convertToBlock :: ConvEffs s r => Cont r -> Ast.Expr -> Eff r Block
 convertToBlock cont expr = do builder <- emptyBlockBuilder
                               transfer <- local (const builder)
                                                 (doConvert cont expr)
                               buildBlock builder transfer
 
-doConvert :: ConvEffs s r => Cont r -> TypedExpr -> Eff r Transfer
+doConvert :: ConvEffs s r => Cont r -> Ast.Expr -> Eff r Transfer
 doConvert cont = \case
     Ast.Lambda param paramType body ->
         do let paramType' = convert paramType
@@ -125,15 +125,15 @@ doConvert cont = \case
         in doConvert cont' expr
     Ast.Let [] body -> doConvert cont body
     Ast.If cond conseq alt ->
-        do k <- TrivCont (PrimType Ast.TypeBool) <$> nominalizeCont cont
-           let cont' = ContFn (Temp $ PrimType Ast.TypeBool) $ \(Just aCond) ->
+        do k <- TrivCont (PrimType Cst.TypeBool) <$> nominalizeCont cont
+           let cont' = ContFn (Temp $ PrimType Cst.TypeBool) $ \(Just aCond) ->
                    If aCond <$> convertToBlock k conseq <*> convertToBlock k alt
            doConvert cont' cond
     Ast.IsA expr _ -> doConvert cont expr
     Ast.Var name -> continue cont (Atom (Use name))
     Ast.Const c -> continue cont (Atom (Const c))
 
-doConvertArgs :: ConvEffs s r => ([Atom] -> Eff r Transfer) -> [TypedExpr] -> Eff r Transfer
+doConvertArgs :: ConvEffs s r => ([Atom] -> Eff r Transfer) -> [Ast.Expr] -> Eff r Transfer
 doConvertArgs cont arguments = loop arguments []
     where loop [] aArgs = cont (reverse aArgs)
           loop (arg : args) aArgs = do argType <- typeOf arg
@@ -173,7 +173,7 @@ nominalizeCont = \case ContFn paramHint k ->
                            do (param, paramType) <- case paramHint of
                                   Exactly name t -> pure (name, t)
                                   Temp t -> (, t) <$> gensym (convert @Text "x")
-                                  Anon -> (, PrimType Ast.TypeUnit) <$> gensym (convert @Text "_")
+                                  Anon -> (, PrimType Cst.TypeUnit) <$> gensym (convert @Text "_")
                               hasType param paramType
                               builder <- emptyBlockBuilder
                               transfer <- local (const builder)
@@ -190,10 +190,10 @@ class CPSTypable s a where
     typeOf :: (STEff s r, Member (Reader (Ctx s)) r) => a -> Eff r Type
 
 instance CPSTypable s Const where
-    typeOf = \case IntConst _ -> pure $ PrimType Ast.TypeInt
-                   UnitConst -> pure $ PrimType Ast.TypeUnit
+    typeOf = \case IntConst _ -> pure $ PrimType Cst.TypeInt
+                   UnitConst -> pure $ PrimType Cst.TypeUnit
 
-instance CPSTypable s TypedExpr where
+instance CPSTypable s Ast.Expr where
     typeOf = \case
         Ast.Lambda _ paramType body ->
             do codomain <- typeOf body

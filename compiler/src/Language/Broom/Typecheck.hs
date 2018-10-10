@@ -1,4 +1,4 @@
-module Language.Broom.Typecheck (TypeError, TypedExpr, TypedDecl, typecheck) where
+module Language.Broom.Typecheck (TypeError, Expr, Stmt, typecheck) where
 
 import Data.Foldable (foldl')
 import Data.Semigroup ((<>))
@@ -9,17 +9,13 @@ import Control.Eff.Reader.Lazy (Reader, runReader, ask, local)
 import Control.Eff.Exception (Exc, runError, throwError)
 
 import Language.Broom.Util (Name)
-import Language.Broom.Ast ( Expr(..), Decl(..), Const(..), Primop(..), Type(..), PrimType(..)
-                          , primopResType )
-
-type SrcExpr = Expr (Maybe Type)
-type TypedExpr = Expr Type
-type SrcDecl = Decl (Maybe Type)
-type TypedDecl = Decl Type
+import qualified Language.Broom.Cst as Cst
+import Language.Broom.Cst (Const(..), Primop(..), Type(..), PrimType(..), primopResType)
+import Language.Broom.Ast (Expr(..), Stmt(..))
 
 data TypeError = Unbound Name
                | TypeMismatch Type Type
-               | UnCallable SrcExpr Type
+               | UnCallable Cst.Expr Type
                | Argc Int Int
 
 instance Pretty TypeError where
@@ -39,28 +35,28 @@ builtinCtx = Ctx HashMap.empty
 ctxInsert :: Name -> Type -> Ctx -> Ctx
 ctxInsert name t (Ctx bindings) = Ctx (HashMap.insert name t bindings)
 
-ctxInsertDecls :: [SrcDecl] -> Ctx -> Ctx
-ctxInsertDecls decls ctx = foldl' insertDecl ctx decls
-    where insertDecl kvs (Val name (Just t) _) = ctxInsert name t kvs
-          insertDecl _ (Val _ Nothing _) = error "type inference unimplemented"
-          insertDecl kvs (Expr _) = kvs
+ctxInsertStmts :: [Cst.Stmt] -> Ctx -> Ctx
+ctxInsertStmts decls ctx = foldl' insertStmt ctx decls
+    where insertStmt kvs (Cst.Val name (Just t) _) = ctxInsert name t kvs
+          insertStmt _ (Cst.Val _ Nothing _) = error "type inference unimplemented"
+          insertStmt kvs (Cst.Expr _) = kvs
 
 ctxLookup :: Name -> Ctx -> Maybe Type
 ctxLookup name (Ctx bindings) = HashMap.lookup name bindings
 
-typecheck :: SrcExpr -> Either TypeError TypedExpr
+typecheck :: Cst.Expr -> Either TypeError Expr
 typecheck expr = fst <$> run (runError (runReader builtinCtx (check expr)))
 
 check :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
-      => SrcExpr -> Eff r (TypedExpr, Type)
+      => Cst.Expr -> Eff r (Expr, Type)
 check =
-    \case Lambda param (Just domain) body ->
+    \case Cst.Lambda param (Just domain) body ->
               local (ctxInsert param domain)
                     (do (typedBody, codomain) <- check body
                         pure ( Lambda param domain (IsA typedBody codomain)
                              , TypeArrow domain codomain ))
-          Lambda _ Nothing _ -> error "type inference unimplemented"
-          App callee arg ->
+          Cst.Lambda _ Nothing _ -> error "type inference unimplemented"
+          Cst.App callee arg ->
               do (typedCallee, calleeType) <- check callee
                  case calleeType of
                      TypeArrow domain codomain ->
@@ -68,41 +64,41 @@ check =
                             pure (IsA (App typedCallee typedArg) codomain, codomain)
                      _ -> throwError $ UnCallable callee calleeType
           -- OPTIMIZE:
-          PrimApp op args -> do argTypes <- map snd <$> traverse check args
-                                checkArithmetic op args (primopResType op argTypes)
-          Let decls body ->
-              local (ctxInsertDecls decls)
-                    (do typedDecls <- traverse checkDecl decls
+          Cst.PrimApp op args -> do argTypes <- map snd <$> traverse check args
+                                    checkArithmetic op args (primopResType op argTypes)
+          Cst.Let decls body ->
+              local (ctxInsertStmts decls)
+                    (do typedStmts <- traverse checkStmt decls
                         (typedBody, bodyType) <- check body
-                        pure (Let typedDecls (IsA typedBody bodyType), bodyType))
-          If cond conseq alt ->
+                        pure (Let typedStmts (IsA typedBody bodyType), bodyType))
+          Cst.If cond conseq alt ->
               do typedCond <- checkAs (PrimType TypeBool) cond
                  (typedConseq, resType) <- check conseq
                  typedAlt <- checkAs resType alt
                  pure (IsA (If typedCond typedConseq typedAlt) resType, resType)
-          IsA expr t -> (,t) . flip IsA t <$> checkAs t expr
-          Var name -> do maybeType <- ctxLookup name <$> ask
-                         case maybeType of
-                             Just t -> pure (Var name, t)
-                             Nothing -> throwError (Unbound name)
-          Const (IntConst n) -> pure (Const (IntConst n), PrimType TypeInt)
-          Const UnitConst -> pure (Const UnitConst, PrimType TypeUnit)
+          Cst.IsA expr t -> (,t) . flip IsA t <$> checkAs t expr
+          Cst.Var name -> do maybeType <- ctxLookup name <$> ask
+                             case maybeType of
+                                 Just t -> pure (Var name, t)
+                                 Nothing -> throwError (Unbound name)
+          Cst.Const (IntConst n) -> pure (Const (IntConst n), PrimType TypeInt)
+          Cst.Const UnitConst -> pure (Const UnitConst, PrimType TypeUnit)
 
-checkDecl :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
-          => SrcDecl -> Eff r TypedDecl
-checkDecl (Val name (Just t) valueExpr) = Val name t <$> checkAs t valueExpr
-checkDecl (Val _ _ _) = error "type inference unimplemented"
-checkDecl (Expr expr) = Expr <$> checkAs (PrimType TypeUnit) expr
+checkStmt :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
+          => Cst.Stmt -> Eff r Stmt
+checkStmt (Cst.Val name (Just t) valueExpr) = Val name t <$> checkAs t valueExpr
+checkStmt (Cst.Val _ _ _) = error "type inference unimplemented"
+checkStmt (Cst.Expr expr) = Expr <$> checkAs (PrimType TypeUnit) expr
 
 checkAs :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
-        => Type -> SrcExpr -> Eff r TypedExpr
+        => Type -> Cst.Expr -> Eff r Expr
 checkAs goalType expr = do (typed, t) <- check expr
                            if t == goalType -- HACK
                            then pure typed
                            else throwError (TypeMismatch goalType t)
 
 checkArithmetic :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
-                => Primop -> [SrcExpr] -> Type -> Eff r (TypedExpr, Type)
+                => Primop -> [Cst.Expr] -> Type -> Eff r (Expr, Type)
 checkArithmetic op [l, r] t = do typedL <- checkAs (PrimType TypeInt) l
                                  typedR <- checkAs (PrimType TypeInt) r
                                  pure (IsA (PrimApp op [typedL, typedR]) t, t)

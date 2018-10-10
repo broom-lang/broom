@@ -7,7 +7,7 @@ import Control.Eff.Reader.Lazy (Reader, runReader, local, ask)
 import Control.Eff.State.Strict (State)
 
 import Language.Broom.Util (Name, gensym)
-import Language.Broom.Ast (PrimType(..), Primop(..))
+import Language.Broom.Cst (PrimType(..), Primop(..))
 import Language.Broom.CPS (Block(..), Stmt(..), Transfer(..), Expr(..), Atom(..), Type(..))
 
 -- Thread the metacontinuation through, insert safepoints and self-inject fns/conts:

@@ -2,7 +2,7 @@
 module Language.Broom.Parser (parser) where
 
 import Language.Broom.Lexer (Token(..))
-import Language.Broom.Ast (Expr(..), Decl(..), Type(..), PrimType(..), Primop(..), Const(..))
+import Language.Broom.Cst (Expr(..), Stmt(..), Type(..), PrimType(..), Primop(..), Const(..))
 }
 
 %name parser
@@ -49,16 +49,16 @@ Expr : Nestable { $1 }
 
 Nestable : fn var "=>" Expr { Lambda $2 Nothing $4 }
          | fn var ':' Type "=>" Expr { Lambda $2 (Just $4) $6 }
-         | let Declarations in Expr end { Let $2 $4 }
+         | let Stmtarations in Expr end { Let $2 $4 }
          | if Expr then Expr else Expr { If $2 $4 $6 }
          | '(' Expr ')' { $2 }
          | var   { Var $1 }
          | Const { Const $1 }
 
-Declarations : Declaration Declarations { $1 : $2 }
-             | Declaration { [$1] }
+Stmtarations : Stmtaration Stmtarations { $1 : $2 }
+             | Stmtaration { [$1] }
 
-Declaration : val var '=' Expr { Val $2 Nothing $4 }
+Stmtaration : val var '=' Expr { Val $2 Nothing $4 }
             | val var ':' Type '=' Expr { Val $2 (Just $4) $6 }
 
 Ascription : Equal ':' Type { IsA $1 $3 }

@@ -7,8 +7,8 @@ import Data.Text.Prettyprint.Doc ( Pretty, pretty, line, (<+>), hsep, vsep, inde
                                  , parens, braces )
 
 import Language.Broom.Util (Name)
-import qualified Language.Broom.Ast as Ast
-import Language.Broom.Ast (Primop(..), Const(..))
+import qualified Language.Broom.Cst as Cst
+import Language.Broom.Cst (Primop(..), Const(..))
 
 data Block = Block [Stmt] Transfer
 
@@ -29,34 +29,34 @@ data Type = TypeForAll Name Type
           | FnType [Type]
           | TypeApp Type Type
           | TypeName Name
-          | PrimType Ast.PrimType
+          | PrimType Cst.PrimType
 
-instance Convertible Ast.Type Type where
+instance Convertible Cst.Type Type where
     safeConvert = \case
-        Ast.TypeForAll param t -> TypeForAll param <$> safeConvert t
-        Ast.TypeArrow domain codomain ->
+        Cst.TypeForAll param t -> TypeForAll param <$> safeConvert t
+        Cst.TypeArrow domain codomain ->
             do domain' <- safeConvert domain
                codomain' <- safeConvert codomain
                pure $ FnType [FnType [codomain'], domain']
-        Ast.TypeApp t arg -> TypeApp <$> safeConvert t <*> safeConvert arg
-        Ast.TypeName name -> pure (TypeName name)
-        Ast.PrimType p -> pure (PrimType p)
+        Cst.TypeApp t arg -> TypeApp <$> safeConvert t <*> safeConvert arg
+        Cst.TypeName name -> pure (TypeName name)
+        Cst.PrimType p -> pure (PrimType p)
 
 primopResType :: Primop -> [Type] -> Type
 primopResType op argTypes = case op of
-    SafePoint -> PrimType Ast.TypeMetaCont
+    SafePoint -> PrimType Cst.TypeMetaCont
     VarNew -> case argTypes of
-                  [argType] -> TypeApp (PrimType Ast.VarBox) argType
+                  [argType] -> TypeApp (PrimType Cst.VarBox) argType
                   _ -> undefined
-    VarInit -> PrimType Ast.TypeUnit
+    VarInit -> PrimType Cst.TypeUnit
     VarLoad -> case argTypes of
-                   [TypeApp (PrimType Ast.VarBox) contentType] -> contentType
+                   [TypeApp (PrimType Cst.VarBox) contentType] -> contentType
                    _ -> error $ "tried a VarLoad from " <> show (pretty argTypes)
-    Add -> PrimType Ast.TypeInt
-    Sub -> PrimType Ast.TypeInt
-    Mul -> PrimType Ast.TypeInt
-    Div -> PrimType Ast.TypeInt
-    Eq -> PrimType Ast.TypeBool
+    Add -> PrimType Cst.TypeInt
+    Sub -> PrimType Cst.TypeInt
+    Mul -> PrimType Cst.TypeInt
+    Div -> PrimType Cst.TypeInt
+    Eq -> PrimType Cst.TypeBool
 
 instance Pretty Block where
     pretty (Block stmts transfer) =
