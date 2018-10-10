@@ -11,7 +11,7 @@ import Control.Eff.Exception (Exc, runError, throwError)
 import Language.Broom.Util (Name)
 import qualified Language.Broom.Cst as Cst
 import Language.Broom.Cst (Const(..), Primop(..), Type(..), PrimType(..), primopResType)
-import Language.Broom.Ast (Expr(..), Stmt(..))
+import Language.Broom.Ast (Expr(..), Stmt(..), Def(..))
 
 data TypeError = Unbound Name
                | TypeMismatch Type Type
@@ -27,21 +27,21 @@ instance Pretty TypeError where
         "Wrong number of arguments:" <+> "expected" <+> pretty goal <>
             ", got" <+> pretty actual
 
-newtype Ctx = Ctx (HashMap.HashMap Name Type)
+newtype Ctx = Ctx (HashMap.HashMap Name Def)
 
 builtinCtx :: Ctx
 builtinCtx = Ctx HashMap.empty
 
-ctxInsert :: Name -> Type -> Ctx -> Ctx
-ctxInsert name t (Ctx bindings) = Ctx (HashMap.insert name t bindings)
+ctxInsert :: Def -> Ctx -> Ctx
+ctxInsert def @ (Def name _) (Ctx bindings) = Ctx (HashMap.insert name def bindings)
 
 ctxInsertStmts :: [Cst.Stmt] -> Ctx -> Ctx
 ctxInsertStmts decls ctx = foldl' insertStmt ctx decls
-    where insertStmt kvs (Cst.Val name (Just t) _) = ctxInsert name t kvs
+    where insertStmt kvs (Cst.Val name (Just t) _) = ctxInsert (Def name t) kvs
           insertStmt _ (Cst.Val _ Nothing _) = error "type inference unimplemented"
           insertStmt kvs (Cst.Expr _) = kvs
 
-ctxLookup :: Name -> Ctx -> Maybe Type
+ctxLookup :: Name -> Ctx -> Maybe Def
 ctxLookup name (Ctx bindings) = HashMap.lookup name bindings
 
 typecheck :: Cst.Expr -> Either TypeError Expr
@@ -51,9 +51,10 @@ check :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
       => Cst.Expr -> Eff r (Expr, Type)
 check =
     \case Cst.Lambda param (Just domain) body ->
-              local (ctxInsert param domain)
+              local (ctxInsert def)
                     (do (typedBody, codomain) <- check body
-                        pure (Lambda param domain typedBody, TypeArrow domain codomain))
+                        pure (Lambda def typedBody, TypeArrow domain codomain))
+              where def = Def param domain
           Cst.Lambda _ Nothing _ -> error "type inference unimplemented"
           Cst.App callee arg ->
               do (typedCallee, calleeType) <- check callee
@@ -76,16 +77,19 @@ check =
                  typedAlt <- checkAs resType alt
                  pure (If typedCond typedConseq typedAlt resType, resType)
           Cst.IsA expr t -> (,t) . flip IsA t <$> checkAs t expr
-          Cst.Var name -> do maybeType <- ctxLookup name <$> ask
-                             case maybeType of
-                                 Just t -> pure (Var name, t)
+          Cst.Var name -> do maybeDef <- ctxLookup name <$> ask
+                             case maybeDef of
+                                 Just (def @ (Def _ t)) -> pure (Var def, t)
                                  Nothing -> throwError (Unbound name)
           Cst.Const (IntConst n) -> pure (Const (IntConst n), PrimType TypeInt)
           Cst.Const UnitConst -> pure (Const UnitConst, PrimType TypeUnit)
 
 checkStmt :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
           => Cst.Stmt -> Eff r Stmt
-checkStmt (Cst.Val name (Just t) valueExpr) = Val name t <$> checkAs t valueExpr
+checkStmt (Cst.Val name (Just t) valueExpr) =
+    ctxLookup name <$> ask >>= \case
+        Just def -> Val def <$> checkAs t valueExpr
+        Nothing -> throwError (Unbound name)
 checkStmt (Cst.Val _ _ _) = error "type inference unimplemented"
 checkStmt (Cst.Expr expr) = Expr <$> checkAs (PrimType TypeUnit) expr
 

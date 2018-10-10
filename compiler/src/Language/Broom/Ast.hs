@@ -1,4 +1,4 @@
-module Language.Broom.Ast (Expr(..), Stmt(..)) where
+module Language.Broom.Ast (Expr(..), Stmt(..), Def(..), defName) where
 
 import Data.Data (Data, Typeable)
 
@@ -9,23 +9,28 @@ import Data.Text.Prettyprint.Doc ( Pretty, pretty, (<+>), line, hsep, vsep, pare
 import Language.Broom.Util (Name)
 import Language.Broom.Cst (Const, Primop, Type)
 
-data Expr = Lambda Name Type Expr
+data Expr = Lambda Def Expr
           | App Expr Expr Type
           | PrimApp Primop [Expr] Type
           | Let [Stmt] Expr
           | If Expr Expr Expr Type
           | IsA Expr Type
-          | Var Name
+          | Var Def
           | Const Const
           deriving (Data, Typeable)
 
-data Stmt = Val Name Type Expr
+data Stmt = Val Def Expr
           | Expr Expr
           deriving (Data, Typeable)
 
+data Def = Def Name Type
+         deriving (Data, Typeable)
+
+defName :: Def -> Name
+defName (Def name _) = name
+
 instance Pretty Expr where
-    pretty (Lambda param paramType body) =
-        "fn" <+> pretty param <> ":" <+> pretty paramType <+> "=>" <+> pretty body
+    pretty (Lambda def body) = "fn" <+> pretty def <+> "=>" <+> pretty body
     pretty (App callee arg _) = parens $ pretty callee <+> pretty arg
     pretty (PrimApp op args _) = parens $ pretty op <+> hsep (fmap pretty args)
     pretty (Let decls body) =
@@ -39,6 +44,9 @@ instance Pretty Expr where
     pretty (Const c) = pretty c
 
 instance Pretty Stmt where
-    pretty (Val pattern t valueExpr) =
-        "val" <+> pretty pattern <> ":" <+> pretty t <+> "=" <+> pretty valueExpr
+    pretty (Val def valueExpr) =
+        "val" <+> pretty def <+> "=" <+> pretty valueExpr
     pretty (Expr expr) = pretty expr
+
+instance Pretty Def where
+    pretty (Def name t) = pretty name <> ":" <+> pretty t

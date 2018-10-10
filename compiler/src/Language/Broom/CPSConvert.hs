@@ -6,7 +6,6 @@ import Data.Convertible (convert)
 import Data.Maybe (fromJust)
 import Data.Text (Text)
 import Data.STRef.Strict (STRef, newSTRef, modifySTRef, readSTRef)
-import qualified Data.HashTable.ST.Basic as Ctx
 import Control.Monad.ST.Strict (ST)
 import Control.Eff (Eff, Member, SetMember)
 import Control.Eff.State.Strict (State)
@@ -20,24 +19,6 @@ import qualified Language.Broom.Ast as Ast
 import Language.Broom.CPS (Block(..), Stmt(..), Expr(..), Transfer(..), Atom(..), Type(..))
 
 type STEff s r = SetMember Lift (Lift (ST s)) r
-
--- Type Context for generating type annotations
-
-type Ctx s = Ctx.HashTable s Name Type
-
-emptyCtx :: STEff s r => Eff r (Ctx s)
-emptyCtx = lift Ctx.new
-
-hasType :: (STEff s r, Member (Reader (Ctx s)) r) => Name -> Type -> Eff r ()
-hasType name t = do ctx <- ask
-                    lift (Ctx.insert ctx name t)
-
-lookupType :: forall s r . (STEff s r, Member (Reader (Ctx s)) r) => Name -> Eff r Type
-lookupType name = do ctx :: Ctx s <- ask
-                     ot <- lift (Ctx.lookup ctx name)
-                     case ot of
-                         Just t -> pure t
-                         Nothing -> error $ "unbound " <> show name
 
 -- BlockBuilder for pushing statements in
 
@@ -70,14 +51,12 @@ contParamHint = \case ContFn hint _ -> hint
 -- CPS Convert program
 
 type ConvEffs s r = ( Member (State Int) r
-                    , Member (Reader (Ctx s)) r
                     , Member (Reader (BlockBuilder s)) r
                     , SetMember Lift (Lift (ST s)) r )
 
 cpsConvert :: (STEff s r, Member (State Int) r) => Ast.Expr -> Eff r Expr
-cpsConvert expr = do ctx <- emptyCtx
-                     builder <- emptyBlockBuilder
-                     runReader builder (runReader ctx m)
+cpsConvert expr = do builder <- emptyBlockBuilder
+                     runReader builder m
     where m = do builder <- ask
                  halt <- gensym (convert @Text "halt")
                  transfer <- doConvert (TrivCont (PrimType Cst.TypeInt) halt) expr
@@ -94,17 +73,15 @@ convertToBlock cont expr = do builder <- emptyBlockBuilder
 
 doConvert :: ConvEffs s r => Cont r -> Ast.Expr -> Eff r Transfer
 doConvert cont = \case
-    Ast.Lambda param paramType body ->
+    Ast.Lambda (Ast.Def param paramType) body ->
         do let paramType' = convert paramType
-           hasType param paramType'
            ret <- gensym (convert @Text "r")
-           codomain <- typeOf body
-           hasType ret codomain
+           let codomain = typeOf body
            body' <- convertToBlock (TrivCont codomain ret) body
            continue cont $ Fn [(ret, FnType [codomain]), (param, paramType')] body'
     Ast.App callee arg _ ->
         do ret <- nominalizeCont cont
-           calleeType <- typeOf callee
+           let calleeType = typeOf callee
            let cont' = ContFn (Temp calleeType) $ \(Just aCallee) ->
                    do nCallee <- fromJust <$> nominalize (Temp calleeType) (Atom aCallee)
                       let k = \aArgs -> pure $ App nCallee (Use ret : aArgs)
@@ -113,7 +90,7 @@ doConvert cont = \case
     Ast.PrimApp op args _ ->
         let k = \aArgs -> continue cont (PrimApp op aArgs)
         in doConvertArgs k args
-    Ast.Let (Ast.Val name t expr : decls) body ->
+    Ast.Let (Ast.Val (Ast.Def name t) expr : decls) body ->
         let t' = convert t
             cont' = ContFn (Exactly name t') $ \_ ->
                 doConvert cont $ Ast.Let decls body
@@ -129,16 +106,16 @@ doConvert cont = \case
                    If aCond <$> convertToBlock k conseq <*> convertToBlock k alt
            doConvert cont' cond
     Ast.IsA expr _ -> doConvert cont expr
-    Ast.Var name -> continue cont (Atom (Use name))
+    Ast.Var (Ast.Def name _) -> continue cont (Atom (Use name))
     Ast.Const c -> continue cont (Atom (Const c))
 
 doConvertArgs :: ConvEffs s r => ([Atom] -> Eff r Transfer) -> [Ast.Expr] -> Eff r Transfer
 doConvertArgs cont arguments = loop arguments []
     where loop [] aArgs = cont (reverse aArgs)
-          loop (arg : args) aArgs = do argType <- typeOf arg
-                                       let cont' = ContFn (Temp argType) $ \(Just aArg) ->
-                                               loop args (aArg : aArgs)
-                                       doConvert cont' arg
+          loop (arg : args) aArgs = let argType = typeOf arg
+                                        cont' = ContFn (Temp argType) $ \(Just aArg) ->
+                                            loop args (aArg : aArgs)
+                                    in doConvert cont' arg
 
 continue :: ConvEffs s r => Cont r -> Expr -> Eff r Transfer
 continue cont expr = do maExpr <- trivialize (contParamHint cont) expr
@@ -158,7 +135,6 @@ trivialize hint expr = case expr of
 
 nominalize :: ConvEffs s r => ContParamHint -> Expr -> Eff r (Maybe Name)
 nominalize (Exactly name t) expr = do pushStmt $ Def name t expr
-                                      hasType name t
                                       pure (Just name)
 nominalize (Temp t) expr = case expr of
     Atom (Use name) -> pure (Just name)
@@ -173,7 +149,6 @@ nominalizeCont = \case ContFn paramHint k ->
                                   Exactly name t -> pure (name, t)
                                   Temp t -> (, t) <$> gensym (convert @Text "x")
                                   Anon -> (, PrimType Cst.TypeUnit) <$> gensym (convert @Text "_")
-                              hasType param paramType
                               builder <- emptyBlockBuilder
                               transfer <- local (const builder)
                                                 (k $ Just (Use param))
@@ -184,21 +159,20 @@ nominalizeCont = \case ContFn paramHint k ->
 
 -- Type inference
 
-class CPSTypable s a where
-    typeOf :: (STEff s r, Member (Reader (Ctx s)) r) => a -> Eff r Type
+class CPSTypable a where
+    typeOf :: a -> Type
 
-instance CPSTypable s Const where
-    typeOf = \case IntConst _ -> pure $ PrimType Cst.TypeInt
-                   UnitConst -> pure $ PrimType Cst.TypeUnit
+instance CPSTypable Const where
+    typeOf = \case IntConst _ -> PrimType Cst.TypeInt
+                   UnitConst -> PrimType Cst.TypeUnit
 
-instance CPSTypable s Ast.Expr where
+instance CPSTypable Ast.Expr where
     typeOf = \case
-        Ast.Lambda _ domain body -> do codomain <- typeOf body
-                                       pure $ FnType [FnType [codomain], convert domain]
-        Ast.App _ _ t -> pure (convert t)
-        Ast.PrimApp _ _ t -> pure (convert t)
+        Ast.Lambda (Ast.Def _ domain) body -> FnType [FnType [typeOf body], convert domain]
+        Ast.App _ _ t -> convert t
+        Ast.PrimApp _ _ t -> convert t
         Ast.Let _ body -> typeOf body
-        Ast.If _ _ _ t -> pure (convert t)
-        Ast.IsA _ t -> pure (convert t)
-        Ast.Var name -> lookupType name
+        Ast.If _ _ _ t -> convert t
+        Ast.IsA _ t -> convert t
+        Ast.Var (Ast.Def _ t) -> convert t
         Ast.Const c -> typeOf c

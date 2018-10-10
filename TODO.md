@@ -31,7 +31,7 @@
 
 - [x] Remove "monotype" concept coz we ain't using prenex polymorphism
 - [x] Refactor Ast structure to avoid impossible case branches when e.g. type checking
-- [ ] Get rid of symbol tables
+- [x] Get rid of unnecessary symbol tables
 - [ ] Type checkers for every IR
 - [ ] Correct by construction (PrimApp is especially bad atm.)
 - [ ] Tests (QuickCheck)
