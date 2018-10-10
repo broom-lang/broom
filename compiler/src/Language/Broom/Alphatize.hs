@@ -36,16 +36,17 @@ alphatize expr = runError $ runReader (Env.empty :: Env) (alpha expr)
 
 alpha :: AlphaEffs r => Ast.Expr -> Eff r Ast.Expr
 alpha expr = case expr of
-    Lambda param paramType body -> do param' <- gensym param
-                                      local (Env.insert param param')
-                                            (descendM alpha (Lambda param' paramType body))
-    App _ _ -> descendM alpha expr
-    PrimApp _ _ -> descendM alpha expr
+    Lambda param domain body ->
+        do param' <- gensym param
+           local (Env.insert param param')
+                 (descendM alpha (Lambda param' domain body))
+    App _ _ _ -> descendM alpha expr
+    PrimApp _ _ _ -> descendM alpha expr
     Let decls body -> do let binders = letBinders decls
                          binders' <- traverse gensym binders
                          local (Env.union (Env.fromList (zip binders binders')))
                                (Let <$> traverse alphaStmt decls <*> alpha body)
-    If _ _ _ -> descendM alpha expr
+    If _ _ _ _ -> descendM alpha expr
     IsA _ _ -> descendM alpha expr
     Var name -> Var <$> replace name
     Const _ -> pure expr

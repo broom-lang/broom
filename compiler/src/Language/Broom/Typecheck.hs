@@ -53,15 +53,14 @@ check =
     \case Cst.Lambda param (Just domain) body ->
               local (ctxInsert param domain)
                     (do (typedBody, codomain) <- check body
-                        pure ( Lambda param domain (IsA typedBody codomain)
-                             , TypeArrow domain codomain ))
+                        pure (Lambda param domain typedBody, TypeArrow domain codomain))
           Cst.Lambda _ Nothing _ -> error "type inference unimplemented"
           Cst.App callee arg ->
               do (typedCallee, calleeType) <- check callee
                  case calleeType of
                      TypeArrow domain codomain ->
                          do typedArg <- checkAs domain arg
-                            pure (IsA (App typedCallee typedArg) codomain, codomain)
+                            pure (App typedCallee typedArg codomain, codomain)
                      _ -> throwError $ UnCallable callee calleeType
           -- OPTIMIZE:
           Cst.PrimApp op args -> do argTypes <- map snd <$> traverse check args
@@ -70,12 +69,12 @@ check =
               local (ctxInsertStmts decls)
                     (do typedStmts <- traverse checkStmt decls
                         (typedBody, bodyType) <- check body
-                        pure (Let typedStmts (IsA typedBody bodyType), bodyType))
+                        pure (Let typedStmts typedBody, bodyType))
           Cst.If cond conseq alt ->
               do typedCond <- checkAs (PrimType TypeBool) cond
                  (typedConseq, resType) <- check conseq
                  typedAlt <- checkAs resType alt
-                 pure (IsA (If typedCond typedConseq typedAlt) resType, resType)
+                 pure (If typedCond typedConseq typedAlt resType, resType)
           Cst.IsA expr t -> (,t) . flip IsA t <$> checkAs t expr
           Cst.Var name -> do maybeType <- ctxLookup name <$> ask
                              case maybeType of
@@ -101,5 +100,5 @@ checkArithmetic :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
                 => Primop -> [Cst.Expr] -> Type -> Eff r (Expr, Type)
 checkArithmetic op [l, r] t = do typedL <- checkAs (PrimType TypeInt) l
                                  typedR <- checkAs (PrimType TypeInt) r
-                                 pure (IsA (PrimApp op [typedL, typedR]) t, t)
+                                 pure (PrimApp op [typedL, typedR] t, t)
 checkArithmetic _ args _ = throwError $ Argc 2 (length args)

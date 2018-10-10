@@ -50,10 +50,10 @@ updateBindKind occ name = do env :: Env s <- ask
 analyzeVars :: AnaEffs s r => Expr -> Eff r ()
 analyzeVars expr = case expr of
     Lambda param _ body -> updateBindKind Param param *> analyzeVars body
-    App callee arg -> analyzeVars callee *> analyzeVars arg
-    PrimApp _ args -> traverse_ analyzeVars args
+    App callee arg _ -> analyzeVars callee *> analyzeVars arg
+    PrimApp _ args _ -> traverse_ analyzeVars args
     Let decls body -> traverse_ analyzeStmtVars decls *> analyzeVars body
-    If cond conseq alt -> analyzeVars cond *> analyzeVars conseq *> analyzeVars alt
+    If cond conseq alt _ -> analyzeVars cond *> analyzeVars conseq *> analyzeVars alt
     IsA expr' _ -> analyzeVars expr'
     Var name -> updateBindKind Use name
     Const _ -> pure ()
@@ -73,7 +73,7 @@ bindKindOf name = ask >>= lift . flip Env.lookup name >>= \case
 emitLoad :: ApplyEffs s r => Name -> Eff r Expr
 emitLoad name = bindKindOf name >>= \case
     Linear -> pure (Var name)
-    Recursive -> pure $ IsA (PrimApp VarLoad [Var name]) (PrimType TypeInt) -- FIXME
+    Recursive -> pure $ PrimApp VarLoad [Var name] (PrimType TypeInt) -- FIXME
 
 -- OPTIMIZE: "Fixing Letrec" or some trivial variant thereof.
 -- Transform `Let`:s so that `BindKind.Recursive` variables get allocated, initialized and
@@ -82,21 +82,22 @@ linearized :: ApplyEffs s r => Expr -> Eff r Expr
 linearized = transformM replace
     where replace expr = case expr of
               Lambda _ _ _ -> pure expr
-              App _ _ -> pure expr
-              PrimApp _ _ -> pure expr
+              App _ _ _ -> pure expr
+              PrimApp _ _ _ -> pure expr
               Let stmts body ->
                   do (declares, stmts') <- bimap reverse reverse <$> foldM linearizeStmt
                                                                            ([], []) stmts
                      pure $ Let (declares <> stmts') body
-              If _ _ _ -> pure expr
+              If _ _ _ _ -> pure expr
               IsA _ _ -> pure expr
               Var name -> emitLoad name
               Const _ -> pure expr
           linearizeStmt (creates, stmts) stmt @ (Val name t valueExpr) =
               bindKindOf name >>= \case
                   Linear -> pure (creates, stmt : stmts)
-                  Recursive -> let creation = Val name (TypeApp (PrimType VarBox) t)
-                                                       (PrimApp VarNew [])
-                                   initialization = Expr (PrimApp VarInit [Var name, valueExpr])
+                  Recursive -> let boxedType = TypeApp (PrimType VarBox) t
+                                   creation = Val name boxedType (PrimApp VarNew [] boxedType)
+                                   initialization = Expr (PrimApp VarInit [Var name, valueExpr]
+                                                                  (PrimType TypeUnit))
                                in pure (creation : creates, initialization : stmts)
           linearizeStmt (creates, stmts) stmt @ (Expr _) = pure (creates, stmt : stmts)

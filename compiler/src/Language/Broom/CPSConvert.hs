@@ -7,7 +7,6 @@ import Data.Maybe (fromJust)
 import Data.Text (Text)
 import Data.STRef.Strict (STRef, newSTRef, modifySTRef, readSTRef)
 import qualified Data.HashTable.ST.Basic as Ctx
-import Data.Text.Prettyprint.Doc (pretty)
 import Control.Monad.ST.Strict (ST)
 import Control.Eff (Eff, Member, SetMember)
 import Control.Eff.State.Strict (State)
@@ -103,7 +102,7 @@ doConvert cont = \case
            hasType ret codomain
            body' <- convertToBlock (TrivCont codomain ret) body
            continue cont $ Fn [(ret, FnType [codomain]), (param, paramType')] body'
-    Ast.App callee arg ->
+    Ast.App callee arg _ ->
         do ret <- nominalizeCont cont
            calleeType <- typeOf callee
            let cont' = ContFn (Temp calleeType) $ \(Just aCallee) ->
@@ -111,7 +110,7 @@ doConvert cont = \case
                       let k = \aArgs -> pure $ App nCallee (Use ret : aArgs)
                       doConvertArgs k [arg]
            doConvert cont' callee
-    Ast.PrimApp op args ->
+    Ast.PrimApp op args _ ->
         let k = \aArgs -> continue cont (PrimApp op aArgs)
         in doConvertArgs k args
     Ast.Let (Ast.Val name t expr : decls) body ->
@@ -124,7 +123,7 @@ doConvert cont = \case
                 doConvert cont $ Ast.Let decls body
         in doConvert cont' expr
     Ast.Let [] body -> doConvert cont body
-    Ast.If cond conseq alt ->
+    Ast.If cond conseq alt _ ->
         do k <- TrivCont (PrimType Cst.TypeBool) <$> nominalizeCont cont
            let cont' = ContFn (Temp $ PrimType Cst.TypeBool) $ \(Just aCond) ->
                    If aCond <$> convertToBlock k conseq <*> convertToBlock k alt
@@ -183,7 +182,6 @@ nominalizeCont = \case ContFn paramHint k ->
                                                       (Fn [(param, paramType)] body)
                        TrivCont _ k -> pure k
 
--- FIXME: Make this unnecessary by storing more types into the Ast in Typecheck:
 -- Type inference
 
 class CPSTypable s a where
@@ -195,11 +193,12 @@ instance CPSTypable s Const where
 
 instance CPSTypable s Ast.Expr where
     typeOf = \case
-        Ast.Lambda _ paramType body ->
-            do codomain <- typeOf body
-               pure $ FnType [FnType [codomain], (convert paramType)]
+        Ast.Lambda _ domain body -> do codomain <- typeOf body
+                                       pure $ FnType [FnType [codomain], convert domain]
+        Ast.App _ _ t -> pure (convert t)
+        Ast.PrimApp _ _ t -> pure (convert t)
         Ast.Let _ body -> typeOf body
+        Ast.If _ _ _ t -> pure (convert t)
         Ast.IsA _ t -> pure (convert t)
         Ast.Var name -> lookupType name
         Ast.Const c -> typeOf c
-        expr -> error $ "unreachable: " <> show (pretty expr)
