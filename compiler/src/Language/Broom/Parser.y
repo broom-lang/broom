@@ -2,7 +2,8 @@
 module Language.Broom.Parser (parser) where
 
 import Language.Broom.Lexer (Token(..))
-import Language.Broom.Cst (Expr(..), Stmt(..), Type(..), PrimType(..), Primop(..), Const(..))
+import Language.Broom.Cst ( Expr(..), Stmt(..), Primop(..), Const(..)
+                          , Type(..), TypeAtom(..), PrimType(..) )
 }
 
 %name parser
@@ -92,9 +93,9 @@ Const : int { IntConst $1 }
 Type : forall var '.' Type { TypeForAll $2 $4 }
      | Type '->' Type { TypeArrow $1 $3 }
      | var { case show $1 of
-                 "Int" -> PrimType TypeInt
-                 "Bool" -> PrimType TypeBool
-                 _ -> TypeName $1 }
+                 "Int" -> TAtom $ PrimType TypeInt
+                 "Bool" -> TAtom $ PrimType TypeBool
+                 _ -> TAtom $ TypeName $1 }
 
 {
 parseError :: [Token] -> a

@@ -15,7 +15,7 @@ import Control.Eff.Reader.Strict (Reader, runReader, ask)
 import Control.Eff.Lift (Lifted, runLift, lift)
 
 import Language.Broom.Util (Name)
-import Language.Broom.Cst (Primop(..), Type(..), PrimType(..))
+import Language.Broom.Cst (Primop(..), Type(..), TypeAtom(..), PrimType(..))
 import qualified Language.Broom.Ast as Ast
 import Language.Broom.Ast (Expr(..), Stmt(..), Def(..))
 
@@ -40,10 +40,11 @@ type AnaEffs s r = (Member (Reader (Env s)) r, Lifted (ST s) r)
 updateBindKind :: AnaEffs s r => Occurrence -> Def -> Eff r ()
 updateBindKind occ (Def name t) = do env :: Env s <- ask
                                      lift $ Env.mutate env name ((, ()) . updated)
-    where updated Nothing = Just $ case occ of
-                                       Param -> Linear
-                                       Declare -> Linear
-                                       Use -> Recursive $ Def name (TypeApp (PrimType VarBox) t)
+    where updated Nothing =
+              Just $ case occ of
+                         Param -> Linear
+                         Declare -> Linear
+                         Use -> Recursive $ Def name (TypeApp (TAtom $ PrimType VarBox) t)
           updated old = old
 
 -- Collect the BindKinds of each variable into the `Env s` in the Reader:
@@ -98,6 +99,6 @@ linearized = transformM replace
                   Recursive boxDef @ (Def _ boxType) ->
                       let creation = Val boxDef (PrimApp VarNew [] boxType)
                           initialization = Expr $ PrimApp VarInit [Var boxDef, valueExpr]
-                                                          (PrimType TypeUnit)
+                                                          (TAtom $ PrimType TypeUnit)
                       in pure (creation : creates, initialization : stmts)
           linearizeStmt (creates, stmts) stmt @ (Expr _) = pure (creates, stmt : stmts)

@@ -14,7 +14,7 @@ import Control.Eff.Lift (Lift, lift)
 
 import Language.Broom.Util (Name, gensym)
 import qualified Language.Broom.Cst as Cst
-import Language.Broom.Cst (Const(..))
+import Language.Broom.Cst (Const(..), TypeAtom(..))
 import qualified Language.Broom.Ast as Ast
 import Language.Broom.CPS (Block(..), Stmt(..), Expr(..), Transfer(..), Atom(..), Type(..))
 
@@ -59,9 +59,9 @@ cpsConvert expr = do builder <- emptyBlockBuilder
                      runReader builder m
     where m = do builder <- ask
                  halt <- gensym (convert @Text "halt")
-                 transfer <- doConvert (TrivCont (PrimType Cst.TypeInt) halt) expr
+                 transfer <- doConvert (TrivCont (TAtom $ PrimType Cst.TypeInt) halt) expr
                  body <- buildBlock builder transfer
-                 pure $ Fn [(halt, FnType [PrimType Cst.TypeInt])] body
+                 pure $ Fn [(halt, FnType [TAtom $ PrimType Cst.TypeInt])] body
 
 -- Implementation of CPS conversion
 
@@ -101,8 +101,8 @@ doConvert cont = \case
         in doConvert cont' expr
     Ast.Let [] body -> doConvert cont body
     Ast.If cond conseq alt _ ->
-        do k <- TrivCont (PrimType Cst.TypeBool) <$> nominalizeCont cont
-           let cont' = ContFn (Temp $ PrimType Cst.TypeBool) $ \(Just aCond) ->
+        do k <- TrivCont (TAtom $ PrimType Cst.TypeBool) <$> nominalizeCont cont
+           let cont' = ContFn (Temp $ TAtom $ PrimType Cst.TypeBool) $ \(Just aCond) ->
                    If aCond <$> convertToBlock k conseq <*> convertToBlock k alt
            doConvert cont' cond
     Ast.IsA expr _ -> doConvert cont expr
@@ -148,7 +148,8 @@ nominalizeCont = \case ContFn paramHint k ->
                            do (param, paramType) <- case paramHint of
                                   Exactly name t -> pure (name, t)
                                   Temp t -> (, t) <$> gensym (convert @Text "x")
-                                  Anon -> (, PrimType Cst.TypeUnit) <$> gensym (convert @Text "_")
+                                  Anon -> (, TAtom $ PrimType Cst.TypeUnit)
+                                          <$> gensym (convert @Text "_")
                               builder <- emptyBlockBuilder
                               transfer <- local (const builder)
                                                 (k $ Just (Use param))
@@ -163,8 +164,8 @@ class CPSTypable a where
     typeOf :: a -> Type
 
 instance CPSTypable Const where
-    typeOf = \case IntConst _ -> PrimType Cst.TypeInt
-                   UnitConst -> PrimType Cst.TypeUnit
+    typeOf = \case IntConst _ -> TAtom $ PrimType Cst.TypeInt
+                   UnitConst -> TAtom $ PrimType Cst.TypeUnit
 
 instance CPSTypable Ast.Expr where
     typeOf = \case

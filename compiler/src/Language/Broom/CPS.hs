@@ -28,8 +28,7 @@ data Atom = Use Name
 data Type = TypeForAll Name Type
           | FnType [Type]
           | TypeApp Type Type
-          | TypeName Name
-          | PrimType Cst.PrimType
+          | TAtom Cst.TypeAtom
 
 instance Convertible Cst.Type Type where
     safeConvert = \case
@@ -39,24 +38,23 @@ instance Convertible Cst.Type Type where
                codomain' <- safeConvert codomain
                pure $ FnType [FnType [codomain'], domain']
         Cst.TypeApp t arg -> TypeApp <$> safeConvert t <*> safeConvert arg
-        Cst.TypeName name -> pure (TypeName name)
-        Cst.PrimType p -> pure (PrimType p)
+        Cst.TAtom a -> pure (TAtom a)
 
 primopResType :: Primop -> [Type] -> Type
 primopResType op argTypes = case op of
-    SafePoint -> PrimType Cst.TypeMetaCont
+    SafePoint -> TAtom $ Cst.PrimType Cst.TypeMetaCont
     VarNew -> case argTypes of
-                  [argType] -> TypeApp (PrimType Cst.VarBox) argType
+                  [argType] -> TypeApp (TAtom $ Cst.PrimType Cst.VarBox) argType
                   _ -> undefined
-    VarInit -> PrimType Cst.TypeUnit
+    VarInit -> TAtom $ Cst.PrimType Cst.TypeUnit
     VarLoad -> case argTypes of
-                   [TypeApp (PrimType Cst.VarBox) contentType] -> contentType
+                   [TypeApp (TAtom (Cst.PrimType Cst.VarBox)) contentType] -> contentType
                    _ -> error $ "tried a VarLoad from " <> show (pretty argTypes)
-    Add -> PrimType Cst.TypeInt
-    Sub -> PrimType Cst.TypeInt
-    Mul -> PrimType Cst.TypeInt
-    Div -> PrimType Cst.TypeInt
-    Eq -> PrimType Cst.TypeBool
+    Add -> TAtom $ Cst.PrimType Cst.TypeInt
+    Sub -> TAtom $ Cst.PrimType Cst.TypeInt
+    Mul -> TAtom $ Cst.PrimType Cst.TypeInt
+    Div -> TAtom $ Cst.PrimType Cst.TypeInt
+    Eq -> TAtom $ Cst.PrimType Cst.TypeBool
 
 instance Pretty Block where
     pretty (Block stmts transfer) =
@@ -90,5 +88,4 @@ instance Pretty Type where
                        "forall" <+> pretty param <+> "." <+> pretty t
                    FnType domains -> parens ("fn" <+> hsep (fmap pretty domains))
                    TypeApp t arg -> parens (pretty t <+> pretty arg)
-                   TypeName name -> pretty name
-                   PrimType p -> pretty p
+                   TAtom a -> pretty a

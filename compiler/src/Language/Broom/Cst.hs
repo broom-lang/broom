@@ -1,5 +1,6 @@
-module Language.Broom.Cst ( Expr(..), Stmt(..), Primop(..), Const(..), Type(..), PrimType(..)
-           , primopResType ) where
+module Language.Broom.Cst ( Expr(..), Stmt(..), Primop(..), Const(..)
+                          , Type(..), MonoType(..), TypeAtom(..), PrimType(..)
+                          , primopResType ) where
 
 import Data.Data (Data, Typeable)
 
@@ -33,9 +34,18 @@ data Const = IntConst Int
 data Type = TypeForAll Name Type
           | TypeArrow Type Type
           | TypeApp Type Type
-          | TypeName Name
-          | PrimType PrimType
+          | TAtom TypeAtom
           deriving (Eq, Data, Typeable)
+
+data MonoType = MTypeArrow MonoType MonoType
+              | MTypeApp MonoType MonoType
+              | MTAtom TypeAtom
+              deriving (Eq, Data, Typeable)
+
+data TypeAtom = TypeName Name
+              | TypeUName Name
+              | PrimType PrimType
+              deriving (Eq, Data, Typeable)
 
 data PrimType = TypeInt
               | TypeBool
@@ -46,19 +56,19 @@ data PrimType = TypeInt
 
 primopResType :: Primop -> [Type] -> Type
 primopResType op argTypes = case op of
-    SafePoint -> PrimType TypeMetaCont
+    SafePoint -> TAtom $ PrimType TypeMetaCont
     VarNew -> case argTypes of
-                  [argType] -> TypeApp (PrimType VarBox) argType
+                  [argType] -> TypeApp (TAtom $ PrimType VarBox) argType
                   _ -> undefined
-    VarInit -> PrimType TypeUnit
+    VarInit -> TAtom $ PrimType TypeUnit
     VarLoad -> case argTypes of
-                   [TypeApp (PrimType VarBox) contentType] -> contentType
+                   [TypeApp (TAtom (PrimType VarBox)) contentType] -> contentType
                    _ -> error $ "tried a VarLoad from " <> show (pretty argTypes)
-    Add -> PrimType TypeInt
-    Sub -> PrimType TypeInt
-    Mul -> PrimType TypeInt
-    Div -> PrimType TypeInt
-    Eq -> PrimType TypeBool
+    Add -> TAtom $ PrimType TypeInt
+    Sub -> TAtom $ PrimType TypeInt
+    Mul -> TAtom $ PrimType TypeInt
+    Div -> TAtom $ PrimType TypeInt
+    Eq -> TAtom $ PrimType TypeBool
 
 instance Pretty Expr where
     pretty (Lambda param paramType body) =
@@ -92,7 +102,16 @@ instance Pretty Type where
         "forall" <+> pretty param <+> "." <+> pretty t
     pretty (TypeArrow domain codomain) = pretty domain <+> "->" <+> pretty codomain
     pretty (TypeApp t arg) = parens (pretty t <+> pretty arg)
+    pretty (TAtom a) = pretty a
+
+instance Pretty MonoType where
+    pretty (MTypeArrow domain codomain) = pretty domain <+> "->" <+> pretty codomain
+    pretty (MTypeApp t arg) = parens (pretty t <+> pretty arg)
+    pretty (MTAtom a) = pretty a
+
+instance Pretty TypeAtom where
     pretty (TypeName name) = pretty name
+    pretty (TypeUName name) = pretty name
     pretty (PrimType p) = pretty p
 
 instance Pretty PrimType where

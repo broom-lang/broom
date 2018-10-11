@@ -7,8 +7,8 @@ import Control.Eff.Reader.Lazy (Reader, runReader, local, ask)
 import Control.Eff.State.Strict (State)
 
 import Language.Broom.Util (Name, gensym)
-import Language.Broom.Cst (PrimType(..), Primop(..))
-import Language.Broom.CPS (Block(..), Stmt(..), Transfer(..), Expr(..), Atom(..), Type(..))
+import Language.Broom.Cst (TypeAtom(..), PrimType(..), Primop(..))
+import Language.Broom.CPS ( Block(..), Stmt(..), Transfer(..), Expr(..), Atom(..), Type(..))
 
 -- Thread the metacontinuation through, insert safepoints and self-inject fns/conts:
 threadMetaCont :: Member (State Int) r => Expr -> Eff r Expr
@@ -26,9 +26,9 @@ instance ThreadMC Expr where
                              Block stmts transfer <- local (const mk) (doThreadMC body)
                              -- HACK: self type is self referential :S
                              let params' = (self, FnType $ fmap snd params')
-                                           : (mk0, PrimType TypeMetaCont)
+                                           : (mk0, TAtom $ PrimType TypeMetaCont)
                                            : params
-                             let safePoint = Def mk (PrimType TypeMetaCont)
+                             let safePoint = Def mk (TAtom $ PrimType TypeMetaCont)
                                                  (PrimApp SafePoint (fmap (Use . fst) params'))
                              pure $ Fn params' (Block (safePoint : stmts) transfer)
         p @ (PrimApp _ _) -> pure p
