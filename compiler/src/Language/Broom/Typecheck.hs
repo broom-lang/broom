@@ -10,8 +10,8 @@ import Control.Eff.Exception (Exc, runError, throwError)
 
 import Language.Broom.Util (Name)
 import qualified Language.Broom.Cst as Cst
-import Language.Broom.Cst ( Const(..), Primop(..), Type(..), TypeAtom(..), PrimType(..)
-                          , primopResType )
+import Language.Broom.Cst ( Const(..), Primop(..), Type(..), MonoType(..), TypeAtom(..)
+                          , PrimType(..), primopResType )
 import Language.Broom.Ast (Expr(..), Stmt(..), Def(..))
 
 data TypeError = Unbound Name
@@ -27,6 +27,31 @@ instance Pretty TypeError where
     pretty (Argc goal actual) =
         "Wrong number of arguments:" <+> "expected" <+> pretty goal <>
             ", got" <+> pretty actual
+
+data CtxEntry = TVar Name
+              | EVar Def
+              | UVar Name (Maybe MonoType)
+              | Delim Name
+
+newtype Ctx' = Ctx' [CtxEntry]
+
+ctx'Push :: CtxEntry -> Ctx' -> Ctx'
+ctx'Push e (Ctx' es) = Ctx' (e : es)
+
+ctx'PushDef :: Def -> Ctx' -> Ctx'
+ctx'PushDef def = ctx'Push (EVar def)
+
+ctx'PushTVar :: Name -> Ctx' -> Ctx'
+ctx'PushTVar name = ctx'Push (TVar name)
+
+ctx'PushUName :: Name -> Ctx' -> Ctx'
+ctx'PushUName name = ctx'Push (UVar name Nothing)
+
+ctx'Lookup :: Name -> Ctx' -> Maybe Def
+ctx'Lookup name (Ctx' entries) = find entries
+    where find [] = Nothing
+          find (EVar (def @ (Def name' _)) : _) | name' == name = Just def
+          find (_ : es) = find es
 
 newtype Ctx = Ctx (HashMap.HashMap Name Def)
 
