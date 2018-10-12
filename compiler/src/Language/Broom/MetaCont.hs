@@ -12,7 +12,7 @@ import Language.Broom.CPS ( Block(..), Stmt(..), Transfer(..), Expr(..), Atom(..
 
 -- Thread the metacontinuation through, insert safepoints and self-inject fns/conts:
 threadMetaCont :: Member (State Int) r => Expr -> Eff r Expr
-threadMetaCont expr = do mk <- gensym (convert ("mk" :: Text))
+threadMetaCont expr = do mk <- gensym "mk"
                          runReader mk (doThreadMC expr)
 
 class ThreadMC c where
@@ -20,9 +20,9 @@ class ThreadMC c where
 
 instance ThreadMC Expr where
     doThreadMC = \case
-        Fn params body -> do self <- gensym (convert ("self" :: Text))
-                             mk0 <- gensym (convert ("mk" :: Text))
-                             mk <- gensym (convert ("mk" :: Text))
+        Fn params body -> do self <- gensym "self"
+                             mk0 <- gensym "mk"
+                             mk <- gensym "mk"
                              Block stmts transfer <- local (const mk) (doThreadMC body)
                              -- HACK: self type is self referential :S
                              let params' = (self, FnType $ fmap snd params')

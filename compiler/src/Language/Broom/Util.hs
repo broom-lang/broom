@@ -1,11 +1,12 @@
 {-# LANGUAGE TypeApplications, DeriveGeneric #-}
 
-module Language.Broom.Util (Name, fresh, gensym) where
+module Language.Broom.Util (Name, fresh, gensym, (<&>)) where
 
 import Data.Data (Data, Typeable)
 
 import Data.Semigroup ((<>))
 import Data.Convertible (Convertible, safeConvert, convert)
+import Data.String (IsString, fromString)
 import Data.Text (Text, pack, unpack)
 import Data.Hashable (Hashable)
 import GHC.Generics (Generic)
@@ -19,6 +20,9 @@ data Name = String Text
           deriving (Eq, Ord, Generic, Data, Typeable)
 
 instance Hashable Name
+
+instance IsString Name where
+    fromString = String . pack
 
 instance Show Name where
     show (String t) = unpack t
@@ -40,6 +44,10 @@ fresh :: Member (State Int) r => Eff r Int
 fresh = do { res <- get; modify (\(counter :: Int) -> counter + 1); pure res }
 
 gensym :: Member (State Int) r => Name -> Eff r Name
-gensym (String t) = Uniquefied t <$> fresh
-gensym (Unique _) = Unique <$> fresh
-gensym (Uniquefied t _) = Uniquefied t <$> fresh
+gensym = \case
+    String t -> Uniquefied t <$> fresh
+    Unique _ -> Unique <$> fresh
+    Uniquefied t _ -> Uniquefied t <$> fresh
+
+(<&>) :: Functor f => f a -> (a -> b) -> f b
+(<&>) = flip fmap

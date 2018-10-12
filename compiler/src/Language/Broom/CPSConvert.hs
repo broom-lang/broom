@@ -58,7 +58,7 @@ cpsConvert :: (STEff s r, Member (State Int) r) => Ast.Expr -> Eff r Expr
 cpsConvert expr = do builder <- emptyBlockBuilder
                      runReader builder m
     where m = do builder <- ask
-                 halt <- gensym (convert @Text "halt")
+                 halt <- gensym "halt"
                  transfer <- doConvert (TrivCont (TAtom $ PrimType Cst.TypeInt) halt) expr
                  body <- buildBlock builder transfer
                  pure $ Fn [(halt, FnType [TAtom $ PrimType Cst.TypeInt])] body

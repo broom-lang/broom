@@ -1,6 +1,6 @@
 {-# LANGUAGE ConstraintKinds #-}
 
-module Language.Broom.Alphatize (alphatize) where
+module Language.Broom.Alphatize (Err, alphatize) where
 
 import qualified Data.HashMap.Lazy as Env
 import Data.Generics.Uniplate.Data (descendM, descendBiM)

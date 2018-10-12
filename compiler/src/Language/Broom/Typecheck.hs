@@ -1,17 +1,22 @@
+{-# LANGUAGE ConstraintKinds #-}
+
 module Language.Broom.Typecheck (TypeError, Expr, Stmt, typecheck) where
 
 import Data.Foldable (foldl')
 import Data.Semigroup ((<>))
+import Data.Convertible (convert)
+import Data.Maybe (fromJust)
 import qualified Data.HashMap.Lazy as HashMap
 import Data.Text.Prettyprint.Doc (Pretty, pretty, (<+>))
 import Control.Eff (Eff, Member, run)
-import Control.Eff.Reader.Lazy (Reader, runReader, ask, local)
+import qualified Control.Eff.State.Strict as StrictState
+import Control.Eff.State.Lazy (State, evalState, get, put, modify)
 import Control.Eff.Exception (Exc, runError, throwError)
 
-import Language.Broom.Util (Name)
+import Language.Broom.Util (Name, gensym, (<&>))
 import qualified Language.Broom.Cst as Cst
 import Language.Broom.Cst ( Const(..), Primop(..), Type(..), MonoType(..), TypeAtom(..)
-                          , PrimType(..), primopResType )
+                          , PrimType(..), constType, primopResType )
 import Language.Broom.Ast (Expr(..), Stmt(..), Def(..))
 
 data TypeError = Unbound Name
@@ -33,102 +38,82 @@ data CtxEntry = TVar Name
               | UVar Name (Maybe MonoType)
               | Delim Name
 
-newtype Ctx' = Ctx' [CtxEntry]
+newtype Ctx = Ctx [CtxEntry]
 
-ctx'Push :: CtxEntry -> Ctx' -> Ctx'
-ctx'Push e (Ctx' es) = Ctx' (e : es)
+builtinCtx :: Ctx
+builtinCtx = Ctx []
 
-ctx'PushDef :: Def -> Ctx' -> Ctx'
-ctx'PushDef def = ctx'Push (EVar def)
+ctxPush :: CtxEntry -> Ctx -> Ctx
+ctxPush e (Ctx es) = Ctx (e : es)
 
-ctx'PushTVar :: Name -> Ctx' -> Ctx'
-ctx'PushTVar name = ctx'Push (TVar name)
+ctxPushDef :: Def -> Ctx -> Ctx
+ctxPushDef def = ctxPush (EVar def)
 
-ctx'PushUName :: Name -> Ctx' -> Ctx'
-ctx'PushUName name = ctx'Push (UVar name Nothing)
+ctxPushTVar :: Name -> Ctx -> Ctx
+ctxPushTVar name = ctxPush (TVar name)
 
-ctx'Lookup :: Name -> Ctx' -> Maybe Def
-ctx'Lookup name (Ctx' entries) = find entries
+ctxPushUName :: Name -> Ctx -> Ctx
+ctxPushUName name = ctxPush (UVar name Nothing)
+
+ctxPopEVar :: Name -> Ctx -> Maybe Ctx
+ctxPopEVar name (Ctx entries) = Ctx <$> pop entries
+    where pop [] = Nothing
+          pop (EVar (Def n _) : es) | n == name = Just es
+          pop (_ : es) = pop es
+
+ctxLookup :: Name -> Ctx -> Maybe Def
+ctxLookup name (Ctx entries) = find entries
     where find [] = Nothing
           find (EVar (def @ (Def name' _)) : _) | name' == name = Just def
           find (_ : es) = find es
 
-newtype Ctx = Ctx (HashMap.HashMap Name Def)
+substitute :: Ctx -> Type -> Type
+substitute = undefined
 
-builtinCtx :: Ctx
-builtinCtx = Ctx HashMap.empty
+type TypingEffs r = ( Member (State Ctx) r
+                    , Member (StrictState.State Int) r
+                    , Member (Exc TypeError) r )
 
-ctxInsert :: Def -> Ctx -> Ctx
-ctxInsert def @ (Def name _) (Ctx bindings) = Ctx (HashMap.insert name def bindings)
+typecheck :: Member (StrictState.State Int) r => Cst.Expr -> Eff r (Either TypeError Expr)
+typecheck expr = (fst <$>) <$> runError (evalState builtinCtx (check expr))
 
-ctxInsertStmts :: [Cst.Stmt] -> Ctx -> Ctx
-ctxInsertStmts decls ctx = foldl' insertStmt ctx decls
-    where insertStmt kvs (Cst.Val name (Just t) _) = ctxInsert (Def name t) kvs
-          insertStmt _ (Cst.Val _ Nothing _) = error "type inference unimplemented"
-          insertStmt kvs (Cst.Expr _) = kvs
+check :: TypingEffs r => Cst.Expr -> Eff r (Expr, Type)
+check = \case
+    Cst.Lambda param Nothing body ->
+        do domainName <- gensym "a"
+           let domain = TAtom $ TypeUName $ domainName
+           codomainName <- gensym "b"
+           let codomain = TAtom $ TypeUName $ codomainName
+           modify ( ctxPushUName domainName
+                  . ctxPushUName codomainName
+                  . ctxPushDef (Def param domain) )
+           body' <- checkAs codomain body
+           modify (fromJust . ctxPopEVar param)
+           pure (body', TypeArrow domain codomain)
+    Cst.App callee arg -> do (callee', calleeT) <- check callee
+                             subst <- get
+                             checkRedex (substitute subst calleeT) arg
+    Cst.IsA expr t -> do {expr' <- checkAs t expr; pure (IsA expr' t, t) }
+    Cst.Var name -> do ctx :: Ctx <- get
+                       case ctxLookup name ctx of
+                           Just (def @ (Def _ t)) -> pure (Var def, t)
+                           Nothing -> throwError (Unbound name)
+    Cst.Const c -> pure (Const c, convert (constType c))
 
-ctxLookup :: Name -> Ctx -> Maybe Def
-ctxLookup name (Ctx bindings) = HashMap.lookup name bindings
+checkRedex :: TypingEffs r => Type -> Cst.Expr -> Eff r (Expr, Type)
+checkRedex = undefined
 
-typecheck :: Cst.Expr -> Either TypeError Expr
-typecheck expr = fst <$> run (runError (runReader builtinCtx (check expr)))
+checkAs  :: TypingEffs r => Type -> Cst.Expr -> Eff r Expr
+checkAs (TypeArrow domain codomain) (Cst.Lambda param Nothing body) =
+    do modify (ctxPushDef (Def param domain))
+       body' <- checkAs codomain body
+       modify (fromJust . ctxPopEVar param)
+       pure body'
+checkAs t (Cst.Var name) = do ctx :: Ctx <- get
+                              case ctxLookup name ctx of
+                                  Just (def @ (Def _ t')) -> checkSub t' t *> pure (Var def)
+                                  Nothing -> throwError (Unbound name)
+checkAs t (Cst.Const c) = checkSub (convert (constType c)) t *> pure (Const c)
 
-check :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
-      => Cst.Expr -> Eff r (Expr, Type)
-check =
-    \case Cst.Lambda param (Just domain) body ->
-              local (ctxInsert def)
-                    (do (typedBody, codomain) <- check body
-                        pure (Lambda def typedBody, TypeArrow domain codomain))
-              where def = Def param domain
-          Cst.Lambda _ Nothing _ -> error "type inference unimplemented"
-          Cst.App callee arg ->
-              do (typedCallee, calleeType) <- check callee
-                 case calleeType of
-                     TypeArrow domain codomain ->
-                         do typedArg <- checkAs domain arg
-                            pure (App typedCallee typedArg codomain, codomain)
-                     _ -> throwError $ UnCallable callee calleeType
-          -- OPTIMIZE:
-          Cst.PrimApp op args -> do argTypes <- map snd <$> traverse check args
-                                    checkArithmetic op args (primopResType op argTypes)
-          Cst.Let decls body ->
-              local (ctxInsertStmts decls)
-                    (do typedStmts <- traverse checkStmt decls
-                        (typedBody, bodyType) <- check body
-                        pure (Let typedStmts typedBody, bodyType))
-          Cst.If cond conseq alt ->
-              do typedCond <- checkAs (TAtom $ PrimType TypeBool) cond
-                 (typedConseq, resType) <- check conseq
-                 typedAlt <- checkAs resType alt
-                 pure (If typedCond typedConseq typedAlt resType, resType)
-          Cst.IsA expr t -> (,t) . flip IsA t <$> checkAs t expr
-          Cst.Var name -> do maybeDef <- ctxLookup name <$> ask
-                             case maybeDef of
-                                 Just (def @ (Def _ t)) -> pure (Var def, t)
-                                 Nothing -> throwError (Unbound name)
-          Cst.Const (IntConst n) -> pure (Const (IntConst n), TAtom $ PrimType TypeInt)
-          Cst.Const UnitConst -> pure (Const UnitConst, TAtom $ PrimType TypeUnit)
-
-checkStmt :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
-          => Cst.Stmt -> Eff r Stmt
-checkStmt (Cst.Val name (Just t) valueExpr) =
-    ctxLookup name <$> ask >>= \case
-        Just def -> Val def <$> checkAs t valueExpr
-        Nothing -> throwError (Unbound name)
-checkStmt (Cst.Val _ _ _) = error "type inference unimplemented"
-checkStmt (Cst.Expr expr) = Expr <$> checkAs (TAtom $ PrimType TypeUnit) expr
-
-checkAs :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
-        => Type -> Cst.Expr -> Eff r Expr
-checkAs goalType expr = do (typed, t) <- check expr
-                           if t == goalType -- HACK
-                           then pure typed
-                           else throwError (TypeMismatch goalType t)
-
-checkArithmetic :: (Member (Reader Ctx) r, Member (Exc TypeError) r)
-                => Primop -> [Cst.Expr] -> Type -> Eff r (Expr, Type)
-checkArithmetic op [l, r] t = do typedL <- checkAs (TAtom $ PrimType TypeInt) l
-                                 typedR <- checkAs (TAtom $ PrimType TypeInt) r
-                                 pure (PrimApp op [typedL, typedR] t, t)
-checkArithmetic _ args _ = throwError $ Argc 2 (length args)
+checkSub :: TypingEffs r => Type -> Type -> Eff r ()
+checkSub = undefined

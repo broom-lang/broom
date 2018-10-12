@@ -1,10 +1,11 @@
 module Language.Broom.Cst ( Expr(..), Stmt(..), Primop(..), Const(..)
                           , Type(..), MonoType(..), TypeAtom(..), PrimType(..)
-                          , primopResType ) where
+                          , constType, primopResType ) where
 
 import Data.Data (Data, Typeable)
 
 import Data.Semigroup ((<>))
+import Data.Convertible (Convertible, safeConvert)
 import Data.Text.Prettyprint.Doc ( Pretty, pretty, (<+>), line, hsep, vsep, parens
                                  , align, indent)
 
@@ -53,6 +54,14 @@ data PrimType = TypeInt
               | VarBox
               | TypeMetaCont
               deriving (Eq, Data, Typeable)
+
+instance Convertible PrimType Type where
+    safeConvert = pure . TAtom . PrimType
+
+constType :: Const -> PrimType
+constType = \case
+    IntConst _ -> TypeInt
+    UnitConst -> TypeUnit
 
 primopResType :: Primop -> [Type] -> Type
 primopResType op argTypes = case op of
