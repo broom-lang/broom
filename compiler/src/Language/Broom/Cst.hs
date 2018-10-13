@@ -55,6 +55,9 @@ data PrimType = TypeInt
               | TypeMetaCont
               deriving (Eq, Data, Typeable)
 
+instance Convertible Type MonoType where
+    safeConvert (TAtom a) = pure (MTAtom a)
+
 instance Convertible PrimType Type where
     safeConvert = pure . TAtom . PrimType
 

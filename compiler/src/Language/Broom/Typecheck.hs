@@ -23,6 +23,7 @@ data TypeError = Unbound Name
                | TypeMismatch Type Type
                | UnCallable Cst.Expr Type
                | Argc Int Int
+               | Occurs Name Type
 
 instance Pretty TypeError where
     pretty (Unbound name) = "Unbound:" <+> pretty name
@@ -54,6 +55,12 @@ ctxPushTVar name = ctxPush (TVar name)
 
 ctxPushUName :: Name -> Ctx -> Ctx
 ctxPushUName name = ctxPush (UVar name Nothing)
+
+ctxInitUName :: Name -> MonoType -> Ctx -> Maybe Ctx
+ctxInitUName name t (Ctx entries) = Ctx <$> init entries
+    where init [] = Nothing
+          init (UVar name Nothing : es) = Just $ UVar name (Just t) : es
+          init (e : es) = (e :) <$> init es
 
 ctxPopEVar :: Name -> Ctx -> Maybe Ctx
 ctxPopEVar name (Ctx entries) = Ctx <$> pop entries
@@ -101,7 +108,7 @@ check = \case
     Cst.Const c -> pure (Const c, convert (constType c))
 
 checkRedex :: TypingEffs r => Type -> Cst.Expr -> Eff r (Expr, Type)
-checkRedex = undefined
+checkRedex (TypeArrow domain codomain) expr = checkAs domain expr <&> (, domain)
 
 checkAs  :: TypingEffs r => Type -> Cst.Expr -> Eff r Expr
 checkAs (TypeArrow domain codomain) (Cst.Lambda param Nothing body) =
@@ -116,4 +123,19 @@ checkAs t (Cst.Var name) = do ctx :: Ctx <- get
 checkAs t (Cst.Const c) = checkSub (convert (constType c)) t *> pure (Const c)
 
 checkSub :: TypingEffs r => Type -> Type -> Eff r ()
-checkSub = undefined
+checkSub t @ (TAtom (TypeUName name)) t' =
+    if t == t'
+    then pure ()
+    else do occursCheck name t'
+            instantiate name t'
+
+instantiate :: TypingEffs r => Name -> Type -> Eff r ()
+instantiate name = \case
+    t @ (TAtom (TypeUName _)) -> modify (fromJust . ctxInitUName name (convert t))
+
+occursCheck :: TypingEffs r => Name -> Type -> Eff r ()
+occursCheck name t @ (TAtom (TypeUName name')) =
+    if name == name'
+    then throwError $ Occurs name t
+    else pure ()
+occursCheck name (TAtom (PrimType _)) = pure ()
