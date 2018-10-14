@@ -3,7 +3,7 @@
 module Language.Broom.Alphatize (Err, alphatize) where
 
 import qualified Data.HashMap.Lazy as Env
-import Data.Generics.Uniplate.Data (descendM, descendBiM)
+import Data.Generics.Uniplate.Operations (descendM)
 import Data.Text.Prettyprint.Doc (Pretty, pretty, (<+>))
 import Control.Eff (Eff, Member)
 import Control.Eff.Reader.Lazy (Reader, runReader, local, ask)
@@ -16,9 +16,9 @@ import Language.Broom.Ast (Expr(..), Stmt(..), Def(..), defName)
 
 -- TODO: Type variables
 
-type Env = Env.HashMap Name Def
+type Env h = Env.HashMap Name (Def h)
 
-replace :: (Member (Reader Env) r, Member (Exc Err) r) => Name -> Eff r Def
+replace :: (Member (Reader (Env h)) r, Member (Exc Err) r) => Name -> Eff r (Def h)
 replace name = do env <- ask
                   case Env.lookup name env of
                       Just def' -> pure def'
@@ -29,18 +29,20 @@ data Err = Unbound Name
 instance Pretty Err where
     pretty (Unbound name) = "Unbound:" <+> pretty name
 
-type AlphaEffs r = (Member (Reader Env) r, Member (State Int) r, Member (Exc Err) r)
+type AlphaEffs h r = ( Member (Reader (Env h)) r
+                     , Member (State Int) r
+                     , Member (Exc Err) r )
 
-alphatize :: Member (State Int) r => Ast.Expr -> Eff r (Either Err Ast.Expr)
-alphatize expr = runError $ runReader (Env.empty :: Env) (alpha expr)
+alphatize :: forall h r . Member (State Int) r => Ast.Expr h -> Eff r (Either Err (Ast.Expr h))
+alphatize expr = runError $ runReader (Env.empty :: Env h) (alpha expr)
 
-alpha :: AlphaEffs r => Ast.Expr -> Eff r Ast.Expr
+alpha :: AlphaEffs h r => Ast.Expr h -> Eff r (Ast.Expr h)
 alpha expr = case expr of
     Lambda (Def param domain) body ->
         do param' <- gensym param
            let def' = Def param' domain
            local (Env.insert param def')
-                 (descendM alpha (Lambda def' body))
+                 (Lambda def' <$> alpha body)
     App _ _ _ -> descendM alpha expr
     PrimApp _ _ _ -> descendM alpha expr
     Let decls body -> do let binders = letBinders decls
@@ -53,12 +55,12 @@ alpha expr = case expr of
     Var (Def name _) -> Var <$> replace name
     Const _ -> pure expr
 
-alphaStmt :: AlphaEffs r => Ast.Stmt -> Eff r Ast.Stmt
+alphaStmt :: AlphaEffs h r => Ast.Stmt h -> Eff r (Ast.Stmt h)
 alphaStmt (Val (Def name _) valueExpr) = do def' <- replace name
-                                            descendBiM alpha (Val def' valueExpr)
-alphaStmt decl @ (Expr _) = descendBiM alpha decl
+                                            Val def' <$> alpha valueExpr
+alphaStmt (Expr expr) = Expr <$> alpha expr
 
-letBinders :: [Ast.Stmt] -> [Def]
+letBinders :: [Ast.Stmt h] -> [Def h]
 letBinders decls = decls >>= declBinder
     where declBinder (Val def _) = pure def
           declBinder (Expr _) = mempty

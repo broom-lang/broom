@@ -28,7 +28,7 @@ data JSStmt = FwdDef [Name]
 
 data Binop = Eq | Add | Sub | Mul | Div
 
-selectInstructions :: CPS.Expr -> JSStmt
+selectInstructions :: CPS.Expr h -> JSStmt
 selectInstructions expr = -- Hardcoded wrapper that enabled node `require(...).main()`
     Assign (convert ("module.exports.main" :: Text))
            (Call (Ref (convert ("wean" :: Text))) [selectInstrs expr])
@@ -36,12 +36,12 @@ selectInstructions expr = -- Hardcoded wrapper that enabled node `require(...).m
 class ISel c j where
     selectInstrs :: c -> j
 
-instance ISel CPS.Block [JSStmt] where
+instance ISel (CPS.Block h) [JSStmt] where
     selectInstrs (CPS.Block stmts transfer) =
         fmap selectInstrs stmts <> [selectInstrs transfer]
 
 -- FIXME: Emit code that throws on unbound (and rebound?) vars
-instance ISel CPS.Stmt JSStmt where
+instance ISel (CPS.Stmt h) JSStmt where
     selectInstrs = \case
         CPS.Def name _ (CPS.PrimApp Cst.VarNew []) -> FwdDef [name]
         CPS.Def name _ valExpr -> Def name (selectInstrs valExpr)
@@ -49,7 +49,7 @@ instance ISel CPS.Stmt JSStmt where
             Assign name (selectInstrs valExpr)
         CPS.Expr expr -> Expr (selectInstrs expr)
 
-instance ISel CPS.Expr JSExpr where
+instance ISel (CPS.Expr h) JSExpr where
     selectInstrs = \case
         CPS.Fn params body -> Function (fmap fst params) (selectInstrs body)
         CPS.PrimApp Cst.SafePoint args -> Call (Ref (convert ("safePoint" :: Text)))
@@ -58,7 +58,7 @@ instance ISel CPS.Expr JSExpr where
         CPS.PrimApp op [l, r] -> BinApp (convertOp op) (selectInstrs l) (selectInstrs r)
         CPS.Atom a -> selectInstrs a
 
-instance ISel CPS.Transfer JSStmt where
+instance ISel (CPS.Transfer h) JSStmt where
     selectInstrs = \case
         CPS.App callee args -> Expr $ Call (Ref callee) (fmap selectInstrs args)
         CPS.If cond conseq alt ->

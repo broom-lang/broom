@@ -22,29 +22,29 @@ type STEff s r = SetMember Lift (Lift (ST s)) r
 
 -- BlockBuilder for pushing statements in
 
-type BlockBuilder s = STRef s [Stmt]
+type BlockBuilder s = STRef s [Stmt s]
 
 emptyBlockBuilder :: STEff s r => Eff r (BlockBuilder s)
 emptyBlockBuilder = lift (newSTRef [])
 
-pushStmt :: (STEff s r, Member (Reader (BlockBuilder s)) r) => Stmt -> Eff r ()
+pushStmt :: (STEff s r, Member (Reader (BlockBuilder s)) r) => Stmt s -> Eff r ()
 pushStmt stmt = do builder :: BlockBuilder s <- ask
                    lift $ modifySTRef builder (stmt :)
 
-buildBlock :: STEff s r => BlockBuilder s -> Transfer -> Eff r Block
+buildBlock :: STEff s r => BlockBuilder s -> Transfer s -> Eff r (Block s)
 buildBlock builder transfer = do stmts <- reverse <$> lift (readSTRef builder)
                                  pure $ Block stmts transfer
 
 -- Continuation for continuing conversion
 
-data ContParamHint = Exactly Name Type
-                   | Temp Type
-                   | Anon
+data ContParamHint s = Exactly Name (Type s)
+                     | Temp (Type s)
+                     | Anon
 
-data Cont r = ContFn ContParamHint (Maybe Atom -> Eff r Transfer)
-            | TrivCont Type Name
+data Cont s r = ContFn (ContParamHint s) (Maybe Atom -> Eff r (Transfer s))
+              | TrivCont (Type s) Name
 
-contParamHint :: Cont r -> ContParamHint
+contParamHint :: Cont s r -> ContParamHint s
 contParamHint = \case ContFn hint _ -> hint
                       TrivCont t _ -> Temp t
 
@@ -54,7 +54,7 @@ type ConvEffs s r = ( Member (State Int) r
                     , Member (Reader (BlockBuilder s)) r
                     , SetMember Lift (Lift (ST s)) r )
 
-cpsConvert :: (STEff s r, Member (State Int) r) => Ast.Expr -> Eff r Expr
+cpsConvert :: (STEff s r, Member (State Int) r) => Ast.Expr s -> Eff r (Expr s)
 cpsConvert expr = do builder <- emptyBlockBuilder
                      runReader builder m
     where m = do builder <- ask
@@ -65,13 +65,13 @@ cpsConvert expr = do builder <- emptyBlockBuilder
 
 -- Implementation of CPS conversion
 
-convertToBlock :: ConvEffs s r => Cont r -> Ast.Expr -> Eff r Block
+convertToBlock :: ConvEffs s r => Cont s r -> Ast.Expr s -> Eff r (Block s)
 convertToBlock cont expr = do builder <- emptyBlockBuilder
                               transfer <- local (const builder)
                                                 (doConvert cont expr)
                               buildBlock builder transfer
 
-doConvert :: ConvEffs s r => Cont r -> Ast.Expr -> Eff r Transfer
+doConvert :: ConvEffs s r => Cont s r -> Ast.Expr s -> Eff r (Transfer s)
 doConvert cont = \case
     Ast.Lambda (Ast.Def param paramType) body ->
         do let paramType' = convert paramType
@@ -109,7 +109,8 @@ doConvert cont = \case
     Ast.Var (Ast.Def name _) -> continue cont (Atom (Use name))
     Ast.Const c -> continue cont (Atom (Const c))
 
-doConvertArgs :: ConvEffs s r => ([Atom] -> Eff r Transfer) -> [Ast.Expr] -> Eff r Transfer
+doConvertArgs :: ConvEffs s r
+              => ([Atom] -> Eff r (Transfer s)) -> [Ast.Expr s] -> Eff r (Transfer s)
 doConvertArgs cont arguments = loop arguments []
     where loop [] aArgs = cont (reverse aArgs)
           loop (arg : args) aArgs = let argType = typeOf arg
@@ -117,7 +118,7 @@ doConvertArgs cont arguments = loop arguments []
                                             loop args (aArg : aArgs)
                                     in doConvert cont' arg
 
-continue :: ConvEffs s r => Cont r -> Expr -> Eff r Transfer
+continue :: ConvEffs s r => Cont s r -> Expr s -> Eff r (Transfer s)
 continue cont expr = do maExpr <- trivialize (contParamHint cont) expr
                         case cont of
                             ContFn _ k -> k maExpr
@@ -127,13 +128,13 @@ continue cont expr = do maExpr <- trivialize (contParamHint cont) expr
 
 -- Reducing Expr:s to Atoms of Names
 
-trivialize :: ConvEffs s r => ContParamHint -> Expr -> Eff r (Maybe Atom)
+trivialize :: ConvEffs s r => ContParamHint s -> Expr s -> Eff r (Maybe Atom)
 trivialize (Exactly name t) expr = (Use <$>) <$> nominalize (Exactly name t) expr
 trivialize hint expr = case expr of
     Atom a -> pure (Just a)
     _ -> (Use <$>) <$> nominalize hint expr
 
-nominalize :: ConvEffs s r => ContParamHint -> Expr -> Eff r (Maybe Name)
+nominalize :: ConvEffs s r => ContParamHint s -> Expr s -> Eff r (Maybe Name)
 nominalize (Exactly name t) expr = do pushStmt $ Def name t expr
                                       pure (Just name)
 nominalize (Temp t) expr = case expr of
@@ -143,7 +144,7 @@ nominalize (Temp t) expr = case expr of
 nominalize Anon expr = do pushStmt $ Expr expr
                           pure Nothing
 
-nominalizeCont :: ConvEffs s r => Cont r -> Eff r Name
+nominalizeCont :: ConvEffs s r => Cont s r -> Eff r Name
 nominalizeCont = \case ContFn paramHint k ->
                            do (param, paramType) <- case paramHint of
                                   Exactly name t -> pure (name, t)
@@ -160,14 +161,14 @@ nominalizeCont = \case ContFn paramHint k ->
 
 -- Type inference
 
-class CPSTypable a where
-    typeOf :: a -> Type
+class CPSTypable s a where
+    typeOf :: a -> Type s
 
-instance CPSTypable Const where
+instance CPSTypable s Const where
     typeOf = \case IntConst _ -> TAtom $ PrimType Cst.TypeInt
                    UnitConst -> TAtom $ PrimType Cst.TypeUnit
 
-instance CPSTypable Ast.Expr where
+instance CPSTypable s (Ast.Expr s) where
     typeOf = \case
         Ast.Lambda (Ast.Def _ domain) body -> FnType [FnType [typeOf body], convert domain]
         Ast.App _ _ t -> convert t

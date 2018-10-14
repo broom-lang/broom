@@ -2,63 +2,59 @@ module Language.Broom.Cst ( Expr(..), Stmt(..), Primop(..), Const(..)
                           , Type(..), MonoType(..), TypeAtom(..), PrimType(..)
                           , constType, primopResType ) where
 
-import Data.Data (Data, Typeable)
-
 import Data.Semigroup ((<>))
 import Data.Convertible (Convertible, safeConvert)
 import Data.Text.Prettyprint.Doc ( Pretty, pretty, (<+>), line, hsep, vsep, parens
                                  , align, indent)
+import Data.STRef (STRef)
 
 import Language.Broom.Util (Name)
 
-data Expr = Lambda Name (Maybe Type) Expr
-          | App Expr Expr
-          | PrimApp Primop [Expr]
-          | Let [Stmt] Expr
-          | If Expr Expr Expr
-          | IsA Expr Type
-          | Var Name
-          | Const Const
-          deriving (Data, Typeable)
+data Expr h = Lambda Name (Maybe (Type h)) (Expr h)
+            | App (Expr h) (Expr h)
+            | PrimApp Primop [Expr h]
+            | Let [Stmt h] (Expr h)
+            | If (Expr h) (Expr h) (Expr h)
+            | IsA (Expr h) (Type h)
+            | Var Name
+            | Const Const
 
-data Stmt = Val Name (Maybe Type) Expr
-          | Expr Expr
-          deriving (Data, Typeable)
+data Stmt h = Val Name (Maybe (Type h)) (Expr h)
+            | Expr (Expr h)
 
 data Primop = SafePoint | VarNew | VarInit | VarLoad | Eq | Add | Sub | Mul | Div
-            deriving (Show, Data, Typeable)
+            deriving Show
 
 data Const = IntConst Int
            | UnitConst
-           deriving (Data, Typeable)
 
-data Type = TypeForAll Name Type
-          | TypeArrow Type Type
-          | TypeApp Type Type
-          | TAtom TypeAtom
-          deriving (Eq, Data, Typeable)
+data Type h = TypeForAll Name (Type h)
+            | TypeArrow (Type h) (Type h)
+            | TypeApp (Type h) (Type h)
+            | TAtom (TypeAtom h)
+            deriving Eq
 
-data MonoType = MTypeArrow MonoType MonoType
-              | MTypeApp MonoType MonoType
-              | MTAtom TypeAtom
-              deriving (Eq, Data, Typeable)
+data MonoType h = MTypeArrow (MonoType h) (MonoType h)
+                | MTypeApp (MonoType h) (MonoType h)
+                | MTAtom (TypeAtom h)
+                deriving Eq
 
-data TypeAtom = TypeName Name
-              | TypeUName Name
-              | PrimType PrimType
-              deriving (Eq, Data, Typeable)
+data TypeAtom h = TypeName Name
+                | TypeUName (STRef h (Maybe (MonoType h)))
+                | PrimType PrimType
+                deriving Eq
 
 data PrimType = TypeInt
               | TypeBool
               | TypeUnit
               | VarBox
               | TypeMetaCont
-              deriving (Eq, Data, Typeable)
+              deriving Eq
 
-instance Convertible Type MonoType where
+instance Convertible (Type h) (MonoType h) where
     safeConvert (TAtom a) = pure (MTAtom a)
 
-instance Convertible PrimType Type where
+instance Convertible PrimType (Type h) where
     safeConvert = pure . TAtom . PrimType
 
 constType :: Const -> PrimType
@@ -66,7 +62,7 @@ constType = \case
     IntConst _ -> TypeInt
     UnitConst -> TypeUnit
 
-primopResType :: Primop -> [Type] -> Type
+primopResType :: Primop -> [Type h] -> Type h
 primopResType op argTypes = case op of
     SafePoint -> TAtom $ PrimType TypeMetaCont
     VarNew -> case argTypes of
@@ -82,7 +78,7 @@ primopResType op argTypes = case op of
     Div -> TAtom $ PrimType TypeInt
     Eq -> TAtom $ PrimType TypeBool
 
-instance Pretty Expr where
+instance Pretty (Expr h) where
     pretty (Lambda param paramType body) =
         "fn" <+> pretty param <> ":" <+> pretty paramType <+> "=>" <+> pretty body
     pretty (App callee arg) = parens $ pretty callee <+> pretty arg
@@ -97,7 +93,7 @@ instance Pretty Expr where
     pretty (Var name) = pretty name
     pretty (Const c) = pretty c
 
-instance Pretty Stmt where
+instance Pretty (Stmt h) where
     pretty (Val pattern t valueExpr) =
         "val" <+> pretty pattern <> ":" <+> pretty t <+> "=" <+> pretty valueExpr
     pretty (Expr expr) = pretty expr
@@ -109,21 +105,21 @@ instance Pretty Const where
     pretty (IntConst n) = pretty n
     pretty UnitConst = "()"
 
-instance Pretty Type where
+instance Pretty (Type h) where
     pretty (TypeForAll param t) =
         "forall" <+> pretty param <+> "." <+> pretty t
     pretty (TypeArrow domain codomain) = pretty domain <+> "->" <+> pretty codomain
     pretty (TypeApp t arg) = parens (pretty t <+> pretty arg)
     pretty (TAtom a) = pretty a
 
-instance Pretty MonoType where
+instance Pretty (MonoType h) where
     pretty (MTypeArrow domain codomain) = pretty domain <+> "->" <+> pretty codomain
     pretty (MTypeApp t arg) = parens (pretty t <+> pretty arg)
     pretty (MTAtom a) = pretty a
 
-instance Pretty TypeAtom where
+instance Pretty (TypeAtom h) where
     pretty (TypeName name) = pretty name
-    pretty (TypeUName name) = pretty name
+    pretty (TypeUName name) = "???" -- FIXME
     pretty (PrimType p) = pretty p
 
 instance Pretty PrimType where
