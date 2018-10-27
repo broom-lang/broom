@@ -5,23 +5,23 @@ end = struct
 
   structure BroomLex = BroomLexFun(structure Tokens = BroomLrVals.Tokens)
 
-  structure BroomParser = Join(structure LrParser = LrParser
-                               structure ParserData = BroomLrVals.ParserData
-                               structure Lex = BroomLex)
+  structure BroomParser = JoinWithArg(structure LrParser = LrParser
+                                      structure ParserData = BroomLrVals.ParserData
+                                      structure Lex = BroomLex)
 
   fun invoke lexstream =
-      let fun print_error (s,i:int,_) =
+      let fun print_error (s, i, _) =
               TextIO.output(TextIO.stdOut,
-                            "Error, line " ^ (Int.toString i) ^ ", " ^ s ^ "\n")
-      in  BroomParser.parse(0,lexstream,print_error,())
+                            "Error, line " ^ (Pos.toString i) ^ ", " ^ s ^ "\n")
+      in  BroomParser.parse(0, lexstream, print_error, ())
       end
 
   fun parse () =
       let val lexer = BroomParser.makeLexer (fn _ => (case TextIO.inputLine TextIO.stdIn
                                                       of SOME s => s
                                                        | _ => ""))
-          val dummyEOF = BroomLrVals.Tokens.EOF(0,0)
-          val dummySEMI = BroomLrVals.Tokens.SEMI(0,0)
+                                            (Pos.default "<stdin>")
+          val dummyEOF = BroomLrVals.Tokens.EOF(Pos.default "<stdin>", Pos.default "<stdin>")
           fun loop lexer =
               let val (result,lexer) = invoke lexer
                   val (nextToken,lexer) = BroomParser.Stream.get lexer

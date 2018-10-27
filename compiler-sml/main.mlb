@@ -2,6 +2,8 @@ local
     $(SML_LIB)/basis/basis.mlb
     $(SML_LIB)/mlyacc-lib/mlyacc-lib.mlb
 
+    src/Pos.sml
+
     local
         src/parser.y.sig
         src/parser.y.sml

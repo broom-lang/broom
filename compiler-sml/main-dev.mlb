@@ -3,6 +3,8 @@ local
 
     mlyacc-lib/base.sig
 
+    src/Pos.sml
+
     local
         src/parser.y.sig
         src/parser.y.sml
