@@ -1,1 +1,1 @@
-val _ = print "Hello World!"
+val _ = Parser.parse ()

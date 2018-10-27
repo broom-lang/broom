@@ -1,0 +1,23 @@
+local
+    $(SML_LIB)/basis/basis.mlb
+
+    mlyacc-lib/base.sig
+
+    local
+        src/parser.y.sig
+        src/parser.y.sml
+        src/lexer.x.sml
+
+        local
+    		mlyacc-lib/stream.sml
+    	in
+    		mlyacc-lib/lrtable.sml
+    		mlyacc-lib/join.sml
+    		mlyacc-lib/parser2.sml
+    	end
+    in
+        src/parser.sml
+    end
+in
+    src/main.sml
+end
