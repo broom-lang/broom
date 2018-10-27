@@ -25,10 +25,9 @@ end = struct
           fun loop lexer =
               let val (result,lexer) = invoke lexer
                   val (nextToken,lexer) = BroomParser.Stream.get lexer
-                  val _ = case result
-                          of SOME r =>
-                              TextIO.output(TextIO.stdOut, "result = " ^ (Int.toString r) ^ "\n")
-                           | NONE => ()
+                  val _ = Vector.app (fn stmt => TextIO.output(TextIO.stdOut,
+                                                               Cst.stmtToString stmt ^ "\n"))
+                                     result
               in  if BroomParser.sameToken(nextToken,dummyEOF) then ()
                   else loop lexer
               end

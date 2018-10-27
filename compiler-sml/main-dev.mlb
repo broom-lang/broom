@@ -4,6 +4,9 @@ local
     mlyacc-lib/base.sig
 
     src/Pos.sml
+    src/Name.sml
+    src/Const.sml
+    src/Cst.sml
 
     local
         src/parser.y.sig

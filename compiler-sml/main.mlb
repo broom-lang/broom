@@ -3,6 +3,9 @@ local
     $(SML_LIB)/mlyacc-lib/mlyacc-lib.mlb
 
     src/Pos.sml
+    src/Name.sml
+    src/Const.sml
+    src/Cst.sml
 
     local
         src/parser.y.sig
