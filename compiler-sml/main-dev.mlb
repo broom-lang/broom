@@ -9,12 +9,12 @@ local
         src/lexer.x.sml
 
         local
-    		mlyacc-lib/stream.sml
-    	in
-    		mlyacc-lib/lrtable.sml
-    		mlyacc-lib/join.sml
-    		mlyacc-lib/parser2.sml
-    	end
+            mlyacc-lib/stream.sml
+        in
+            mlyacc-lib/lrtable.sml
+            mlyacc-lib/join.sml
+            mlyacc-lib/parser2.sml
+        end
     in
         src/parser.sml
     end

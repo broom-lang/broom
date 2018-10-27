@@ -5,9 +5,6 @@ fun lookup "bogus" = 10000
 
 %eop EOF SEMI
 
-(* %pos declares the type of positions for terminals.
-   Each symbol has an associated left and right position. *)
-
 %pos int
 
 %left SUB PLUS
@@ -27,9 +24,8 @@ fun lookup "bogus" = 10000
 %noshift EOF
 %value ID ("bogus")
 %verbose
-%%
 
-(* the parser returns the value associated with the expression *)
+%%
 
   START : PRINT EXP (print (Int.toString EXP);
                      print "\n";

@@ -3,12 +3,12 @@ local
     $(SML_LIB)/mlyacc-lib/mlyacc-lib.mlb
 
     local
-	    src/parser.y.sig
-	    src/parser.y.sml
-	    src/lexer.x.sml
-	in
-    	src/parser.sml
-   	end
+        src/parser.y.sig
+        src/parser.y.sml
+        src/lexer.x.sml
+    in
+        src/parser.sml
+    end
 in
     src/main.sml
 end
