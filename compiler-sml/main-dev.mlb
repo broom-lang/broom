@@ -11,6 +11,8 @@ local
     src/Type.sml
     src/Cst.sml
 
+    src/Typecheck.sml
+
     local
         src/parser.y.sig
         src/parser.y.sml
