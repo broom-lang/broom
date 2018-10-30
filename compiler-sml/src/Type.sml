@@ -1,5 +1,8 @@
 structure Type :> sig
-    type level = int
+    type level
+
+    val topLevel: level
+    val pushLevel: level -> level
 
     datatype prim = Int
 
@@ -15,6 +18,8 @@ structure Type :> sig
     datatype err = UnificationShapes of t * t
                  | Occurs of uv * t
     exception TypeError of err
+
+    val fresh: level -> t
 
     val unify: t -> t -> unit
     val generalize: level -> t -> t
@@ -22,6 +27,9 @@ structure Type :> sig
 end = struct
     type level = int
 
+    val topLevel = 0
+    fun pushLevel l = l + 1
+
     datatype prim = Int
 
     datatype t = Arrow of t * t
@@ -36,6 +44,8 @@ end = struct
     datatype err = UnificationShapes of t * t
                  | Occurs of uv * t
     exception TypeError of err
+
+    fun fresh level = UVar (UnionFind.new (ref (Unbound (Name.fresh (), level))))
 
     fun occurs u t = 
         let val u = UnionFind.find u
