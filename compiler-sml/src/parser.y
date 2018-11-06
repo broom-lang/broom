@@ -32,4 +32,5 @@ stmtList : ([])
 
 stmt : VAL ID EQ expr (Cst.Def (VALleft, Name.fromString ID, expr))
 
-expr : INT (Cst.Const (INTleft, Const.Int INT))
+expr : ID  (Cst.Use (IDleft, Name.fromString ID))
+     | INT (Cst.Const (INTleft, Const.Int INT))

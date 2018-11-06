@@ -3,11 +3,16 @@ local
 
     mlyacc-lib/base.sig
 
+    src/UnionFind.sml
+
     src/Pos.sml
     src/Name.sml
     src/TypeVars.sml
     src/Const.sml
+    src/Type.sml
     src/Cst.sml
+
+    src/Typecheck.sml
 
     local
         src/parser.y.sig

@@ -23,11 +23,15 @@ end = struct
                                             (Pos.default "<stdin>")
           val dummyEOF = BroomLrVals.Tokens.EOF(Pos.default "<stdin>", Pos.default "<stdin>")
           fun loop lexer =
-              let val (result,lexer) = invoke lexer
+              let val (program,lexer) = invoke lexer
                   val (nextToken,lexer) = BroomParser.Stream.get lexer
                   val _ = Vector.app (fn stmt => TextIO.output(TextIO.stdOut,
                                                                Cst.stmtToString stmt ^ "\n"))
-                                     result
+                                     program
+                  val program' = Typecheck.typecheck program
+                  val _ = Vector.app (fn stmt => TextIO.output(TextIO.stdOut,
+                                                               Cst.stmtToString stmt ^ "\n"))
+                                     program
               in  if BroomParser.sameToken(nextToken,dummyEOF) then ()
                   else loop lexer
               end
