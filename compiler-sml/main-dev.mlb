@@ -5,6 +5,7 @@ local
 
     src/Pos.sml
     src/Name.sml
+    src/TypeVars.sml
     src/Const.sml
     src/Cst.sml
 
