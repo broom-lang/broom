@@ -14,8 +14,9 @@ signature TYPE_VARS = sig
     val popOv: 't env -> ov -> unit
 
     val pushUv: 't env -> Name.t -> 't uv
+    val pushScopedUv: 't env -> Name.t -> 't uv
     val insertUvBefore: 't env -> 't uv -> Name.t -> 't uv
-    val popUv: 't env -> 't uv -> unit
+    val popScopedUv: 't env -> 't uv -> unit
 
     val ovInScope: 't env -> ov -> bool
     val uvInScope: 't env -> 't uv -> bool
@@ -55,6 +56,10 @@ structure TypeVars :> TYPE_VARS = struct
                           in env := (Unif uv :: !env)
                            ; uv
                           end
+    fun pushScopedUv env name = let val uv = freshUv name
+                                in env := (Unif uv :: Marker uv :: !env)
+                                 ; uv
+                                end
 
     (* O(n) *)
     fun insertUvBefore env uv name =
@@ -75,9 +80,9 @@ structure TypeVars :> TYPE_VARS = struct
     fun popOv env ov = case popUntilAnd (bindingOfOv ov) (!env)
                         of SOME bindings => env := bindings
                          | NONE => raise OvOutOfScope ov
-    fun popUv env uv = case popUntilAnd (markerOfUv uv) (!env)
-                        of SOME bindings => env := bindings
-                         | NONE => raise UvOutOfScope (#name uv)
+    fun popScopedUv env uv = case popUntilAnd (markerOfUv uv) (!env)
+                             of SOME bindings => env := bindings
+                              | NONE => raise UvOutOfScope (#name uv)
 
     (* O(n) *)
     fun bindingInScope bindings pred = isSome (List.find pred bindings)
