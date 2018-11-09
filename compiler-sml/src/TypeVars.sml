@@ -10,7 +10,11 @@ signature TYPE_VARS = sig
 
     val newEnv: unit -> 't env
 
+    val uvFind: 't uv -> 't uv
+    val uvEq: 't uv -> 't uv -> bool
+
     val pushOv: 't env -> Name.t -> ov
+    val pushOv': 't env -> ov -> unit
     val popOv: 't env -> ov -> unit
 
     val pushUv: 't env -> Name.t -> 't uv
@@ -25,7 +29,7 @@ end
 
 structure TypeVars :> TYPE_VARS = struct
     type ov = Name.t
-    type 't uv = {typ: 't option ref, name: Name.t}
+    type 't uv = {typ: 't option ref, name: Name.t} UnionFind.t
     datatype 't binding = Opaque of ov
                         | Unif of 't uv
                         | Marker of 't uv
@@ -39,19 +43,25 @@ structure TypeVars :> TYPE_VARS = struct
     fun newEnv () = ref []
 
     (* O(1) *)
+    val uvFind = UnionFind.find
+    fun uvName uv = #name (UnionFind.content (uvFind uv))
+    fun uvEq uv uv' = UnionFind.eq (uvFind uv) (uvFind uv')
+
+    (* O(1) *)
     fun bindingOfOv ov = fn Opaque ov' => ov' = ov
                           | Unif _ => false
                           | Marker _ => false
     fun bindingOfUv uv = fn Opaque _ => false
-                          | Unif uv' => uv' = uv
+                          | Unif uv' => UnionFind.eq uv' uv
                           | Marker _ => false
     fun markerOfUv uv = fn Opaque _ => false
                          | Unif _ => false
-                         | Marker uv' => uv' = uv
-    fun freshUv name = {typ = ref NONE, name = name}
+                         | Marker uv' => UnionFind.eq uv' uv
+    fun freshUv name = UnionFind.new {typ = ref NONE, name = name}
 
     (* O(1) *)
     fun pushOv env name = (env := (Opaque name :: !env); name)
+    fun pushOv' env ov = env := (Opaque ov :: !env)
     fun pushUv env name = let val uv = freshUv name
                           in env := (Unif uv :: !env)
                            ; uv
@@ -64,7 +74,7 @@ structure TypeVars :> TYPE_VARS = struct
     (* O(n) *)
     fun insertUvBefore env uv name =
         let val uv' = freshUv name
-            val rec insert = fn [] => raise UvOutOfScope (#name uv)
+            val rec insert = fn [] => raise UvOutOfScope (uvName uv)
                               | b :: bs => b :: (if bindingOfUv uv b
                                                  then Unif uv' :: bs
                                                  else insert bs)
@@ -82,7 +92,7 @@ structure TypeVars :> TYPE_VARS = struct
                          | NONE => raise OvOutOfScope ov
     fun popScopedUv env uv = case popUntilAnd (markerOfUv uv) (!env)
                              of SOME bindings => env := bindings
-                              | NONE => raise UvOutOfScope (#name uv)
+                              | NONE => raise UvOutOfScope (uvName uv)
 
     (* O(n) *)
     fun bindingInScope bindings pred = isSome (List.find pred bindings)
@@ -93,13 +103,13 @@ structure TypeVars :> TYPE_VARS = struct
     fun compareUvScopes env uv uv' =
         let fun ensureOuter env uv = if bindingInScope env (bindingOfUv uv)
                                      then ()
-                                     else raise UvOutOfScope (#name uv)
-            val rec findInner = fn [] => raise UvsOutOfScope (#name uv, #name uv')
+                                     else raise UvOutOfScope (uvName uv)
+            val rec findInner = fn [] => raise UvsOutOfScope (uvName uv, uvName uv')
                                  | Opaque _ :: env' => findInner env'
                                  | Unif uv'' :: env' =>
-                                    if uv'' = uv
+                                    if UnionFind.eq uv'' uv
                                     then (ensureOuter env' uv'; GREATER)
-                                    else if uv'' = uv'
+                                    else if UnionFind.eq uv'' uv'
                                     then (ensureOuter env' uv; LESS)
                                     else findInner env'
                                  | Marker _ :: env' => findInner env'

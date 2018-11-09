@@ -9,6 +9,7 @@ local
     src/Pos.sml
     src/Name.sml
     src/TypeVars.sml
+    src/BidirType.sml
     src/Const.sml
     src/Type.sml
     src/Cst.sml
