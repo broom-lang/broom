@@ -1,5 +1,7 @@
+(* TODO: Lift out the `ref` in `env`, making this immutable. *)
+
 signature TYPE_VARS = sig
-    type ov     (* Opaque variable *)
+    eqtype ov   (* Opaque variable *)
     type 't uv  (* Unification variable *)
     type 't env (* Type variable environment *)
 
@@ -9,6 +11,7 @@ signature TYPE_VARS = sig
     exception NoUvMark of Name.t
 
     val newEnv: unit -> 't env
+    val splitEnvBefore: 't env -> 't uv -> 't env
 
     val uvFind: 't uv -> 't uv
     val uvEq: 't uv -> 't uv -> bool
@@ -40,9 +43,9 @@ structure TypeVars :> TYPE_VARS = struct
     exception UvsOutOfScope of Name.t * Name.t
     exception NoUvMark of Name.t
 
+    (* O(1) *)
     fun newEnv () = ref []
 
-    (* O(1) *)
     val uvFind = UnionFind.find
     fun uvName uv = #name (UnionFind.content (uvFind uv))
     fun uvEq uv uv' = UnionFind.eq (uvFind uv) (uvFind uv')
@@ -58,6 +61,19 @@ structure TypeVars :> TYPE_VARS = struct
                          | Unif _ => false
                          | Marker uv' => UnionFind.eq uv' uv
     fun freshUv name = UnionFind.new {typ = ref NONE, name = name}
+
+    (* O(n) *)
+    fun splitEnvBefore env uv =
+        let val rec split = fn [] => raise UvOutOfScope (uvName uv)
+                             | b :: bs => if bindingOfUv uv b
+                                          then (bs, [b])
+                                          else let val (bottom, top) = split bs
+                                               in (bottom, b :: top)
+                                               end
+            val (bottom, top) = split (!env)
+        in env := bottom
+         ; ref top
+        end
 
     (* O(1) *)
     fun pushOv env name = (env := (Opaque name :: !env); name)
