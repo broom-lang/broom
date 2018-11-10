@@ -4,7 +4,6 @@ signature TYPE_VARS = sig
     eqtype ov   (* Opaque variable *)
     type 't uv  (* Unification variable *)
     type 't env (* Type variable environment *)
-    type 't venv (* Value variable types *)
 
     exception OvOutOfScope of Name.t
     exception UvOutOfScope of Name.t
@@ -31,8 +30,22 @@ signature TYPE_VARS = sig
     val uvInScope: 't env -> 't uv -> bool
     val compareUvScopes: 't env -> 't uv -> 't uv -> order
 
-    val findVal: 't venv -> Name.t -> 't option
-    val insertVal: 't venv -> Name.t -> 't -> 't venv
+    structure ValEnv: sig
+        type 't env
+
+        val findVal: 't env -> Name.t -> 't option
+        val insertVal: 't env -> Name.t -> 't -> 't env
+    end
+end
+
+structure ValTypeCtx = struct
+    type 't env = 't NameSortedMap.map
+
+    (* O(log n) *)
+    fun findVal env name = NameSortedMap.find (env, name)
+
+    (* O(log n)*)
+    fun insertVal env name v = NameSortedMap.insert (env, name, v)
 end
 
 structure TypeVars :> TYPE_VARS = struct
@@ -43,7 +56,6 @@ structure TypeVars :> TYPE_VARS = struct
                         | Marker of 't uv
                         | Par of 't binding vector
     type 't env = 't binding list ref
-    type 't venv = 't NameSortedMap.map
 
     exception OvOutOfScope of Name.t
     exception UvOutOfScope of Name.t
@@ -163,9 +175,5 @@ structure TypeVars :> TYPE_VARS = struct
            handle Done ord => ord
         end
 
-    (* O(log n) *)
-    fun findVal env name = NameSortedMap.find (env, name)
-
-    (* O(log n)*)
-    fun insertVal env name v = NameSortedMap.insert (env, name, v)
+    structure ValEnv = ValTypeCtx
 end
