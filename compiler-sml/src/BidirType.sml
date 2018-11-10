@@ -1,4 +1,6 @@
 functor BidirType(TypeVars: TYPE_VARS) :> sig
+    structure TypeVars: TYPE_VARS
+
     type ov = TypeVars.ov
 
     datatype prim = Int
@@ -16,6 +18,8 @@ functor BidirType(TypeVars: TYPE_VARS) :> sig
 
     val substitute: t TypeVars.uv -> TypeVars.ov -> t -> t
 end = struct
+    structure TypeVars = TypeVars
+
     val ovInScope = TypeVars.ovInScope
     val uvInScope = TypeVars.uvInScope
     val uvEq = TypeVars.uvEq
@@ -74,4 +78,5 @@ end = struct
                                                        then t
                                                        else Arrow {domain = d', codomain = c'}
                                                     end
+         | t as Prim _ => t
 end

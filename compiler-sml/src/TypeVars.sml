@@ -4,6 +4,7 @@ signature TYPE_VARS = sig
     eqtype ov   (* Opaque variable *)
     type 't uv  (* Unification variable *)
     type 't env (* Type variable environment *)
+    type 't venv (* Value variable types *)
 
     exception OvOutOfScope of Name.t
     exception UvOutOfScope of Name.t
@@ -21,6 +22,7 @@ signature TYPE_VARS = sig
     val popOv: 't env -> ov -> unit
 
     val pushUv: 't env -> Name.t -> 't uv
+    val pushParUvs: 't env -> Name.t vector -> 't uv vector
     val pushScopedUv: 't env -> Name.t -> 't uv
     val insertUvBefore: 't env -> 't uv -> Name.t -> 't uv
     val popScopedUv: 't env -> 't uv -> unit
@@ -28,6 +30,9 @@ signature TYPE_VARS = sig
     val ovInScope: 't env -> ov -> bool
     val uvInScope: 't env -> 't uv -> bool
     val compareUvScopes: 't env -> 't uv -> 't uv -> order
+
+    val findVal: 't venv -> Name.t -> 't option
+    val insertVal: 't venv -> Name.t -> 't -> 't venv
 end
 
 structure TypeVars :> TYPE_VARS = struct
@@ -36,7 +41,9 @@ structure TypeVars :> TYPE_VARS = struct
     datatype 't binding = Opaque of ov
                         | Unif of 't uv
                         | Marker of 't uv
+                        | Par of 't binding vector
     type 't env = 't binding list ref
+    type 't venv = 't NameSortedMap.map
 
     exception OvOutOfScope of Name.t
     exception UvOutOfScope of Name.t
@@ -54,12 +61,15 @@ structure TypeVars :> TYPE_VARS = struct
     fun bindingOfOv ov = fn Opaque ov' => ov' = ov
                           | Unif _ => false
                           | Marker _ => false
+                          | Par bs => isSome (Vector.find (bindingOfOv ov) bs)
     fun bindingOfUv uv = fn Opaque _ => false
                           | Unif uv' => UnionFind.eq uv' uv
                           | Marker _ => false
+                          | Par bs => isSome (Vector.find (bindingOfUv uv) bs)
     fun markerOfUv uv = fn Opaque _ => false
                          | Unif _ => false
                          | Marker uv' => UnionFind.eq uv' uv
+                         | Par bs => isSome (Vector.find (bindingOfUv uv) bs)
     fun freshUv name = UnionFind.new {typ = ref NONE, name = name}
 
     (* O(n) *)
@@ -82,6 +92,10 @@ structure TypeVars :> TYPE_VARS = struct
                           in env := (Unif uv :: !env)
                            ; uv
                           end
+    fun pushParUvs env names = let val uvs = Vector.map freshUv names
+                               in env := (Par (Vector.map Unif uvs) :: !env)
+                                ; uvs
+                               end
     fun pushScopedUv env name = let val uv = freshUv name
                                 in env := (Unif uv :: Marker uv :: !env)
                                  ; uv
@@ -115,20 +129,43 @@ structure TypeVars :> TYPE_VARS = struct
     fun ovInScope env ov = bindingInScope (!env) (bindingOfOv ov)
     fun uvInScope env uv = bindingInScope (!env) (bindingOfUv uv)
 
-    (* O(n) *)
+    exception Done of order
+
+    (* O(n) and probably buggy for nested `Par`:s (which shouldn't happen anyway but hey...) *)
     fun compareUvScopes env uv uv' =
-        let fun ensureOuter env uv = if bindingInScope env (bindingOfUv uv)
-                                     then ()
-                                     else raise UvOutOfScope (uvName uv)
-            val rec findInner = fn [] => raise UvsOutOfScope (uvName uv, uvName uv')
-                                 | Opaque _ :: env' => findInner env'
-                                 | Unif uv'' :: env' =>
-                                    if UnionFind.eq uv'' uv
-                                    then (ensureOuter env' uv'; GREATER)
-                                    else if UnionFind.eq uv'' uv'
-                                    then (ensureOuter env' uv; LESS)
-                                    else findInner env'
-                                 | Marker _ :: env' => findInner env'
-        in findInner (!env)
+        let fun comparisonStep inPar (b, state) =
+                case b
+                of Opaque _ => state
+                 | Unif uv'' => (case state
+                                 of NONE => if UnionFind.eq uv'' uv
+                                            then SOME (GREATER, inPar)
+                                            else if UnionFind.eq uv'' uv'
+                                            then SOME (LESS, inPar)
+                                            else state
+                                  | SOME (ord, samePar) =>
+                                      let val outerUv = case ord
+                                                        of GREATER => uv'
+                                                         | LESS => uv
+                                                         | EQUAL => raise Fail "unreachable"
+                                      in if UnionFind.eq uv'' outerUv
+                                         then raise Done (if samePar then EQUAL else ord)
+                                         else state
+                                      end)
+                 | Marker _ => state
+                 | Par bs => (case Vector.foldl (comparisonStep true) state bs
+                              of SOME (ord, _) => SOME (ord, false)
+                               | NONE => NONE)
+        in (case List.foldl (comparisonStep false) NONE (!env)
+            of SOME (GREATER, _) => raise UvOutOfScope (uvName uv')
+             | SOME (LESS, _) => raise UvOutOfScope (uvName uv)
+             | SOME (EQUAL, _) => raise Fail "unreachable"
+             | NONE => raise UvsOutOfScope (uvName uv, uvName uv'))
+           handle Done ord => ord
         end
+
+    (* O(log n) *)
+    fun findVal env name = NameSortedMap.find (env, name)
+
+    (* O(log n)*)
+    fun insertVal env name v = NameSortedMap.insert (env, name, v)
 end
