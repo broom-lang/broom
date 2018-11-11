@@ -4,6 +4,8 @@ local
     $(SML_LIB)/smlnj-lib/Util/smlnj-lib.mlb
     $(SML_LIB)/mlyacc-lib/mlyacc-lib.mlb
 
+    src/Util/Either.sml
+
     ann "allowSigWithtype true"
     in
         src/UnionFind.sml
@@ -11,9 +13,8 @@ local
         src/Pos.sml
         src/Name.sml
         src/TypeVars.sml
-        src/BidirType.sml
-        src/Const.sml
         src/Type.sml
+        src/Const.sml
         src/Cst.sml
 
         src/Typecheck.sml

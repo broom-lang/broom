@@ -28,6 +28,7 @@ end = struct
                   val _ = Vector.app (fn stmt => TextIO.output(TextIO.stdOut,
                                                                Cst.stmtToString stmt ^ "\n"))
                                      program
+                  val _ = print "---\n"
                   val program' = Typecheck.typecheck program
                   val _ = Vector.app (fn stmt => TextIO.output(TextIO.stdOut,
                                                                Cst.stmtToString stmt ^ "\n"))

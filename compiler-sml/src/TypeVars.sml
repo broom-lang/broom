@@ -1,3 +1,4 @@
+(* FIXME: Cannot use union by rank (unless the `uv`:s' scopes are identical)! *)
 (* TODO: Lift out the `ref` in `env`, making this immutable. *)
 
 signature TYPE_VARS = sig
@@ -13,8 +14,10 @@ signature TYPE_VARS = sig
     val newEnv: unit -> 't env
     val splitEnvBefore: 't env -> 't uv -> 't env
 
-    val uvFind: 't uv -> 't uv
+    val uvName: 't uv -> Name.t
+    val uvGet: 't uv -> ('t uv, 't) Either.t
     val uvEq: 't uv -> 't uv -> bool
+    val uvSet: 't uv -> 't -> unit
 
     val pushOv: 't env -> Name.t -> ov
     val pushOv': 't env -> ov -> unit
@@ -33,19 +36,22 @@ signature TYPE_VARS = sig
     structure ValEnv: sig
         type 't env
 
-        val findVal: 't env -> Name.t -> 't option
-        val insertVal: 't env -> Name.t -> 't -> 't env
+        val empty: 't env
+        val find: 't env -> Name.t -> 't option
+        val insert: 't env -> Name.t -> 't -> 't env
     end
 end
 
 structure ValTypeCtx = struct
     type 't env = 't NameSortedMap.map
 
+    val empty = NameSortedMap.empty
+
     (* O(log n) *)
-    fun findVal env name = NameSortedMap.find (env, name)
+    fun find env name = NameSortedMap.find (env, name)
 
     (* O(log n)*)
-    fun insertVal env name v = NameSortedMap.insert (env, name, v)
+    fun insert env name v = NameSortedMap.insert (env, name, v)
 end
 
 structure TypeVars :> TYPE_VARS = struct
@@ -65,9 +71,15 @@ structure TypeVars :> TYPE_VARS = struct
     (* O(1) *)
     fun newEnv () = ref []
 
-    val uvFind = UnionFind.find
+    val uvFind: 't uv -> 't uv = UnionFind.find
+    fun uvGet uv = let val uv = uvFind uv
+                   in case !(#typ (UnionFind.content uv))
+                      of SOME t => Either.Right t
+                       | NONE => Either.Left uv
+                   end
     fun uvName uv = #name (UnionFind.content (uvFind uv))
     fun uvEq uv uv' = UnionFind.eq (uvFind uv) (uvFind uv')
+    fun uvSet uv t = #typ (UnionFind.content (uvFind uv)) := SOME t
 
     (* O(1) *)
     fun bindingOfOv ov = fn Opaque ov' => ov' = ov

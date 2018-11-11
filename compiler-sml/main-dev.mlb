@@ -3,6 +3,8 @@ local
 
     mlyacc-lib/base.sig
 
+    src/Util/Either.sml
+    
     ann "allowSigWithtype true"
     in
         src/UnionFind.sml
@@ -10,9 +12,8 @@ local
         src/Pos.sml
         src/Name.sml
         src/TypeVars.sml
-        src/BidirType.sml
-        src/Const.sml
         src/Type.sml
+        src/Const.sml
         src/Cst.sml
 
         src/Typecheck.sml
