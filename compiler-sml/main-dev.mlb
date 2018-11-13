@@ -4,19 +4,22 @@ local
     mlyacc-lib/base.sig
 
     src/Util/Either.sml
+    src/Util/VectorExt.sml
     
     ann "allowSigWithtype true"
-    in
-        src/UnionFind.sml
+    in ann "allowSuccessorML true"
+       in
+           src/UnionFind.sml
 
-        src/Pos.sml
-        src/Name.sml
-        src/TypeVars.sml
-        src/Type.sml
-        src/Const.sml
-        src/Cst.sml
+           src/Pos.sml
+           src/Name.sml
+           src/TypeVars.sml
+           src/Type.sml
+           src/Const.sml
+           src/Cst.sml
 
-        src/Typecheck.sml
+           src/Typecheck.sml
+       end
     end
 
     local

@@ -189,3 +189,162 @@ structure TypeVars :> TYPE_VARS = struct
 
     structure ValEnv = ValTypeCtx
 end
+
+structure FancyTypeVars :> sig
+    exception Reset of Name.t
+
+    type ov
+    val ovName: ov -> Name.t
+
+    type 't uv
+    val uvName: 't uv -> Name.t
+    val uvGet: 't uv -> ('t uv, 't) Either.t
+    val uvSet: 't uv -> 't -> unit
+    val uvMerge: 't uv -> 't uv -> unit
+
+    type 't env
+    val newEnv: unit -> 't env
+
+    val pushOv: 't env -> Name.t -> 't env * ov
+    val pushUv: 't env -> Name.t -> 't env * 't uv
+end = struct
+    structure Level :> sig
+        structure Digit: sig
+            type t
+
+            val maxValue: int
+            val fromInt: int -> t
+        end
+
+        type id
+        val empty: id
+        val push: id -> Digit.t -> id
+        val compare: id * id -> order
+    end = struct
+        structure Digit = struct
+            type t = Word8.word
+
+            val maxValue = Word.toInt (Word.<< (Word.fromInt 1, Word.fromInt Word8.wordSize)) - 1
+            fun fromInt n = if n <= maxValue then Word8.fromInt n else raise Overflow
+        end
+
+        type id = Word8.word vector
+
+        val empty = Vector.fromList []
+
+        fun push id d = VectorExt.push (id, d)
+
+        fun compare (bytes, bytes') =
+            let val len = Vector.length bytes
+                val len' = Vector.length bytes'
+                fun loop i ord =
+                    let val byte = if i < len then SOME (Vector.sub (bytes, i)) else NONE
+                        val byte' = if i < len' then SOME (Vector.sub (bytes', i)) else NONE
+                    in case (byte, byte')
+                       of (NONE, NONE) => ord
+                        | _ => (case Word8.compare ( getOpt (byte, Word8.fromInt 0)
+                                                   , getOpt (byte', Word8.fromInt 0) )
+                                of EQUAL => loop (i + 1) EQUAL
+                                 | ord => ord)
+                    end
+            in loop 0 EQUAL
+            end
+    end
+
+    exception Reset of Name.t
+
+    type var_descr = {name: Name.t, levelId: Level.id, inScope: bool ref}
+
+    type ov = var_descr
+
+    fun ovName (ov: ov) = #name ov
+
+    datatype 't uv_link = Root of {descr: var_descr, typ: 't option ref}
+                        | Link of 't uv
+    withtype 't uv = 't uv_link ref
+
+    fun uvFind uv = case !uv
+                    of Root _ => uv
+                     | Link uv' => let val res = uvFind uv'
+                                   in uv := Link res (* path compression *)
+                                    ; res
+                                   end
+
+    fun uvName uv = case !(uvFind uv)
+                    of Root {descr = {name, ...}, ...} => name
+                     | Link _ => raise Fail "unreachable"
+
+    fun uvGet uv = let val uv = uvFind uv
+                   in case !uv
+                      of Root {typ, ...} => (case !typ
+                                             of SOME t => Either.Right t
+                                              | NONE => Either.Left uv)
+                       | Link _ => raise Fail "unreachable"
+                   end
+
+    fun uvSet uv t = let val uv = uvFind uv
+                     in case !uv
+                        of Root {descr = {name, ...}, typ} => typ := SOME t
+                         | Link _ => raise Fail "unreachable"
+                     end
+
+    fun uvMerge uv uv' = let val uv = uvFind uv
+                             val uv' = uvFind uv'
+                         in case (!uv, !uv')
+                            of ( Root {descr = {levelId = l, ...}, ...}
+                               , Root {descr = {levelId = l', ...}, ...} ) =>
+                                (case Level.compare (l, l')
+                                 of LESS => uv' := Link uv
+                                  | GREATER => uv := Link uv'
+                                  | EQUAL => uv' := Link uv) (* OPTIMIZE: Union by rank here? *)
+                            | _ => raise Fail "unreachable"
+                         end
+
+    datatype 't var = Ov of ov
+                    | Uv of 't uv
+    datatype 't scope = Single of 't var
+                      | Par of 't var vector
+
+    datatype 't env_node = Env of 't env
+                         | Scope of 't scope
+    withtype 't env = 't env_node vector
+
+    fun newEnv () = Vector.fromList [Env (Vector.fromList [])]
+
+    fun nodePushScope scopeFromLevelId envNode prefix =
+        case envNode
+        of Env env => envPushScope scopeFromLevelId env prefix
+         | Scope _ => let val id = Level.push prefix (Level.Digit.fromInt 1)
+                          val scope = scopeFromLevelId id
+                      in (Vector.fromList [envNode, Scope scope], scope)
+                      end
+
+    and envPushScope scopeFromLevelId env prefix =
+        let val i = Vector.length env
+            val id = Level.push prefix (Level.Digit.fromInt i)
+            val (lastNode, scope) =
+                case Int.compare (i, Level.Digit.maxValue)
+                of LESS | EQUAL => let val scope = scopeFromLevelId id
+                                   in (Scope scope, scope)
+                                   end
+                 | GREATER =>
+                    let val (env, scope) = nodePushScope scopeFromLevelId (Vector.sub (env, i)) id
+                    in (Env env, scope)
+                    end
+        in (VectorExt.push (env, lastNode), scope)
+        end
+
+    fun pushOv env name =
+        case envPushScope (fn levelId => Single (Ov {name, levelId, inScope = ref true}))
+                          env Level.empty
+        of (env, Single (Ov ov)) => (env, ov)
+         | _ => raise Fail "unreachable"
+
+    fun pushUv env name =
+        case envPushScope (fn levelId =>
+                               Single (Uv (ref (Root { descr = {name, levelId, inScope = ref true}
+                                                     , typ = ref NONE }))))
+                          env Level.empty
+        of (env, Single (Uv uv)) => (env, uv)
+         | _ => raise Fail "unreachable"
+end
