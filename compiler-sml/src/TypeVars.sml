@@ -288,9 +288,11 @@ end = struct
                                     ; res
                                    end
 
-    fun uvName uv = case !(uvFind uv)
-                    of Root {descr = {name, ...}, ...} => name
+    fun uvRoot uv = case !(uvFind uv)
+                    of Root root => root
                      | Link _ => raise Fail "unreachable"
+
+    fun uvName uv = #name (#descr (uvRoot uv))
 
     fun uvGet uv = let val uv = uvFind uv
                    in case !uv
@@ -300,11 +302,7 @@ end = struct
                        | Link _ => raise Fail "unreachable"
                    end
 
-    fun uvSet uv t = let val uv = uvFind uv
-                     in case !uv
-                        of Root {descr = {name, ...}, typ} => typ := SOME t
-                         | Link _ => raise Fail "unreachable"
-                     end
+    fun uvSet uv t = #typ (uvRoot uv) := SOME t
 
     fun uvMerge uv uv' = let val uv = uvFind uv
                              val uv' = uvFind uv'
@@ -371,9 +369,7 @@ end = struct
         end
 
     fun insertUvBefore env succUv name =
-        let val succLevel = case !(uvFind succUv)
-                            of Root {descr = {levelId, ...}, ...} => levelId
-                             | Link _ => raise Fail "unreachable"
+        let val succLevel = #levelId (#descr (uvRoot succUv))
             val res = ref NONE
             fun scopeFromLevelId levelId = let val descr = {name, levelId, inScope = ref true}
                                                val uv = ref (Root { descr, typ = ref NONE })
@@ -398,7 +394,5 @@ end = struct
 
     fun ovInScope _ ({inScope, ...}: ov) = !inScope
 
-    fun uvInScope _ uv = case !(uvFind uv)
-                         of Root {descr = {inScope, ...}, ...} => !inScope
-                          | Link _ => raise Fail "unimplemented"
+    fun uvInScope _ uv = !(#inScope (#descr (uvRoot uv)))
 end
