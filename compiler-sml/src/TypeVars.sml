@@ -208,6 +208,9 @@ structure FancyTypeVars :> sig
     val pushOv: 't env -> Name.t -> ov
     val pushUv: 't env -> Name.t -> 't uv
     val insertUvBefore: 't env -> 't uv -> Name.t -> 't uv
+
+    val ovInScope: 't env -> ov -> bool
+    val uvInScope: 't env -> 't uv -> bool
 end = struct
     structure Level :> sig
         structure Digit: sig
@@ -392,4 +395,10 @@ end = struct
         in env := insert (!env) 0
          ; valOf (!res)
         end
+
+    fun ovInScope _ ({inScope, ...}: ov) = !inScope
+
+    fun uvInScope _ uv = case !(uvFind uv)
+                         of Root {descr = {inScope, ...}, ...} => !inScope
+                          | Link _ => raise Fail "unimplemented"
 end
