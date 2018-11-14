@@ -207,6 +207,7 @@ structure FancyTypeVars :> sig
 
     val pushOv: 't env -> Name.t -> ov
     val pushUv: 't env -> Name.t -> 't uv
+    val insertUvBefore: 't env -> 't uv -> Name.t -> 't uv
 end = struct
     structure Level :> sig
         structure Digit: sig
@@ -214,11 +215,15 @@ end = struct
 
             val maxValue: int
             val fromInt: int -> t
+            val toInt: t -> int
         end
 
         type id
         val empty: id
         val push: id -> Digit.t -> id
+        val pred: id -> id
+        val length: id -> int
+        val digit: id -> int -> Digit.t
         val compare: id * id -> order
     end = struct
         structure Digit = struct
@@ -226,6 +231,7 @@ end = struct
 
             val maxValue = Word.toInt (Word.<< (Word.fromInt 1, Word.fromInt Word8.wordSize)) - 1
             fun fromInt n = if n <= maxValue then Word8.fromInt n else raise Overflow
+            val toInt = Word8.toInt
         end
 
         type id = Word8.word vector
@@ -233,6 +239,15 @@ end = struct
         val empty = Vector.fromList []
 
         fun push id d = VectorExt.push (id, d)
+
+        val length = Vector.length
+
+        fun pred id = let val i = length id - 1
+                          val n = Digit.toInt (Vector.sub (id, i))
+                      in Vector.update (id, i, Word8.fromInt (n - 1))
+                      end
+
+        fun digit id i = Vector.sub (id, i)
 
         fun compare (bytes, bytes') =
             let val len = Vector.length bytes
@@ -349,6 +364,32 @@ end = struct
                                             ; Single (Uv uv)
                                            end
         in env := bindingsPushScope scopeFromLevelId (!env) Level.empty
+         ; valOf (!res)
+        end
+
+    fun insertUvBefore env succUv name =
+        let val succLevel = case !(uvFind succUv)
+                            of Root {descr = {levelId, ...}, ...} => levelId
+                             | Link _ => raise Fail "unreachable"
+            val res = ref NONE
+            fun scopeFromLevelId levelId = let val descr = {name, levelId, inScope = ref true}
+                                               val uv = ref (Root { descr, typ = ref NONE })
+                                           in res := SOME uv
+                                            ; Single (Uv uv)
+                                           end
+            fun insert bindings digitIndex =
+                let val isLastIndex = digitIndex < Level.length succLevel - 1
+                    val level = if isLastIndex then succLevel else Level.pred succLevel
+                    val digit = Level.Digit.toInt (Level.digit level digitIndex)
+                    val node = Vector.sub (bindings, digit)
+                    val bindings' = if isLastIndex
+                                    then case node
+                                         of Bindings bs => insert bs (digitIndex + 1)
+                                          | Scope _ => raise Fail "unreachable"
+                                    else nodePushScope scopeFromLevelId node level
+                in Vector.update (bindings, digit, Bindings bindings')
+                end
+        in env := insert (!env) 0
          ; valOf (!res)
         end
 end
