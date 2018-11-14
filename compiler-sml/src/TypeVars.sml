@@ -205,8 +205,8 @@ structure FancyTypeVars :> sig
     type 't env
     val newEnv: unit -> 't env
 
-    val pushOv: 't env -> Name.t -> 't env * ov
-    val pushUv: 't env -> Name.t -> 't env * 't uv
+    val pushOv: 't env -> Name.t -> ov
+    val pushUv: 't env -> Name.t -> 't uv
 end = struct
     structure Level :> sig
         structure Digit: sig
@@ -305,46 +305,50 @@ end = struct
     datatype 't scope = Single of 't var
                       | Par of 't var vector
 
-    datatype 't env_node = Env of 't env
-                         | Scope of 't scope
-    withtype 't env = 't env_node vector
+    datatype 't binding_node = Bindings of 't bindings
+                             | Scope of 't scope
+    withtype 't bindings = 't binding_node vector
 
-    fun newEnv () = Vector.fromList [Env (Vector.fromList [])]
+    type 't env = 't bindings ref
+
+    fun newEnv () = ref (Vector.fromList [Bindings (Vector.fromList [])])
 
     fun nodePushScope scopeFromLevelId envNode prefix =
         case envNode
-        of Env env => envPushScope scopeFromLevelId env prefix
+        of Bindings bindings => bindingsPushScope scopeFromLevelId bindings prefix
          | Scope _ => let val id = Level.push prefix (Level.Digit.fromInt 1)
-                          val scope = scopeFromLevelId id
-                      in (Vector.fromList [envNode, Scope scope], scope)
+                      in Vector.fromList [envNode, Scope (scopeFromLevelId id)]
                       end
 
-    and envPushScope scopeFromLevelId env prefix =
-        let val i = Vector.length env
+    and bindingsPushScope scopeFromLevelId bindings prefix =
+        let val i = Vector.length bindings
             val id = Level.push prefix (Level.Digit.fromInt i)
-            val (lastNode, scope) =
+            val lastNode =
                 case Int.compare (i, Level.Digit.maxValue)
-                of LESS | EQUAL => let val scope = scopeFromLevelId id
-                                   in (Scope scope, scope)
-                                   end
+                of LESS | EQUAL => Scope (scopeFromLevelId id)
                  | GREATER =>
-                    let val (env, scope) = nodePushScope scopeFromLevelId (Vector.sub (env, i)) id
-                    in (Env env, scope)
-                    end
-        in (VectorExt.push (env, lastNode), scope)
+                    Bindings (nodePushScope scopeFromLevelId (Vector.sub (bindings, i)) id)
+        in VectorExt.push (bindings, lastNode)
         end
 
     fun pushOv env name =
-        case envPushScope (fn levelId => Single (Ov {name, levelId, inScope = ref true}))
-                          env Level.empty
-        of (env, Single (Ov ov)) => (env, ov)
-         | _ => raise Fail "unreachable"
+        let val res = ref NONE
+            fun scopeFromLevelId levelId = let val ov = {name, levelId, inScope = ref true}
+                                           in res := SOME ov
+                                            ; Single (Ov ov)
+                                           end
+        in env := bindingsPushScope scopeFromLevelId (!env) Level.empty
+         ; valOf (!res)
+        end
 
     fun pushUv env name =
-        case envPushScope (fn levelId =>
-                               Single (Uv (ref (Root { descr = {name, levelId, inScope = ref true}
-                                                     , typ = ref NONE }))))
-                          env Level.empty
-        of (env, Single (Uv uv)) => (env, uv)
-         | _ => raise Fail "unreachable"
+        let val res = ref NONE
+            fun scopeFromLevelId levelId = let val descr = {name, levelId, inScope = ref true}
+                                               val uv = ref (Root { descr, typ = ref NONE })
+                                           in res := SOME uv
+                                            ; Single (Uv uv)
+                                           end
+        in env := bindingsPushScope scopeFromLevelId (!env) Level.empty
+         ; valOf (!res)
+        end
 end
