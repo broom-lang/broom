@@ -190,6 +190,63 @@ structure TypeVars :> TYPE_VARS = struct
     structure ValEnv = ValTypeCtx
 end
 
+structure Version :> sig
+    structure Digit: sig
+        type t
+
+        val maxValue: int
+        val fromInt: int -> t
+        val toInt: t -> int
+    end
+
+    type id
+    val empty: id
+    val push: id -> Digit.t -> id
+    val pred: id -> id
+    val length: id -> int
+    val digit: id -> int -> Digit.t
+    val compare: id * id -> order
+end = struct
+    structure Digit = struct
+        type t = Word8.word
+
+        val maxValue = Word.toInt (Word.<< (Word.fromInt 1, Word.fromInt Word8.wordSize)) - 1
+        fun fromInt n = if n <= maxValue then Word8.fromInt n else raise Overflow
+        val toInt = Word8.toInt
+    end
+
+    type id = Word8.word vector
+
+    val empty = Vector.fromList []
+
+    fun push id d = VectorExt.push (id, d)
+
+    val length = Vector.length
+
+    fun pred id = let val i = length id - 1
+                      val n = Digit.toInt (Vector.sub (id, i))
+                  in Vector.update (id, i, Word8.fromInt (n - 1))
+                  end
+
+    fun digit id i = Vector.sub (id, i)
+
+    fun compare (bytes, bytes') =
+        let val len = Vector.length bytes
+            val len' = Vector.length bytes'
+            fun loop i ord =
+                let val byte = if i < len then SOME (Vector.sub (bytes, i)) else NONE
+                    val byte' = if i < len' then SOME (Vector.sub (bytes', i)) else NONE
+                in case (byte, byte')
+                   of (NONE, NONE) => ord
+                    | _ => (case Word8.compare ( getOpt (byte, Word8.fromInt 0)
+                                               , getOpt (byte', Word8.fromInt 0) )
+                            of EQUAL => loop (i + 1) EQUAL
+                             | ord => ord)
+                end
+        in loop 0 EQUAL
+        end
+end
+
 structure FancyTypeVars :> sig
     exception Reset of Name.t
 
@@ -212,66 +269,9 @@ structure FancyTypeVars :> sig
     val ovInScope: 't env -> ov -> bool
     val uvInScope: 't env -> 't uv -> bool
 end = struct
-    structure Level :> sig
-        structure Digit: sig
-            type t
-
-            val maxValue: int
-            val fromInt: int -> t
-            val toInt: t -> int
-        end
-
-        type id
-        val empty: id
-        val push: id -> Digit.t -> id
-        val pred: id -> id
-        val length: id -> int
-        val digit: id -> int -> Digit.t
-        val compare: id * id -> order
-    end = struct
-        structure Digit = struct
-            type t = Word8.word
-
-            val maxValue = Word.toInt (Word.<< (Word.fromInt 1, Word.fromInt Word8.wordSize)) - 1
-            fun fromInt n = if n <= maxValue then Word8.fromInt n else raise Overflow
-            val toInt = Word8.toInt
-        end
-
-        type id = Word8.word vector
-
-        val empty = Vector.fromList []
-
-        fun push id d = VectorExt.push (id, d)
-
-        val length = Vector.length
-
-        fun pred id = let val i = length id - 1
-                          val n = Digit.toInt (Vector.sub (id, i))
-                      in Vector.update (id, i, Word8.fromInt (n - 1))
-                      end
-
-        fun digit id i = Vector.sub (id, i)
-
-        fun compare (bytes, bytes') =
-            let val len = Vector.length bytes
-                val len' = Vector.length bytes'
-                fun loop i ord =
-                    let val byte = if i < len then SOME (Vector.sub (bytes, i)) else NONE
-                        val byte' = if i < len' then SOME (Vector.sub (bytes', i)) else NONE
-                    in case (byte, byte')
-                       of (NONE, NONE) => ord
-                        | _ => (case Word8.compare ( getOpt (byte, Word8.fromInt 0)
-                                                   , getOpt (byte', Word8.fromInt 0) )
-                                of EQUAL => loop (i + 1) EQUAL
-                                 | ord => ord)
-                    end
-            in loop 0 EQUAL
-            end
-    end
-
     exception Reset of Name.t
 
-    type var_descr = {name: Name.t, levelId: Level.id, inScope: bool ref}
+    type var_descr = {name: Name.t, levelId: Version.id, inScope: bool ref}
 
     type ov = var_descr
 
@@ -309,7 +309,7 @@ end = struct
                          in case (!uv, !uv')
                             of ( Root {descr = {levelId = l, ...}, ...}
                                , Root {descr = {levelId = l', ...}, ...} ) =>
-                                (case Level.compare (l, l')
+                                (case Version.compare (l, l')
                                  of LESS => uv' := Link uv
                                   | GREATER => uv := Link uv'
                                   | EQUAL => uv' := Link uv) (* OPTIMIZE: Union by rank here? *)
@@ -329,63 +329,63 @@ end = struct
 
     fun newEnv () = ref (Vector.fromList [Bindings (Vector.fromList [])])
 
-    fun nodePushScope scopeFromLevelId envNode prefix =
+    fun nodePushScope scopeFromVersionId envNode prefix =
         case envNode
-        of Bindings bindings => bindingsPushScope scopeFromLevelId bindings prefix
-         | Scope _ => let val id = Level.push prefix (Level.Digit.fromInt 1)
-                      in Vector.fromList [envNode, Scope (scopeFromLevelId id)]
+        of Bindings bindings => bindingsPushScope scopeFromVersionId bindings prefix
+         | Scope _ => let val id = Version.push prefix (Version.Digit.fromInt 1)
+                      in Vector.fromList [envNode, Scope (scopeFromVersionId id)]
                       end
 
-    and bindingsPushScope scopeFromLevelId bindings prefix =
+    and bindingsPushScope scopeFromVersionId bindings prefix =
         let val i = Vector.length bindings
-            val id = Level.push prefix (Level.Digit.fromInt i)
+            val id = Version.push prefix (Version.Digit.fromInt i)
             val lastNode =
-                case Int.compare (i, Level.Digit.maxValue)
-                of LESS | EQUAL => Scope (scopeFromLevelId id)
+                case Int.compare (i, Version.Digit.maxValue)
+                of LESS | EQUAL => Scope (scopeFromVersionId id)
                  | GREATER =>
-                    Bindings (nodePushScope scopeFromLevelId (Vector.sub (bindings, i)) id)
+                    Bindings (nodePushScope scopeFromVersionId (Vector.sub (bindings, i)) id)
         in VectorExt.push (bindings, lastNode)
         end
 
     fun pushOv env name =
         let val res = ref NONE
-            fun scopeFromLevelId levelId = let val ov = {name, levelId, inScope = ref true}
+            fun scopeFromVersionId levelId = let val ov = {name, levelId, inScope = ref true}
                                            in res := SOME ov
                                             ; Single (Ov ov)
                                            end
-        in env := bindingsPushScope scopeFromLevelId (!env) Level.empty
+        in env := bindingsPushScope scopeFromVersionId (!env) Version.empty
          ; valOf (!res)
         end
 
     fun pushUv env name =
         let val res = ref NONE
-            fun scopeFromLevelId levelId = let val descr = {name, levelId, inScope = ref true}
+            fun scopeFromVersionId levelId = let val descr = {name, levelId, inScope = ref true}
                                                val uv = ref (Root { descr, typ = ref NONE })
                                            in res := SOME uv
                                             ; Single (Uv uv)
                                            end
-        in env := bindingsPushScope scopeFromLevelId (!env) Level.empty
+        in env := bindingsPushScope scopeFromVersionId (!env) Version.empty
          ; valOf (!res)
         end
 
     fun insertUvBefore env succUv name =
-        let val succLevel = #levelId (#descr (uvRoot succUv))
+        let val succVersion = #levelId (#descr (uvRoot succUv))
             val res = ref NONE
-            fun scopeFromLevelId levelId = let val descr = {name, levelId, inScope = ref true}
+            fun scopeFromVersionId levelId = let val descr = {name, levelId, inScope = ref true}
                                                val uv = ref (Root { descr, typ = ref NONE })
                                            in res := SOME uv
                                             ; Single (Uv uv)
                                            end
             fun insert bindings digitIndex =
-                let val isLastIndex = digitIndex < Level.length succLevel - 1
-                    val level = if isLastIndex then succLevel else Level.pred succLevel
-                    val digit = Level.Digit.toInt (Level.digit level digitIndex)
+                let val isLastIndex = digitIndex < Version.length succVersion - 1
+                    val level = if isLastIndex then succVersion else Version.pred succVersion
+                    val digit = Version.Digit.toInt (Version.digit level digitIndex)
                     val node = Vector.sub (bindings, digit)
                     val bindings' = if isLastIndex
                                     then case node
                                          of Bindings bs => insert bs (digitIndex + 1)
                                           | Scope _ => raise Fail "unreachable"
-                                    else nodePushScope scopeFromLevelId node level
+                                    else nodePushScope scopeFromVersionId node level
                 in Vector.update (bindings, digit, Bindings bindings')
                 end
         in env := insert (!env) 0
