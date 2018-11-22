@@ -264,6 +264,7 @@ structure FancyTypeVars :> sig
 
     val pushOv: 't env -> Name.t -> ov
     val pushUv: 't env -> Name.t -> 't uv
+    val pushUvs: 't env -> Name.t vector -> 't uv vector
     val insertUvBefore: 't env -> 't uv -> Name.t -> 't uv
 
     val ovInScope: 't env -> ov -> bool
@@ -271,7 +272,7 @@ structure FancyTypeVars :> sig
 end = struct
     exception Reset of Name.t
 
-    type var_descr = {name: Name.t, levelId: Version.id, inScope: bool ref}
+    type var_descr = {name: Name.t, version: Version.id, inScope: bool ref}
 
     type ov = var_descr
 
@@ -307,8 +308,8 @@ end = struct
     fun uvMerge uv uv' = let val uv = uvFind uv
                              val uv' = uvFind uv'
                          in case (!uv, !uv')
-                            of ( Root {descr = {levelId = l, ...}, ...}
-                               , Root {descr = {levelId = l', ...}, ...} ) =>
+                            of ( Root {descr = {version = l, ...}, ...}
+                               , Root {descr = {version = l', ...}, ...} ) =>
                                 (case Version.compare (l, l')
                                  of LESS => uv' := Link uv
                                   | GREATER => uv := Link uv'
@@ -327,63 +328,77 @@ end = struct
 
     fun newEnv () = ref (Vector.fromList [Bindings (Vector.fromList [])])
 
-    fun nodePushScope scopeFromVersionId envNode prefix =
+    fun nodePushScope scopeFromVersion envNode prefix =
         case envNode
-        of Bindings bindings => bindingsPushScope scopeFromVersionId bindings prefix
+        of Bindings bindings => bindingsPushScope scopeFromVersion bindings prefix
          | Scope _ => let val id = Version.push prefix (Version.Digit.fromInt 1)
-                      in Vector.fromList [envNode, Scope (scopeFromVersionId id)]
+                      in Vector.fromList [envNode, Scope (scopeFromVersion id)]
                       end
 
-    and bindingsPushScope scopeFromVersionId bindings prefix =
+    and bindingsPushScope scopeFromVersion bindings prefix =
         let val i = Vector.length bindings
             val id = Version.push prefix (Version.Digit.fromInt i)
             val lastNode =
                 case Int.compare (i, Version.Digit.maxValue)
-                of LESS | EQUAL => Scope (scopeFromVersionId id)
+                of LESS | EQUAL => Scope (scopeFromVersion id)
                  | GREATER =>
-                    Bindings (nodePushScope scopeFromVersionId (Vector.sub (bindings, i)) id)
+                    Bindings (nodePushScope scopeFromVersion (Vector.sub (bindings, i)) id)
         in VectorExt.push (bindings, lastNode)
         end
 
-    fun pushOv env name =
+    fun envPush env scopeFromVersion =
         let val res = ref NONE
-            fun scopeFromVersionId levelId = let val ov = {name, levelId, inScope = ref true}
-                                           in res := SOME ov
-                                            ; Vector.fromList [Ov ov]
-                                           end
-        in env := bindingsPushScope scopeFromVersionId (!env) Version.empty
+        in env := bindingsPushScope (scopeFromVersion res) (!env) Version.empty
          ; valOf (!res)
+        end
+
+    fun pushOv env name =
+        let fun scopeFromVersion res version = let val ov = {name, version, inScope = ref true}
+                                               in res := SOME ov
+                                                ; Vector.fromList [Ov ov]
+                                               end
+        in envPush env scopeFromVersion
         end
 
     fun pushUv env name =
-        let val res = ref NONE
-            fun scopeFromVersionId levelId = let val descr = {name, levelId, inScope = ref true}
-                                                 val uv = ref (Root { descr, typ = ref NONE })
-                                             in res := SOME uv
-                                              ; Vector.fromList [Uv uv]
+        let fun scopeFromVersion res version = let val descr = {name, version, inScope = ref true}
+                                                   val uv = ref (Root { descr, typ = ref NONE })
+                                               in res := SOME uv
+                                                ; Vector.fromList [Uv uv]
+                                               end
+        in envPush env scopeFromVersion
+        end
+
+    fun pushUvs env names =
+        let fun uvFromVersion version name = let val descr = {name, version, inScope = ref true}
+                                             in ref (Root {descr, typ = ref NONE})
                                              end
-        in env := bindingsPushScope scopeFromVersionId (!env) Version.empty
-         ; valOf (!res)
+            fun scopeFromVersion res version =
+                let val uvs = Vector.map (uvFromVersion version) names
+                in res := SOME uvs
+                 ; Vector.map Uv uvs
+                end
+        in envPush env scopeFromVersion
         end
 
     fun insertUvBefore env succUv name =
-        let val succVersion = #levelId (#descr (uvRoot succUv))
+        let val succVersion = #version (#descr (uvRoot succUv))
             val res = ref NONE
-            fun scopeFromVersionId levelId = let val descr = {name, levelId, inScope = ref true}
-                                                 val uv = ref (Root { descr, typ = ref NONE })
-                                             in res := SOME uv
-                                              ; Vector.fromList [Uv uv]
-                                             end
+            fun scopeFromVersion version = let val descr = {name, version, inScope = ref true}
+                                               val uv = ref (Root { descr, typ = ref NONE })
+                                           in res := SOME uv
+                                            ; Vector.fromList [Uv uv]
+                                           end
             fun insert bindings digitIndex =
                 let val isLastIndex = digitIndex < Version.length succVersion - 1
-                    val level = if isLastIndex then succVersion else Version.pred succVersion
-                    val digit = Version.Digit.toInt (Version.digit level digitIndex)
+                    val version = if isLastIndex then succVersion else Version.pred succVersion
+                    val digit = Version.Digit.toInt (Version.digit version digitIndex)
                     val node = Vector.sub (bindings, digit)
                     val bindings' = if isLastIndex
                                     then case node
                                          of Bindings bs => insert bs (digitIndex + 1)
                                           | Scope _ => raise Fail "unreachable"
-                                    else nodePushScope scopeFromVersionId node level
+                                    else nodePushScope scopeFromVersion node version
                 in Vector.update (bindings, digit, Bindings bindings')
                 end
         in env := insert (!env) 0
