@@ -318,11 +318,9 @@ end = struct
 
     datatype 't var = Ov of ov
                     | Uv of 't uv
-    datatype 't scope = Single of 't var
-                      | Par of 't var vector
 
     datatype 't binding_node = Bindings of 't bindings
-                             | Scope of 't scope
+                             | Scope of 't var vector
     withtype 't bindings = 't binding_node vector
 
     type 't env = 't bindings ref
@@ -351,7 +349,7 @@ end = struct
         let val res = ref NONE
             fun scopeFromVersionId levelId = let val ov = {name, levelId, inScope = ref true}
                                            in res := SOME ov
-                                            ; Single (Ov ov)
+                                            ; Vector.fromList [Ov ov]
                                            end
         in env := bindingsPushScope scopeFromVersionId (!env) Version.empty
          ; valOf (!res)
@@ -360,10 +358,10 @@ end = struct
     fun pushUv env name =
         let val res = ref NONE
             fun scopeFromVersionId levelId = let val descr = {name, levelId, inScope = ref true}
-                                               val uv = ref (Root { descr, typ = ref NONE })
-                                           in res := SOME uv
-                                            ; Single (Uv uv)
-                                           end
+                                                 val uv = ref (Root { descr, typ = ref NONE })
+                                             in res := SOME uv
+                                              ; Vector.fromList [Uv uv]
+                                             end
         in env := bindingsPushScope scopeFromVersionId (!env) Version.empty
          ; valOf (!res)
         end
@@ -372,10 +370,10 @@ end = struct
         let val succVersion = #levelId (#descr (uvRoot succUv))
             val res = ref NONE
             fun scopeFromVersionId levelId = let val descr = {name, levelId, inScope = ref true}
-                                               val uv = ref (Root { descr, typ = ref NONE })
-                                           in res := SOME uv
-                                            ; Single (Uv uv)
-                                           end
+                                                 val uv = ref (Root { descr, typ = ref NONE })
+                                             in res := SOME uv
+                                              ; Vector.fromList [Uv uv]
+                                             end
             fun insert bindings digitIndex =
                 let val isLastIndex = digitIndex < Version.length succVersion - 1
                     val level = if isLastIndex then succVersion else Version.pred succVersion
