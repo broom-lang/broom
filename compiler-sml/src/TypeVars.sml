@@ -267,6 +267,9 @@ structure FancyTypeVars :> sig
     val pushUvs: 't env -> Name.t vector -> 't uv vector
     val insertUvBefore: 't env -> 't uv -> Name.t -> 't uv
 
+    val popOv: 't env -> ov -> unit
+    val popUv: 't env -> 't uv -> unit
+
     val ovInScope: 't env -> ov -> bool
     val uvInScope: 't env -> 't uv -> bool
 end = struct
@@ -390,11 +393,11 @@ end = struct
                                             ; Vector.fromList [Uv uv]
                                            end
             fun insert bindings digitIndex =
-                let val isLastIndex = digitIndex < Version.length succVersion - 1
-                    val version = if isLastIndex then succVersion else Version.pred succVersion
+                let val isNotLastIndex = digitIndex < Version.length succVersion - 1
+                    val version = if isNotLastIndex then succVersion else Version.pred succVersion
                     val digit = Version.Digit.toInt (Version.digit version digitIndex)
                     val node = Vector.sub (bindings, digit)
-                    val bindings' = if isLastIndex
+                    val bindings' = if isNotLastIndex
                                     then case node
                                          of Bindings bs => insert bs (digitIndex + 1)
                                           | Scope _ => raise Fail "unreachable"
@@ -404,6 +407,55 @@ end = struct
         in env := insert (!env) 0
          ; valOf (!res)
         end
+
+    fun dropDescr ({inScope, ...}: var_descr) = inScope := false
+
+    val dropVar = fn Ov descr => dropDescr descr
+                   | Uv uv => dropDescr (#descr (uvRoot uv))
+
+    fun dropScope vars = Vector.app dropVar vars
+
+    fun dropVars version node =
+        let val rec dropAll = fn Bindings bs => Vector.app dropAll bs
+                               | Scope s => dropScope s
+            fun drop digitIndex =
+                fn Bindings bs =>
+                    let val digit = Version.Digit.toInt (Version.digit version digitIndex)
+                        val pivot = Vector.sub (bs, digit)
+                    in if digitIndex < Version.length version - 1
+                       then drop (digitIndex + 1) pivot
+                       else dropAll pivot
+                     ; VectorSlice.app dropAll (VectorSlice.slice (bs, digit + 1, NONE))
+                    end 
+                 | Scope s => dropScope s
+        in drop 0 (Bindings node)
+        end
+
+    fun truncate version node =
+        let fun trunc digitIndex =
+                fn Bindings bs =>
+                    let val digit = Version.Digit.toInt (Version.digit version digitIndex)
+                        val pivot = Vector.sub (bs, digit)
+                        val isNotLastIndex = digitIndex < Version.length version - 1
+                        val nKeep = if isNotLastIndex then digit + 1 else digit
+                        val {update = update, done = done, ...} = MLton.Vector.create nKeep
+                    in Vector.appi (fn (i, v) => update (i, v)) bs
+                     ; if isNotLastIndex
+                       then update (nKeep - 1, Bindings (trunc (digitIndex + 1) pivot))
+                       else ()
+                     ; done ()
+                    end
+                 | Scope s => raise Fail "unreachable"
+        in trunc 0 (Bindings node)
+        end
+
+    fun popVersion env version =
+        ( dropVars version (!env)
+        ; env := truncate version (!env) )
+
+    fun popOv env (ov: ov) = popVersion env (#version ov)
+
+    fun popUv env uv = popVersion env (#version (#descr (uvRoot uv)))
 
     fun ovInScope _ ({inScope, ...}: ov) = !inScope
 
