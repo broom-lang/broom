@@ -1,16 +1,17 @@
 structure Typecheck :> sig
     structure Type: TYPE
 
+    exception UvOutOfScope of Name.t
     exception Unbound of Name.t
     exception Occurs of Type.t Type.TypeVars.uv * Type.t
     exception TypeMismatch of Type.t * Type.t
 
     val typecheck: Cst.stmt vector -> Cst.stmt vector
 end = struct
-    structure Type = Type(TypeVars)
+    structure Type = Type
     structure TypeVars = Type.TypeVars
-    structure ValEnv = TypeVars.ValEnv
 
+    exception UvOutOfScope of Name.t
     exception Unbound of Name.t
     exception Occurs of Type.t Type.TypeVars.uv * Type.t
     exception TypeMismatch of Type.t * Type.t
@@ -29,7 +30,7 @@ end = struct
            then if Type.occurs uv t
                 then raise Occurs (uv, t)
                 else assignL uv t
-           else raise TypeVars.UvOutOfScope (TypeVars.uvName uv)
+           else raise UvOutOfScope (TypeVars.uvName uv)
         end
 
     fun assignRight tenv uv t =
@@ -46,12 +47,12 @@ end = struct
            then if Type.occurs uv t
                 then raise Occurs (uv, t)
                 else assignR uv t
-           else raise TypeVars.UvOutOfScope (TypeVars.uvName uv)
+           else raise UvOutOfScope (TypeVars.uvName uv)
         end
 
     fun checkSub tenv (Type.UVar uv) (Type.UVar uv') =
         (case (TypeVars.uvGet uv, TypeVars.uvGet uv')
-         of (Either.Left uv, Either.Left uv') => if TypeVars.uvEq uv uv'
+         of (Either.Left uv, Either.Left uv') => if TypeVars.uvEq (uv, uv')
                                                  then ()
                                                  else raise Fail "unimplemented" (* problematic *)
           | (Either.Left uv, Either.Right t') => assignLeft tenv uv t'
@@ -79,7 +80,7 @@ end = struct
         let val tenv = TypeVars.newEnv ()
 
             fun check env =
-                fn Cst.Use (pos, name) => (case ValEnv.find env name
+                fn Cst.Use (pos, name) => (case ValTypeCtx.find env name
                                            of SOME t => (Cst.Use (pos, name), t)
                                             | NONE => raise Unbound name)
                  | Cst.Const (pos, c) => let val (c, t) = checkConst c
@@ -87,7 +88,7 @@ end = struct
                                          end
 
             fun checkAs env t =
-                fn Cst.Use (pos, name) => (case ValEnv.find env name
+                fn Cst.Use (pos, name) => (case ValTypeCtx.find env name
                                            of SOME t' => (checkSub tenv t' t; Cst.Use (pos, name))
                                             | NONE => raise Unbound name)
                  | Cst.Const (pos, c) => let val (c, t') = checkConst c
@@ -96,7 +97,7 @@ end = struct
                                          end
 
             and checkStmt env =
-                fn Cst.Def (pos, name, expr) => let val t = valOf (ValEnv.find env name)
+                fn Cst.Def (pos, name, expr) => let val t = valOf (ValTypeCtx.find env name)
                                                     val expr' = checkAs env t expr
                                                 in Cst.Def (pos, name, expr')
                                                 end
@@ -104,14 +105,14 @@ end = struct
             fun checkStmts env stmts =
                 let val goals = Vector.map stmtGoal stmts
                     val inferGoals = Vector.map (fn Unannotated b => b) goals
-                    val uvs = TypeVars.pushParUvs tenv (Vector.map #2 inferGoals)
+                    val uvs = TypeVars.pushUvs tenv (Vector.map #2 inferGoals)
                     val env = Vector.foldli (fn (i, (name, _), valUvs) =>
                                                  let val uv = Vector.sub (uvs, i)
-                                                 in ValEnv.insert valUvs name (Type.UVar uv)
+                                                 in ValTypeCtx.insert valUvs name (Type.UVar uv)
                                                  end)
                                             env inferGoals
                 in Vector.map (checkStmt env) stmts
                 end                                  
-        in checkStmts ValEnv.empty program
+        in checkStmts ValTypeCtx.empty program
         end
 end

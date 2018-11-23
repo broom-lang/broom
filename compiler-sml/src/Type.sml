@@ -16,14 +16,15 @@ signature TYPE = sig
     val isWellFormedMonoType: t TypeVars.env -> t -> bool
     val occurs: t TypeVars.uv -> t -> bool
 
-    val substitute: t TypeVars.uv -> TypeVars.ov -> t -> t
+    val substitute: TypeVars.ov * t -> t -> t
 end 
 
-functor Type(TypeVars: TYPE_VARS) :> TYPE = struct
+structure Type :> TYPE = struct
     structure TypeVars = TypeVars
 
     val ovInScope = TypeVars.ovInScope
     val uvInScope = TypeVars.uvInScope
+    val ovEq = TypeVars.ovEq
     val uvEq = TypeVars.uvEq
 
     type ov = TypeVars.ov
@@ -60,22 +61,22 @@ functor Type(TypeVars: TYPE_VARS) :> TYPE = struct
     fun occurs uv =
         fn ForAll (_, t) => occurs uv t
          | OVar _ => false
-         | UVar uv' => uvEq uv uv'
+         | UVar uv' => uvEq (uv, uv')
          | Arrow {domain = d, codomain = c} => occurs uv d orelse occurs uv c
          | Prim _ => false
 
-    fun substitute uv ov =
-        fn t as ForAll (ov', t') => if ov' = ov
+    fun substitute (ov, st) =
+        fn t as ForAll (ov', t') => if ovEq (ov', ov)
                                     then t
-                                    else let val t'' = substitute uv ov t'
+                                    else let val t'' = substitute (ov, st) t'
                                          in if MLton.eq (t'', t')
                                             then t
-                                            else ForAll (ov', substitute uv ov t')
+                                            else ForAll (ov', substitute (ov, st) t')
                                          end
-         | t as OVar ov' => if ov' = ov then UVar uv else t
+         | t as OVar ov' => if ovEq (ov', ov) then st else t
          | t as UVar _ => t
-         | t as Arrow {domain = d, codomain = c} => let val d' = substitute uv ov d
-                                                        val c' = substitute uv ov c
+         | t as Arrow {domain = d, codomain = c} => let val d' = substitute (ov, st) d
+                                                        val c' = substitute (ov, st) c
                                                     in if MLton.eq (d', d) andalso MLton.eq (c', c)
                                                        then t
                                                        else Arrow {domain = d', codomain = c'}
