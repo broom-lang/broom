@@ -259,16 +259,20 @@ structure FancyTypeVars :> sig
     val uvSet: 't uv -> 't -> unit
     val uvMerge: 't uv -> 't uv -> unit
 
+    type marker
+
     type 't env
     val newEnv: unit -> 't env
 
     val pushOv: 't env -> Name.t -> ov
     val pushUv: 't env -> Name.t -> 't uv
     val pushUvs: 't env -> Name.t vector -> 't uv vector
+    val pushScopedUv: 't env -> Name.t -> 't uv * marker
     val insertUvBefore: 't env -> 't uv -> Name.t -> 't uv
 
     val popOv: 't env -> ov -> unit
     val popUv: 't env -> 't uv -> unit
+    val popMarker: 't env -> marker -> unit
 
     val ovInScope: 't env -> ov -> bool
     val uvInScope: 't env -> 't uv -> bool
@@ -319,6 +323,8 @@ end = struct
                                   | EQUAL => uv' := Link uv) (* OPTIMIZE: Union by rank here? *)
                             | _ => raise Fail "unreachable"
                          end
+
+    type marker = Version.id
 
     datatype 't var = Ov of ov
                     | Uv of 't uv
@@ -382,6 +388,14 @@ end = struct
                  ; Vector.map Uv uvs
                 end
         in envPush env scopeFromVersion
+        end
+
+    fun pushScopedUv env name =
+        let fun scopeFromVersion res version = ( res := SOME version
+                                               ; Vector.fromList [] )
+            val marker =  envPush env scopeFromVersion
+            val uv = pushUv env name
+        in (uv, marker)
         end
 
     fun insertUvBefore env succUv name =
@@ -456,6 +470,8 @@ end = struct
     fun popOv env (ov: ov) = popVersion env (#version ov)
 
     fun popUv env uv = popVersion env (#version (#descr (uvRoot uv)))
+
+    val popMarker = popVersion
 
     fun ovInScope _ ({inScope, ...}: ov) = !inScope
 
