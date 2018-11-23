@@ -25,7 +25,12 @@ end = struct
                  | Type.UVar uv' => (case TypeVars.uvGet uv'
                                      of Either.Left uv' => TypeVars.uvMerge uv uv'
                                       | Either.Right t => assignL uv t)
-                 | Type.Arrow _ => raise Fail "unimplemented"
+                 | Type.Arrow {domain, codomain} =>
+                    let val cuv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
+                        val duv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
+                    in assignRight tenv duv domain
+                     ; assignLeft tenv cuv codomain
+                    end
                  | t as Type.Prim _ => TypeVars.uvSet uv t
         in if TypeVars.uvInScope tenv uv
            then if Type.occurs uv t
@@ -34,14 +39,19 @@ end = struct
            else raise UvOutOfScope (TypeVars.uvName uv)
         end
 
-    fun assignRight tenv uv t =
+    and assignRight tenv uv t =
         let fun assignR uv =
                 fn Type.ForAll _ => raise Fail "unimplemented"
                  | t as Type.OVar _ => TypeVars.uvSet uv t
                  | Type.UVar uv' => (case TypeVars.uvGet uv'
                                      of Either.Left uv' => TypeVars.uvMerge uv uv'
                                       | Either.Right t => assignR uv t)
-                 | Type.Arrow _ => raise Fail "unimplemented"
+                 | Type.Arrow {domain, codomain} =>
+                    let val cuv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
+                        val duv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
+                    in assignLeft tenv duv domain
+                     ; assignRight tenv cuv codomain
+                    end
                  | t as Type.Prim _ => TypeVars.uvSet uv t
         in if TypeVars.uvInScope tenv uv
            then if Type.occurs uv t
@@ -76,7 +86,9 @@ end = struct
              then if TypeVars.ovEq (ov, ov') then () else raise TypeMismatch (t, t')
              else raise OvOutOfScope (TypeVars.ovName ov)
         else raise OvOutOfScope (TypeVars.ovName ov')
-      | checkSub tenv (Type.Arrow arr) (Type.Arrow arr') = raise Fail "unimplemented"
+      | checkSub tenv (Type.Arrow arr) (Type.Arrow arr') =
+         ( checkSub tenv (#domain arr') (#domain arr)
+         ; checkSub tenv (#codomain arr) (#codomain arr') )
       | checkSub _ (t as Type.Prim p) (t' as Type.Prim p') = if p = p'
                                                              then ()
                                                              else raise TypeMismatch (t, t')
