@@ -64,9 +64,15 @@ end = struct
         (case TypeVars.uvGet uv'
          of Either.Left uv' => assignRight tenv uv' t
           | Either.Right t' => checkSub tenv t t')
-      | checkSub tenv (t as Type.Prim p) (t' as Type.Prim p') = if p = p'
-                                                                then ()
-                                                                else raise TypeMismatch (t, t')
+      | checkSub tenv (Type.ForAll (ov, t)) (Type.ForAll (ov', t')) = raise Fail "unimplemented"
+      | checkSub tenv (t as Type.OVar ov) (t' as Type.OVar ov') = if TypeVars.ovEq (ov, ov')
+                                                                  then ()
+                                                                  else raise TypeMismatch (t, t')
+      | checkSub tenv (Type.Arrow arr) (Type.Arrow arr') = raise Fail "unimplemented"
+      | checkSub _ (t as Type.Prim p) (t' as Type.Prim p') = if p = p'
+                                                             then ()
+                                                             else raise TypeMismatch (t, t')
+      | checkSub _ t t' = raise TypeMismatch (t, t')
 
     val checkConst = fn c as Const.Int _ => (c, Type.Prim Type.Int)
 

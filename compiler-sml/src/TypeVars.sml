@@ -116,7 +116,7 @@ structure TypeVars :> TYPE_VARS = struct
 
     type ov = var_descr
 
-    fun ovEq (ov: ov, ov': ov) = #name ov = #name ov' (* TODO: is this correct/well-named? *)
+    fun ovEq (ov: ov, ov': ov) = #inScope ov = #inScope ov' (* TODO: is this correct/well-named? *)
 
     fun ovName (ov: ov) = #name ov
 

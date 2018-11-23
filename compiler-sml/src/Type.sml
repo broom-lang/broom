@@ -66,13 +66,11 @@ structure Type :> TYPE = struct
          | Prim _ => false
 
     fun substitute (ov, st) =
-        fn t as ForAll (ov', t') => if ovEq (ov', ov)
-                                    then t
-                                    else let val t'' = substitute (ov, st) t'
-                                         in if MLton.eq (t'', t')
-                                            then t
-                                            else ForAll (ov', substitute (ov, st) t')
-                                         end
+        fn t as ForAll (ov', t') => let val t'' = substitute (ov, st) t'
+                                    in if MLton.eq (t'', t')
+                                       then t
+                                       else ForAll (ov', t'')
+                                    end
          | t as OVar ov' => if ovEq (ov', ov) then st else t
          | t as UVar _ => t
          | t as Arrow {domain = d, codomain = c} => let val d' = substitute (ov, st) d
