@@ -2,6 +2,7 @@ structure Typecheck :> sig
     structure Type: TYPE
 
     exception UvOutOfScope of Name.t
+    exception OvOutOfScope of Name.t
     exception Unbound of Name.t
     exception Occurs of Type.t Type.TypeVars.uv * Type.t
     exception TypeMismatch of Type.t * Type.t
@@ -12,6 +13,7 @@ end = struct
     structure TypeVars = Type.TypeVars
 
     exception UvOutOfScope of Name.t
+    exception OvOutOfScope of Name.t
     exception Unbound of Name.t
     exception Occurs of Type.t Type.TypeVars.uv * Type.t
     exception TypeMismatch of Type.t * Type.t
@@ -50,9 +52,12 @@ end = struct
 
     fun checkSub tenv (Type.UVar uv) (Type.UVar uv') =
         (case (TypeVars.uvGet uv, TypeVars.uvGet uv')
-         of (Either.Left uv, Either.Left uv') => if TypeVars.uvEq (uv, uv')
-                                                 then ()
-                                                 else TypeVars.uvMerge uv uv'
+         of (Either.Left uv, Either.Left uv') =>
+             if TypeVars.uvInScope tenv uv
+             then if TypeVars.uvInScope tenv uv'
+                  then if TypeVars.uvEq (uv, uv') then () else TypeVars.uvMerge uv uv'
+                  else raise UvOutOfScope (TypeVars.uvName uv')
+             else raise UvOutOfScope (TypeVars.uvName uv)
           | (Either.Left uv, Either.Right t') => assignLeft tenv uv t'
           | (Either.Right t, Either.Left uv') => assignRight tenv uv' t
           | (Either.Right t, Either.Right t') => checkSub tenv t t')
@@ -65,9 +70,12 @@ end = struct
          of Either.Left uv' => assignRight tenv uv' t
           | Either.Right t' => checkSub tenv t t')
       | checkSub tenv (Type.ForAll (ov, t)) (Type.ForAll (ov', t')) = raise Fail "unimplemented"
-      | checkSub tenv (t as Type.OVar ov) (t' as Type.OVar ov') = if TypeVars.ovEq (ov, ov')
-                                                                  then ()
-                                                                  else raise TypeMismatch (t, t')
+      | checkSub tenv (t as Type.OVar ov) (t' as Type.OVar ov') =
+        if TypeVars.ovInScope tenv ov
+        then if TypeVars.ovInScope tenv ov'
+             then if TypeVars.ovEq (ov, ov') then () else raise TypeMismatch (t, t')
+             else raise OvOutOfScope (TypeVars.ovName ov)
+        else raise OvOutOfScope (TypeVars.ovName ov')
       | checkSub tenv (Type.Arrow arr) (Type.Arrow arr') = raise Fail "unimplemented"
       | checkSub _ (t as Type.Prim p) (t' as Type.Prim p') = if p = p'
                                                              then ()
