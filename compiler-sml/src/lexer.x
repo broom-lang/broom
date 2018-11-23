@@ -37,8 +37,13 @@ ws = [\ \t];
 {ws}+    => (advance yytext; continue());
 
 "="      => (advance yytext; Tokens.EQ(!pos, !pos));
+"=>"     => (advance yytext; Tokens.DARROW(!pos, !pos));
+
+"("      => (advance yytext; Tokens.LPAREN (!pos, !pos));
+")"      => (advance yytext; Tokens.RPAREN (!pos, !pos));
 
 "val"    => (advance yytext; Tokens.VAL (!pos, !pos));
+"fn"     => (advance yytext; Tokens.FN (!pos, !pos));
 {alpha}+ => (advance yytext; Tokens.ID (yytext, !pos, !pos));
 
 {digit}+ => (advance yytext; Tokens.INT (valOf (Int.fromString yytext), !pos, !pos));
