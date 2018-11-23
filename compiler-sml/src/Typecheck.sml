@@ -20,7 +20,9 @@ end = struct
 
     fun assignLeft tenv uv t =
         let fun assignL uv =
-                fn Type.ForAll _ => raise Fail "unimplemented"
+                fn Type.ForAll (ov, t') => ( TypeVars.pushOv' tenv ov
+                                           ; assignLeft tenv uv t'
+                                           ; TypeVars.popOv tenv ov )
                  | t as Type.OVar _ => TypeVars.uvSet uv t
                  | Type.UVar uv' => (case TypeVars.uvGet uv'
                                      of Either.Left uv' => TypeVars.uvMerge uv uv'
@@ -41,7 +43,11 @@ end = struct
 
     and assignRight tenv uv t =
         let fun assignR uv =
-                fn Type.ForAll _ => raise Fail "unimplemented"
+                fn Type.ForAll (ov, t') =>
+                    let val (uv, marker) = TypeVars.pushScopedUv tenv (Name.fresh ())
+                    in assignRight tenv uv (Type.substitute (ov, Type.UVar uv) t')
+                     ; TypeVars.popMarker tenv marker
+                    end
                  | t as Type.OVar _ => TypeVars.uvSet uv t
                  | Type.UVar uv' => (case TypeVars.uvGet uv'
                                      of Either.Left uv' => TypeVars.uvMerge uv uv'
@@ -79,7 +85,14 @@ end = struct
         (case TypeVars.uvGet uv'
          of Either.Left uv' => assignRight tenv uv' t
           | Either.Right t' => checkSub tenv t t')
-      | checkSub tenv (Type.ForAll (ov, t)) (Type.ForAll (ov', t')) = raise Fail "unimplemented"
+      | checkSub tenv t (Type.ForAll (ov, t')) = ( TypeVars.pushOv' tenv ov
+                                                 ; checkSub tenv t t'
+                                                 ; TypeVars.popOv tenv ov )
+      | checkSub tenv (Type.ForAll (ov, t)) t' =
+        let val (uv, marker) = TypeVars.pushScopedUv tenv (Name.fresh ())
+        in checkSub tenv (Type.substitute (ov, Type.UVar uv) t) t'
+         ; TypeVars.popMarker tenv marker
+        end
       | checkSub tenv (t as Type.OVar ov) (t' as Type.OVar ov') =
         if TypeVars.ovInScope tenv ov
         then if TypeVars.ovInScope tenv ov'
