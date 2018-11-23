@@ -21,8 +21,7 @@ end = struct
                 fn Type.ForAll _ => raise Fail "unimplemented"
                  | t as Type.OVar _ => TypeVars.uvSet uv t
                  | Type.UVar uv' => (case TypeVars.uvGet uv'
-                                     of Either.Left uv' => 
-                                         raise Fail "unimplemented" (* problematic *)
+                                     of Either.Left uv' => TypeVars.uvMerge uv uv'
                                       | Either.Right t => assignL uv t)
                  | Type.Arrow _ => raise Fail "unimplemented"
                  | t as Type.Prim _ => TypeVars.uvSet uv t
@@ -38,8 +37,7 @@ end = struct
                 fn Type.ForAll _ => raise Fail "unimplemented"
                  | t as Type.OVar _ => TypeVars.uvSet uv t
                  | Type.UVar uv' => (case TypeVars.uvGet uv'
-                                     of Either.Left uv' => 
-                                         raise Fail "unimplemented" (* problematic *)
+                                     of Either.Left uv' => TypeVars.uvMerge uv uv'
                                       | Either.Right t => assignR uv t)
                  | Type.Arrow _ => raise Fail "unimplemented"
                  | t as Type.Prim _ => TypeVars.uvSet uv t
@@ -54,7 +52,7 @@ end = struct
         (case (TypeVars.uvGet uv, TypeVars.uvGet uv')
          of (Either.Left uv, Either.Left uv') => if TypeVars.uvEq (uv, uv')
                                                  then ()
-                                                 else raise Fail "unimplemented" (* problematic *)
+                                                 else TypeVars.uvMerge uv uv'
           | (Either.Left uv, Either.Right t') => assignLeft tenv uv t'
           | (Either.Right t, Either.Left uv') => assignRight tenv uv' t
           | (Either.Right t, Either.Right t') => checkSub tenv t t')
