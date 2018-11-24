@@ -298,10 +298,13 @@ structure TypeVars :> TYPE_VARS = struct
                         val isNotLastIndex = digitIndex < Version.length version - 1
                         val nKeep = if isNotLastIndex then digit + 1 else digit
                         val {update = update, done = done, ...} = MLton.Vector.create nKeep
-                    in Vector.appi (fn (i, v) => update (i, v)) bs
-                     ; if isNotLastIndex
-                       then update (nKeep - 1, Bindings (trunc (digitIndex + 1) pivot))
-                       else ()
+                    in VectorSlice.appi (fn (i, v) =>
+                                             case Int.compare (i, digit)
+                                             of LESS => update (i, v)
+                                              | EQUAL =>
+                                                 update (i, Bindings (trunc (digitIndex + 1) pivot))
+                                              | GREATER => raise Fail "unreachable")
+                                        (VectorSlice.slice (bs, 0, SOME nKeep))
                      ; done ()
                     end
                  | Scope s => raise Fail "unreachable"
