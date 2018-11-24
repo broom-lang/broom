@@ -5,6 +5,7 @@ structure Typecheck :> sig
     exception OvOutOfScope of Name.t
     exception Unbound of Name.t
     exception Occurs of Type.t Type.TypeVars.uv * Type.t
+    exception Uncallable of Cst.expr * Type.t
     exception TypeMismatch of Type.t * Type.t
 
     val typecheck: Cst.stmt vector -> Cst.stmt vector
@@ -16,6 +17,7 @@ end = struct
     exception OvOutOfScope of Name.t
     exception Unbound of Name.t
     exception Occurs of Type.t Type.TypeVars.uv * Type.t
+    exception Uncallable of Cst.expr * Type.t
     exception TypeMismatch of Type.t * Type.t
 
     fun assignLeft tenv uv t =
@@ -126,6 +128,11 @@ end = struct
                     in TypeVars.popMarker tenv marker
                      ; (Cst.Fn (pos, param, body'), Type.Arrow {domain, codomain})
                     end
+                 | Cst.App (pos, {callee, arg}) =>
+                    let val (callee', {domain, codomain}) = coerceCallee env (check env callee)
+                        val arg' = checkAs env domain arg
+                    in (Cst.App (pos, {callee = callee', arg = arg'}), codomain)
+                    end
                  | Cst.Use (pos, name) => (case ValTypeCtx.find env name
                                            of SOME t => (Cst.Use (pos, name), t)
                                             | NONE => raise Unbound name)
@@ -151,6 +158,24 @@ end = struct
                 in checkSub tenv t' t
                  ; expr'
                 end
+
+            and coerceCallee env (callee, t) =
+                (case t
+                 of Type.ForAll (ov, t') =>
+                     let val uv = TypeVars.pushUv tenv (Name.fresh ())
+                     in coerceCallee env (callee, Type.substitute (ov, Type.UVar uv) t')
+                     end
+                  | Type.UVar uv =>
+                     (case TypeVars.uvGet uv
+                      of Either.Left uv =>
+                          let val cuv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
+                              val duv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
+                          in (callee, { domain = Type.UVar duv
+                                      , codomain = Type.UVar cuv })
+                          end
+                      | Either.Right t' => coerceCallee env (callee, t'))
+                  | Type.Arrow arr => (callee, arr)
+                  | _ => raise Uncallable (callee, t))
 
             fun checkStmt env =
                 fn Cst.Def (pos, name, expr) => let val t = valOf (ValTypeCtx.find env name)
