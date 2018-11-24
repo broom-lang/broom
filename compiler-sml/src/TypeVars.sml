@@ -17,8 +17,7 @@ signature TYPE_VARS = sig
     type 't env
     val newEnv: unit -> 't env
 
-    val pushOv: 't env -> Name.t -> ov
-    val pushOv': 't env -> ov -> unit
+    val pushOv: 't env -> ov -> unit
     val pushUv: 't env -> Name.t -> 't uv
     val pushUvs: 't env -> Name.t vector -> 't uv vector
     val pushMarker: 't env -> marker
@@ -199,16 +198,8 @@ structure TypeVars :> TYPE_VARS = struct
          ; valOf (!res)
         end
 
-    fun pushOv env name =
-        let fun scopeFromVersion res version = let val ov = {name, version, inScope = ref true}
-                                               in res := SOME ov
-                                                ; Vector.fromList [Ov ov]
-                                               end
-        in envPush env scopeFromVersion
-        end
-
-    fun pushOv' env ov = envPush env (fn res => fn _ => ( res := SOME ()
-                                                        ; Vector.fromList [Ov ov] ))
+    fun pushOv env ov = envPush env (fn res => fn _ => ( res := SOME ()
+                                                       ; Vector.fromList [Ov ov] ))
 
     fun pushUv env name =
         let fun scopeFromVersion res version = let val descr = {name, version, inScope = ref true}

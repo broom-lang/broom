@@ -39,7 +39,7 @@ structure Type :> TYPE = struct
     withtype uv = t TypeVars.uv
 
     fun isWellFormedType env =
-        fn ForAll (ov, t) => let val _ = TypeVars.pushOv' env ov
+        fn ForAll (ov, t) => let val _ = TypeVars.pushOv env ov
                                  val res = isWellFormedType env t
                              in TypeVars.popOv env ov
                               ; res

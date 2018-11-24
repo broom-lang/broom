@@ -24,7 +24,7 @@ end = struct
 
     fun assignForSome tenv ov y uv t =
         case y
-        of Sub => ( TypeVars.pushOv' tenv ov
+        of Sub => ( TypeVars.pushOv tenv ov
                   ; assign tenv y uv t
                   ; TypeVars.popOv tenv ov )
          | Super => let val (uv', marker) = TypeVars.pushScopedUv tenv (Name.fresh ())
@@ -72,7 +72,7 @@ end = struct
         (case TypeVars.uvGet uv'
          of Either.Left uv' => assign tenv Super uv' t
           | Either.Right t' => checkSub tenv t t')
-      | checkSub tenv t (Type.ForAll (ov, t')) = ( TypeVars.pushOv' tenv ov
+      | checkSub tenv t (Type.ForAll (ov, t')) = ( TypeVars.pushOv tenv ov
                                                  ; checkSub tenv t t'
                                                  ; TypeVars.popOv tenv ov )
       | checkSub tenv (Type.ForAll (ov, t)) t' =
@@ -126,7 +126,7 @@ end = struct
                                          end
 
             and checkAs env (Type.ForAll (ov, t)) expr =
-                let val _ = TypeVars.pushOv' tenv ov
+                let val _ = TypeVars.pushOv tenv ov
                     val expr' = checkAs env t expr
                 in TypeVars.popOv tenv ov
                  ; expr'
