@@ -25,6 +25,7 @@ fun lookup "bogus" = 10000
        | nestable of expr
        | triv of expr
        | typeAnn of type_ann
+       | typeAnnBody of type_ann
        | ids of Name.t list
 
 %keyword VAL EQ
@@ -55,13 +56,17 @@ nestable : LPAREN expr RPAREN (expr)
 triv : ID  (Cst.Use (IDleft, Name.fromString ID))
      | INT (Cst.Const (INTleft, Const.Int INT))
 
-typeAnn : FORALL ids DOT typeAnn (List.foldl (fn (id, t) => Cst.ForAll (FORALLleft, id, t))
-                                             typeAnn ids)
-        | typeAnn ARROW typeAnn (Cst.Arrow (typeAnn1left, { domain = typeAnn1
-                                                          , codomain = typeAnn2 }))
-        | ID (case ID
-              of "Int" => Cst.Prim (IDleft, Type.Int)
-               | _ => Cst.UseT (IDleft, Name.fromString ID))
+typeAnn : FORALL ids DOT typeAnnBody (List.foldl (fn (id, t) => Cst.ForAll (FORALLleft, id, t))
+                                                 typeAnnBody ids)
+        | typeAnnBody (typeAnnBody)
+
+typeAnnBody : LPAREN typeAnn RPAREN (typeAnn)
+            | typeAnnBody ARROW typeAnnBody (Cst.Arrow ( typeAnnBody1left
+                                                       , { domain = typeAnnBody1
+                                                         , codomain = typeAnnBody2 }))
+            | ID (case ID
+                  of "Int" => Cst.Prim (IDleft, Type.Int)
+                   | _ => Cst.UseT (IDleft, Name.fromString ID))
 
 ids : ids ID (Name.fromString ID :: ids)
     | ID ([Name.fromString ID])
