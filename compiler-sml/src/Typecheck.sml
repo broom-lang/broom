@@ -117,23 +117,42 @@ end = struct
         let val tenv = TypeVars.newEnv ()
 
             fun check env =
-                fn Cst.Use (pos, name) => (case ValTypeCtx.find env name
+                fn Cst.Fn (pos, param, body) =>
+                    let val domain = Type.UVar (TypeVars.pushUv tenv (Name.fresh ()))
+                        val codomain = Type.UVar (TypeVars.pushUv tenv (Name.fresh ()))
+                        val marker = TypeVars.pushMarker tenv
+                        val env = ValTypeCtx.insert env param domain
+                        val body' = checkAs env codomain body
+                    in TypeVars.popMarker tenv marker
+                     ; (Cst.Fn (pos, param, body'), Type.Arrow {domain, codomain})
+                    end
+                 | Cst.Use (pos, name) => (case ValTypeCtx.find env name
                                            of SOME t => (Cst.Use (pos, name), t)
                                             | NONE => raise Unbound name)
                  | Cst.Const (pos, c) => let val (c, t) = checkConst c
                                          in (Cst.Const (pos, c), t)
                                          end
 
-            fun checkAs env t =
-                fn Cst.Use (pos, name) => (case ValTypeCtx.find env name
-                                           of SOME t' => (checkSub tenv t' t; Cst.Use (pos, name))
-                                            | NONE => raise Unbound name)
-                 | Cst.Const (pos, c) => let val (c, t') = checkConst c
-                                         in checkSub tenv t' t
-                                          ; Cst.Const (pos, c)
-                                         end
+            and checkAs env (Type.ForAll (ov, t)) expr =
+                let val _ = TypeVars.pushOv' tenv ov
+                    val expr' = checkAs env t expr
+                in TypeVars.popOv tenv ov
+                 ; expr'
+                end
+              | checkAs env (Type.Arrow {domain, codomain}) (Cst.Fn (pos, param, body)) =
+                let val marker = TypeVars.pushMarker tenv
+                    val env = ValTypeCtx.insert env param domain
+                    val body' = checkAs env codomain body
+                in TypeVars.popMarker tenv marker
+                 ; Cst.Fn (pos, param, body')
+                end
+              | checkAs env t expr =
+                let val (expr', t') = check env expr
+                in checkSub tenv t' t
+                 ; expr'
+                end
 
-            and checkStmt env =
+            fun checkStmt env =
                 fn Cst.Def (pos, name, expr) => let val t = valOf (ValTypeCtx.find env name)
                                                     val expr' = checkAs env t expr
                                                 in Cst.Def (pos, name, expr')

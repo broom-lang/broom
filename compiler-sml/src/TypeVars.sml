@@ -21,6 +21,7 @@ signature TYPE_VARS = sig
     val pushOv': 't env -> ov -> unit
     val pushUv: 't env -> Name.t -> 't uv
     val pushUvs: 't env -> Name.t vector -> 't uv vector
+    val pushMarker: 't env -> marker
     val pushScopedUv: 't env -> Name.t -> 't uv * marker
     val insertUvBefore: 't env -> 't uv -> Name.t -> 't uv
 
@@ -230,10 +231,14 @@ structure TypeVars :> TYPE_VARS = struct
         in envPush env scopeFromVersion
         end
 
-    fun pushScopedUv env name =
+    fun pushMarker env =
         let fun scopeFromVersion res version = ( res := SOME version
                                                ; Vector.fromList [] )
-            val marker =  envPush env scopeFromVersion
+        in envPush env scopeFromVersion
+        end
+
+    fun pushScopedUv env name =
+        let val marker = pushMarker env
             val uv = pushUv env name
         in (uv, marker)
         end
