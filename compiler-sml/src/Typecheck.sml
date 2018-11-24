@@ -27,7 +27,7 @@ end = struct
                  | Super => Sub
 
     fun withOv tenv name f = let val ov = TypeVars.pushOv tenv name
-                                 val res = f ()
+                                 val res = f ov
                              in TypeVars.popOv tenv ov
                               ; res
                              end
@@ -73,37 +73,39 @@ end = struct
     fun typecheck program =
         let val tenv = TypeVars.newEnv ()
 
-            fun assignForSome param y uv t =
+            fun assignForSome annEnv param y uv t =
                 case y
-                of Sub => withOv tenv param (fn () => assign y uv t)
+                of Sub => withOv tenv param (fn ov =>
+                              assign annEnv y uv (Type.substitute (param, Type.OVar ov) t)
+                          )
                  | Super => withMarker tenv (fn () =>
                                 let val uv' = TypeVars.pushUv tenv (Name.fresh ())
-                                in assign y uv (Type.substitute (param, Type.UVar uv') t)
+                                in assign annEnv y uv (Type.substitute (param, Type.UVar uv') t)
                                 end
                             )
 
-            and assign y uv t =
-                let fun doAssign uv =
-                        fn Type.ForAll (param, t') => assignForSome param y uv t'
+            and assign annEnv y uv t =
+                let fun doassign annEnv uv =
+                        fn Type.ForAll (param, t') => assignForSome annEnv param y uv t'
                          | t as Type.UseT _ => raise Fail "unreachable"
                          | t as Type.OVar _ => TypeVars.uvSet uv t
                          | Type.UVar uv' => (case TypeVars.uvGet uv'
                                              of Either.Left uv' => TypeVars.uvMerge uv uv'
-                                              | Either.Right t => doAssign uv t)
+                                              | Either.Right t => doassign annEnv uv t)
                          | Type.Arrow {domain, codomain} =>
                             let val (duv, cuv) = articulate tenv uv
-                            in assign (flipY y) duv domain
-                             ; assign y cuv codomain
+                            in assign annEnv (flipY y) duv domain
+                             ; assign annEnv y cuv codomain
                             end
                          | t as Type.Prim _ => TypeVars.uvSet uv t
                 in if TypeVars.uvInScope uv
                    then if Type.occurs uv t
                         then raise Occurs (uv, t)
-                        else doAssign uv t
+                        else doassign annEnv uv t
                    else raise UvOutOfScope (TypeVars.uvName uv)
                 end
 
-            fun checkSub (Type.UVar uv) (Type.UVar uv') =
+            fun checkSub annEnv (Type.UVar uv) (Type.UVar uv') =
                 (case (TypeVars.uvGet uv, TypeVars.uvGet uv')
                  of (Either.Left uv, Either.Left uv') =>
                      if TypeVars.uvInScope uv
@@ -111,37 +113,40 @@ end = struct
                           then if TypeVars.uvEq (uv, uv') then () else TypeVars.uvMerge uv uv'
                           else raise UvOutOfScope (TypeVars.uvName uv')
                      else raise UvOutOfScope (TypeVars.uvName uv)
-                  | (Either.Left uv, Either.Right t') => assign Sub uv t'
-                  | (Either.Right t, Either.Left uv') => assign Super uv' t
-                  | (Either.Right t, Either.Right t') => checkSub t t')
-              | checkSub (Type.UVar uv) t' =
+                  | (Either.Left uv, Either.Right t') => assign annEnv Sub uv t'
+                  | (Either.Right t, Either.Left uv') => assign annEnv Super uv' t
+                  | (Either.Right t, Either.Right t') => checkSub annEnv t t')
+              | checkSub annEnv (Type.UVar uv) t' =
                 (case TypeVars.uvGet uv
-                 of Either.Left uv => assign Sub uv t'
-                  | Either.Right t => checkSub t t')
-              | checkSub t (Type.UVar uv') =
+                 of Either.Left uv => assign annEnv Sub uv t'
+                  | Either.Right t => checkSub annEnv t t')
+              | checkSub annEnv t (Type.UVar uv') =
                 (case TypeVars.uvGet uv'
-                 of Either.Left uv' => assign Super uv' t
-                  | Either.Right t' => checkSub t t')
-              | checkSub t (Type.ForAll (ov, t')) = withOv tenv ov (fn () => checkSub t t')
-              | checkSub (Type.ForAll (ov, t)) t' =
+                 of Either.Left uv' => assign annEnv Super uv' t
+                  | Either.Right t' => checkSub annEnv t t')
+              | checkSub annEnv t (Type.ForAll (param, t')) =
+                withOv tenv param (fn ov =>
+                    checkSub annEnv t (Type.substitute (param, Type.OVar ov) t')
+                )
+              | checkSub annEnv (Type.ForAll (ov, t)) t' =
                 withMarker tenv (fn () =>
                     let val uv = TypeVars.pushUv tenv (Name.fresh ())
-                    in checkSub (Type.substitute (ov, Type.UVar uv) t) t'
+                    in checkSub annEnv (Type.substitute (ov, Type.UVar uv) t) t'
                     end
                 )
-              | checkSub (t as Type.OVar ov) (t' as Type.OVar ov') =
+              | checkSub annEnv (t as Type.OVar ov) (t' as Type.OVar ov') =
                 if TypeVars.ovInScope ov
                 then if TypeVars.ovInScope ov'
                      then if TypeVars.ovEq (ov, ov') then () else raise TypeMismatch (t, t')
                      else raise OvOutOfScope (TypeVars.ovName ov)
                 else raise OvOutOfScope (TypeVars.ovName ov')
-              | checkSub (Type.Arrow arr) (Type.Arrow arr') =
-                 ( checkSub (#domain arr') (#domain arr)
-                 ; checkSub (#codomain arr) (#codomain arr') )
-              | checkSub (t as Type.Prim p) (t' as Type.Prim p') = if p = p'
+              | checkSub annEnv (Type.Arrow arr) (Type.Arrow arr') =
+                 ( checkSub annEnv (#domain arr') (#domain arr)
+                 ; checkSub annEnv (#codomain arr) (#codomain arr') )
+              | checkSub annEnv (t as Type.Prim p) (t' as Type.Prim p') = if p = p'
                                                                    then ()
                                                                    else raise TypeMismatch (t, t')
-              | checkSub t t' = raise TypeMismatch (t, t')
+              | checkSub annEnv t t' = raise TypeMismatch (t, t')
 
             fun check annEnv env =
                 fn Cst.Fn (pos, param, body) =>
@@ -174,8 +179,10 @@ end = struct
                                          in (Cst.Const (pos, c), t)
                                          end
 
-            and checkAs annEnv env (Type.ForAll (ov, t)) expr =
-                withOv tenv ov (fn () => checkAs annEnv env t expr)
+            and checkAs annEnv env (Type.ForAll (param, t)) expr =
+                withOv tenv param (fn ov =>
+                    checkAs annEnv env (Type.substitute (param, Type.OVar ov) t) expr
+                )
               | checkAs annEnv env (Type.Arrow {domain, codomain}) (Cst.Fn (pos, param, body)) =
                 withMarker tenv (fn () =>
                     let val env = ValTypeCtx.insert env param domain
@@ -185,7 +192,7 @@ end = struct
                 )
               | checkAs annEnv env t expr =
                 let val (expr', t') = check annEnv env expr
-                in checkSub t' t
+                in checkSub annEnv t' t
                  ; expr'
                 end
 
