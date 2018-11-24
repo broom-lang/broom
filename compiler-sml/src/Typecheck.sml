@@ -22,78 +22,6 @@ end = struct
     val flipY = fn Sub => Super
                  | Super => Sub
 
-    fun assignForSome tenv ov y uv t =
-        case y
-        of Sub => ( TypeVars.pushOv tenv ov
-                  ; assign tenv y uv t
-                  ; TypeVars.popOv tenv ov )
-         | Super => let val (uv', marker) = TypeVars.pushScopedUv tenv (Name.fresh ())
-                    in assign tenv y uv (Type.substitute (ov, Type.UVar uv') t)
-                     ; TypeVars.popMarker tenv marker
-                    end
-
-    and assign tenv y uv t =
-        let fun doAssign uv =
-                fn Type.ForAll (ov, t') => assignForSome tenv ov y uv t'
-                 | t as Type.OVar _ => TypeVars.uvSet uv t
-                 | Type.UVar uv' => (case TypeVars.uvGet uv'
-                                     of Either.Left uv' => TypeVars.uvMerge uv uv'
-                                      | Either.Right t => doAssign uv t)
-                 | Type.Arrow {domain, codomain} =>
-                    let val cuv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
-                        val duv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
-                    in assign tenv (flipY y) duv domain
-                     ; assign tenv y cuv codomain
-                    end
-                 | t as Type.Prim _ => TypeVars.uvSet uv t
-        in if TypeVars.uvInScope tenv uv
-           then if Type.occurs uv t
-                then raise Occurs (uv, t)
-                else doAssign uv t
-           else raise UvOutOfScope (TypeVars.uvName uv)
-        end
-
-    fun checkSub tenv (Type.UVar uv) (Type.UVar uv') =
-        (case (TypeVars.uvGet uv, TypeVars.uvGet uv')
-         of (Either.Left uv, Either.Left uv') =>
-             if TypeVars.uvInScope tenv uv
-             then if TypeVars.uvInScope tenv uv'
-                  then if TypeVars.uvEq (uv, uv') then () else TypeVars.uvMerge uv uv'
-                  else raise UvOutOfScope (TypeVars.uvName uv')
-             else raise UvOutOfScope (TypeVars.uvName uv)
-          | (Either.Left uv, Either.Right t') => assign tenv Sub uv t'
-          | (Either.Right t, Either.Left uv') => assign tenv Super uv' t
-          | (Either.Right t, Either.Right t') => checkSub tenv t t')
-      | checkSub tenv (Type.UVar uv) t' =
-        (case TypeVars.uvGet uv
-         of Either.Left uv => assign tenv Sub uv t'
-          | Either.Right t => checkSub tenv t t')
-      | checkSub tenv t (Type.UVar uv') =
-        (case TypeVars.uvGet uv'
-         of Either.Left uv' => assign tenv Super uv' t
-          | Either.Right t' => checkSub tenv t t')
-      | checkSub tenv t (Type.ForAll (ov, t')) = ( TypeVars.pushOv tenv ov
-                                                 ; checkSub tenv t t'
-                                                 ; TypeVars.popOv tenv ov )
-      | checkSub tenv (Type.ForAll (ov, t)) t' =
-        let val (uv, marker) = TypeVars.pushScopedUv tenv (Name.fresh ())
-        in checkSub tenv (Type.substitute (ov, Type.UVar uv) t) t'
-         ; TypeVars.popMarker tenv marker
-        end
-      | checkSub tenv (t as Type.OVar ov) (t' as Type.OVar ov') =
-        if TypeVars.ovInScope tenv ov
-        then if TypeVars.ovInScope tenv ov'
-             then if TypeVars.ovEq (ov, ov') then () else raise TypeMismatch (t, t')
-             else raise OvOutOfScope (TypeVars.ovName ov)
-        else raise OvOutOfScope (TypeVars.ovName ov')
-      | checkSub tenv (Type.Arrow arr) (Type.Arrow arr') =
-         ( checkSub tenv (#domain arr') (#domain arr)
-         ; checkSub tenv (#codomain arr) (#codomain arr') )
-      | checkSub _ (t as Type.Prim p) (t' as Type.Prim p') = if p = p'
-                                                             then ()
-                                                             else raise TypeMismatch (t, t')
-      | checkSub _ t t' = raise TypeMismatch (t, t')
-
     val checkConst = fn c as Const.Int _ => (c, Type.Prim Type.Int)
 
     datatype 'a goal = Unannotated of Name.t * 'a
@@ -102,6 +30,78 @@ end = struct
 
     fun typecheck program =
         let val tenv = TypeVars.newEnv ()
+
+            fun assignForSome ov y uv t =
+                case y
+                of Sub => ( TypeVars.pushOv tenv ov
+                          ; assign y uv t
+                          ; TypeVars.popOv tenv ov )
+                 | Super => let val (uv', marker) = TypeVars.pushScopedUv tenv (Name.fresh ())
+                            in assign y uv (Type.substitute (ov, Type.UVar uv') t)
+                             ; TypeVars.popMarker tenv marker
+                            end
+
+            and assign y uv t =
+                let fun doAssign uv =
+                        fn Type.ForAll (ov, t') => assignForSome ov y uv t'
+                         | t as Type.OVar _ => TypeVars.uvSet uv t
+                         | Type.UVar uv' => (case TypeVars.uvGet uv'
+                                             of Either.Left uv' => TypeVars.uvMerge uv uv'
+                                              | Either.Right t => doAssign uv t)
+                         | Type.Arrow {domain, codomain} =>
+                            let val cuv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
+                                val duv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
+                            in assign (flipY y) duv domain
+                             ; assign y cuv codomain
+                            end
+                         | t as Type.Prim _ => TypeVars.uvSet uv t
+                in if TypeVars.uvInScope tenv uv
+                   then if Type.occurs uv t
+                        then raise Occurs (uv, t)
+                        else doAssign uv t
+                   else raise UvOutOfScope (TypeVars.uvName uv)
+                end
+
+            fun checkSub (Type.UVar uv) (Type.UVar uv') =
+                (case (TypeVars.uvGet uv, TypeVars.uvGet uv')
+                 of (Either.Left uv, Either.Left uv') =>
+                     if TypeVars.uvInScope tenv uv
+                     then if TypeVars.uvInScope tenv uv'
+                          then if TypeVars.uvEq (uv, uv') then () else TypeVars.uvMerge uv uv'
+                          else raise UvOutOfScope (TypeVars.uvName uv')
+                     else raise UvOutOfScope (TypeVars.uvName uv)
+                  | (Either.Left uv, Either.Right t') => assign Sub uv t'
+                  | (Either.Right t, Either.Left uv') => assign Super uv' t
+                  | (Either.Right t, Either.Right t') => checkSub t t')
+              | checkSub (Type.UVar uv) t' =
+                (case TypeVars.uvGet uv
+                 of Either.Left uv => assign Sub uv t'
+                  | Either.Right t => checkSub t t')
+              | checkSub t (Type.UVar uv') =
+                (case TypeVars.uvGet uv'
+                 of Either.Left uv' => assign Super uv' t
+                  | Either.Right t' => checkSub t t')
+              | checkSub t (Type.ForAll (ov, t')) = ( TypeVars.pushOv tenv ov
+                                                    ; checkSub t t'
+                                                    ; TypeVars.popOv tenv ov )
+              | checkSub (Type.ForAll (ov, t)) t' =
+                let val (uv, marker) = TypeVars.pushScopedUv tenv (Name.fresh ())
+                in checkSub (Type.substitute (ov, Type.UVar uv) t) t'
+                 ; TypeVars.popMarker tenv marker
+                end
+              | checkSub (t as Type.OVar ov) (t' as Type.OVar ov') =
+                if TypeVars.ovInScope tenv ov
+                then if TypeVars.ovInScope tenv ov'
+                     then if TypeVars.ovEq (ov, ov') then () else raise TypeMismatch (t, t')
+                     else raise OvOutOfScope (TypeVars.ovName ov)
+                else raise OvOutOfScope (TypeVars.ovName ov')
+              | checkSub (Type.Arrow arr) (Type.Arrow arr') =
+                 ( checkSub (#domain arr') (#domain arr)
+                 ; checkSub (#codomain arr) (#codomain arr') )
+              | checkSub (t as Type.Prim p) (t' as Type.Prim p') = if p = p'
+                                                                   then ()
+                                                                   else raise TypeMismatch (t, t')
+              | checkSub t t' = raise TypeMismatch (t, t')
 
             fun check env =
                 fn Cst.Fn (pos, param, body) =>
@@ -114,7 +114,7 @@ end = struct
                      ; (Cst.Fn (pos, param, body'), Type.Arrow {domain, codomain})
                     end
                  | Cst.App (pos, {callee, arg}) =>
-                    let val (callee', {domain, codomain}) = coerceCallee env (check env callee)
+                    let val (callee', {domain, codomain}) = coerceCallee (check env callee)
                         val arg' = checkAs env domain arg
                     in (Cst.App (pos, {callee = callee', arg = arg'}), codomain)
                     end
@@ -140,15 +140,15 @@ end = struct
                 end
               | checkAs env t expr =
                 let val (expr', t') = check env expr
-                in checkSub tenv t' t
+                in checkSub t' t
                  ; expr'
                 end
 
-            and coerceCallee env (callee, t) =
+            and coerceCallee (callee, t) =
                 (case t
                  of Type.ForAll (ov, t') =>
                      let val uv = TypeVars.pushUv tenv (Name.fresh ())
-                     in coerceCallee env (callee, Type.substitute (ov, Type.UVar uv) t')
+                     in coerceCallee (callee, Type.substitute (ov, Type.UVar uv) t')
                      end
                   | Type.UVar uv =>
                      (case TypeVars.uvGet uv
@@ -158,7 +158,7 @@ end = struct
                           in (callee, { domain = Type.UVar duv
                                       , codomain = Type.UVar cuv })
                           end
-                      | Either.Right t' => coerceCallee env (callee, t'))
+                      | Either.Right t' => coerceCallee (callee, t'))
                   | Type.Arrow arr => (callee, arr)
                   | _ => raise Uncallable (callee, t))
 
