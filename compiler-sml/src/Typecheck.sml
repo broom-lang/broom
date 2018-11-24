@@ -1,6 +1,4 @@
 structure Typecheck :> sig
-    structure Type: TYPE
-
     exception UvOutOfScope of Name.t
     exception OvOutOfScope of Name.t
     exception Unbound of Name.t
@@ -10,7 +8,6 @@ structure Typecheck :> sig
 
     val typecheck: Cst.stmt vector -> Cst.stmt vector
 end = struct
-    structure Type = Type
     structure TypeVars = Type.TypeVars
 
     exception UvOutOfScope of Name.t
@@ -20,51 +17,39 @@ end = struct
     exception Uncallable of Cst.expr * Type.t
     exception TypeMismatch of Type.t * Type.t
 
-    fun assignLeft tenv uv t =
-        let fun assignL uv =
-                fn Type.ForAll (ov, t') => ( TypeVars.pushOv' tenv ov
-                                           ; assignLeft tenv uv t'
-                                           ; TypeVars.popOv tenv ov )
-                 | t as Type.OVar _ => TypeVars.uvSet uv t
-                 | Type.UVar uv' => (case TypeVars.uvGet uv'
-                                     of Either.Left uv' => TypeVars.uvMerge uv uv'
-                                      | Either.Right t => assignL uv t)
-                 | Type.Arrow {domain, codomain} =>
-                    let val cuv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
-                        val duv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
-                    in assignRight tenv duv domain
-                     ; assignLeft tenv cuv codomain
-                    end
-                 | t as Type.Prim _ => TypeVars.uvSet uv t
-        in if TypeVars.uvInScope tenv uv
-           then if Type.occurs uv t
-                then raise Occurs (uv, t)
-                else assignL uv t
-           else raise UvOutOfScope (TypeVars.uvName uv)
-        end
+    datatype lattice_y = Sub | Super
 
-    and assignRight tenv uv t =
-        let fun assignR uv =
-                fn Type.ForAll (ov, t') =>
-                    let val (uv, marker) = TypeVars.pushScopedUv tenv (Name.fresh ())
-                    in assignRight tenv uv (Type.substitute (ov, Type.UVar uv) t')
+    val flipY = fn Sub => Super
+                 | Super => Sub
+
+    fun assignForSome tenv ov y uv t =
+        case y
+        of Sub => ( TypeVars.pushOv' tenv ov
+                  ; assign tenv y uv t
+                  ; TypeVars.popOv tenv ov )
+         | Super => let val (uv', marker) = TypeVars.pushScopedUv tenv (Name.fresh ())
+                    in assign tenv y uv (Type.substitute (ov, Type.UVar uv') t)
                      ; TypeVars.popMarker tenv marker
                     end
+
+    and assign tenv y uv t =
+        let fun doAssign uv =
+                fn Type.ForAll (ov, t') => assignForSome tenv ov y uv t'
                  | t as Type.OVar _ => TypeVars.uvSet uv t
                  | Type.UVar uv' => (case TypeVars.uvGet uv'
                                      of Either.Left uv' => TypeVars.uvMerge uv uv'
-                                      | Either.Right t => assignR uv t)
+                                      | Either.Right t => doAssign uv t)
                  | Type.Arrow {domain, codomain} =>
                     let val cuv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
                         val duv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
-                    in assignLeft tenv duv domain
-                     ; assignRight tenv cuv codomain
+                    in assign tenv (flipY y) duv domain
+                     ; assign tenv y cuv codomain
                     end
                  | t as Type.Prim _ => TypeVars.uvSet uv t
         in if TypeVars.uvInScope tenv uv
            then if Type.occurs uv t
                 then raise Occurs (uv, t)
-                else assignR uv t
+                else doAssign uv t
            else raise UvOutOfScope (TypeVars.uvName uv)
         end
 
@@ -76,16 +61,16 @@ end = struct
                   then if TypeVars.uvEq (uv, uv') then () else TypeVars.uvMerge uv uv'
                   else raise UvOutOfScope (TypeVars.uvName uv')
              else raise UvOutOfScope (TypeVars.uvName uv)
-          | (Either.Left uv, Either.Right t') => assignLeft tenv uv t'
-          | (Either.Right t, Either.Left uv') => assignRight tenv uv' t
+          | (Either.Left uv, Either.Right t') => assign tenv Sub uv t'
+          | (Either.Right t, Either.Left uv') => assign tenv Super uv' t
           | (Either.Right t, Either.Right t') => checkSub tenv t t')
       | checkSub tenv (Type.UVar uv) t' =
         (case TypeVars.uvGet uv
-         of Either.Left uv => assignLeft tenv uv t'
+         of Either.Left uv => assign tenv Sub uv t'
           | Either.Right t => checkSub tenv t t')
       | checkSub tenv t (Type.UVar uv') =
         (case TypeVars.uvGet uv'
-         of Either.Left uv' => assignRight tenv uv' t
+         of Either.Left uv' => assign tenv Super uv' t
           | Either.Right t' => checkSub tenv t t')
       | checkSub tenv t (Type.ForAll (ov, t')) = ( TypeVars.pushOv' tenv ov
                                                  ; checkSub tenv t t'
