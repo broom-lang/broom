@@ -21,7 +21,6 @@ signature TYPE_VARS = sig
     val pushUv: 't env -> Name.t -> 't uv
     val pushUvs: 't env -> Name.t vector -> 't uv vector
     val pushMarker: 't env -> marker
-    val pushScopedUv: 't env -> Name.t -> 't uv * marker
     val insertUvBefore: 't env -> 't uv -> Name.t -> 't uv
 
     val popOv: 't env -> ov -> unit

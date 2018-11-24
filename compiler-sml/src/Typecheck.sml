@@ -22,6 +22,24 @@ end = struct
     val flipY = fn Sub => Super
                  | Super => Sub
 
+    fun withOv tenv ov f = let val _ = TypeVars.pushOv tenv ov
+                               val res = f ()
+                            in TypeVars.popOv tenv ov
+                             ; res
+                            end
+
+    fun withMarker tenv f = let val marker = TypeVars.pushMarker tenv
+                                val res = f ()
+                            in TypeVars.popMarker tenv marker
+                             ; res
+                            end
+
+    fun articulate tenv uv =
+        let val cuv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
+            val duv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
+        in (duv, cuv)
+        end
+
     val checkConst = fn c as Const.Int _ => (c, Type.Prim Type.Int)
 
     datatype 'a goal = Unannotated of Name.t * 'a
@@ -33,13 +51,12 @@ end = struct
 
             fun assignForSome ov y uv t =
                 case y
-                of Sub => ( TypeVars.pushOv tenv ov
-                          ; assign y uv t
-                          ; TypeVars.popOv tenv ov )
-                 | Super => let val (uv', marker) = TypeVars.pushScopedUv tenv (Name.fresh ())
-                            in assign y uv (Type.substitute (ov, Type.UVar uv') t)
-                             ; TypeVars.popMarker tenv marker
-                            end
+                of Sub => withOv tenv ov (fn () => assign y uv t)
+                 | Super => withMarker tenv (fn () =>
+                                let val uv' = TypeVars.pushUv tenv (Name.fresh ())
+                                in assign y uv (Type.substitute (ov, Type.UVar uv') t)
+                                end
+                            )
 
             and assign y uv t =
                 let fun doAssign uv =
@@ -49,8 +66,7 @@ end = struct
                                              of Either.Left uv' => TypeVars.uvMerge uv uv'
                                               | Either.Right t => doAssign uv t)
                          | Type.Arrow {domain, codomain} =>
-                            let val cuv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
-                                val duv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
+                            let val (duv, cuv) = articulate tenv uv
                             in assign (flipY y) duv domain
                              ; assign y cuv codomain
                             end
@@ -81,14 +97,13 @@ end = struct
                 (case TypeVars.uvGet uv'
                  of Either.Left uv' => assign Super uv' t
                   | Either.Right t' => checkSub t t')
-              | checkSub t (Type.ForAll (ov, t')) = ( TypeVars.pushOv tenv ov
-                                                    ; checkSub t t'
-                                                    ; TypeVars.popOv tenv ov )
+              | checkSub t (Type.ForAll (ov, t')) = withOv tenv ov (fn () => checkSub t t')
               | checkSub (Type.ForAll (ov, t)) t' =
-                let val (uv, marker) = TypeVars.pushScopedUv tenv (Name.fresh ())
-                in checkSub (Type.substitute (ov, Type.UVar uv) t) t'
-                 ; TypeVars.popMarker tenv marker
-                end
+                withMarker tenv (fn () =>
+                    let val uv = TypeVars.pushUv tenv (Name.fresh ())
+                    in checkSub (Type.substitute (ov, Type.UVar uv) t) t'
+                    end
+                )
               | checkSub (t as Type.OVar ov) (t' as Type.OVar ov') =
                 if TypeVars.ovInScope tenv ov
                 then if TypeVars.ovInScope tenv ov'
@@ -107,11 +122,12 @@ end = struct
                 fn Cst.Fn (pos, param, body) =>
                     let val domain = Type.UVar (TypeVars.pushUv tenv (Name.fresh ()))
                         val codomain = Type.UVar (TypeVars.pushUv tenv (Name.fresh ()))
-                        val marker = TypeVars.pushMarker tenv
-                        val env = ValTypeCtx.insert env param domain
-                        val body' = checkAs env codomain body
-                    in TypeVars.popMarker tenv marker
-                     ; (Cst.Fn (pos, param, body'), Type.Arrow {domain, codomain})
+                    in withMarker tenv (fn () =>
+                           let val env = ValTypeCtx.insert env param domain
+                               val body' = checkAs env codomain body
+                           in (Cst.Fn (pos, param, body'), Type.Arrow {domain, codomain})
+                           end
+                       )
                     end
                  | Cst.App (pos, {callee, arg}) =>
                     let val (callee', {domain, codomain}) = coerceCallee (check env callee)
@@ -126,18 +142,14 @@ end = struct
                                          end
 
             and checkAs env (Type.ForAll (ov, t)) expr =
-                let val _ = TypeVars.pushOv tenv ov
-                    val expr' = checkAs env t expr
-                in TypeVars.popOv tenv ov
-                 ; expr'
-                end
+                withOv tenv ov (fn () => checkAs env t expr)
               | checkAs env (Type.Arrow {domain, codomain}) (Cst.Fn (pos, param, body)) =
-                let val marker = TypeVars.pushMarker tenv
-                    val env = ValTypeCtx.insert env param domain
-                    val body' = checkAs env codomain body
-                in TypeVars.popMarker tenv marker
-                 ; Cst.Fn (pos, param, body')
-                end
+                withMarker tenv (fn () =>
+                    let val env = ValTypeCtx.insert env param domain
+                        val body' = checkAs env codomain body
+                    in Cst.Fn (pos, param, body')
+                    end
+                )
               | checkAs env t expr =
                 let val (expr', t') = check env expr
                 in checkSub t' t
@@ -153,10 +165,8 @@ end = struct
                   | Type.UVar uv =>
                      (case TypeVars.uvGet uv
                       of Either.Left uv =>
-                          let val cuv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
-                              val duv = TypeVars.insertUvBefore tenv uv (Name.fresh ())
-                          in (callee, { domain = Type.UVar duv
-                                      , codomain = Type.UVar cuv })
+                          let val (duv, cuv) = articulate tenv uv
+                          in (callee, {domain = Type.UVar duv, codomain = Type.UVar cuv})
                           end
                       | Either.Right t' => coerceCallee (callee, t'))
                   | Type.Arrow arr => (callee, arr)
