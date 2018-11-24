@@ -7,6 +7,8 @@ structure Name :> sig
     val fromString: string -> t
     val toString: t -> string
     val fresh: unit -> t
+
+    structure OrdKey : ORD_KEY where type ord_key = t
 end = struct
     datatype t = String of string
                | Fresh of int
@@ -32,11 +34,17 @@ end = struct
                         ; Fresh i
                        end
     end
+
+    structure OrdKey = struct
+        type ord_key = t
+        val compare = compare
+    end
 end
 
 structure NameHashTable = HashTableFn(type hash_key = Name.t
                                       val hashVal = Name.hash
                                       val sameKey = op=)
 
-structure NameSortedMap = BinaryMapFn(type ord_key = Name.t
-                                      val compare = Name.compare)
+structure NameSortedMap = BinaryMapFn(Name.OrdKey)
+
+structure NameSortedSet = BinarySetFn(Name.OrdKey)

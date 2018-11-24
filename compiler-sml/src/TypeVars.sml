@@ -17,7 +17,7 @@ signature TYPE_VARS = sig
     type 't env
     val newEnv: unit -> 't env
 
-    val pushOv: 't env -> ov -> unit
+    val pushOv: 't env -> Name.t -> ov
     val pushUv: 't env -> Name.t -> 't uv
     val pushUvs: 't env -> Name.t vector -> 't uv vector
     val pushMarker: 't env -> marker
@@ -27,8 +27,8 @@ signature TYPE_VARS = sig
     val popUv: 't env -> 't uv -> unit
     val popMarker: 't env -> marker -> unit
 
-    val ovInScope: 't env -> ov -> bool
-    val uvInScope: 't env -> 't uv -> bool
+    val ovInScope: ov -> bool
+    val uvInScope: 't uv -> bool
 end
 
 signature VAL_TYPE_CTX = sig
@@ -197,8 +197,13 @@ structure TypeVars :> TYPE_VARS = struct
          ; valOf (!res)
         end
 
-    fun pushOv env ov = envPush env (fn res => fn _ => ( res := SOME ()
-                                                       ; Vector.fromList [Ov ov] ))
+    fun pushOv env name =
+        let fun scopeFromVersion res version = let val ov = {name, version, inScope = ref true}
+                                               in res := SOME ov
+                                                ; Vector.fromList [Ov ov]
+                                               end
+        in envPush env scopeFromVersion
+        end
 
     fun pushUv env name =
         let fun scopeFromVersion res version = let val descr = {name, version, inScope = ref true}
@@ -311,7 +316,7 @@ structure TypeVars :> TYPE_VARS = struct
 
     val popMarker = popVersion
 
-    fun ovInScope _ ({inScope, ...}: ov) = !inScope
+    fun ovInScope ({inScope, ...}: ov) = !inScope
 
-    fun uvInScope _ uv = !(#inScope (#descr (uvRoot uv)))
+    fun uvInScope uv = !(#inScope (#descr (uvRoot uv)))
 end
