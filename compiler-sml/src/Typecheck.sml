@@ -45,54 +45,60 @@ end = struct
         end
 
     fun annFreeVars annEnv =
-        fn Cst.ForAll (_, param, t) =>
-            annFreeVars (ValTypeCtx.insert annEnv param (Type.UseT param)) t
-         | Cst.UseT (_, name) => if isSome (ValTypeCtx.find annEnv name)
-                                 then NameSortedSet.empty
-                                 else NameSortedSet.fromList [name]
-         | Cst.Arrow (_, {domain, codomain}) =>
+        fn Type.ForAll (pos, param, t) =>
+            annFreeVars (ValTypeCtx.insert annEnv param (Type.UseT (pos, param))) t
+         | Type.UseT (_, name) => if isSome (ValTypeCtx.find annEnv name)
+                                  then NameSortedSet.empty
+                                  else NameSortedSet.fromList [name]
+         | Type.OVar _ => NameSortedSet.empty
+         | Type.UVar _ => NameSortedSet.empty
+         | Type.Arrow (_, {domain, codomain}) =>
             NameSortedSet.union (annFreeVars annEnv domain, annFreeVars annEnv codomain)
-         | Cst.Prim _ => NameSortedSet.empty
+         | Type.Prim _ => NameSortedSet.empty
 
     fun hydrate annEnv =
-        fn Cst.ForAll (_, param, t) =>
-            Type.ForAll (param, hydrate (ValTypeCtx.insert annEnv param (Type.UseT param)) t)
-         | Cst.UseT (_, name) => (case ValTypeCtx.find annEnv name
-                                  of SOME t => t
-                                   | NONE => raise UnboundType name)
-         | Cst.Arrow (_, {domain, codomain}) => Type.Arrow { domain = hydrate annEnv domain
-                                                           , codomain = hydrate annEnv codomain }
-         | Cst.Prim (_, p) => Type.Prim p
+        fn Type.ForAll (pos, param, t) =>
+            Type.ForAll ( pos, param
+                        , hydrate (ValTypeCtx.insert annEnv param (Type.UseT (pos, param))) t )
+         | Type.UseT (_, name) => (case ValTypeCtx.find annEnv name
+                                   of SOME t => t
+                                    | NONE => raise UnboundType name)
+         | t as Type.OVar _ => t
+         | t as Type.UVar _ => t
+         | Type.Arrow (pos, {domain, codomain}) =>
+            Type.Arrow (pos, {domain = hydrate annEnv domain, codomain = hydrate annEnv codomain})
+         | t as Type.Prim (pos, p) => t
 
-    val checkConst = fn c as Const.Int _ => (c, Type.Prim Type.Int)
+    fun checkConst pos = fn c as Const.Int _ => (c, Type.Prim (pos, Type.Int))
 
-    datatype 'a goal = Unannotated of Name.t * 'a
+    datatype 'a goal = Unannotated of Pos.t * Name.t * 'a
 
-    val stmtGoal = fn Cst.Def (_, name, _) => Unannotated (name, Name.fresh ())
+    val stmtGoal = fn Cst.Def (pos, name, _) => Unannotated (pos, name, Name.fresh ())
 
     fun typecheck program =
         let val tenv = TypeVars.newEnv ()
 
-            fun assignForSome annEnv param y uv t =
+            fun assignForSome pos annEnv param y uv t =
                 case y
                 of Sub => withOv tenv param (fn ov =>
-                              assign annEnv y uv (Type.substitute (param, Type.OVar ov) t)
+                              assign annEnv y uv (Type.substitute (param, Type.OVar (pos, ov)) t)
                           )
                  | Super => withMarker tenv (fn () =>
                                 let val uv' = TypeVars.pushUv tenv (Name.fresh ())
-                                in assign annEnv y uv (Type.substitute (param, Type.UVar uv') t)
+                                in assign annEnv y uv (Type.substitute ( param
+                                                                       , Type.UVar (pos, uv') ) t)
                                 end
                             )
 
             and assign annEnv y uv t =
                 let fun doassign annEnv uv =
-                        fn Type.ForAll (param, t') => assignForSome annEnv param y uv t'
+                        fn Type.ForAll (pos, param, t') => assignForSome pos annEnv param y uv t'
                          | t as Type.UseT _ => raise Fail "unreachable"
                          | t as Type.OVar _ => TypeVars.uvSet uv t
-                         | Type.UVar uv' => (case TypeVars.uvGet uv'
-                                             of Either.Left uv' => TypeVars.uvMerge uv uv'
-                                              | Either.Right t => doassign annEnv uv t)
-                         | Type.Arrow {domain, codomain} =>
+                         | Type.UVar (pos, uv') => (case TypeVars.uvGet uv'
+                                                    of Either.Left uv' => TypeVars.uvMerge uv uv'
+                                                     | Either.Right t => doassign annEnv uv t)
+                         | Type.Arrow (_, {domain, codomain}) =>
                             let val (duv, cuv) = articulate tenv uv
                             in assign annEnv (flipY y) duv domain
                              ; assign annEnv y cuv codomain
@@ -105,7 +111,7 @@ end = struct
                    else raise UvOutOfScope (TypeVars.uvName uv)
                 end
 
-            fun checkSub annEnv (Type.UVar uv) (Type.UVar uv') =
+            fun checkSub annEnv (Type.UVar (_, uv)) (Type.UVar (_, uv')) =
                 (case (TypeVars.uvGet uv, TypeVars.uvGet uv')
                  of (Either.Left uv, Either.Left uv') =>
                      if TypeVars.uvInScope uv
@@ -116,31 +122,31 @@ end = struct
                   | (Either.Left uv, Either.Right t') => assign annEnv Sub uv t'
                   | (Either.Right t, Either.Left uv') => assign annEnv Super uv' t
                   | (Either.Right t, Either.Right t') => checkSub annEnv t t')
-              | checkSub annEnv (Type.UVar uv) t' =
+              | checkSub annEnv (Type.UVar (_, uv)) t' =
                 (case TypeVars.uvGet uv
                  of Either.Left uv => assign annEnv Sub uv t'
                   | Either.Right t => checkSub annEnv t t')
-              | checkSub annEnv t (Type.UVar uv') =
+              | checkSub annEnv t (Type.UVar (_, uv')) =
                 (case TypeVars.uvGet uv'
                  of Either.Left uv' => assign annEnv Super uv' t
                   | Either.Right t' => checkSub annEnv t t')
-              | checkSub annEnv t (Type.ForAll (param, t')) =
+              | checkSub annEnv t (Type.ForAll (pos, param, t')) =
                 withOv tenv param (fn ov =>
-                    checkSub annEnv t (Type.substitute (param, Type.OVar ov) t')
+                    checkSub annEnv t (Type.substitute (param, Type.OVar (pos, ov)) t')
                 )
-              | checkSub annEnv (Type.ForAll (ov, t)) t' =
+              | checkSub annEnv (Type.ForAll (pos, ov, t)) t' =
                 withMarker tenv (fn () =>
                     let val uv = TypeVars.pushUv tenv (Name.fresh ())
-                    in checkSub annEnv (Type.substitute (ov, Type.UVar uv) t) t'
+                    in checkSub annEnv (Type.substitute (ov, Type.UVar (pos, uv)) t) t'
                     end
                 )
-              | checkSub annEnv (t as Type.OVar ov) (t' as Type.OVar ov') =
+              | checkSub annEnv (t as Type.OVar (_, ov)) (t' as Type.OVar (_, ov')) =
                 if TypeVars.ovInScope ov
                 then if TypeVars.ovInScope ov'
                      then if TypeVars.ovEq (ov, ov') then () else raise TypeMismatch (t, t')
                      else raise OvOutOfScope (TypeVars.ovName ov)
                 else raise OvOutOfScope (TypeVars.ovName ov')
-              | checkSub annEnv (Type.Arrow arr) (Type.Arrow arr') =
+              | checkSub annEnv (Type.Arrow (_, arr)) (Type.Arrow (_, arr')) =
                  ( checkSub annEnv (#domain arr') (#domain arr)
                  ; checkSub annEnv (#codomain arr) (#codomain arr') )
               | checkSub annEnv (t as Type.Prim p) (t' as Type.Prim p') = if p = p'
@@ -150,12 +156,12 @@ end = struct
 
             fun check annEnv env =
                 fn Cst.Fn (pos, param, body) =>
-                    let val domain = Type.UVar (TypeVars.pushUv tenv (Name.fresh ()))
-                        val codomain = Type.UVar (TypeVars.pushUv tenv (Name.fresh ()))
+                    let val domain = Type.UVar (pos, TypeVars.pushUv tenv (Name.fresh ()))
+                        val codomain = Type.UVar (pos, TypeVars.pushUv tenv (Name.fresh ()))
                     in withMarker tenv (fn () =>
                            let val env = ValTypeCtx.insert env param domain
                                val body' = checkAs annEnv env codomain body
-                           in (Cst.Fn (pos, param, body'), Type.Arrow {domain, codomain})
+                           in (Cst.Fn (pos, param, body'), Type.Arrow (pos, {domain, codomain}))
                            end
                        )
                     end
@@ -175,15 +181,16 @@ end = struct
                  | Cst.Use (pos, name) => (case ValTypeCtx.find env name
                                            of SOME t => (Cst.Use (pos, name), t)
                                             | NONE => raise Unbound name)
-                 | Cst.Const (pos, c) => let val (c, t) = checkConst c
+                 | Cst.Const (pos, c) => let val (c, t) = checkConst pos c
                                          in (Cst.Const (pos, c), t)
                                          end
 
-            and checkAs annEnv env (Type.ForAll (param, t)) expr =
+            and checkAs annEnv env (Type.ForAll (pos, param, t)) expr =
                 withOv tenv param (fn ov =>
-                    checkAs annEnv env (Type.substitute (param, Type.OVar ov) t) expr
+                    checkAs annEnv env (Type.substitute (param, Type.OVar (pos, ov)) t) expr
                 )
-              | checkAs annEnv env (Type.Arrow {domain, codomain}) (Cst.Fn (pos, param, body)) =
+              | checkAs annEnv env (Type.Arrow (_, {domain, codomain}))
+                                   (Cst.Fn (pos, param, body)) =
                 withMarker tenv (fn () =>
                     let val env = ValTypeCtx.insert env param domain
                         val body' = checkAs annEnv env codomain body
@@ -198,18 +205,19 @@ end = struct
 
             and coerceCallee (callee, t) =
                 (case t
-                 of Type.ForAll (ov, t') =>
+                 of Type.ForAll (pos, param, t') =>
                      let val uv = TypeVars.pushUv tenv (Name.fresh ())
-                     in coerceCallee (callee, Type.substitute (ov, Type.UVar uv) t')
+                     in coerceCallee (callee, Type.substitute (param, Type.UVar (pos, uv)) t')
                      end
-                  | Type.UVar uv =>
+                  | Type.UVar (pos, uv) =>
                      (case TypeVars.uvGet uv
                       of Either.Left uv =>
                           let val (duv, cuv) = articulate tenv uv
-                          in (callee, {domain = Type.UVar duv, codomain = Type.UVar cuv})
+                          in (callee, { domain = Type.UVar (pos, duv)
+                                      , codomain = Type.UVar (pos, cuv) })
                           end
                       | Either.Right t' => coerceCallee (callee, t'))
-                  | Type.Arrow arr => (callee, arr)
+                  | Type.Arrow (_, arr) => (callee, arr)
                   | _ => raise Uncallable (callee, t))
 
             fun checkStmt annEnv env =
@@ -222,9 +230,10 @@ end = struct
                 let val goals = Vector.map stmtGoal stmts
                     val inferGoals = Vector.map (fn Unannotated b => b) goals
                     val uvs = TypeVars.pushUvs tenv (Vector.map #2 inferGoals)
-                    val env = Vector.foldli (fn (i, (name, _), valUvs) =>
+                    val env = Vector.foldli (fn (i, (pos, name, _), valUvs) =>
                                                  let val uv = Vector.sub (uvs, i)
-                                                 in ValTypeCtx.insert valUvs name (Type.UVar uv)
+                                                 in ValTypeCtx.insert valUvs name
+                                                                      (Type.UVar (pos, uv))
                                                  end)
                                             env inferGoals
                 in Vector.map (checkStmt annEnv env) stmts

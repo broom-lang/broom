@@ -1,6 +1,5 @@
 type stmt = Cst.stmt
 type expr = Cst.expr
-type type_ann = Cst.type_ann
 
 fun lookup "bogus" = 10000
   | lookup s = 0
@@ -24,8 +23,8 @@ fun lookup "bogus" = 10000
        | app of expr
        | nestable of expr
        | triv of expr
-       | typeAnn of type_ann
-       | typeAnnBody of type_ann
+       | typeAnn of Type.t
+       | typeAnnBody of Type.t
        | ids of Name.t list
 
 %keyword VAL EQ
@@ -56,17 +55,17 @@ nestable : LPAREN expr RPAREN (expr)
 triv : ID  (Cst.Use (IDleft, Name.fromString ID))
      | INT (Cst.Const (INTleft, Const.Int INT))
 
-typeAnn : FORALL ids DOT typeAnnBody (List.foldl (fn (id, t) => Cst.ForAll (FORALLleft, id, t))
+typeAnn : FORALL ids DOT typeAnnBody (List.foldl (fn (id, t) => Type.ForAll (FORALLleft, id, t))
                                                  typeAnnBody ids)
         | typeAnnBody (typeAnnBody)
 
 typeAnnBody : LPAREN typeAnn RPAREN (typeAnn)
-            | typeAnnBody ARROW typeAnnBody (Cst.Arrow ( typeAnnBody1left
-                                                       , { domain = typeAnnBody1
-                                                         , codomain = typeAnnBody2 }))
+            | typeAnnBody ARROW typeAnnBody (Type.Arrow ( typeAnnBody1left
+                                                        , { domain = typeAnnBody1
+                                                          , codomain = typeAnnBody2 }))
             | ID (case ID
-                  of "Int" => Cst.Prim (IDleft, Type.Int)
-                   | _ => Cst.UseT (IDleft, Name.fromString ID))
+                  of "Int" => Type.Prim (IDleft, Type.Int)
+                   | _ => Type.UseT (IDleft, Name.fromString ID))
 
 ids : ids ID (Name.fromString ID :: ids)
     | ID ([Name.fromString ID])
