@@ -21,7 +21,7 @@ signature TYPE_VARS = sig
     val pushUv: 't env -> Name.t -> 't uv
     val pushUvs: 't env -> Name.t vector -> 't uv vector
     val pushMarker: 't env -> marker
-    val insertUvBefore: 't env -> 't uv -> Name.t -> 't uv
+    val insertUvsBefore: 't env -> 't uv -> Name.t vector -> 't uv vector
 
     val popOv: 't env -> ov -> unit
     val popUv: 't env -> 't uv -> unit
@@ -238,14 +238,17 @@ structure TypeVars :> TYPE_VARS = struct
         in (uv, marker)
         end
 
-    fun insertUvBefore env succUv name =
+    fun insertUvsBefore env succUv names =
         let val succVersion = #version (#descr (uvRoot succUv))
             val res = ref NONE
-            fun scopeFromVersion version = let val descr = {name, version, inScope = ref true}
-                                               val uv = ref (Root { descr, typ = ref NONE })
-                                           in res := SOME uv
-                                            ; Vector.fromList [Uv uv]
-                                           end
+            fun uvFromVersion version name = let val descr = {name, version, inScope = ref true}
+                                             in ref (Root {descr, typ = ref NONE})
+                                             end
+            fun scopeFromVersion version =
+                let val uvs = Vector.map (uvFromVersion version) names
+                in res := SOME uvs
+                 ; Vector.map Uv uvs
+                end
             fun insert bindings digitIndex =
                 let val isNotLastIndex = digitIndex < Version.length succVersion - 1
                     val version = if isNotLastIndex then succVersion else Version.pred succVersion

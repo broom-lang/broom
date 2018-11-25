@@ -13,6 +13,8 @@ local
            src/Reprs/Pos.sml
            src/Reprs/Name.sml
            src/Reprs/TypeVars.sml
+           src/Reprs/ValTypes.sml
+           src/Reprs/TypeCtx.sml
            src/Reprs/Type.sml
            src/Reprs/Const.sml
            src/Reprs/Cst.sml

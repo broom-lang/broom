@@ -1,6 +1,4 @@
 signature TYPE = sig
-    structure TypeVars: TYPE_VARS
-
     type ov = TypeVars.ov
 
     datatype prim = Int
@@ -18,16 +16,14 @@ signature TYPE = sig
     val primToString: prim -> string
     val toString: t -> string
 
-    val isWellFormedType: t ValTypeCtx.env -> t -> bool
-    val isWellFormedMonoType: t ValTypeCtx.env -> t -> bool
+    val isWellFormedType: t TypeCtx.ctx -> t -> bool
+    val isWellFormedMonoType: t TypeCtx.ctx -> t -> bool
     val occurs: t TypeVars.uv -> t -> bool
 
     val substitute: Name.t * t -> t -> t
 end 
 
 structure Type :> TYPE = struct
-    structure TypeVars = TypeVars
-
     val ovInScope = TypeVars.ovInScope
     val uvInScope = TypeVars.uvInScope
     val ovEq = TypeVars.ovEq
@@ -63,23 +59,25 @@ structure Type :> TYPE = struct
                            toString domain ^ " -> " ^ toString codomain
                         | Prim (_, p) => primToString p
 
-    fun isWellFormedType annEnv =
+    fun isWellFormedType ctx =
         fn ForAll (pos, param, t) =>
-            isWellFormedType (ValTypeCtx.insert annEnv param (UseT (pos, param))) t
-         | UseT (_, name) => isSome (ValTypeCtx.find annEnv name)
+            TypeCtx.withSrcType ctx param (UseT (pos, param)) (fn () =>
+                isWellFormedType ctx t
+            )
+         | UseT (_, name) => isSome (TypeCtx.findSrcType ctx name)
          | OVar (_, ov) => ovInScope ov
          | UVar (_, uv) => uvInScope uv
          | Arrow (_, {domain = d, codomain = c}) =>
-            isWellFormedType annEnv d andalso isWellFormedType annEnv c
+            isWellFormedType ctx d andalso isWellFormedType ctx c
          | Prim _ => true
 
-    fun isWellFormedMonoType annEnv =
+    fun isWellFormedMonoType ctx =
         fn ForAll _ => false
-         | UseT (_, name) => isSome (ValTypeCtx.find annEnv name)
+         | UseT (_, name) => isSome (TypeCtx.findSrcType ctx name)
          | OVar (_, ov) => ovInScope ov
          | UVar (_, uv) => uvInScope uv
          | Arrow (_, {domain = d, codomain = c}) =>
-            isWellFormedMonoType annEnv d andalso isWellFormedMonoType annEnv c
+            isWellFormedMonoType ctx d andalso isWellFormedMonoType ctx c
          | Prim _ => true
 
     fun occurs uv =
