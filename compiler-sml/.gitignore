@@ -1,5 +1,3 @@
-MLB
-mlyacc-lib
-src/*.y.*
-src/*.x.sml
+src/Parser/*.y.*
+src/Parser/*.x.sml
 broomc
