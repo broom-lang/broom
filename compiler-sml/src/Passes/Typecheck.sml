@@ -1,25 +1,41 @@
 structure Typecheck :> sig
-    exception UvOutOfScope of Name.t
-    exception OvOutOfScope of Name.t
-    exception Unbound of Name.t
-    exception UnboundType of Name.t
-    exception Occurs of Type.t Type.TypeVars.uv * Type.t
-    exception Uncallable of Cst.expr * Type.t
-    exception TypeMismatch of Type.t * Type.t
-    exception MalformedType of Type.t
+    datatype error = UvOutOfScope of Name.t
+                   | OvOutOfScope of Name.t
+                   | Unbound of Name.t
+                   | UnboundType of Name.t
+                   | Occurs of Type.t Type.TypeVars.uv * Type.t
+                   | Uncallable of Cst.expr * Type.t
+                   | TypeMismatch of Type.t * Type.t
+                   | MalformedType of Type.t
 
-    val typecheck: Cst.stmt vector -> Cst.stmt vector
+    val errorToString: error -> string
+
+    val typecheck: Cst.stmt vector -> (error, Cst.stmt vector) Either.t
 end = struct
     structure TypeVars = Type.TypeVars
 
-    exception UvOutOfScope of Name.t
-    exception OvOutOfScope of Name.t
-    exception Unbound of Name.t
-    exception UnboundType of Name.t
-    exception Occurs of Type.t Type.TypeVars.uv * Type.t
-    exception Uncallable of Cst.expr * Type.t
-    exception TypeMismatch of Type.t * Type.t
-    exception MalformedType of Type.t
+    datatype error = UvOutOfScope of Name.t
+                   | OvOutOfScope of Name.t
+                   | Unbound of Name.t
+                   | UnboundType of Name.t
+                   | Occurs of Type.t Type.TypeVars.uv * Type.t
+                   | Uncallable of Cst.expr * Type.t
+                   | TypeMismatch of Type.t * Type.t
+                   | MalformedType of Type.t
+
+    exception TypeError of error
+
+    val errorToString = fn UvOutOfScope name => "UvOutOfScope: " ^ Name.toString name
+                         | OvOutOfScope name => "OvOutOfScope: " ^ Name.toString name
+                         | Unbound name => "Unbound: " ^ Name.toString name
+                         | UnboundType name => "UnboundType: " ^ Name.toString name
+                         | Occurs (uv, t) =>
+                            "Occurs: " ^ Name.toString (TypeVars.uvName uv) ^ " " ^ Type.toString t
+                         | Uncallable (expr, t) =>
+                            "Uncallable: " ^ Cst.exprToString expr ^ ": " ^ Type.toString t
+                         | TypeMismatch (t, t') =>
+                            "TypeMismatch: " ^ Type.toString t ^ " " ^ Type.toString t'
+                         | MalformedType t => "MalformedType: " ^ Type.toString t
 
     datatype lattice_y = Sub | Super
 
@@ -62,7 +78,7 @@ end = struct
                         , hydrate (ValTypeCtx.insert annEnv param (Type.UseT (pos, param))) t )
          | Type.UseT (_, name) => (case ValTypeCtx.find annEnv name
                                    of SOME t => t
-                                    | NONE => raise UnboundType name)
+                                    | NONE => raise TypeError (UnboundType name))
          | t as Type.OVar _ => t
          | t as Type.UVar _ => t
          | Type.Arrow (pos, {domain, codomain}) =>
@@ -125,9 +141,9 @@ end = struct
                          | t as Type.Prim _ => TypeVars.uvSet uv t
                 in if TypeVars.uvInScope uv
                    then if Type.occurs uv t
-                        then raise Occurs (uv, t)
+                        then raise TypeError (Occurs (uv, t))
                         else doassign annEnv uv t
-                   else raise UvOutOfScope (TypeVars.uvName uv)
+                   else raise TypeError (UvOutOfScope (TypeVars.uvName uv))
                 end
 
             fun checkSub annEnv (Type.UVar (_, uv)) (Type.UVar (_, uv')) =
@@ -136,8 +152,8 @@ end = struct
                      if TypeVars.uvInScope uv
                      then if TypeVars.uvInScope uv'
                           then if TypeVars.uvEq (uv, uv') then () else TypeVars.uvMerge uv uv'
-                          else raise UvOutOfScope (TypeVars.uvName uv')
-                     else raise UvOutOfScope (TypeVars.uvName uv)
+                          else raise TypeError (UvOutOfScope (TypeVars.uvName uv'))
+                     else raise TypeError (UvOutOfScope (TypeVars.uvName uv))
                   | (Either.Left uv, Either.Right t') => assign annEnv Sub uv t'
                   | (Either.Right t, Either.Left uv') => assign annEnv Super uv' t
                   | (Either.Right t, Either.Right t') => checkSub annEnv t t')
@@ -162,15 +178,17 @@ end = struct
               | checkSub annEnv (t as Type.OVar (_, ov)) (t' as Type.OVar (_, ov')) =
                 if TypeVars.ovInScope ov
                 then if TypeVars.ovInScope ov'
-                     then if TypeVars.ovEq (ov, ov') then () else raise TypeMismatch (t, t')
-                     else raise OvOutOfScope (TypeVars.ovName ov)
-                else raise OvOutOfScope (TypeVars.ovName ov')
+                     then if TypeVars.ovEq (ov, ov')
+                          then ()
+                          else raise TypeError (TypeMismatch (t, t'))
+                     else raise TypeError (OvOutOfScope (TypeVars.ovName ov))
+                else raise TypeError (OvOutOfScope (TypeVars.ovName ov'))
               | checkSub annEnv (Type.Arrow (_, arr)) (Type.Arrow (_, arr')) =
                  ( checkSub annEnv (#domain arr') (#domain arr)
                  ; checkSub annEnv (#codomain arr) (#codomain arr') )
-              | checkSub annEnv (t as Type.Prim p) (t' as Type.Prim p') =
-                if p = p' then () else raise TypeMismatch (t, t')
-              | checkSub annEnv t t' = raise TypeMismatch (t, t')
+              | checkSub annEnv (t as Type.Prim (_, p)) (t' as Type.Prim (_, p')) =
+                if p = p' then () else raise TypeError (TypeMismatch (t, t'))
+              | checkSub annEnv t t' = raise TypeError (TypeMismatch (t, t'))
 
             fun check annEnv env =
                 fn Cst.Fn (pos, param, maybeAnn, body) =>
@@ -179,7 +197,7 @@ end = struct
                             of SOME ann => let val (t, annEnv) = hydrateBinder tenv pos annEnv ann
                                            in if Type.isWellFormedType annEnv t
                                               then (t, annEnv)
-                                              else raise MalformedType t
+                                              else raise TypeError (MalformedType t)
                                            end
                              | NONE =>
                                 (Type.UVar (pos, TypeVars.pushUv tenv (Name.fresh ())), annEnv)
@@ -203,11 +221,11 @@ end = struct
                        then let val expr' = checkAs annEnv env t expr
                             in (Cst.Ann (pos, expr', ann), t)
                             end
-                       else raise MalformedType t
+                       else raise TypeError (MalformedType t)
                     end
                  | Cst.Use (pos, name) => (case ValTypeCtx.find env name
                                            of SOME t => (Cst.Use (pos, name), t)
-                                            | NONE => raise Unbound name)
+                                            | NONE => raise TypeError (Unbound name))
                  | Cst.Const (pos, c) => let val (c, t) = checkConst pos c
                                          in (Cst.Const (pos, c), t)
                                          end
@@ -224,7 +242,7 @@ end = struct
                                        in if Type.isWellFormedType annEnv t
                                           then ( checkSub annEnv domain t
                                                ; (t, annEnv) )
-                                          else raise MalformedType t
+                                          else raise TypeError (MalformedType t)
                                        end
                          | NONE => (domain, annEnv)
                 in withMarker tenv (fn () =>
@@ -255,7 +273,7 @@ end = struct
                           end
                       | Either.Right t' => coerceCallee (callee, t'))
                   | Type.Arrow (_, arr) => (callee, arr)
-                  | _ => raise Uncallable (callee, t))
+                  | _ => raise TypeError (Uncallable (callee, t)))
 
             fun checkStmt annEnv env =
                 fn Cst.Def (pos, name, _, expr) =>
@@ -279,10 +297,11 @@ end = struct
                                             env names
                 in Vector.app (fn t => if Type.isWellFormedType annEnv t
                                        then ()
-                                       else raise MalformedType t)
+                                       else raise TypeError (MalformedType t))
                               ts
                  ; Vector.map (checkStmt annEnv env) stmts
                 end                             
-        in checkStmts ValTypeCtx.empty ValTypeCtx.empty program
+        in Either.Right (checkStmts ValTypeCtx.empty ValTypeCtx.empty program)
+           handle TypeError err => Either.Left err
         end
 end

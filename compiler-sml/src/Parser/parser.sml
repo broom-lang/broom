@@ -29,12 +29,14 @@ end = struct
                                                                Cst.stmtToString stmt ^ "\n"))
                                      program
                   val _ = print "---\n"
-                  val program' = Typecheck.typecheck program
-                  val _ = Vector.app (fn stmt => TextIO.output(TextIO.stdOut,
-                                                               Cst.stmtToString stmt ^ "\n"))
-                                     program
-              in  if BroomParser.sameToken(nextToken,dummyEOF) then ()
-                  else loop lexer
+              in case Typecheck.typecheck program
+                 of Either.Left err =>
+                     TextIO.output (TextIO.stdErr, Typecheck.errorToString err ^ "\n")
+                  | Either.Right program' =>
+                     Vector.app (fn stmt => print (Cst.stmtToString stmt ^ "\n")) program'
+               ; if BroomParser.sameToken(nextToken,dummyEOF)
+                 then ()
+                 else loop lexer
               end
        in loop lexer
       end
