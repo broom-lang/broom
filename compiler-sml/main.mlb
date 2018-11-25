@@ -7,7 +7,7 @@ local
     src/Util/Either.sml
     src/Util/VectorExt.sml
 
-    ann "allowSigWithtype true"
+    ann "warnUnused true"
     in ann "allowSuccessorML true"
        in
            src/Reprs/Pos.sml
