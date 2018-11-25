@@ -10,8 +10,6 @@ local
     ann "allowSigWithtype true"
     in ann "allowSuccessorML true"
        in
-           src/UnionFind.sml
-
            src/Pos.sml
            src/Name.sml
            src/TypeVars.sml
