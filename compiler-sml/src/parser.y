@@ -40,9 +40,11 @@ stmts : stmtList (Vector.fromList (List.rev stmtList) (* OPTIMIZE *))
 stmtList : ([])
          | stmtList stmt (stmt :: stmtList)
 
-stmt : VAL ID EQ expr (Cst.Def (VALleft, Name.fromString ID, expr))
+stmt : VAL ID EQ expr (Cst.Def (VALleft, Name.fromString ID, NONE, expr))
+     | VAL ID COLON typeAnn EQ expr (Cst.Def (VALleft, Name.fromString ID, SOME typeAnn, expr))
 
-expr : FN ID DARROW expr (Cst.Fn (FNleft, Name.fromString ID, expr))
+expr : FN ID DARROW expr (Cst.Fn (FNleft, Name.fromString ID, NONE, expr))
+     | FN ID COLON typeAnn DARROW expr (Cst.Fn ( FNleft, Name.fromString ID, SOME typeAnn, expr))
      | expr COLON typeAnn (Cst.Ann (exprleft, expr, typeAnn))
      | app (app)
 

@@ -69,11 +69,21 @@ end = struct
             Type.Arrow (pos, {domain = hydrate annEnv domain, codomain = hydrate annEnv codomain})
          | t as Type.Prim (pos, p) => t
 
+    fun hydrateBinder tenv pos annEnv ann =
+        let val fvs = annFreeVars annEnv ann
+            fun step (fv, annEnv) =
+                let val uv = TypeVars.pushUv tenv fv
+                in ValTypeCtx.insert annEnv fv (Type.UVar (pos, uv))
+                end
+            val annEnv = NameSortedSet.foldl step annEnv fvs
+        in (hydrate annEnv ann, annEnv)
+        end
+    
     fun checkConst pos = fn c as Const.Int _ => (c, Type.Prim (pos, Type.Int))
 
     datatype 'a goal = Unannotated of Pos.t * Name.t * 'a
 
-    val stmtGoal = fn Cst.Def (pos, name, _) => Unannotated (pos, name, Name.fresh ())
+    val stmtGoal = fn Cst.Def (pos, name, NONE, _) => Unannotated (pos, name, Name.fresh ())
 
     fun typecheck program =
         let val tenv = TypeVars.newEnv ()
@@ -149,19 +159,27 @@ end = struct
               | checkSub annEnv (Type.Arrow (_, arr)) (Type.Arrow (_, arr')) =
                  ( checkSub annEnv (#domain arr') (#domain arr)
                  ; checkSub annEnv (#codomain arr) (#codomain arr') )
-              | checkSub annEnv (t as Type.Prim p) (t' as Type.Prim p') = if p = p'
-                                                                   then ()
-                                                                   else raise TypeMismatch (t, t')
+              | checkSub annEnv (t as Type.Prim p) (t' as Type.Prim p') =
+                if p = p' then () else raise TypeMismatch (t, t')
               | checkSub annEnv t t' = raise TypeMismatch (t, t')
 
             fun check annEnv env =
-                fn Cst.Fn (pos, param, body) =>
-                    let val domain = Type.UVar (pos, TypeVars.pushUv tenv (Name.fresh ()))
+                fn Cst.Fn (pos, param, maybeAnn, body) =>
+                    let val (domain, annEnv) =
+                            case maybeAnn
+                            of SOME ann => let val (t, annEnv) = hydrateBinder tenv pos annEnv ann
+                                           in if Type.isWellFormedType annEnv t
+                                              then (t, annEnv)
+                                              else raise MalformedType t
+                                           end
+                             | NONE =>
+                                (Type.UVar (pos, TypeVars.pushUv tenv (Name.fresh ())), annEnv)
                         val codomain = Type.UVar (pos, TypeVars.pushUv tenv (Name.fresh ()))
                     in withMarker tenv (fn () =>
                            let val env = ValTypeCtx.insert env param domain
                                val body' = checkAs annEnv env codomain body
-                           in (Cst.Fn (pos, param, body'), Type.Arrow (pos, {domain, codomain}))
+                           in ( Cst.Fn (pos, param, SOME domain, body')
+                              , Type.Arrow (pos, {domain, codomain}) )
                            end
                        )
                     end
@@ -190,13 +208,23 @@ end = struct
                     checkAs annEnv env (Type.substitute (param, Type.OVar (pos, ov)) t) expr
                 )
               | checkAs annEnv env (Type.Arrow (_, {domain, codomain}))
-                                   (Cst.Fn (pos, param, body)) =
-                withMarker tenv (fn () =>
-                    let val env = ValTypeCtx.insert env param domain
-                        val body' = checkAs annEnv env codomain body
-                    in Cst.Fn (pos, param, body')
-                    end
-                )
+                                   (Cst.Fn (pos, param, maybeAnn, body)) =
+                let val (domain, annEnv) =
+                        case maybeAnn
+                        of SOME ann => let val (t, annEnv) = hydrateBinder tenv pos annEnv ann
+                                       in if Type.isWellFormedType annEnv t
+                                          then ( checkSub annEnv domain t
+                                               ; (t, annEnv) )
+                                          else raise MalformedType t
+                                       end
+                         | NONE => (domain, annEnv)
+                in withMarker tenv (fn () =>
+                       let val env = ValTypeCtx.insert env param domain
+                           val body' = checkAs annEnv env codomain body
+                       in Cst.Fn (pos, param, SOME domain, body')
+                       end
+                   )
+                end
               | checkAs annEnv env t expr =
                 let val (expr', t') = check annEnv env expr
                 in checkSub annEnv t' t
@@ -221,10 +249,11 @@ end = struct
                   | _ => raise Uncallable (callee, t))
 
             fun checkStmt annEnv env =
-                fn Cst.Def (pos, name, expr) => let val t = valOf (ValTypeCtx.find env name)
-                                                    val expr' = checkAs annEnv env t expr
-                                                in Cst.Def (pos, name, expr')
-                                                end
+                fn Cst.Def (pos, name, NONE, expr) =>
+                    let val t = valOf (ValTypeCtx.find env name)
+                        val expr' = checkAs annEnv env t expr
+                    in Cst.Def (pos, name, NONE, expr')
+                    end
 
             fun checkStmts annEnv env stmts =
                 let val goals = Vector.map stmtGoal stmts
