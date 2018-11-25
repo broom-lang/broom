@@ -13,6 +13,8 @@ signature TYPE = sig
                | Prim of Pos.t * prim
     withtype uv = t TypeVars.uv
 
+    val pos: t -> Pos.t
+
     val primToString: prim -> string
     val toString: t -> string
 
@@ -42,6 +44,13 @@ structure Type :> TYPE = struct
                | Arrow of Pos.t * {domain: t, codomain: t}
                | Prim of Pos.t * prim
     withtype uv = t TypeVars.uv
+
+    val pos = fn ForAll (pos, _, _) => pos
+               | UseT (pos, _) => pos
+               | OVar (pos, _) => pos
+               | UVar (pos, _) => pos
+               | Arrow (pos, _) => pos
+               | Prim (pos, _) => pos
 
     val primToString = fn Int => "Int"
 

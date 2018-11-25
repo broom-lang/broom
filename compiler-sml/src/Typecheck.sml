@@ -71,19 +71,28 @@ end = struct
 
     fun hydrateBinder tenv pos annEnv ann =
         let val fvs = annFreeVars annEnv ann
-            fun step (fv, annEnv) =
-                let val uv = TypeVars.pushUv tenv fv
-                in ValTypeCtx.insert annEnv fv (Type.UVar (pos, uv))
-                end
+            fun step (fv, annEnv) = let val uv = TypeVars.pushUv tenv fv
+                                    in ValTypeCtx.insert annEnv fv (Type.UVar (pos, uv))
+                                    end
             val annEnv = NameSortedSet.foldl step annEnv fvs
         in (hydrate annEnv ann, annEnv)
         end
+
+    fun hydrateBinders tenv annEnv anns =
+        let val fvs = Vector.foldl (fn (ann, fvs) =>
+                                        NameSortedSet.union (annFreeVars annEnv ann, fvs))
+                                   NameSortedSet.empty anns
+            val fvs = Vector.fromList (NameSortedSet.toList fvs)
+            val uvs = TypeVars.pushUvs tenv fvs
+            fun step (i, fv, annEnv) = let val pos = Type.pos (Vector.sub (anns, i))
+                                           val uv = Vector.sub (uvs, i)
+                                       in ValTypeCtx.insert annEnv fv (Type.UVar (pos, uv))
+                                       end
+            val annEnv = Vector.foldli step annEnv fvs
+        in (Vector.map (hydrate annEnv) anns, annEnv)
+        end
     
     fun checkConst pos = fn c as Const.Int _ => (c, Type.Prim (pos, Type.Int))
-
-    datatype 'a goal = Unannotated of Pos.t * Name.t * 'a
-
-    val stmtGoal = fn Cst.Def (pos, name, NONE, _) => Unannotated (pos, name, Name.fresh ())
 
     fun typecheck program =
         let val tenv = TypeVars.newEnv ()
@@ -249,24 +258,31 @@ end = struct
                   | _ => raise Uncallable (callee, t))
 
             fun checkStmt annEnv env =
-                fn Cst.Def (pos, name, NONE, expr) =>
+                fn Cst.Def (pos, name, _, expr) =>
                     let val t = valOf (ValTypeCtx.find env name)
                         val expr' = checkAs annEnv env t expr
-                    in Cst.Def (pos, name, NONE, expr')
+                    in Cst.Def (pos, name, SOME t, expr')
                     end
 
             fun checkStmts annEnv env stmts =
-                let val goals = Vector.map stmtGoal stmts
-                    val inferGoals = Vector.map (fn Unannotated b => b) goals
-                    val uvs = TypeVars.pushUvs tenv (Vector.map #2 inferGoals)
-                    val env = Vector.foldli (fn (i, (pos, name, _), valUvs) =>
-                                                 let val uv = Vector.sub (uvs, i)
-                                                 in ValTypeCtx.insert valUvs name
-                                                                      (Type.UVar (pos, uv))
+                let val names = Vector.map (fn Cst.Def (_, name, _, _) => name) stmts
+                    val anns = Vector.map (fn Cst.Def (pos, _, maybeAnn, _) =>
+                                               case maybeAnn
+                                               of SOME ann => ann
+                                                | NONE => Type.UseT (pos, Name.fresh ()))
+                                          stmts
+                    val (ts, annEnv) = hydrateBinders tenv annEnv anns
+                    val env = Vector.foldli (fn (i, name, env) =>
+                                                 let val t = Vector.sub (ts, i)
+                                                 in ValTypeCtx.insert env name t
                                                  end)
-                                            env inferGoals
-                in Vector.map (checkStmt annEnv env) stmts
-                end                                  
+                                            env names
+                in Vector.app (fn t => if Type.isWellFormedType annEnv t
+                                       then ()
+                                       else raise MalformedType t)
+                              ts
+                 ; Vector.map (checkStmt annEnv env) stmts
+                end                             
         in checkStmts ValTypeCtx.empty ValTypeCtx.empty program
         end
 end
