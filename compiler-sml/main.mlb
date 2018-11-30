@@ -20,6 +20,10 @@ local
            src/Reprs/Cst.sml
 
            src/Passes/Typecheck.sml
+
+           src/Reprs/FAst.sml
+
+           src/Passes/TypecheckFAst.sml
        end
     end
 
