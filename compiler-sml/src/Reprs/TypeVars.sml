@@ -31,26 +31,6 @@ signature TYPE_VARS = sig
     val uvInScope: 't uv -> bool
 end
 
-signature VAL_TYPE_CTX = sig
-    type 't env
-
-    val empty: 't env
-    val find: 't env -> Name.t -> 't option
-    val insert: 't env -> Name.t -> 't -> 't env
-end
-
-structure ValTypeCtx :> VAL_TYPE_CTX = struct
-    type 't env = 't NameSortedMap.map
-
-    val empty = NameSortedMap.empty
-
-    (* O(log n) *)
-    fun find env name = NameSortedMap.find (env, name)
-
-    (* O(log n)*)
-    fun insert env name v = NameSortedMap.insert (env, name, v)
-end
-
 structure Version :> sig
     structure Digit: sig
         type t

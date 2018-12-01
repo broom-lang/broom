@@ -6,12 +6,15 @@ structure TypeCtx :> sig
     val pushUv: 't ctx -> Name.t -> 't TypeVars.uv
     val pushUvs: 't ctx -> Name.t vector -> 't TypeVars.uv vector
 
+    val findValType: 't ctx -> Name.t -> 't option
     val findSrcType: 't ctx -> Name.t -> 't option
 
     val articulate2: 't ctx -> 't TypeVars.uv -> ('t TypeVars.uv * 't TypeVars.uv)
 
     val withOv: 't ctx -> Name.t -> (TypeVars.ov -> 'a) -> 'a
     val withMarker: 't ctx -> (unit -> 'a) -> 'a
+    val withValType: 't ctx -> Name.t -> 't -> (unit -> 'a) -> 'a
+    val withValTypes: 't ctx -> (Name.t * 't) vector -> (unit -> 'a) -> 'a
     val withSrcType: 't ctx -> Name.t -> 't -> (unit -> 'a) -> 'a
     val withSrcTypes: 't ctx -> (Name.t * 't) vector -> (unit -> 'a) -> 'a
 end = struct
@@ -26,6 +29,7 @@ end = struct
     fun pushUv ({typeVars, ...}: 't ctx) = TypeVars.pushUv typeVars
     fun pushUvs ({typeVars, ...}: 't ctx) = TypeVars.pushUvs typeVars
 
+    fun findValType ({valTypes, ...}: 't ctx) name = ValTypes.find valTypes name
     fun findSrcType ({srcTypes, ...}: 't ctx) name = ValTypes.find srcTypes name
 
     fun articulate2 ({typeVars, ...}: 't ctx) uv =
@@ -47,6 +51,24 @@ end = struct
         in TypeVars.popMarker typeVars marker
          ; res
         end
+
+    fun withValType (tenv as {valTypes, ...}: 't ctx) name t f =
+        withMarker tenv (fn () =>
+            let do ValTypes.insert valTypes name t
+                val res = f ()
+            in ValTypes.remove valTypes name
+             ; res
+            end
+        )
+
+    fun withValTypes (tenv as {valTypes, ...}: 't ctx) ext f =
+        withMarker tenv (fn () =>
+            let do Vector.app (fn (name, t) => ValTypes.insert valTypes name t) ext
+                val res = f ()
+            in Vector.app (ValTypes.remove valTypes o #1) ext
+             ; res
+            end
+        )
 
     fun withSrcType ({srcTypes, ...}: 't ctx) name t f =
         let do ValTypes.insert srcTypes name t

@@ -15,6 +15,8 @@ end = struct
     val articulate2 = TypeCtx.articulate2
     val withOv = TypeCtx.withOv
     val withMarker = TypeCtx.withMarker
+    val withValType = TypeCtx.withValType
+    val withValTypes = TypeCtx.withValTypes
     val withSrcType = TypeCtx.withSrcType
     val withSrcTypes = TypeCtx.withSrcTypes
 
@@ -60,20 +62,26 @@ end = struct
             NameSortedSet.union (annFreeVars tenv domain, annFreeVars tenv codomain)
          | Type.Prim _ => NameSortedSet.empty
 
-    fun hydrate tenv =
-        fn Type.ForAll (pos, param, t) =>
-            Type.ForAll ( pos, param
-                        , withSrcType tenv param (Type.UseT (pos, param)) (fn () =>
-                              hydrate tenv t
-                          ) )
-         | Type.UseT (_, name) => (case TypeCtx.findSrcType tenv name
-                                   of SOME t => t
-                                    | NONE => raise TypeError (UnboundType name))
-         | t as Type.OVar _ => t
-         | t as Type.UVar _ => t
-         | Type.Arrow (pos, {domain, codomain}) =>
-            Type.Arrow (pos, {domain = hydrate tenv domain, codomain = hydrate tenv codomain})
-         | t as Type.Prim (pos, p) => t
+    fun hydrate tenv ann =
+        let val rec hydr =
+                fn Type.ForAll (pos, param, t) =>
+                    Type.ForAll ( pos, param
+                                , withSrcType tenv param (Type.UseT (pos, param)) (fn () =>
+                                      hydr t
+                                  ) )
+                 | Type.UseT (_, name) => (case TypeCtx.findSrcType tenv name
+                                           of SOME t => t
+                                            | NONE => raise TypeError (UnboundType name))
+                 | t as Type.OVar _ => t
+                 | t as Type.UVar _ => t
+                 | Type.Arrow (pos, {domain, codomain}) =>
+                    Type.Arrow (pos, {domain = hydr domain, codomain = hydr codomain})
+                 | t as Type.Prim (pos, p) => t
+            val t = hydr ann
+        in if Type.isWellFormedType tenv t
+           then t
+           else raise TypeError (MalformedType t)
+        end
     
     fun annsSrcTypes tenv anns =
         let val fvs = Vector.foldl (fn (ann, fvs) =>
@@ -92,15 +100,16 @@ end = struct
 
             fun assignForSome pos param y uv t =
                 case y
-                of Sub => withOv tenv param (fn ov =>
-                              assign y uv (Type.substitute (param, Type.OVar (pos, ov)) t)
-                          )
-                 | Super => withMarker tenv (fn () =>
-                                let val uv' = TypeCtx.pushUv tenv (Name.fresh ())
-                                in assign y uv (Type.substitute ( param
-                                                                       , Type.UVar (pos, uv') ) t)
-                                end
-                            )
+                of Sub =>
+                   withOv tenv param (fn ov =>
+                       assign y uv (Type.substitute (param, Type.OVar (pos, ov)) t)
+                   )
+                 | Super =>
+                   withMarker tenv (fn () =>
+                       let val uv' = TypeCtx.pushUv tenv (Name.fresh ())
+                       in assign y uv (Type.substitute (param, Type.UVar (pos, uv')) t)
+                       end
+                   )
 
             and assign y uv t =
                 let fun doassign uv =
@@ -161,59 +170,54 @@ end = struct
                      else raise TypeError (OvOutOfScope (TypeVars.ovName ov))
                 else raise TypeError (OvOutOfScope (TypeVars.ovName ov'))
               | checkSub (Type.Arrow (_, arr)) (Type.Arrow (_, arr')) =
-                 ( checkSub (#domain arr') (#domain arr)
-                 ; checkSub (#codomain arr) (#codomain arr') )
+                ( checkSub (#domain arr') (#domain arr)
+                ; checkSub (#codomain arr) (#codomain arr') )
               | checkSub (t as Type.Prim (_, p)) (t' as Type.Prim (_, p')) =
-                if p = p' then () else raise TypeError (TypeMismatch (t, t'))
-              | checkSub t t' = raise TypeError (TypeMismatch (t, t'))
+                if p = p'
+                then ()
+                else raise TypeError (TypeMismatch (t, t'))
+              | checkSub t t' =
+                raise TypeError (TypeMismatch (t, t'))
 
-            fun check env =
-                fn Cst.Fn (pos, param, maybeAnn, body) =>
-                    let val ann = case maybeAnn
-                                  of SOME ann => ann
-                                   | NONE => Type.UseT (pos, Name.fresh ())
-                        val ext = annsSrcTypes tenv (Vector.fromList [ann])
-                    in withSrcTypes tenv ext (fn () =>
-                           let val domain = hydrate tenv ann
-                               do if Type.isWellFormedType tenv domain
-                                  then ()
-                                  else raise TypeError (MalformedType domain)
-                               val codomain = Type.UVar (pos, TypeCtx.pushUv tenv (Name.fresh ()))
-                           in withMarker tenv (fn () =>
-                                  let val env = ValTypeCtx.insert env param domain
-                                      val body' = checkAs env codomain body
-                                  in ( Cst.Fn (pos, param, SOME domain, body')
-                                     , Type.Arrow (pos, {domain, codomain}) )
-                                  end
-                              )
-                           end
-                       )
-                    end
-                 | Cst.App (pos, {callee, arg}) =>
-                    let val (callee', {domain, codomain}) = coerceCallee (check env callee)
-                        val arg' = checkAs env domain arg
-                    in (Cst.App (pos, {callee = callee', arg = arg'}), codomain)
-                    end
-                 | Cst.Ann (pos, expr, ann) =>
-                    let val t = hydrate tenv ann
-                    in if Type.isWellFormedType tenv t
-                       then let val expr' = checkAs env t expr
-                            in (Cst.Ann (pos, expr', ann), t)
-                            end
-                       else raise TypeError (MalformedType t)
-                    end
-                 | Cst.Use (pos, name) => (case ValTypeCtx.find env name
-                                           of SOME t => (Cst.Use (pos, name), t)
-                                            | NONE => raise TypeError (Unbound name))
-                 | Cst.Const (pos, c) => let val (c, t) = checkConst pos c
-                                         in (Cst.Const (pos, c), t)
-                                         end
+            fun check (Cst.Fn (pos, param, maybeAnn, body)) =
+                let val ann = case maybeAnn
+                              of SOME ann => ann
+                               | NONE => Type.UseT (pos, Name.fresh ())
+                    val ext = annsSrcTypes tenv (Vector.fromList [ann])
+                in withSrcTypes tenv ext (fn () =>
+                       let val domain = hydrate tenv ann
+                           val codomain = Type.UVar (pos, TypeCtx.pushUv tenv (Name.fresh ()))
+                       in withValType tenv param domain (fn () =>
+                              ( Cst.Fn (pos, param, SOME domain, checkAs codomain body)
+                              , Type.Arrow (pos, {domain, codomain}) )
+                          )
+                       end
+                   )
+                end
+              | check (Cst.App (pos, {callee, arg})) =
+                let val (callee', {domain, codomain}) = coerceCallee (check callee)
+                    val arg' = checkAs domain arg
+                in (Cst.App (pos, {callee = callee', arg = arg'}), codomain)
+                end
+              | check (Cst.Ann (pos, expr, ann)) =
+                let val t = hydrate tenv ann
+                    val expr' = checkAs t expr
+                in (Cst.Ann (pos, expr', ann), t)
+                end
+              | check (Cst.Use (pos, name)) =
+                (case TypeCtx.findValType tenv name
+                 of SOME t => (Cst.Use (pos, name), t)
+                  | NONE => raise TypeError (Unbound name))
+              | check (Cst.Const (pos, c)) =
+                let val (c, t) = checkConst pos c
+                in (Cst.Const (pos, c), t)
+                end
 
-            and checkAs env (Type.ForAll (pos, param, t)) expr =
+            and checkAs (Type.ForAll (pos, param, t)) expr =
                 withOv tenv param (fn ov =>
-                    checkAs env (Type.substitute (param, Type.OVar (pos, ov)) t) expr
+                    checkAs (Type.substitute (param, Type.OVar (pos, ov)) t) expr
                 )
-              | checkAs env (Type.Arrow (_, {domain, codomain}))
+              | checkAs (Type.Arrow (_, {domain, codomain}))
                             (Cst.Fn (pos, param, maybeAnn, body)) =
                 let val ann = case maybeAnn
                               of SOME ann => ann
@@ -221,23 +225,17 @@ end = struct
                     val ext = annsSrcTypes tenv (Vector.fromList [ann])
                 in withSrcTypes tenv ext (fn () =>
                        let val domain' = hydrate tenv ann
-                           do if Type.isWellFormedType tenv domain'
-                              then ()
-                              else raise TypeError (MalformedType domain')
                            do checkSub domain domain'
                            val domain = domain'
                            val codomain = Type.UVar (pos, TypeCtx.pushUv tenv (Name.fresh ()))
-                       in withMarker tenv (fn () =>
-                              let val env = ValTypeCtx.insert env param domain
-                                  val body' = checkAs env codomain body
-                              in Cst.Fn (pos, param, SOME domain, body')
-                              end
+                       in withValType tenv param domain (fn () =>
+                              Cst.Fn (pos, param, SOME domain, checkAs codomain body)
                           )
                        end
                    )
                 end
-              | checkAs env t expr =
-                let val (expr', t') = check env expr
+              | checkAs t expr =
+                let val (expr', t') = check expr
                 in checkSub t' t
                  ; expr'
                 end
@@ -259,14 +257,14 @@ end = struct
                   | Type.Arrow (_, arr) => (callee, arr)
                   | _ => raise TypeError (Uncallable (callee, t)))
 
-            fun checkStmt env =
+            val checkStmt =
                 fn Cst.Def (pos, name, _, expr) =>
-                    let val t = valOf (ValTypeCtx.find env name)
-                        val expr' = checkAs env t expr
+                    let val t = valOf (TypeCtx.findValType tenv name)
+                        val expr' = checkAs t expr
                     in Cst.Def (pos, name, SOME t, expr')
                     end
 
-            fun checkStmts env stmts =
+            fun checkStmts stmts =
                 let val names = Vector.map (fn Cst.Def (_, name, _, _) => name) stmts
                     val anns = Vector.map (fn Cst.Def (pos, _, maybeAnn, _) =>
                                                case maybeAnn
@@ -276,23 +274,14 @@ end = struct
                     val ext = annsSrcTypes tenv anns
                 in withSrcTypes tenv ext (fn () =>
                        let val ts = Vector.map (hydrate tenv) anns
-                       in withMarker tenv (fn () =>
-                              let val env = Vector.foldli (fn (i, name, env) =>
-                                                               let val t = Vector.sub (ts, i)
-                                                               in ValTypeCtx.insert env name t
-                                                               end)
-                                                          env names
-                              in Vector.app (fn t => if Type.isWellFormedType tenv t
-                                                     then ()
-                                                     else raise TypeError (MalformedType t))
-                                            ts
-                               ; Vector.map (checkStmt env) stmts
-                              end
+                           val vext = Vector.mapi (fn (i, name) => (name, Vector.sub (ts, i))) names
+                       in withValTypes tenv vext (fn () =>
+                              Vector.map checkStmt stmts
                           )
                        end
                    )
                 end                         
-        in Either.Right (checkStmts ValTypeCtx.empty program)
+        in Either.Right (checkStmts program)
            handle TypeError err => Either.Left err
         end
 end
