@@ -33,7 +33,26 @@ end = struct
                    | Prim of Pos.t * Type.prim
         withtype def = {name: Name.t, kind: t}
 
-        fun eq _ = raise Fail "unimplemented"
+        val primEq = fn (Int, Int) => true
+
+        fun eq args =
+            let fun canonicalName names name = getOpt (NameSortedMap.find (names, name), name)
+                fun eq' names =
+                        fn ( ForAll (_, {name, kind}, body)
+                           , ForAll (_, {name = name', kind = kind'}, body') ) =>
+                            eq' names (kind, kind')
+                            andalso eq' (NameSortedMap.insert (names, name', name))
+                                        (body, body')
+                         | (UseT (_, {name, kind}), UseT (_, {name = name', kind = kind'})) =>
+                            eq' names (kind, kind')
+                            andalso (canonicalName names name = canonicalName names name')
+                         | ( Arrow (_, {domain, codomain})
+                           , Arrow (_, {domain = domain', codomain = codomain'}) ) =>
+                            eq' names (domain, domain') andalso eq' names (codomain, codomain')
+                         | (Prim (_, p), Prim (_, p')) => primEq (p, p')
+                         | _ => false
+            in eq' NameSortedMap.empty args
+            end
     end
 
     datatype expr = Fn of Pos.t * def * expr
