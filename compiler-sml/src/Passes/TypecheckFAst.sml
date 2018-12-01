@@ -2,7 +2,7 @@ structure TypecheckFAst :> sig
     structure Type: FAST_TYPE
 
     datatype error = TypeMismatch of Type.t * Type.t
-                   | KindMismatch of Type.t * Type.t
+                   | KindMismatch of Type.kind * Type.kind
                    | UnCallable of FAst.expr * Type.t
                    | UnTCallable of FAst.expr * Type.t
 
@@ -11,13 +11,13 @@ end = struct
     structure Type = FAst.Type
 
     datatype error = TypeMismatch of Type.t * Type.t
-                   | KindMismatch of Type.t * Type.t
+                   | KindMismatch of Type.kind * Type.kind
                    | UnCallable of FAst.expr * Type.t
                    | UnTCallable of FAst.expr * Type.t
 
     exception TypeError of error
 
-    fun checkKind _ = raise Fail "unimplemented"
+    fun checkKind _ = Type.TypeK
 
     val checkConst =
         fn Const.Int _ => Type.Int
@@ -40,7 +40,7 @@ end = struct
             (case check callee
              of Type.ForAll (_, {kind = domainKind, ...}, codomain) =>
                  let val argKind = checkKind arg
-                 in if Type.eq (argKind, domainKind)
+                 in if Type.kindEq (argKind, domainKind)
                     then codomain
                     else raise TypeError (KindMismatch (domainKind, argKind))
                  end
