@@ -8,13 +8,14 @@ signature FAST_TYPE = sig
           | UseT of Pos.t * def
           | Arrow of Pos.t * {domain: t, codomain: t}
           | Prim of Pos.t * prim
+
     withtype def = {name: Name.t, kind: kind}
 
     val kindEq: kind * kind -> bool
     val eq: t * t -> bool
 end
 
-structure FAst :> sig
+signature FAST_TERM = sig
     structure Type: FAST_TYPE
 
     datatype expr = Fn of Pos.t * def * expr
@@ -27,6 +28,12 @@ structure FAst :> sig
     and stmt = Def of Pos.t * def * expr
 
     withtype def = {name: Name.t, typ: Type.t}
+end
+
+structure FAst :> sig
+    structure Type: FAST_TYPE
+
+    structure Term: FAST_TERM
 end = struct
     structure Type = struct
         datatype prim = datatype Type.prim
@@ -38,6 +45,7 @@ end = struct
               | UseT of Pos.t * def
               | Arrow of Pos.t * {domain: t, codomain: t}
               | Prim of Pos.t * prim
+
         withtype def = {name: Name.t, kind: kind}
 
         val primEq = fn (Int, Int) => true
@@ -69,14 +77,18 @@ end = struct
             end
     end
 
-    datatype expr = Fn of Pos.t * def * expr
-                  | TFn of Pos.t * Type.def * expr
-                  | App of Pos.t * {callee: expr, arg: expr}
-                  | TApp of Pos.t * {callee: expr, arg: Type.t}
-                  | Use of Pos.t * def
-                  | Const of Pos.t * Const.t
+    structure Term = struct
+        structure Type = Type
 
-    and stmt = Def of Pos.t * def * expr
+        datatype expr = Fn of Pos.t * def * expr
+                      | TFn of Pos.t * Type.def * expr
+                      | App of Pos.t * {callee: expr, arg: expr}
+                      | TApp of Pos.t * {callee: expr, arg: Type.t}
+                      | Use of Pos.t * def
+                      | Const of Pos.t * Const.t
 
-    withtype def = {name: Name.t, typ: Type.t}
+        and stmt = Def of Pos.t * def * expr
+
+        withtype def = {name: Name.t, typ: Type.t}
+    end
 end
