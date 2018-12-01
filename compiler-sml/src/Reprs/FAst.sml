@@ -1,7 +1,7 @@
 signature FTYPE = sig
     type kind
     type t
-    type def = {name: Name.t, kind: kind}
+    type def
 end
 
 signature FAST_TYPE = sig
@@ -79,8 +79,9 @@ structure FType :> FAST_TYPE = struct
 end
 
 functor FTerm (Type: FTYPE) :> FAST_TERM where
+    type Type.kind = Type.kind and
     type Type.t = Type.t and
-    type Type.kind = Type.kind
+    type Type.def = Type.def
 = struct
     structure Type = Type
 
@@ -96,12 +97,26 @@ functor FTerm (Type: FTYPE) :> FAST_TERM where
     withtype def = {name: Name.t, typ: Type.t}
 end
 
+structure SemiFAst :> sig
+    structure Type: TYPE
+
+    structure Term: FAST_TERM where
+        type Type.kind = Type.kind and
+        type Type.t = Type.t and
+        type Type.def = Type.def
+end = struct
+    structure Type = Type
+
+    structure Term = FTerm(Type)
+end
+
 structure FAst :> sig
     structure Type: FAST_TYPE
 
     structure Term: FAST_TERM where
+        type Type.kind = Type.kind and
         type Type.t = Type.t and
-        type Type.kind = Type.kind
+        type Type.def = Type.def
 end = struct
     structure Type = FType
 

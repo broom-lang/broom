@@ -2,6 +2,9 @@ signature TYPE = sig
     type ov = TypeVars.ov
 
     datatype prim = Int
+
+    datatype kind = TypeK
+                  | ArrowK of Pos.t * {domain: kind, codomain: kind}
     
     datatype t = ForAll of Pos.t * Name.t * t
                | UseT of Pos.t * Name.t
@@ -10,6 +13,8 @@ signature TYPE = sig
                | Arrow of Pos.t * {domain: t, codomain: t}
                | Prim of Pos.t * prim
     withtype uv = t TypeVars.uv
+
+    type def = Name.t
 
     val pos: t -> Pos.t
 
@@ -31,6 +36,9 @@ structure Type :> TYPE = struct
 
     type ov = TypeVars.ov
 
+    datatype kind = TypeK
+                  | ArrowK of Pos.t * {domain: kind, codomain: kind}
+
     datatype prim = Int
     
     datatype t = ForAll of Pos.t * Name.t * t
@@ -40,6 +48,8 @@ structure Type :> TYPE = struct
                | Arrow of Pos.t * {domain: t, codomain: t}
                | Prim of Pos.t * prim
     withtype uv = t TypeVars.uv
+
+    type def = Name.t
 
     val pos = fn ForAll (pos, _, _) => pos
                | UseT (pos, _) => pos
