@@ -10,7 +10,7 @@ structure TypecheckTerm :> sig
     val typecheck: Term.expr -> (error, Type.t) Either.t
 end = struct
     structure Term = FAst.Term
-    structure Type = Term.Type
+    structure Type = FAst.Type
 
     datatype error = TypeMismatch of Type.t * Type.t
                    | KindMismatch of Type.kind * Type.kind
