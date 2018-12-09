@@ -19,11 +19,12 @@ local
            src/Reprs/Const.sml
            src/Reprs/Cst.sml
 
-           src/Passes/Typecheck.sml
-
            src/Reprs/FAst.sml
 
+           src/Passes/Typecheck.sml
+
            src/Passes/TypecheckFAst.sml
+           src/Passes/TypesToF.sml
        end
     end
 

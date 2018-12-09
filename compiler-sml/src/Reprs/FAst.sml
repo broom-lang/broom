@@ -2,6 +2,10 @@ signature FTYPE = sig
     type kind
     type t
     type def
+
+    val kindToString: kind -> string
+    val defToString: def -> string
+    val toString: t -> string
 end
 
 signature FAST_TYPE = sig
@@ -16,6 +20,10 @@ signature FAST_TYPE = sig
           | Prim of Pos.t * prim
 
     withtype def = {name: Name.t, kind: kind}
+
+    val kindToString: kind -> string
+    val defToString: def -> string
+    val toString: t -> string
 
     val kindEq: kind * kind -> bool
     val eq: t * t -> bool
@@ -34,6 +42,10 @@ signature FAST_TERM = sig
     and stmt = Def of Pos.t * def * expr
 
     withtype def = {name: Name.t, typ: Type.t}
+
+    val defToString: def -> string
+    val exprToString: expr -> string
+    val stmtToString: stmt -> string
 end
 
 structure FType :> FAST_TYPE = struct
@@ -76,6 +88,19 @@ structure FType :> FAST_TYPE = struct
                      | _ => false
         in eq' NameSortedMap.empty args
         end
+
+    val rec kindToString =
+        fn TypeK => "Type"
+         | ArrowK (_, {domain, codomain}) =>
+            kindToString domain ^ " -> " ^ kindToString codomain
+
+    fun defToString {name, kind} = Name.toString name ^ ": " ^ kindToString kind
+
+    val rec toString =
+        fn ForAll (_, def, body) => "\\/ " ^ defToString def ^ " . " ^ toString body
+         | UseT (_, {name, ...}) => Name.toString name
+         | Arrow (_, {domain, codomain}) => toString domain ^ " -> " ^ toString codomain
+         | Prim (_, p) => Type.primToString p
 end
 
 functor FTerm (Type: FTYPE) :> FAST_TERM where
@@ -95,10 +120,28 @@ functor FTerm (Type: FTYPE) :> FAST_TERM where
     and stmt = Def of Pos.t * def * expr
 
     withtype def = {name: Name.t, typ: Type.t}
+
+    fun defToString {name, typ} = Name.toString name ^ ": " ^ Type.toString typ
+
+    val rec exprToString =
+        fn Fn (_, param, body) =>
+            "\\" ^ defToString param ^ " => " ^ exprToString body
+         | TFn (_, param, body) =>
+            "/\\" ^ Type.defToString param ^ " => " ^ exprToString body
+         | App (_, {callee, arg}) =>
+            "(" ^ exprToString callee ^ " " ^ exprToString arg ^ ")"
+         | TApp (_, {callee, arg}) =>
+            "(" ^ exprToString callee ^ " [" ^ Type.toString arg ^ "])" 
+         | Use (_, {name, ...}) => Name.toString name
+         | Const (_, c) => Const.toString c
+
+    val stmtToString =
+        fn Def (_, def, valExpr) => "val " ^ defToString def ^ " = " ^ exprToString valExpr
 end
 
 structure SemiFAst :> sig
-    structure Type: TYPE
+    structure Type: TYPE where
+        type t = Type.t
 
     structure Term: FAST_TERM where
         type Type.kind = Type.kind and

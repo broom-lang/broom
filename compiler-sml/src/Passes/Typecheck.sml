@@ -4,14 +4,16 @@ structure Typecheck :> sig
                    | Unbound of Name.t
                    | UnboundType of Name.t
                    | Occurs of Type.t TypeVars.uv * Type.t
-                   | Uncallable of Cst.expr * Type.t
+                   | Uncallable of SemiFAst.Term.expr * Type.t
                    | TypeMismatch of Type.t * Type.t
                    | MalformedType of Type.t
 
     val errorToString: error -> string
 
-    val typecheck: Cst.stmt vector -> (error, Cst.stmt vector) Either.t
+    val typecheck: Cst.stmt vector -> (error, SemiFAst.Term.stmt vector) Either.t
 end = struct
+    structure FTerm = SemiFAst.Term
+
     val articulate2 = TypeCtx.articulate2
     val withOv = TypeCtx.withOv
     val withMarker = TypeCtx.withMarker
@@ -25,7 +27,7 @@ end = struct
                    | Unbound of Name.t
                    | UnboundType of Name.t
                    | Occurs of Type.t TypeVars.uv * Type.t
-                   | Uncallable of Cst.expr * Type.t
+                   | Uncallable of FTerm.expr * Type.t
                    | TypeMismatch of Type.t * Type.t
                    | MalformedType of Type.t
 
@@ -38,7 +40,7 @@ end = struct
                          | Occurs (uv, t) =>
                             "Occurs: " ^ Name.toString (TypeVars.uvName uv) ^ " " ^ Type.toString t
                          | Uncallable (expr, t) =>
-                            "Uncallable: " ^ Cst.exprToString expr ^ ": " ^ Type.toString t
+                            "Uncallable: " ^ FTerm.exprToString expr ^ ": " ^ Type.toString t
                          | TypeMismatch (t, t') =>
                             "TypeMismatch: " ^ Type.toString t ^ " " ^ Type.toString t'
                          | MalformedType t => "MalformedType: " ^ Type.toString t
@@ -132,6 +134,7 @@ end = struct
                    else raise TypeError (UvOutOfScope (TypeVars.uvName uv))
                 end
 
+            (* TODO: Produce coercion code: *)
             fun checkSub (Type.UVar (_, uv)) (Type.UVar (_, uv')) =
                 (case (TypeVars.uvGet uv, TypeVars.uvGet uv')
                  of (Either.Left uv, Either.Left uv') =>
@@ -188,7 +191,7 @@ end = struct
                        let val domain = hydrate tenv ann
                            val codomain = Type.UVar (pos, TypeCtx.pushUv tenv (Name.fresh ()))
                        in withValType tenv param domain (fn () =>
-                              ( Cst.Fn (pos, param, SOME domain, checkAs codomain body)
+                              ( FTerm.Fn (pos, {name = param, typ = domain}, checkAs codomain body)
                               , Type.Arrow (pos, {domain, codomain}) )
                           )
                        end
@@ -197,20 +200,19 @@ end = struct
               | check (Cst.App (pos, {callee, arg})) =
                 let val (callee', {domain, codomain}) = coerceCallee (check callee)
                     val arg' = checkAs domain arg
-                in (Cst.App (pos, {callee = callee', arg = arg'}), codomain)
+                in (FTerm.App (pos, {callee = callee', arg = arg'}), codomain)
                 end
               | check (Cst.Ann (pos, expr, ann)) =
                 let val t = hydrate tenv ann
-                    val expr' = checkAs t expr
-                in (Cst.Ann (pos, expr', ann), t)
+                in (checkAs t expr, t)
                 end
               | check (Cst.Use (pos, name)) =
                 (case TypeCtx.findValType tenv name
-                 of SOME t => (Cst.Use (pos, name), t)
+                 of SOME typ => (FTerm.Use (pos, {name, typ}), typ)
                   | NONE => raise TypeError (Unbound name))
               | check (Cst.Const (pos, c)) =
                 let val (c, t) = checkConst pos c
-                in (Cst.Const (pos, c), t)
+                in (FTerm.Const (pos, c), t)
                 end
 
             and checkAs (Type.ForAll (pos, param, t)) expr =
@@ -229,7 +231,7 @@ end = struct
                            val domain = domain'
                            val codomain = Type.UVar (pos, TypeCtx.pushUv tenv (Name.fresh ()))
                        in withValType tenv param domain (fn () =>
-                              Cst.Fn (pos, param, SOME domain, checkAs codomain body)
+                              FTerm.Fn (pos, {name = param, typ = domain}, checkAs codomain body)
                           )
                        end
                    )
@@ -259,9 +261,9 @@ end = struct
 
             val checkStmt =
                 fn Cst.Def (pos, name, _, expr) =>
-                    let val t = valOf (TypeCtx.findValType tenv name)
-                        val expr' = checkAs t expr
-                    in Cst.Def (pos, name, SOME t, expr')
+                    let val typ = valOf (TypeCtx.findValType tenv name)
+                        val expr' = checkAs typ expr
+                    in FTerm.Def (pos, {name, typ}, expr')
                     end
 
             fun checkStmts stmts =

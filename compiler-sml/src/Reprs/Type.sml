@@ -18,7 +18,9 @@ signature TYPE = sig
 
     val pos: t -> Pos.t
 
+    val kindToString: kind -> string
     val primToString: prim -> string
+    val defToString: def -> string
     val toString: t -> string
 
     val isWellFormedType: t TypeCtx.ctx -> t -> bool
@@ -58,7 +60,14 @@ structure Type :> TYPE = struct
                | Arrow (pos, _) => pos
                | Prim (pos, _) => pos
 
+    val rec kindToString =
+        fn TypeK => "Type"
+         | ArrowK (_, {domain, codomain}) =>
+            kindToString domain ^ " -> " ^ kindToString codomain
+
     val primToString = fn Int => "Int"
+
+    val defToString = Name.toString
 
     val rec toString = fn ForAll (_, param, t) =>
                            "forall " ^ Name.toString param ^ " . " ^ toString t
