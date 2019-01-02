@@ -114,13 +114,13 @@ end = struct
                    )
 
             and assign y uv t =
-                let fun doassign uv =
+                let fun doAssign uv =
                         fn Type.ForAll (pos, param, t') => assignForSome pos param y uv t'
                          | t as Type.UseT _ => raise Fail "unreachable"
                          | t as Type.OVar _ => TypeVars.uvSet uv t
                          | Type.UVar (pos, uv') => (case TypeVars.uvGet uv'
                                                     of Either.Left uv' => TypeVars.uvMerge uv uv'
-                                                     | Either.Right t => doassign uv t)
+                                                     | Either.Right t => doAssign uv t)
                          | Type.Arrow (_, {domain, codomain}) =>
                             let val (duv, cuv) = articulate2 tenv uv
                             in assign (flipY y) duv domain
@@ -130,7 +130,7 @@ end = struct
                 in if TypeVars.uvInScope uv
                    then if Type.occurs uv t
                         then raise TypeError (Occurs (uv, t))
-                        else doassign uv t
+                        else doAssign uv t
                    else raise TypeError (UvOutOfScope (TypeVars.uvName uv))
                 end
 
@@ -140,19 +140,22 @@ end = struct
                  of (Either.Left uv, Either.Left uv') =>
                      if TypeVars.uvInScope uv
                      then if TypeVars.uvInScope uv'
-                          then if TypeVars.uvEq (uv, uv') then () else TypeVars.uvMerge uv uv'
+                          then if TypeVars.uvEq (uv, uv')
+                               then fn expr => expr
+                               else ( TypeVars.uvMerge uv uv'
+                                    ; fn expr => expr )
                           else raise TypeError (UvOutOfScope (TypeVars.uvName uv'))
                      else raise TypeError (UvOutOfScope (TypeVars.uvName uv))
-                  | (Either.Left uv, Either.Right t') => assign Sub uv t'
-                  | (Either.Right t, Either.Left uv') => assign Super uv' t
+                  | (Either.Left uv, Either.Right t') => ( assign Sub uv t'; fn expr => expr )
+                  | (Either.Right t, Either.Left uv') => ( assign Super uv' t; fn expr => expr )
                   | (Either.Right t, Either.Right t') => checkSub t t')
               | checkSub (Type.UVar (_, uv)) t' =
                 (case TypeVars.uvGet uv
-                 of Either.Left uv => assign Sub uv t'
+                 of Either.Left uv => ( assign Sub uv t'; fn expr => expr )
                   | Either.Right t => checkSub t t')
               | checkSub t (Type.UVar (_, uv')) =
                 (case TypeVars.uvGet uv'
-                 of Either.Left uv' => assign Super uv' t
+                 of Either.Left uv' => ( assign Super uv' t; fn expr => expr )
                   | Either.Right t' => checkSub t t')
               | checkSub t (Type.ForAll (pos, param, t')) =
                 withOv tenv param (fn ov =>
@@ -168,16 +171,25 @@ end = struct
                 if TypeVars.ovInScope ov
                 then if TypeVars.ovInScope ov'
                      then if TypeVars.ovEq (ov, ov')
-                          then ()
+                          then fn expr => expr
                           else raise TypeError (TypeMismatch (t, t'))
                      else raise TypeError (OvOutOfScope (TypeVars.ovName ov))
                 else raise TypeError (OvOutOfScope (TypeVars.ovName ov'))
               | checkSub (Type.Arrow (_, arr)) (Type.Arrow (_, arr')) =
-                ( checkSub (#domain arr') (#domain arr)
-                ; checkSub (#codomain arr) (#codomain arr') )
+                let val coerceDomain = checkSub (#domain arr') (#domain arr)
+                    val coerceCodomain = checkSub (#codomain arr) (#codomain arr')
+                in fn fexpr =>
+                       let val pos = FTerm.exprPos fexpr
+                           val param = {name = Name.fresh (), typ = #domain arr'}
+                           val paramUse = FTerm.Use (pos, param)
+                       in FTerm.Fn ( pos, param
+                                   , coerceDomain (FTerm.App (pos, { callee = fexpr
+                                                                   , arg = coerceDomain paramUse })) )
+                       end
+                end
               | checkSub (t as Type.Prim (_, p)) (t' as Type.Prim (_, p')) =
                 if p = p'
-                then ()
+                then fn expr => expr
                 else raise TypeError (TypeMismatch (t, t'))
               | checkSub t t' =
                 raise TypeError (TypeMismatch (t, t'))
@@ -216,6 +228,7 @@ end = struct
                 end
 
             and checkAs (Type.ForAll (pos, param, t)) expr =
+                (* FIXME: Coercion code: *)
                 withOv tenv param (fn ov =>
                     checkAs (Type.substitute (param, Type.OVar (pos, ov)) t) expr
                 )
@@ -227,21 +240,23 @@ end = struct
                     val ext = annsSrcTypes tenv (Vector.fromList [ann])
                 in withSrcTypes tenv ext (fn () =>
                        let val domain' = hydrate tenv ann
-                           do checkSub domain domain'
+                           val coerce = checkSub domain domain' (* FIXME: Coerce param with this! *)
                            val domain = domain'
                            val codomain = Type.UVar (pos, TypeCtx.pushUv tenv (Name.fresh ()))
                        in withValType tenv param domain (fn () =>
-                              FTerm.Fn (pos, {name = param, typ = domain}, checkAs codomain body)
+                              FTerm.Fn ( pos, {name = param, typ = domain}
+                                       , checkAs codomain body)
                           )
                        end
                    )
                 end
               | checkAs t expr =
                 let val (expr', t') = check expr
-                in checkSub t' t
-                 ; expr'
+                    val coercion = checkSub t' t
+                in coercion expr'
                 end
 
+            (* TODO: Produce coercion code: *)
             and coerceCallee (callee, t) =
                 (case t
                  of Type.ForAll (pos, param, t') =>

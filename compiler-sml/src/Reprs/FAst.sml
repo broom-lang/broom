@@ -43,6 +43,8 @@ signature FAST_TERM = sig
 
     withtype def = {name: Name.t, typ: Type.t}
 
+    val exprPos: expr -> Pos.t
+
     val defToString: def -> string
     val exprToString: expr -> string
     val stmtToString: stmt -> string
@@ -120,6 +122,13 @@ functor FTerm (Type: FTYPE) :> FAST_TERM where
     and stmt = Def of Pos.t * def * expr
 
     withtype def = {name: Name.t, typ: Type.t}
+
+    val exprPos = fn Fn (pos, _, _) => pos
+                   | TFn (pos, _, _) => pos
+                   | App (pos, _) => pos
+                   | TApp (pos, _) => pos
+                   | Use (pos, _) => pos
+                   | Const (pos, _) => pos
 
     fun defToString {name, typ} = Name.toString name ^ ": " ^ Type.toString typ
 
