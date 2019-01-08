@@ -36,6 +36,7 @@ signature FAST_TERM = sig
                   | TFn of Pos.t * Type.def * expr
                   | App of Pos.t * {callee: expr, arg: expr}
                   | TApp of Pos.t * {callee: expr, arg: Type.t}
+                  | Let of Pos.t * stmt vector * expr
                   | Use of Pos.t * def
                   | Const of Pos.t * Const.t
 
@@ -116,6 +117,7 @@ functor FTerm (Type: FTYPE) :> FAST_TERM where
                   | TFn of Pos.t * Type.def * expr
                   | App of Pos.t * {callee: expr, arg: expr}
                   | TApp of Pos.t * {callee: expr, arg: Type.t}
+                  | Let of Pos.t * stmt vector * expr
                   | Use of Pos.t * def
                   | Const of Pos.t * Const.t
 

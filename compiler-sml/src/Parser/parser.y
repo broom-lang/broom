@@ -11,7 +11,7 @@ fun lookup "bogus" = 10000
 %pos Pos.t
 
 %term INT of int | ID of string
-    | VAL | FN | FORALL
+    | VAL | FN | FORALL | LET | IN | END
     | LPAREN | RPAREN
     | EQ | DARROW | COLON | ARROW | DOT
     | EOF
@@ -45,6 +45,7 @@ stmt : VAL ID EQ expr (Cst.Def (VALleft, Name.fromString ID, NONE, expr))
 
 expr : FN ID DARROW expr (Cst.Fn (FNleft, Name.fromString ID, NONE, expr))
      | FN ID COLON typeAnn DARROW expr (Cst.Fn ( FNleft, Name.fromString ID, SOME typeAnn, expr))
+     | LET stmts IN expr END (Cst.Let (LETleft, stmts, expr))
      | expr COLON typeAnn (Cst.Ann (exprleft, expr, typeAnn))
      | app (app)
 

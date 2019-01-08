@@ -48,6 +48,9 @@ ws = [\ \t];
 "val"    => (advance yytext; Tokens.VAL (!pos, !pos));
 "fn"     => (advance yytext; Tokens.FN (!pos, !pos));
 "forall" => (advance yytext; Tokens.FORALL (!pos, !pos));
+"let"    => (advance yytext; Tokens.LET (!pos, !pos));
+"in"     => (advance yytext; Tokens.IN (!pos, !pos));
+"end"    => (advance yytext; Tokens.END (!pos, !pos));
 {alpha}+ => (advance yytext; Tokens.ID (yytext, !pos, !pos));
 
 {digit}+ => (advance yytext; Tokens.INT (valOf (Int.fromString yytext), !pos, !pos));

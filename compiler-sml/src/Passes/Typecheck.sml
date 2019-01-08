@@ -226,6 +226,13 @@ end = struct
                     val arg' = checkAs domain arg
                 in (FTerm.App (pos, {callee = callee', arg = arg'}), codomain)
                 end
+              | check (Cst.Let (pos, stmts, body)) =
+                checkStmts stmts (fn () =>
+                    let val stmts = Vector.map checkStmt stmts
+                        val (body, typ) = check body
+                    in (FTerm.Let (pos, stmts, body), typ)
+                    end
+                )
               | check (Cst.Ann (pos, expr, ann)) =
                 let val t = hydrate tenv ann
                 in (checkAs t expr, t)
@@ -287,14 +294,13 @@ end = struct
                   | Type.Arrow (_, arr) => (callee, arr)
                   | _ => raise TypeError (Uncallable (callee, t)))
 
-            val checkStmt =
-                fn Cst.Def (pos, name, _, expr) =>
-                    let val typ = valOf (TypeCtx.findValType tenv name)
-                        val expr' = checkAs typ expr
-                    in FTerm.Def (pos, {name, typ}, expr')
-                    end
+            and checkStmt (Cst.Def (pos, name, _, expr)) =
+                let val typ = valOf (TypeCtx.findValType tenv name)
+                    val expr' = checkAs typ expr
+                in FTerm.Def (pos, {name, typ}, expr')
+                end
 
-            fun checkStmts stmts =
+            and checkStmts stmts (doCheck: unit -> 'a) : 'a =
                 let val names = Vector.map (fn Cst.Def (_, name, _, _) => name) stmts
                     val anns = Vector.map (fn Cst.Def (pos, _, maybeAnn, _) =>
                                                case maybeAnn
@@ -305,13 +311,11 @@ end = struct
                 in withSrcTypes tenv ext (fn () =>
                        let val ts = Vector.map (hydrate tenv) anns
                            val vext = Vector.mapi (fn (i, name) => (name, Vector.sub (ts, i))) names
-                       in withValTypes tenv vext (fn () =>
-                              Vector.map checkStmt stmts
-                          )
+                       in withValTypes tenv vext doCheck
                        end
                    )
                 end                         
-        in Either.Right (checkStmts program)
+        in Either.Right (checkStmts program (fn () => Vector.map checkStmt program))
            handle TypeError err => Either.Left err
         end
 end
