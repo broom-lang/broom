@@ -34,7 +34,11 @@ end = struct
                  of Either.Left err =>
                      TextIO.output (TextIO.stdErr, Typecheck.errorToString err ^ "\n")
                   | Either.Right program' =>
-                     Vector.app (fn stmt => print (FTerm.stmtToString stmt ^ "\n")) program'
+                     ( Vector.app (fn stmt => print (FTerm.stmtToString stmt ^ "\n")) program'
+                     ; case TypecheckFAst.typecheck program'
+                       of Either.Left err =>
+                           TextIO.output (TextIO.stdErr, TypecheckFAst.errorToString err ^ "\n")
+                        | Either.Right () => () )
                ; if BroomParser.sameToken(nextToken,dummyEOF)
                  then ()
                  else loop lexer

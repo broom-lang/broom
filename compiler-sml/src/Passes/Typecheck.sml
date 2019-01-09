@@ -96,6 +96,17 @@ end = struct
             val pos = Type.pos (Vector.sub (anns, 0))
         in Vector.mapi (fn (i, fv) => (fv, Type.UVar (pos, Vector.sub (uvs, i)))) fvs
         end
+
+    fun analyzeStmts tenv stmts =
+        let val names = Vector.map (fn Cst.Def (_, name, _, _) => name) stmts
+            val annotations = Vector.map (fn Cst.Def (pos, _, maybeAnn, _) =>
+                                              case maybeAnn
+                                              of SOME ann => ann
+                                               | NONE => Type.UseT (pos, Name.fresh ()))
+                                         stmts
+            val srcTypes = annsSrcTypes tenv annotations
+        in {names, annotations, srcTypes}
+        end
     
     fun checkConst pos = fn c as Const.Int _ => (c, Type.Prim (pos, Type.Int))
 
@@ -227,12 +238,19 @@ end = struct
                 in (FTerm.App (pos, {callee = callee', arg = arg'}), codomain)
                 end
               | check (Cst.Let (pos, stmts, body)) =
-                checkStmts stmts (fn () =>
-                    let val stmts = Vector.map checkStmt stmts
-                        val (body, typ) = check body
-                    in (FTerm.Let (pos, stmts, body), typ)
-                    end
-                )
+                let val {names, annotations, srcTypes} = analyzeStmts tenv stmts
+                in withSrcTypes tenv srcTypes (fn () =>
+                       let val ts = Vector.map (hydrate tenv) annotations
+                           val vext = Vector.mapi (fn (i, name) => (name, Vector.sub (ts, i))) names
+                       in withValTypes tenv vext (fn () =>
+                              let val stmts = Vector.map checkStmt stmts
+                                  val (body, typ) = check body
+                              in (FTerm.Let (pos, stmts, body), typ)
+                              end
+                          )
+                       end
+                   )
+                end
               | check (Cst.Ann (pos, expr, ann)) =
                 let val t = hydrate tenv ann
                 in (checkAs t expr, t)
@@ -300,22 +318,18 @@ end = struct
                 in FTerm.Def (pos, {name, typ}, expr')
                 end
 
-            and checkStmts stmts (doCheck: unit -> 'a) : 'a =
-                let val names = Vector.map (fn Cst.Def (_, name, _, _) => name) stmts
-                    val anns = Vector.map (fn Cst.Def (pos, _, maybeAnn, _) =>
-                                               case maybeAnn
-                                               of SOME ann => ann
-                                                | NONE => Type.UseT (pos, Name.fresh ()))
-                                          stmts
-                    val ext = annsSrcTypes tenv anns
-                in withSrcTypes tenv ext (fn () =>
-                       let val ts = Vector.map (hydrate tenv) anns
+            and checkStmts stmts =
+                let val {names, annotations, srcTypes} = analyzeStmts tenv stmts
+                in withSrcTypes tenv srcTypes (fn () =>
+                       let val ts = Vector.map (hydrate tenv) annotations
                            val vext = Vector.mapi (fn (i, name) => (name, Vector.sub (ts, i))) names
-                       in withValTypes tenv vext doCheck
+                       in withValTypes tenv vext (fn () =>
+                              Vector.map checkStmt program
+                          )
                        end
                    )
                 end                         
-        in Either.Right (checkStmts program (fn () => Vector.map checkStmt program))
+        in Either.Right (checkStmts program)
            handle TypeError err => Either.Left err
         end
 end

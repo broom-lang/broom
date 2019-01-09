@@ -31,10 +31,12 @@ end = struct
             FTerm.App (pos, {callee = exprTypesToF callee, arg = exprTypesToF arg})
          | SFTerm.TApp (pos, {callee, arg}) =>
             FTerm.TApp (pos, {callee = exprTypesToF callee, arg = typeToF arg})
+         | SFTerm.Let (pos, stmts, body) =>
+            FTerm.Let (pos, Vector.map stmtTypesToF stmts, exprTypesToF body)
          | SFTerm.Use (pos, def) => FTerm.Use (pos, defTypesToF def)
          | SFTerm.Const (pos, c) => FTerm.Const (pos, c)
 
-    val stmtTypesToF =
+    and stmtTypesToF =
         fn SFTerm.Def (pos, def, expr) => FTerm.Def (pos, defTypesToF def, exprTypesToF expr)
 
     fun programTypesToF stmts =

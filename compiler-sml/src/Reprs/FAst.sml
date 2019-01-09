@@ -129,6 +129,7 @@ functor FTerm (Type: FTYPE) :> FAST_TERM where
                    | TFn (pos, _, _) => pos
                    | App (pos, _) => pos
                    | TApp (pos, _) => pos
+                   | Let (pos, _, _) => pos
                    | Use (pos, _) => pos
                    | Const (pos, _) => pos
 
@@ -143,10 +144,15 @@ functor FTerm (Type: FTYPE) :> FAST_TERM where
             "(" ^ exprToString callee ^ " " ^ exprToString arg ^ ")"
          | TApp (_, {callee, arg}) =>
             "(" ^ exprToString callee ^ " [" ^ Type.toString arg ^ "])" 
+         | Let (_, stmts, body) =>
+           let fun step (stmt, acc) = acc ^ stmtToString stmt ^ "\n"
+           in "let " ^ Vector.foldl step "" stmts ^ "in\n" ^
+                  "    " ^ exprToString body ^ "\nend"
+           end
          | Use (_, {name, ...}) => Name.toString name
          | Const (_, c) => Const.toString c
 
-    val stmtToString =
+    and stmtToString =
         fn Def (_, def, valExpr) => "val " ^ defToString def ^ " = " ^ exprToString valExpr
 end
 
