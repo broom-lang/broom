@@ -25,6 +25,8 @@ local
 
            src/Passes/TypecheckFAst.sml
            src/Passes/TypesToF.sml
+
+           src/Reprs/CPS.sml
        end
     end
 
