@@ -18,7 +18,7 @@ local
            src/Reprs/Type.sml
            src/Reprs/Const.sml
            src/Reprs/Cst.sml
-
+ 
            src/Reprs/FAst.sml
 
            src/Passes/Typecheck.sml
@@ -27,6 +27,8 @@ local
            src/Passes/TypesToF.sml
 
            src/Reprs/CPS.sml
+
+           src/Passes/CPSConvert.sml
        end
     end
 

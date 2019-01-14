@@ -38,7 +38,11 @@ end = struct
                      ; case TypecheckFAst.typecheck program'
                        of Either.Left err =>
                            TextIO.output (TextIO.stdErr, TypecheckFAst.errorToString err ^ "\n")
-                        | Either.Right () => () )
+                        | Either.Right () => ()
+                     ; let val cps = CPSConvert.cpsConvert program'
+                       in print "---\n"
+                        ; print (CPS.Term.toString cps ^ "\n")
+                       end )
                ; if BroomParser.sameToken(nextToken,dummyEOF)
                  then ()
                  else loop lexer
