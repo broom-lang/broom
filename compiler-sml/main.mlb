@@ -17,6 +17,7 @@ local
            src/Reprs/TypeCtx.sml
            src/Reprs/Type.sml
            src/Reprs/Const.sml
+           src/Reprs/Scope.sml
            src/Reprs/Cst.sml
  
            src/Reprs/FAst.sml
