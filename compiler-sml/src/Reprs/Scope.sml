@@ -1,3 +1,44 @@
+signature TYPECHECKER_INPUT = sig
+    type ('mod, 'expr, 'stmt) mod
+    type ('expr, 'stmt) expr
+    type ('expr, 'stmt) stmt
+end
+
+signature TYPECHECKER_OUTPUT = sig
+    type ('expr, 'stmt) expr
+    type ('expr, 'stmt) stmt
+end
+
+functor Typechecking(Puts: sig
+    structure Input: TYPECHECKER_INPUT
+    structure Output: TYPECHECKER_OUTPUT
+end) = struct
+    structure Input = Puts.Input
+    structure Output = Puts.Output
+
+    datatype mod = InputMod of (mod ref, expr ref, stmt ref) Input.mod
+                 | OutputMod of (expr ref, stmt ref) Output.expr
+                 | ScopeMod of mod_scope
+
+    and expr = InputExpr of (expr ref, stmt ref) Input.expr
+             | OutputExpr of (expr ref, stmt ref) Output.expr
+             | ScopeExpr of expr_scope
+
+    and stmt = InputStmt of (expr ref, stmt ref) Input.stmt
+             | OutputStmt of (expr ref, stmt ref) Output.stmt
+
+    and scope = ModScope of mod_scope
+              | ExprScope of expr_scope
+
+    (* TODO: mods, types, vals *)
+    and mod_scope = FixModScope of { parent: mod_scope
+                                   , mod: mod ref }
+    
+    (* TODO: vals: expr_binding NameHashTable.hash_table *)
+    withtype expr_scope = { parent: scope
+                          , expr: expr ref }
+end
+
 signature BINDINGS = sig
     type typ
     type value
