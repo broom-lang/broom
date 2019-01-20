@@ -23,13 +23,6 @@ local
            src/Reprs/FAst.sml
 
            src/Passes/Typecheck.sml
-
-           src/Passes/TypecheckFAst.sml
-           src/Passes/TypesToF.sml
-
-           src/Reprs/CPS.sml
-
-           src/Passes/CPSConvert.sml
        end
     end
 

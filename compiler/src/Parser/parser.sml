@@ -8,7 +8,6 @@ end = struct
   structure BroomParser = JoinWithArg(structure LrParser = LrParser
                                       structure ParserData = BroomLrVals.ParserData
                                       structure Lex = BroomLex)
-  structure FTerm = FAst.Term
 
   fun invoke lexstream =
       let fun print_error (s, i, _) =
@@ -30,19 +29,11 @@ end = struct
                                                                Cst.stmtToString stmt ^ "\n"))
                                      program
                   val _ = print "---\n"
-              in case Either.map TypesToF.programTypesToF (Typecheck.typecheck program)
+              in case Typecheck.typecheck program
                  of Either.Left err =>
                      TextIO.output (TextIO.stdErr, Typecheck.errorToString err ^ "\n")
                   | Either.Right program' =>
-                     ( Vector.app (fn stmt => print (FTerm.stmtToString stmt ^ "\n")) program'
-                     ; case TypecheckFAst.typecheck program'
-                       of Either.Left err =>
-                           TextIO.output (TextIO.stdErr, TypecheckFAst.errorToString err ^ "\n")
-                        | Either.Right () => ()
-                     ; let val cps = CPSConvert.cpsConvert program'
-                       in print "---\n"
-                        ; print (CPS.Term.toString cps ^ "\n")
-                       end )
+                     Vector.app (fn stmt => print (SemiFAst.Term.stmtToString stmt ^ "\n")) program'
                ; if BroomParser.sameToken(nextToken,dummyEOF)
                  then ()
                  else loop lexer
