@@ -1,46 +1,49 @@
-structure Cst :> sig
-    datatype expr = Fn of Pos.t * Name.t * Type.t option * expr
-                  | App of Pos.t * {callee: expr, arg: expr}
-                  | Let of Pos.t * stmt vector * expr
-                  | Ann of Pos.t * expr * Type.t
-                  | Use of Pos.t * Name.t
-                  | Const of Pos.t * Const.t
+structure Cst = struct
+    structure Type = struct
+        datatype prim = I32
 
-    and stmt = Def of Pos.t * Name.t * Type.t option * expr
+        datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
+                      | TypeK of Pos.t
 
-    val stmtToString: stmt -> string
-    val exprToString: expr -> string
-end = struct
-    datatype expr = Fn of Pos.t * Name.t * Type.t option * expr
-                  | App of Pos.t * {callee: expr, arg: expr}
-                  | Let of Pos.t * stmt vector * expr
-                  | Ann of Pos.t * expr * Type.t
-                  | Use of Pos.t * Name.t
-                  | Const of Pos.t * Const.t
+        datatype 'typ typ = ForAll of Pos.t * Name.t * 'typ
+                          | Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
+                          | UseT of Pos.t * Name.t
+                          | Prim of Pos.t * prim
+    end
 
-    and stmt = Def of Pos.t * Name.t * Type.t option * expr
+    structure Term = struct    
+        datatype ('typ, 'expr) stmt
+            = Val of Pos.t * Name.t * 'typ option * 'expr
+            | Expr of 'expr
+    
+        datatype ('typ, 'expr) expr
+            = Fn of Pos.t * Name.t * 'typ option * 'expr
+            | Let of Pos.t * ('typ, 'expr) stmt vector * 'expr
+            | App of Pos.t * {callee: 'expr, arg: 'expr}
+            | Ann of Pos.t * 'expr * 'typ
+            | Use of Pos.t * Name.t
+            | Const of Pos.t * Const.t
+    end
 
-    val rec stmtToString = fn Def (_, name, maybeAnn, valExpr) =>
-                               "val " ^ Name.toString name ^
-                                   (case maybeAnn
-                                    of SOME ann => ": " ^ Type.toString ann
-                                     | NONE => "") ^
-                                   " = " ^ exprToString valExpr
-    and exprToString = fn Fn (_, param, maybeAnn, body) =>
-                           "fn " ^ Name.toString param ^
-                               (case maybeAnn
-                                of SOME t => ": " ^ Type.toString t
-                                 | NONE => "") ^
-                               " => " ^ exprToString body
-                        | App (_, {callee, arg}) =>
-                           "(" ^ exprToString callee ^ " " ^ exprToString arg ^ ")"
-                        | Let (_, stmts, body) =>
-                           let fun step (stmt, acc) = acc ^ stmtToString stmt ^
-                           "\n"
-                           in "let " ^ Vector.foldl step "" stmts ^ "in\n" ^
-                                  "    " ^ exprToString body ^ "\nend"
-                           end
-                        | Ann (_, expr, t) => exprToString expr ^ ": " ^ Type.toString t
-                        | Use (_, name) => Name.toString name
-                        | Const (_, c) => Const.toString c
+    structure Interface = struct
+        datatype ('itf, 'typ) decl
+            = DInt of Pos.t * Name.t * Name.t vector * 'itf
+            | DMod of Pos.t * Name.t * 'itf
+            | DTyp of Pos.t * Name.t * Name.t vector * 'typ option
+            | DVal of Pos.t * Name.t * 'typ
+
+        datatype ('itf, 'typ) interface =
+            Interface of Pos.t * ('itf, 'typ) decl vector
+    end
+
+    structure Module = struct
+	datatype ('itf, 'mod, 'typ, 'expr) def 
+            = Int of Pos.t * Name.t * Name.t vector * 'itf
+            | Mod of Pos.t * Name.t * 'itf option * 'mod
+            | Typ of Pos.t * Name.t * Name.t vector * 'typ
+            | Val of Pos.t * Name.t * 'typ option * 'expr
+
+        datatype ('itf, 'mod, 'typ, 'expr) mod =
+            Module of Pos.t * ('itf, 'mod, 'typ, 'expr) def vector
+    end
 end
