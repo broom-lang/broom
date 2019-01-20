@@ -1,4 +1,5 @@
 signature TYPECHECKER_INPUT = sig
+    type kind
     type 'typ typ
     type ('typ, 'expr) expr
     type ('itf, 'typ) interface
@@ -13,6 +14,19 @@ functor Typechecking(Puts: sig
 end) = struct
     structure Input = Puts.Input
     structure Output = Puts.Output
+
+    type 'b bindings = 'b NameHashTable.hash_table
+
+    type 'typ type_binding = { kind: Input.kind
+		             , typ: 'typ option }
+
+    type ('typ, 'expr) val_binding = { typ: 'typ
+                                     , value: 'expr option }
+
+    type 'itf itf_binding = { interface: 'itf }
+
+    type ('itf, 'mod) mod_binding = { interface: 'itf
+                                    , mod: 'mod option }
 
     datatype typ = InputType of typ ref Input.typ
                  | OutputType of typ ref Output.typ
@@ -35,22 +49,32 @@ end) = struct
               | TypeScope of type_scope
               | ExprScope of expr_scope
 
-    (* TODO: mods, types, vals *)
     and mod_scope = FixModScope of { parent: mod_scope
-                                   , mod: mod ref }
+                                   , mod: mod ref
+				   , interfaces: interface ref itf_binding bindings
+                                   , mods: (interface ref, mod ref) mod_binding bindings
+	                           , types: typ ref type_binding bindings
+                                   , vals: (typ ref, expr ref) val_binding bindings }
     
     withtype interface_scope = { parent: scope
-                               , interface: interface ref }
+                               , interface: interface ref
+                               , interfaces: interface ref itf_binding bindings
+                               , mods: (interface ref, mod ref) mod_binding bindings
+                               , types: typ ref type_binding bindings
+                               , vals: (typ ref, expr ref) val_binding bindings }
 
     and type_scope = { parent: scope
-                     , typ: typ ref }
+                     , typ: typ ref
+                     , types: typ ref type_binding bindings }
 
-    (* TODO: vals: expr_binding NameHashTable.hash_table *)
     and expr_scope = { parent: scope
-                     , expr: expr ref }
+                     , expr: expr ref
+                     , vals: (typ ref, expr ref) val_binding bindings }
+
 end
 
 structure TypecheckingCstInput = struct
+    type kind = Cst.Type.kind
     type 'typ typ = 'typ Cst.Type.typ
     type ('typ, 'expr) expr = ('typ, 'expr) Cst.Term.expr
     type ('itf, 'typ) interface = ('itf, 'typ) Cst.Interface.interface
