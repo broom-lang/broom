@@ -1,12 +1,25 @@
-signature TYPECHECKER_INPUT = sig
-    type kind
-    type 'typ typ
-    type ('typ, 'expr) expr
-    type ('itf, 'typ) interface
-    type ('itf, 'mod, 'typ, 'expr) mod
+signature TYPECHECKER_OUTPUT = sig
+    structure Type: sig
+        type kind
+        type 'typ typ
+    end
+
+    structure Term: sig
+        type ('typ, 'expr) expr
+    end
 end
 
-signature TYPECHECKER_OUTPUT = TYPECHECKER_INPUT
+signature TYPECHECKER_INPUT = sig
+    include TYPECHECKER_OUTPUT
+    
+    structure Interface: sig
+        type ('itf, 'typ) interface
+    end
+    
+    structure Module: sig
+       type ('itf, 'mod, 'typ, 'expr) mod
+    end
+end
 
 functor Typechecking(Puts: sig
     structure Input: TYPECHECKER_INPUT
@@ -17,7 +30,7 @@ end) = struct
 
     type 'b bindings = 'b NameHashTable.hash_table
 
-    type 'typ type_binding = { kind: Input.kind
+    type 'typ type_binding = { kind: Input.Type.kind
 		             , typ: 'typ option }
 
     type ('typ, 'expr) val_binding = { typ: 'typ
@@ -28,20 +41,20 @@ end) = struct
     type ('itf, 'mod) mod_binding = { interface: 'itf
                                     , mod: 'mod option }
 
-    datatype typ = InputType of typ ref Input.typ
-                 | OutputType of typ ref Output.typ
+    datatype typ = InputType of typ ref Input.Type.typ
+                 | OutputType of typ ref Output.Type.typ
                  | ScopeType of type_scope
     
-    and expr = InputExpr of (typ ref, expr ref) Input.expr
-             | OutputExpr of (typ ref, expr ref) Output.expr
+    and expr = InputExpr of (typ ref, expr ref) Input.Term.expr
+             | OutputExpr of (typ ref, expr ref) Output.Term.expr
              | ScopeExpr of expr_scope
 
-    and interface = InputItf of (interface ref, typ ref) Input.interface
-                  | OutputItf of typ ref Output.typ
+    and interface = InputItf of (interface ref, typ ref) Input.Interface.interface
+                  | OutputItf of typ ref Output.Type.typ
                   | ScopeItf of interface_scope
 
-    and mod = InputMod of (interface ref, mod ref, typ ref, expr ref) Input.mod
-            | OutputMod of (typ ref, expr ref) Output.expr
+    and mod = InputMod of (interface ref, mod ref, typ ref, expr ref) Input.Module.mod
+            | OutputMod of (typ ref, expr ref) Output.Term.expr
             | ScopeMod of mod_scope
 
     and scope = ItfScope of interface_scope
@@ -73,16 +86,8 @@ end) = struct
 
 end
 
-structure TypecheckingCstInput = struct
-    type kind = Cst.Type.kind
-    type 'typ typ = 'typ Cst.Type.typ
-    type ('typ, 'expr) expr = ('typ, 'expr) Cst.Term.expr
-    type ('itf, 'typ) interface = ('itf, 'typ) Cst.Interface.interface
-    type ('itf, 'mod, 'typ, 'expr) mod = ('itf, 'mod, 'typ, 'expr) Cst.Module.mod
-end
-
 structure TypecheckingCst = Typechecking(struct
-    structure Input = TypecheckingCstInput
-    structure Output = TypecheckingCstInput (* FIXME *)
+    structure Input = Cst
+    structure Output = FAst
 end)
 

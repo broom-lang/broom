@@ -13,7 +13,10 @@ local
            src/Reprs/Name.sml
            src/Reprs/Pos.sml
            src/Reprs/Const.sml
+           src/Reprs/FType.sml 
            src/Reprs/Cst.sml
+
+           src/Reprs/FAst.sml
 
            src/Reprs/Typechecking.sml
        end

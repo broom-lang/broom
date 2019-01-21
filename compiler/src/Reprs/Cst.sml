@@ -1,15 +1,5 @@
 structure Cst = struct
-    structure Type = struct
-        datatype prim = I32
-
-        datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
-                      | TypeK of Pos.t
-
-        datatype 'typ typ = ForAll of Pos.t * Name.t * 'typ
-                          | Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
-                          | UseT of Pos.t * Name.t
-                          | Prim of Pos.t * prim
-    end
+    structure Type = FType(type var = Name.t)
 
     structure Term = struct    
         datatype ('typ, 'expr) stmt
