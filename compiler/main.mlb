@@ -22,13 +22,13 @@ local
        end
     end
 
-    (* local
+    local
         src/Parser/parser.y.sig
         src/Parser/parser.y.sml
         src/Parser/lexer.x.sml
     in
-        src/Parser/parser.sml
-    end *)
+        (* src/Parser/parser.sml *)
+    end
 in
     src/main.sml
 end

@@ -1,5 +1,8 @@
-type stmt = Cst.stmt
-type expr = Cst.expr
+structure Term = FixedCst.Term
+structure Type = FixedCst.Type
+
+type stmt = Term.stmt
+type expr = Term.expr
 
 fun lookup "bogus" = 10000
   | lookup s = 0
@@ -23,9 +26,9 @@ fun lookup "bogus" = 10000
        | app of expr
        | nestable of expr
        | triv of expr
-       | typeAnn of Type.t
-       | typeAnnBody of Type.t
-       | ids of Name.t list
+       | typeAnn of Type.typ
+       | typeAnnBody of Type.typ
+       | ids of Type.def list
 
 %keyword VAL EQ
 %noshift EOF
@@ -40,35 +43,35 @@ stmts : stmtList (Vector.fromList (List.rev stmtList) (* OPTIMIZE *))
 stmtList : ([])
          | stmtList stmt (stmt :: stmtList)
 
-stmt : VAL ID EQ expr (Cst.Def (VALleft, Name.fromString ID, NONE, expr))
-     | VAL ID COLON typeAnn EQ expr (Cst.Def (VALleft, Name.fromString ID, SOME typeAnn, expr))
+stmt : VAL ID EQ expr (Term.Val (VALleft, Name.fromString ID, NONE, expr))
+     | VAL ID COLON typeAnn EQ expr (Term.Val (VALleft, Name.fromString ID, SOME typeAnn, expr))
 
-expr : FN ID DARROW expr (Cst.Fn (FNleft, Name.fromString ID, NONE, expr))
-     | FN ID COLON typeAnn DARROW expr (Cst.Fn ( FNleft, Name.fromString ID, SOME typeAnn, expr))
-     | LET stmts IN expr END (Cst.Let (LETleft, stmts, expr))
-     | expr COLON typeAnn (Cst.Ann (exprleft, expr, typeAnn))
+expr : FN ID DARROW expr (Term.Fix (Term.Fn (FNleft, Name.fromString ID, NONE, expr)))
+     | FN ID COLON typeAnn DARROW expr (Term.Fix (Term.Fn ( FNleft, Name.fromString ID, SOME typeAnn, expr)))
+     | LET stmts IN expr END (Term.Fix (Term.Let (exprleft, stmts, expr)))
+     | expr COLON typeAnn (Term.Fix (Term.Ann (exprleft, expr, typeAnn)))
      | app (app)
 
-app : app nestable (Cst.App (appleft, {callee = app, arg = nestable}))
+app : app nestable (Term.Fix (Term.App (appleft, {callee = app, arg = nestable})))
     | nestable (nestable)
 
 nestable : LPAREN expr RPAREN (expr)
          | triv (triv)
 
-triv : ID  (Cst.Use (IDleft, Name.fromString ID))
-     | INT (Cst.Const (INTleft, Const.Int INT))
+triv : ID  (Term.Fix (Term.Use (IDleft, Name.fromString ID)))
+     | INT (Term.Fix (Term.Const (INTleft, Const.Int INT)))
 
-typeAnn : FORALL ids DOT typeAnnBody (List.foldl (fn (id, t) => Type.ForAll (FORALLleft, id, t))
+typeAnn : FORALL ids DOT typeAnnBody (List.foldl (fn (id, t) => Type.Fix (Type.ForAll (FORALLleft, id, t)))
                                                  typeAnnBody ids)
         | typeAnnBody (typeAnnBody)
 
 typeAnnBody : LPAREN typeAnn RPAREN (typeAnn)
-            | typeAnnBody ARROW typeAnnBody (Type.Arrow ( typeAnnBody1left
-                                                        , { domain = typeAnnBody1
-                                                          , codomain = typeAnnBody2 }))
-            | ID (case ID
-                  of "Int" => Type.Prim (IDleft, Type.Int)
-                   | _ => Type.UseT (IDleft, Name.fromString ID))
+            | typeAnnBody ARROW typeAnnBody (Type.Fix (Type.Arrow ( typeAnnBody1left
+                                                                  , { domain = typeAnnBody1
+                                                                    , codomain = typeAnnBody2 })))
+            | ID (Type.Fix (case ID
+                            of "Int" => Type.Prim (IDleft, Type.I32)
+                             | _ => Type.UseT (IDleft, {var = Name.fromString ID, kind = Type.TypeK IDleft})))
 
-ids : ids ID (Name.fromString ID :: ids)
-    | ID ([Name.fromString ID])
+ids : ids ID ({var = Name.fromString ID, kind = Type.TypeK IDleft} :: ids)
+    | ID ([{var = Name.fromString ID, kind = Type.TypeK IDleft}])
