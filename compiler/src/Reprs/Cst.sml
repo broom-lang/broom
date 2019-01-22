@@ -37,3 +37,28 @@ structure Cst = struct
             Module of Pos.t * ('itf, 'mod, 'typ, 'expr) def vector
     end
 end
+
+structure FixedCst = struct
+    structure Type = struct
+        datatype typ = Fix of typ Cst.Type.typ
+    end
+
+    structure Term = struct
+        datatype expr = Fix of (Type.typ, expr) Cst.Term.expr
+        
+        type stmt = (Type.typ, expr) Cst.Term.stmt
+    end
+
+    structure Interface = struct
+        datatype interface = Fix of (interface, Type.typ) Cst.Interface.interface
+        
+        type decl = (interface, Type.typ) Cst.Interface.decl
+    end
+
+    structure Module = struct
+        datatype mod = Fix of (Interface.interface, mod, Type.typ, Term.expr) Cst.Module.mod
+
+        type def = (Interface.interface, mod, Type.typ, Term.expr) Cst.Module.def
+    end
+end
+
