@@ -1,5 +1,5 @@
 structure Cst = struct
-    structure Type = FType(type var = Name.t)
+    structure Type = FType(Name)
 
     structure Term = struct    
         datatype ('typ, 'expr) stmt
@@ -13,6 +13,34 @@ structure Cst = struct
             | Ann of Pos.t * 'expr * 'typ
             | Use of Pos.t * Name.t
             | Const of Pos.t * Const.t
+
+        fun stmtToString typeToString exprToString =
+            fn Val (_, name, maybeAnn, valExpr) =>
+                "val " ^ Name.toString name ^
+                    (case maybeAnn
+                     of SOME ann => ": " ^ typeToString ann
+                      | NONE => "") ^
+                    " = " ^ exprToString valExpr
+             | Expr expr => exprToString expr
+
+        fun exprToString typeToString exprToString =
+            fn Fn (_, param, maybeAnn, body) =>
+                "fn " ^ Name.toString param ^
+                    (case maybeAnn
+                     of SOME t => ": " ^ typeToString t
+                      | NONE => "") ^
+                    " => " ^ exprToString body
+             | App (_, {callee, arg}) =>
+                "(" ^ exprToString callee ^ " " ^ exprToString arg ^ ")"
+             | Let (_, stmts, body) =>
+                let fun step (stmt, acc) = acc ^ stmtToString typeToString exprToString stmt ^
+                "\n"
+                in "let " ^ Vector.foldl step "" stmts ^ "in\n" ^
+                       "    " ^ exprToString body ^ "\nend"
+                end
+             | Ann (_, expr, t) => exprToString expr ^ ": " ^ typeToString t
+             | Use (_, name) => Name.toString name
+             | Const (_, c) => Const.toString c
     end
 
     structure Interface = struct
