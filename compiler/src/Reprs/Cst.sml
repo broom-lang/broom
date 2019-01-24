@@ -71,6 +71,8 @@ structure FixedCst = struct
         open Cst.Type
 
         datatype typ = Fix of typ Cst.Type.typ
+
+        fun toString (Fix t) = Cst.Type.toString toString t
     end
 
     structure Term = struct
@@ -79,6 +81,10 @@ structure FixedCst = struct
         datatype expr = Fix of (Type.typ, expr) Cst.Term.expr
         
         type stmt = (Type.typ, expr) Cst.Term.stmt
+
+        fun exprToString (Fix expr) = Cst.Term.exprToString Type.toString exprToString expr
+
+        fun stmtToString stmt = Cst.Term.stmtToString Type.toString exprToString stmt
     end
 
     structure Interface = struct
