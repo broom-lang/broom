@@ -62,25 +62,25 @@ end) = struct
               | TypeScope of type_scope
               | ExprScope of expr_scope
 
-    and mod_scope = FixModScope of { parent: mod_scope
+    and mod_scope = FixModScope of { parent: mod_scope option ref
                                    , mod: mod ref
 				   , interfaces: interface ref itf_binding bindings
                                    , mods: (interface ref, mod ref) mod_binding bindings
 	                           , types: typ ref type_binding bindings
                                    , vals: (typ ref, expr ref) val_binding bindings }
     
-    withtype interface_scope = { parent: scope
+    withtype interface_scope = { parent: scope option ref
                                , interface: interface ref
                                , interfaces: interface ref itf_binding bindings
                                , mods: (interface ref, mod ref) mod_binding bindings
                                , types: typ ref type_binding bindings
                                , vals: (typ ref, expr ref) val_binding bindings }
 
-    and type_scope = { parent: scope
+    and type_scope = { parent: scope option ref
                      , typ: typ ref
                      , types: typ ref type_binding bindings }
 
-    and expr_scope = { parent: scope
+    and expr_scope = { parent: scope option ref
                      , expr: expr ref
                      , vals: (typ ref, expr ref) val_binding bindings }
 
