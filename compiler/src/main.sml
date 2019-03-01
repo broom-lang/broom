@@ -1,1 +1,1 @@
-(* val _ = Parser.parse () *)
+val _ = Parser.parse ()

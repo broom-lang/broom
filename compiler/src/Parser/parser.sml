@@ -26,15 +26,9 @@ end = struct
               let val (program,lexer) = invoke lexer
                   val (nextToken,lexer) = BroomParser.Stream.get lexer
                   val _ = Vector.app (fn stmt => TextIO.output(TextIO.stdOut,
-                                                               Cst.stmtToString stmt ^ "\n"))
+                                                               FixedCst.Term.stmtToString stmt ^ "\n"))
                                      program
-                  val _ = print "---\n"
-              in case Typecheck.typecheck program
-                 of Either.Left err =>
-                     TextIO.output (TextIO.stdErr, Typecheck.errorToString err ^ "\n")
-                  | Either.Right program' =>
-                     Vector.app (fn stmt => print (SemiFAst.Term.stmtToString stmt ^ "\n")) program'
-               ; if BroomParser.sameToken(nextToken,dummyEOF)
+              in if BroomParser.sameToken(nextToken,dummyEOF)
                  then ()
                  else loop lexer
               end
