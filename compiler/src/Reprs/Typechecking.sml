@@ -28,18 +28,24 @@ end) = struct
     structure Input = Puts.Input
     structure Output = Puts.Output
 
+    datatype shade = White | Grey | Black
+
     type 'b bindings = 'b NameHashTable.hash_table
 
     type 'typ type_binding = { kind: Input.Type.kind
-		             , typ: 'typ option }
+		             , typ: 'typ option
+                             , shade: shade }
 
     type ('typ, 'expr) val_binding = { typ: 'typ
-                                     , value: 'expr option }
+                                     , value: 'expr option 
+                                     , shade: shade }
 
-    type 'itf itf_binding = { interface: 'itf }
+    type 'itf itf_binding = { interface: 'itf 
+                            , shade: shade }
 
     type ('itf, 'mod) mod_binding = { interface: 'itf
-                                    , mod: 'mod option }
+                                    , mod: 'mod option
+                                    , shade: shade }
 
     datatype typ = InputType of typ ref Input.Type.typ
                  | OutputType of typ ref Output.Type.typ
