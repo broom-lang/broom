@@ -83,7 +83,6 @@ end) = struct
     and expr_scope = { parent: scope option ref
                      , expr: expr ref
                      , vals: (typ ref, expr ref) val_binding bindings }
-
 end
 
 structure TypecheckingCst = Typechecking(struct
