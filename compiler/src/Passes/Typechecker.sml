@@ -1,9 +1,13 @@
 structure Typechecker :> sig
     val injectType: FixedCst.Type.typ -> TypecheckingCst.typ ref
     val injectExpr: FixedCst.Term.expr -> TypecheckingCst.expr ref
-    (* TODO: Link scope parents *)
+
+    val uplinkTypeScopes: TypecheckingCst.scope option -> TypecheckingCst.typ ref -> unit
+    val uplinkExprScopes: TypecheckingCst.scope option -> TypecheckingCst.expr ref -> unit
+    
     (* TODO: Actual type checking *)
-    (* TODO: Finishing elaboration ('ejection'?) *)
+   
+   (* TODO: Finishing elaboration ('ejection'?) *)
 end = struct
     structure CTerm = FixedCst.Term
     structure CType = FixedCst.Type
@@ -23,7 +27,7 @@ end = struct
             let val binding = {value = SOME expr, typ}
             in NameHashTable.insert vals (name, binding)
             end
-         | CTerm.Expr expr => ()
+         | CTerm.Expr _ => ()
 
     fun exprScope expr =
         fn CTerm.Fn (_, arg, SOME domain, _) =>
@@ -72,9 +76,53 @@ end = struct
            of SOME scope => ref (TC.ScopeExpr scope)
             | NONE => flexpr
         end
-    
+
     and injectStmt (CTerm.Val (pos, name, otyp, expr)) =
         CTerm.Val (pos, name, Option.map injectType otyp, injectExpr expr)
       | injectStmt (CTerm.Expr expr) = CTerm.Expr (injectExpr expr)
+
+(***)
+
+    fun uplinkTypeScopes parentScope typRef =
+        case !typRef
+        of TC.ScopeType (scope as {parent, typ, ...}) =>
+            ( parent := parentScope
+            ; uplinkTypeScopes (SOME (TC.TypeScope scope)) typ )
+         | TC.InputType typ =>
+            (case typ
+             of CType.ForAll (_, _, body) => uplinkTypeScopes parentScope body
+              | CType.Arrow (_, {domain, codomain}) =>
+                 ( uplinkTypeScopes parentScope domain
+                 ; uplinkTypeScopes parentScope codomain )
+              | _ => ())
+         | TC.OutputType _ => raise Fail "uplinkTypeScopes encountered an OutputType"
+
+    fun uplinkExprScopes parentScope exprRef =
+        case !exprRef
+        of TC.ScopeExpr (scope as {parent, expr, ...}) =>
+            ( parent := parentScope
+            ; uplinkExprScopes (SOME (TC.ExprScope scope)) expr )
+         | TC.InputExpr expr =>
+            (case expr
+             of CTerm.Fn (_, _, domain, body) =>
+                 ( Option.app (uplinkTypeScopes parentScope) domain
+                 ; uplinkExprScopes parentScope body )
+              | CTerm.Let (_, stmts, body) =>
+                 ( Vector.app (uplinkStmtScopes parentScope) stmts
+                 ; uplinkExprScopes parentScope body )
+              | CTerm.App (_, {callee, arg}) =>
+                 ( uplinkExprScopes parentScope callee
+                 ; uplinkExprScopes parentScope arg )
+              | CTerm.Ann (_, expr, t) =>
+                 ( uplinkExprScopes parentScope expr
+                 ; uplinkTypeScopes parentScope t )
+              | _ => ())
+         | TC.OutputExpr _ => raise Fail "uplinkExprScopes encountered an OutputExpr"
+
+    and uplinkStmtScopes parentScope =
+        fn CTerm.Val (_, _, typ, expr) =>
+            ( Option.app (uplinkTypeScopes parentScope) typ
+            ; uplinkExprScopes parentScope expr )
+         | CTerm.Expr expr => uplinkExprScopes parentScope expr
 end
 
