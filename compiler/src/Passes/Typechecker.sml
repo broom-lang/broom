@@ -1,9 +1,16 @@
 structure Typechecker :> sig
+    val stmtBind: (TypecheckingCst.typ ref, TypecheckingCst.expr ref) TypecheckingCst.val_binding TypecheckingCst.bindings
+                  -> (TypecheckingCst.typ ref, TypecheckingCst.expr ref) Cst.Term.stmt -> unit
     val injectType: FixedCst.Type.typ -> TypecheckingCst.typ ref
     val injectExpr: FixedCst.Term.expr -> TypecheckingCst.expr ref
+    val injectStmt: FixedCst.Term.stmt
+                    -> (TypecheckingCst.typ ref, TypecheckingCst.expr ref) Cst.Term.stmt
 
     val uplinkTypeScopes: TypecheckingCst.scope option -> TypecheckingCst.typ ref -> unit
     val uplinkExprScopes: TypecheckingCst.scope option -> TypecheckingCst.expr ref -> unit
+    val uplinkStmtScopes: TypecheckingCst.scope option
+                          -> (TypecheckingCst.typ ref, TypecheckingCst.expr ref) Cst.Term.stmt
+                          -> unit
     
     (* TODO: Actual type checking *)
     val elaborateExpr: TypecheckingCst.scope -> TypecheckingCst.expr ref
@@ -14,6 +21,8 @@ end = struct
     structure CTerm = FixedCst.Term
     structure CType = FixedCst.Type
     structure TC = TypecheckingCst
+    structure FTerm = FAst.Term
+    structure FType = FAst.Type
 
     fun typeScope typ =
         fn CType.ForAll (pos, def as {var, kind}, _) =>
@@ -131,27 +140,80 @@ end = struct
 
 (***)
 
-    fun constType pos =
-        fn Const.Int _ => CType.Prim (pos, CType.I32)
+    local
+        fun unfix exprRef =
+            case !exprRef
+            of TC.OutputExpr expr => expr
+             | TC.ScopeExpr {expr, ...} => unfix expr
+             | TC.InputExpr _ => raise Fail "unfix encountered InputExpr"
+    in
+        val fExprType = FTerm.typeOf (ref o TC.OutputType) unfix
+    end
 
-    fun lookupType name =
-        fn TC.ExprScope {vals, parent, ...} =>
+    fun lookupType name scope =
+        case scope
+        of TC.ExprScope {vals, parent, ...} =>
             (case NameHashTable.find vals name
              of SOME {shade, binder} =>
                  (case !shade
                   of TC.Black =>
                       (case !(#typ binder)
-                       of TC.OutputType typ => SOME typ))
+                       of TC.OutputType typ => SOME typ)
+                   | TC.White => SOME (elaborateType scope name (#typ binder))
+                   | TC.Grey =>
+                      raise Fail ("lookupType cycle at " ^ Name.toString name))
               | NONE => Option.mapPartial (lookupType name) (!parent))
+
+    and elaborateType scope name typRef =
+        (* TODO: Setting shade first to grey, then black *)
+        (* TODO: Setting typRef to an OutputType *)
+        case !typRef
+        of TC.InputType typ =>
+            let val typ =
+                case typ
+                of CType.Prim (pos, p) => FType.Prim (pos, p)
+            in typRef := TC.OutputType typ
+             ; typ
+            end
 
     fun elaborateExpr scope exprRef =
         case !exprRef
         of TC.InputExpr expr =>
-            (case expr
-             of CTerm.Use (_, name) =>
-                 (case lookupType name scope
-                  of SOME typ => typ
-                   | NONE => raise Fail ("unbound variable: " ^ Name.toString name))
-              | CTerm.Const (pos, c) => constType pos c)
+            let val (expr, typ) =
+                (case expr
+                 of CTerm.Let (pos, stmts, body) =>
+                     let val stmts = Vector.map (elaborateStmt scope) stmts
+                         val typ = elaborateExpr scope body
+                     in (FTerm.Let (pos, stmts, body), typ)
+                     end
+                  | CTerm.Use (pos, name) =>
+                     let val typ = case lookupType name scope
+                                   of SOME typ => typ
+                                    | NONE => raise Fail ("unbound variable: " ^ Name.toString name)
+                         val def = { var = name
+                                   , typ = ref (TC.OutputType typ) } (* HACK: fresh ref *)
+                     in (FTerm.Use (pos, def), typ)
+                     end
+                  | CTerm.Const (pos, c) => (FTerm.Const (pos, c), FType.Prim (pos, Const.typeOf c)))
+            in exprRef := TC.OutputExpr expr
+             ; typ
+            end
+         | TC.ScopeExpr (scope as {expr, ...}) => elaborateExpr (TC.ExprScope scope) expr
+         | TC.OutputExpr expr =>
+            (* Assumes invariant: the whole subtree has been elaborated already. *)
+            (case !(fExprType expr)
+             of TC.OutputType typ => typ)
+
+    and elaborateStmt scope =
+        fn CTerm.Val (pos, name, SOME annTypeRef, exprRef) =>
+            let val exprType = elaborateExpr scope exprRef
+                val annType = elaborateType scope name annTypeRef
+            in if exprType = annType (* FIXME: Should be subtype check *)
+               then FTerm.Val (pos, {var = name, typ = annTypeRef}, exprRef)
+               else raise Fail "type mismatch"
+            end
+         | CTerm.Expr exprRef =>
+            ( ignore (elaborateExpr scope exprRef)
+            ; FTerm.Expr exprRef )
 end
 

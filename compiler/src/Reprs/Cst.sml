@@ -1,5 +1,5 @@
 structure Cst = struct
-    structure Type = FType(Name)
+    structure Type = NameFType
 
     structure Term = struct    
         datatype ('typ, 'expr) stmt

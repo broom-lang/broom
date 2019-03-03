@@ -12,8 +12,8 @@ local
        in
            src/Reprs/Name.sml
            src/Reprs/Pos.sml
-           src/Reprs/Const.sml
            src/Reprs/FType.sml 
+           src/Reprs/Const.sml
            src/Reprs/Cst.sml
 
            src/Reprs/FAst.sml
@@ -27,8 +27,9 @@ local
         src/Parser/parser.y.sig
         src/Parser/parser.y.sml
         src/Parser/lexer.x.sml
-    in
-        src/Parser/parser.sml
+    in ann "allowSuccessorML true"
+       in src/Parser/parser.sml
+       end
     end
 in
     src/main.sml

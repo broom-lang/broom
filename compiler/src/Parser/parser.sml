@@ -9,6 +9,9 @@ end = struct
                                       structure ParserData = BroomLrVals.ParserData
                                       structure Lex = BroomLex)
 
+  structure CTerm = Cst.Term
+  structure TC = TypecheckingCst
+
   fun invoke lexstream =
       let fun print_error (s, i, _) =
               TextIO.output(TextIO.stdOut,
@@ -28,6 +31,17 @@ end = struct
                   val _ = Vector.app (fn stmt => TextIO.output(TextIO.stdOut,
                                                                FixedCst.Term.stmtToString stmt ^ "\n"))
                                      program
+                  val _ = TextIO.output(TextIO.stdOut, "===\n")
+                  val pos = Pos.default "<stdin>"
+                  val stmts = Vector.map Typechecker.injectStmt program
+                  val vals = NameHashTable.mkTable (0, Subscript)
+                  val _ = Vector.app (Typechecker.stmtBind vals) stmts
+                  val expr = CTerm.Let ( pos, stmts
+                                       , ref (TC.InputExpr (CTerm.Const (pos, Const.Int 0))))
+                  val exprRef = ref (TC.InputExpr expr)
+                  val scope = {parent = ref NONE, expr = exprRef, vals}
+                  val _ = Typechecker.uplinkExprScopes NONE (ref (TC.ScopeExpr scope))
+                  val _ = Typechecker.elaborateExpr (TC.ExprScope scope) exprRef
               in if BroomParser.sameToken(nextToken,dummyEOF)
                  then ()
                  else loop lexer

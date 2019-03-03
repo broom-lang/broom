@@ -32,3 +32,5 @@ end) = struct
          | Prim (_, p) => primToString p
 end
 
+structure NameFType = FType(Name)
+
