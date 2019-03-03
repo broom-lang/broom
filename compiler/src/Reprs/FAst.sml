@@ -41,18 +41,23 @@ structure FAst = struct
             | Use (_, {var, ...}) => Name.toString var 
             | Const (_, c) => Const.toString c
 
-        fun typeOf fixType unfixExpr =
-            let val rec typeOf =
+        fun typeOf fixType unfixType unfixExpr =
+            let val fixed = fn Either.Left unfixed => fixType unfixed
+                             | Either.Right fixed => fixed
+                val unfixed = fn Either.Left unfixed => unfixed
+                               | Either.Right fixed => unfixType fixed
+                val rec typeOf =
                     fn Fn (pos, {typ = domain, ...}, body) =>
-                        fixType (Type.Arrow (pos, {domain, codomain = typeOf (unfixExpr body)}))
+                        Either.Left (Type.Arrow (pos, { domain
+                                                      , codomain = fixed (typeOf (unfixExpr body))}))
                      | TFn (pos, param, body) =>
-                        fixType (Type.ForAll (pos, param, typeOf (unfixExpr body)))
-                     | App (_, typ, _) => typ
-                     | TApp (_, typ, _) => typ
+                        Either.Left (Type.ForAll (pos, param, fixed (typeOf (unfixExpr body))))
+                     | App (_, typ, _) => Either.Right typ
+                     | TApp (_, typ, _) => Either.Right typ
                      | Let (_, _, body) => typeOf (unfixExpr body)
-                     | Use (_, {typ, ...}) => typ
-                     | Const (pos, c) => fixType (Type.Prim (pos, Const.typeOf c))
-            in typeOf
+                     | Use (_, {typ, ...}) => Either.Right typ
+                     | Const (pos, c) => Either.Left (Type.Prim (pos, Const.typeOf c))
+            in unfixed o typeOf
             end
     end
 end

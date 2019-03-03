@@ -144,13 +144,19 @@ end = struct
         fn (FType.Prim (_, pl), FType.Prim (_, pr)) => pl = pr
 
     local
-        fun unfix exprRef =
+        fun unfixType typRef =
+            case !typRef
+            of TC.OutputType typ => typ
+             | TC.ScopeType {typ, ...} => unfixType typ
+             | TC.InputType _ => raise Fail "unfix encountered InputType"
+
+        fun unfixExpr exprRef =
             case !exprRef
             of TC.OutputExpr expr => expr
-             | TC.ScopeExpr {expr, ...} => unfix expr
+             | TC.ScopeExpr {expr, ...} => unfixExpr expr
              | TC.InputExpr _ => raise Fail "unfix encountered InputExpr"
     in
-        val fExprType = FTerm.typeOf (ref o TC.OutputType) unfix
+        val fExprType = FTerm.typeOf (ref o TC.OutputType) unfixType unfixExpr
     end
 
     fun valShadeRef name =
@@ -214,8 +220,7 @@ end = struct
          | TC.ScopeExpr (scope as {expr, ...}) => elaborateExpr (TC.ExprScope scope) expr
          | TC.OutputExpr expr =>
             (* Assumes invariant: the whole subtree has been elaborated already. *)
-            (case !(fExprType expr)
-             of TC.OutputType typ => typ)
+            fExprType expr
 
     and elaborateStmt scope =
         fn CTerm.Val (pos, name, SOME annTypeRef, exprRef) =>
