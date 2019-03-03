@@ -140,6 +140,9 @@ end = struct
 
 (***)
 
+    val subType =
+        fn (FType.Prim (_, pl), FType.Prim (_, pr)) => pl = pr
+
     local
         fun unfix exprRef =
             case !exprRef
@@ -149,6 +152,15 @@ end = struct
     in
         val fExprType = FTerm.typeOf (ref o TC.OutputType) unfix
     end
+
+    fun valShadeRef name =
+        fn TC.ExprScope {vals, parent, ...} =>
+            (case NameHashTable.find vals name
+             of SOME {shade, ...} => shade
+              | NONE =>
+                 (case Option.map (valShadeRef name) (!parent)
+                  of SOME shade => shade
+                   | NONE => raise Fail ("valShadeRef: unbound " ^ Name.toString name)))
 
     fun lookupType name scope =
         case scope
@@ -165,16 +177,17 @@ end = struct
               | NONE => Option.mapPartial (lookupType name) (!parent))
 
     and elaborateType scope name typRef =
-        (* TODO: Setting shade first to grey, then black *)
-        (* TODO: Setting typRef to an OutputType *)
         case !typRef
         of TC.InputType typ =>
-            let val typ =
-                case typ
-                of CType.Prim (pos, p) => FType.Prim (pos, p)
+            let do valShadeRef name scope := TC.Grey
+                val typ = case typ
+                          of CType.Prim (pos, p) => FType.Prim (pos, p)
             in typRef := TC.OutputType typ
+             ; valShadeRef name scope := TC.Black
              ; typ
             end
+         | TC.ScopeType (scope as {typ, ...}) => elaborateType (TC.TypeScope scope) name typ
+         | TC.OutputType typ => typ
 
     fun elaborateExpr scope exprRef =
         case !exprRef
@@ -208,7 +221,7 @@ end = struct
         fn CTerm.Val (pos, name, SOME annTypeRef, exprRef) =>
             let val exprType = elaborateExpr scope exprRef
                 val annType = elaborateType scope name annTypeRef
-            in if exprType = annType (* FIXME: Should be subtype check *)
+            in if subType (annType, exprType)
                then FTerm.Val (pos, {var = name, typ = annTypeRef}, exprRef)
                else raise Fail "type mismatch"
             end
