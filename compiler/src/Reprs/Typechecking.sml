@@ -30,7 +30,7 @@ end) = struct
 
     datatype shade = White | Grey | Black
 
-    type 'b binding = { shade: shade
+    type 'b binding = { shade: shade ref
                       , binder: 'b }
 
     type 'b bindings = 'b binding NameHashTable.hash_table

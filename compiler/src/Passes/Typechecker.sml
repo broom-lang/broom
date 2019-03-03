@@ -18,7 +18,7 @@ end = struct
     fun typeScope typ =
         fn CType.ForAll (pos, def as {var, kind}, _) =>
             let val types = NameHashTable.mkTable (1, Subscript)
-                val binding = { shade = TC.White
+                val binding = { shade = ref TC.White
                               , binder = { kind
                                          , typ = SOME (ref (TC.InputType (CType.UseT (pos, def)))) } }
                 do NameHashTable.insert types (var, binding)
@@ -28,7 +28,7 @@ end = struct
 
     fun stmtBind vals =
         fn CTerm.Val (_, name, SOME typ, expr) =>
-            let val binding = {shade = TC.White, binder = {value = SOME expr, typ}}
+            let val binding = {shade = ref TC.White, binder = {value = SOME expr, typ}}
             in NameHashTable.insert vals (name, binding)
             end
          | CTerm.Expr _ => ()
@@ -36,7 +36,7 @@ end = struct
     fun exprScope expr =
         fn CTerm.Fn (_, arg, SOME domain, _) =>
             let val vals = NameHashTable.mkTable (1, Subscript)
-                val binding = {shade = TC.White, binder = {value = NONE, typ = domain}}
+                val binding = {shade = ref TC.White, binder = {value = NONE, typ = domain}}
                 do NameHashTable.insert vals (arg, binding)
             in SOME {parent = ref NONE, expr, vals}
             end
@@ -138,7 +138,7 @@ end = struct
         fn TC.ExprScope {vals, parent, ...} =>
             (case NameHashTable.find vals name
              of SOME {shade, binder} =>
-                 (case shade
+                 (case !shade
                   of TC.Black =>
                       (case !(#typ binder)
                        of TC.OutputType typ => SOME typ))
