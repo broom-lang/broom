@@ -1,5 +1,3 @@
-(* TODO: expr return types so that CPS transform can just grab them when it needs to *)
-
 structure FAst = struct
     structure Type = Cst.Type
 

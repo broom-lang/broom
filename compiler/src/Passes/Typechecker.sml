@@ -141,7 +141,10 @@ end = struct
 (***)
 
     val subType =
-        fn (FType.Prim (_, pl), FType.Prim (_, pr)) => pl = pr
+        fn (FType.Prim (_, pl), FType.Prim (_, pr)) =>
+            if pl = pr
+            then NONE
+            else raise Fail "<:"
 
     local
         fun unfixType typRef =
@@ -205,6 +208,11 @@ end = struct
                          val typ = elaborateExpr scope body
                      in (FTerm.Let (pos, stmts, body), typ)
                      end
+                  | CTerm.App (pos, {callee, arg}) =>
+                     let val {domain, codomain} = coerceCallee callee (elaborateExpr scope callee)
+                     in elaborateExprAs scope domain arg
+                      ; (FTerm.App (pos, codomain, {callee, arg}), codomain)
+                     end
                   | CTerm.Use (pos, name) =>
                      let val typ = case lookupType name scope
                                    of SOME typ => typ
@@ -222,16 +230,42 @@ end = struct
             (* Assumes invariant: the whole subtree has been elaborated already. *)
             fExprType expr
 
+    and elaborateExprAs scope typRef exprRef =
+        case (!typRef, !exprRef)
+        of (TC.InputType t, TC.InputExpr expr) =>
+            (case (t, expr)
+             of (FType.ForAll _, expr) => raise Fail "unimplemented"
+              | (FType.Arrow _, CTerm.Fn _) => raise Fail "unimplemented"
+              | (t, _) =>
+                 let val t' = elaborateExpr scope exprRef
+                     val coercion = getOpt (subType (t', t), ignore)
+                 in coercion exprRef
+                 end)
+         | (_, TC.ScopeExpr (scope as {expr, ...})) => ignore (elaborateExpr (TC.ExprScope scope) expr)
+         | (_, TC.OutputExpr expr) =>
+            (* Assumes invariant: the whole subtree has been elaborated already. *)
+            ignore (fExprType expr)
+
     and elaborateStmt scope =
         fn CTerm.Val (pos, name, SOME annTypeRef, exprRef) =>
             let val exprType = elaborateExpr scope exprRef
                 val annType = elaborateType scope name annTypeRef
-            in if subType (annType, exprType)
-               then FTerm.Val (pos, {var = name, typ = annTypeRef}, exprRef)
-               else raise Fail "type mismatch"
+                val coercion = getOpt (subType (exprType, annType), ignore)
+            in coercion exprRef
+             ; FTerm.Val (pos, {var = name, typ = annTypeRef}, exprRef)
             end
          | CTerm.Expr exprRef =>
             ( ignore (elaborateExpr scope exprRef)
             ; FTerm.Expr exprRef )
+
+    and coerceCallee callee typRef =
+        case !typRef
+        of TC.InputType _ => raise Fail "unimplemented"
+         | TC.ScopeType (scope as {typ, ...}) => raise Fail "unimplemented"
+         | TC.OutputType typ =>
+            (case typ
+             of FType.ForAll _ => raise Fail "unimplemented"
+              | FType.Arrow (_, domains) => domains
+              | _ => raise Fail "uncallable")
 end
 
