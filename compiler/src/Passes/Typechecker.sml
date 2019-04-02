@@ -193,30 +193,33 @@ end = struct
     fun elaborateExpr scope exprRef =
         case !exprRef
         of TC.InputExpr expr =>
-            let val (expr, typ) =
-                (case expr
-                 of CTerm.Let (pos, stmts, body) =>
-                     let val stmts = Vector.map (elaborateStmt scope) stmts
-                         val typ = elaborateExpr scope body
-                     in (FTerm.Let (pos, stmts, body), typ)
-                     end
-                  | CTerm.App (pos, {callee, arg}) =>
-                     let val {domain, codomain} = coerceCallee callee (elaborateExpr scope callee)
-                     in elaborateExprAs scope domain arg
-                      ; (FTerm.App (pos, codomain, {callee, arg}), codomain)
-                     end
-                  | CTerm.Use (pos, name) =>
-                     let val typRef = case lookupType name scope
-                                      of SOME typRef => typRef
-                                       | NONE => raise Fail ("unbound variable: " ^ Name.toString name)
-                         val def = { var = name, typ = typRef }
-                     in (FTerm.Use (pos, def), typRef)
-                     end
-                  | CTerm.Const (pos, c) => ( FTerm.Const (pos, c)
-                                            , ref (TC.OutputType (FType.Prim (pos, Const.typeOf c))) ))
-            in exprRef := TC.OutputExpr expr
-             ; typ
-            end
+            (case expr
+             of CTerm.Let (pos, stmts, body) =>
+                 let val stmts = Vector.map (elaborateStmt scope) stmts
+                     val typ = elaborateExpr scope body
+                 in exprRef := TC.OutputExpr (FTerm.Let (pos, stmts, body))
+                  ; typ
+                 end
+              | CTerm.App (pos, {callee, arg}) =>
+                 let val {domain, codomain} = coerceCallee callee (elaborateExpr scope callee)
+                 in elaborateExprAs scope domain arg
+                  ; exprRef := TC.OutputExpr (FTerm.App (pos, codomain, {callee, arg}))
+                  ; codomain
+                 end
+              | CTerm.Ann (pos, expr, t) =>
+                 ( elaborateExprAs scope t expr
+                 ; t )
+              | CTerm.Use (pos, name) =>
+                 let val typRef = case lookupType name scope
+                                  of SOME typRef => typRef
+                                   | NONE => raise Fail ("unbound variable: " ^ Name.toString name)
+                     val def = { var = name, typ = typRef }
+                 in exprRef := TC.OutputExpr (FTerm.Use (pos, def))
+                  ; typRef
+                 end
+              | CTerm.Const (pos, c) =>
+                 ( exprRef := TC.OutputExpr (FTerm.Const (pos, c))
+                 ; ref (TC.OutputType (FType.Prim (pos, Const.typeOf c))) ))
          | TC.ScopeExpr (scope as {expr, ...}) => elaborateExpr (TC.ExprScope scope) expr
          | TC.OutputExpr expr =>
             (* Assumes invariant: the whole subtree has been elaborated already. *)
