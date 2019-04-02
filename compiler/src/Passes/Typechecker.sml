@@ -13,8 +13,7 @@ structure Typechecker :> sig
                           -> unit
     
     (* TODO: Actual type checking *)
-    val elaborateExpr: TypecheckingCst.scope -> TypecheckingCst.expr ref
-                       -> TypecheckingCst.typ ref FAst.Type.typ
+    val elaborateExpr: TypecheckingCst.scope -> TypecheckingCst.expr ref -> TypecheckingCst.typ ref
    
     (* TODO: Finishing elaboration ('ejection'?) *)
 end = struct
@@ -140,26 +139,21 @@ end = struct
 
 (***)
 
-    val subType =
-        fn (FType.Prim (_, pl), FType.Prim (_, pr)) =>
+    fun subType (typRef, superTypRef) =
+        case (!typRef, !superTypRef)
+        of (TC.OutputType (FType.Prim (_, pl)), TC.OutputType (FType.Prim (_, pr))) =>
             if pl = pr
             then NONE
             else raise Fail "<:"
 
     local
-        fun unfixType typRef =
-            case !typRef
-            of TC.OutputType typ => typ
-             | TC.ScopeType {typ, ...} => unfixType typ
-             | TC.InputType _ => raise Fail "unfix encountered InputType"
-
         fun unfixExpr exprRef =
             case !exprRef
             of TC.OutputExpr expr => expr
              | TC.ScopeExpr {expr, ...} => unfixExpr expr
              | TC.InputExpr _ => raise Fail "unfix encountered InputExpr"
     in
-        val fExprType = FTerm.typeOf (ref o TC.OutputType) unfixType unfixExpr
+        val fExprType = FTerm.typeOf (ref o TC.OutputType) unfixExpr
     end
 
     fun valShadeRef name =
@@ -177,9 +171,7 @@ end = struct
             (case NameHashTable.find vals name
              of SOME {shade, binder} =>
                  (case !shade
-                  of TC.Black =>
-                      (case !(#typ binder)
-                       of TC.OutputType typ => SOME typ)
+                  of TC.Black => SOME (#typ binder)
                    | TC.White => SOME (elaborateType scope name (#typ binder))
                    | TC.Grey =>
                       raise Fail ("lookupType cycle at " ^ Name.toString name))
@@ -193,10 +185,10 @@ end = struct
                           of CType.Prim (pos, p) => FType.Prim (pos, p)
             in typRef := TC.OutputType typ
              ; valShadeRef name scope := TC.Black
-             ; typ
+             ; typRef
             end
          | TC.ScopeType (scope as {typ, ...}) => elaborateType (TC.TypeScope scope) name typ
-         | TC.OutputType typ => typ
+         | TC.OutputType typ => typRef
 
     fun elaborateExpr scope exprRef =
         case !exprRef
@@ -214,14 +206,14 @@ end = struct
                       ; (FTerm.App (pos, codomain, {callee, arg}), codomain)
                      end
                   | CTerm.Use (pos, name) =>
-                     let val typ = case lookupType name scope
-                                   of SOME typ => typ
-                                    | NONE => raise Fail ("unbound variable: " ^ Name.toString name)
-                         val def = { var = name
-                                   , typ = ref (TC.OutputType typ) } (* HACK: fresh ref *)
-                     in (FTerm.Use (pos, def), typ)
+                     let val typRef = case lookupType name scope
+                                      of SOME typRef => typRef
+                                       | NONE => raise Fail ("unbound variable: " ^ Name.toString name)
+                         val def = { var = name, typ = typRef }
+                     in (FTerm.Use (pos, def), typRef)
                      end
-                  | CTerm.Const (pos, c) => (FTerm.Const (pos, c), FType.Prim (pos, Const.typeOf c)))
+                  | CTerm.Const (pos, c) => ( FTerm.Const (pos, c)
+                                            , ref (TC.OutputType (FType.Prim (pos, Const.typeOf c))) ))
             in exprRef := TC.OutputExpr expr
              ; typ
             end
@@ -236,9 +228,9 @@ end = struct
             (case (t, expr)
              of (FType.ForAll _, expr) => raise Fail "unimplemented"
               | (FType.Arrow _, CTerm.Fn _) => raise Fail "unimplemented"
-              | (t, _) =>
+              | (_, _) =>
                  let val t' = elaborateExpr scope exprRef
-                     val coercion = getOpt (subType (t', t), ignore)
+                     val coercion = getOpt (subType (t', typRef), ignore)
                  in coercion exprRef
                  end)
          | (_, TC.ScopeExpr (scope as {expr, ...})) => ignore (elaborateExpr (TC.ExprScope scope) expr)
