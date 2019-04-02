@@ -17,7 +17,9 @@ local
            src/Reprs/Cst.sml
 
            src/Reprs/FAst.sml
-
+           
+           src/Reprs/TypeVars.sml           
+           src/Reprs/TypeVars.sml
            src/Reprs/Typechecking.sml
            src/Passes/Typechecker.sml
        end
