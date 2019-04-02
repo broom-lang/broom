@@ -89,6 +89,12 @@ end) = struct
     and expr_scope = { parent: scope option ref
                      , expr: expr ref
                      , vals: (typ ref, expr ref) val_binding bindings }
+    
+    structure TypeVars = TypeVarsFn(struct
+        type scope = scope ref
+
+        fun compare (scope, scope') = raise Fail "unimplemented"
+    end)
 end
 
 structure TypecheckingCst = Typechecking(struct
