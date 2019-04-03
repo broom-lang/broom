@@ -1,41 +1,39 @@
 signature TYPE_VARS = sig
     exception Reset of Name.t
     
-    type ov
-    val ovEq: ov * ov -> bool
-    val ovName: ov -> Name.t
+    type 'scope ov
+    val newOv: 'scope -> Name.t -> 'scope ov
+    val ovEq: ('scope * 'scope -> bool) -> 'scope ov * 'scope ov -> bool
+    val ovName: 'scope ov -> Name.t
 
-    type 't uv
-    val uvEq: 't uv * 't uv -> bool
-    val uvName: 't uv -> Name.t
-    val uvGet: 't uv -> ('t uv, 't) Either.t
-    val uvSet: 't uv * 't -> unit
-    val uvMerge: 't uv * 't uv -> unit
+    type ('scope, 't) uv
+    val newUv: 'scope -> Name.t -> ('scope, 't)  uv
+    val uvEq: ('scope, 't) uv * ('scope, 't) uv -> bool
+    val uvName: ('scope, 't) uv -> Name.t
+    val uvGet: ('scope, 't) uv -> (('scope, 't) uv, 't) Either.t
+    val uvSet: ('scope, 't) uv * 't -> unit
+    val uvMerge: ('scope * 'scope -> order) -> ('scope, 't) uv * ('scope, 't) uv -> unit
 end
 
-signature SCOPE = sig
-    type scope
-    val eq: scope * scope -> bool
-    val compare: scope * scope -> order
-end
-
-functor TypeVarsFn(Scope: SCOPE) :> TYPE_VARS = struct
-    type scope = Scope.scope
-
+structure TypeVars :> TYPE_VARS = struct
     exception Reset of Name.t
 
-    type var_descr = { name: Name.t, scope: scope }
+    type 'scope var_descr = { name: Name.t, scope: 'scope }
 
-    type ov = var_descr
+    type 'scope ov = 'scope var_descr
+
+    fun newOv scope name = {scope, name}
    
-    fun ovEq ({name, scope}, {name = name', scope = scope'}) =
-        name = name' andalso Scope.eq (scope, scope')
+    fun ovEq scopeEq ({name, scope}, {name = name', scope = scope'}) =
+        name = name' andalso scopeEq (scope, scope')
     
-    val ovName: ov -> Name.t = #name
+    val ovName: 'scope ov -> Name.t = #name
     
-    datatype 't uv_link = Root of { descr: var_descr, typ: 't option ref }
-                        | Link of 't uv
-    withtype 't uv = 't uv_link ref
+    datatype ('scope, 't) uv_link = Root of { descr: 'scope var_descr, typ: 't option ref }
+                                  | Link of ('scope, 't) uv
+    withtype ('scope, 't) uv = ('scope, 't) uv_link ref
+
+    fun newUv scope name = ref (Root {descr = {scope, name}, typ = ref NONE})
    
     fun uvFind uv =
         case !uv
@@ -65,13 +63,13 @@ functor TypeVarsFn(Scope: SCOPE) :> TYPE_VARS = struct
 
     fun uvSet (uv, t) = #typ (uvRoot uv) := SOME t
 
-    fun uvMerge (uv, uv') =
+    fun uvMerge scopeCmp (uv, uv') =
         let val uv = uvFind uv
             val uv' = uvFind uv'
         in case (!uv, !uv')
            of ( Root {descr = {scope, ...}, ...}
               , Root {descr = {scope = scope', ...}, ...} ) =>
-               (case Scope.compare (scope, scope')
+               (case scopeCmp (scope, scope')
                 of LESS => uv := Link uv'
                  | GREATER => uv' := Link uv
                  | EQUAL => uv := Link uv') (* OPTIMIZE: Union by rank here? *)

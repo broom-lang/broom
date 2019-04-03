@@ -96,26 +96,28 @@ end) = struct
          | TypeScope {parent, ...} => !parent
          | ExprScope {parent, ...} => !parent
 
-    structure TypeVars = TypeVarsFn(struct
-        type scope = scope
+    val scopeEq = MLton.eq
 
-        val eq = MLton.eq
+    fun compareScopes (scope, scope') =
+        let fun indexOf ancestor scope =
+                let fun loop i scope =
+                       if scopeEq (scope, ancestor)
+                       then SOME i
+                       else Option.mapPartial (loop (i + 1)) (scopeParent scope)
+                in loop 0 scope
+                end
+        in case indexOf scope' scope
+           of SOME i => if i > 0 then LESS else EQUAL
+            | NONE => (case indexOf scope scope'
+                       of SOME i => if i > 0 then GREATER else EQUAL
+                        | NONE => raise Fail "incomparable scopes")
+        end
 
-        fun compare (scope, scope') =
-            let fun indexOf ancestor scope =
-                    let fun loop i scope =
-                           if eq (scope, ancestor)
-                           then SOME i
-                           else Option.mapPartial (loop (i + 1)) (scopeParent scope)
-                    in loop 0 scope
-                    end
-            in case indexOf scope' scope
-               of SOME i => if i > 0 then LESS else EQUAL
-                | NONE => (case indexOf scope scope'
-                           of SOME i => if i > 0 then GREATER else EQUAL
-                            | NONE => raise Fail "incomparable scopes")
-            end
-    end)
+    type ov = scope TypeVars.ov
+    type uv = (scope, typ) TypeVars.uv
+
+    val ovEq = TypeVars.ovEq scopeEq
+    val uvMerge = TypeVars.uvMerge compareScopes
 end
 
 structure TypecheckingCst = Typechecking(struct
