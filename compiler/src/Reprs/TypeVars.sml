@@ -14,7 +14,8 @@ signature TYPE_VARS = sig
 end
 
 signature SCOPE = sig
-    eqtype scope
+    type scope
+    val eq: scope * scope -> bool
     val compare: scope * scope -> order
 end
 
@@ -27,7 +28,8 @@ functor TypeVarsFn(Scope: SCOPE) :> TYPE_VARS = struct
 
     type ov = var_descr
    
-    val ovEq = op=
+    fun ovEq ({name, scope}, {name = name', scope = scope'}) =
+        name = name' andalso Scope.eq (scope, scope')
     
     val ovName: ov -> Name.t = #name
     

@@ -68,19 +68,19 @@ end) = struct
               | TypeScope of type_scope
               | ExprScope of expr_scope
 
-    and mod_scope = FixModScope of { parent: mod_scope option ref
-                                   , mod: mod ref
-				   , interfaces: interface ref itf_binding bindings
-                                   , mods: (interface ref, mod ref) mod_binding bindings
-	                           , types: typ ref type_binding bindings
-                                   , vals: (typ ref, expr ref) val_binding bindings }
+    withtype mod_scope = { parent: scope option ref
+                         , mod: mod ref
+                         , interfaces: interface ref itf_binding bindings
+                         , mods: (interface ref, mod ref) mod_binding bindings
+                         , types: typ ref type_binding bindings
+                         , vals: (typ ref, expr ref) val_binding bindings }
     
-    withtype interface_scope = { parent: scope option ref
-                               , interface: interface ref
-                               , interfaces: interface ref itf_binding bindings
-                               , mods: (interface ref, mod ref) mod_binding bindings
-                               , types: typ ref type_binding bindings
-                               , vals: (typ ref, expr ref) val_binding bindings }
+    and interface_scope = { parent: scope option ref
+                          , interface: interface ref
+                          , interfaces: interface ref itf_binding bindings
+                          , mods: (interface ref, mod ref) mod_binding bindings
+                          , types: typ ref type_binding bindings
+                          , vals: (typ ref, expr ref) val_binding bindings }
 
     and type_scope = { parent: scope option ref
                      , typ: typ ref
@@ -90,10 +90,31 @@ end) = struct
                      , expr: expr ref
                      , vals: (typ ref, expr ref) val_binding bindings }
     
-    structure TypeVars = TypeVarsFn(struct
-        type scope = scope ref
+    val scopeParent =
+        fn ItfScope {parent, ...} => !parent
+         | ModScope {parent, ...} => !parent
+         | TypeScope {parent, ...} => !parent
+         | ExprScope {parent, ...} => !parent
 
-        fun compare (scope, scope') = raise Fail "unimplemented"
+    structure TypeVars = TypeVarsFn(struct
+        type scope = scope
+
+        val eq = MLton.eq
+
+        fun compare (scope, scope') =
+            let fun indexOf ancestor scope =
+                    let fun loop i scope =
+                           if eq (scope, ancestor)
+                           then SOME i
+                           else Option.mapPartial (loop (i + 1)) (scopeParent scope)
+                    in loop 0 scope
+                    end
+            in case indexOf scope' scope
+               of SOME i => if i > 0 then LESS else EQUAL
+                | NONE => (case indexOf scope scope'
+                           of SOME i => if i > 0 then GREATER else EQUAL
+                            | NONE => raise Fail "incomparable scopes")
+            end
     end)
 end
 
