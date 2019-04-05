@@ -12,7 +12,7 @@ signature MONAD = sig
 end
 
 functor FreerMonad(Impl: FUNCTOR) :> MONAD = struct
-    datatype 'a t = Fix of Impl.t ('a t)
+    datatype 'a t = Fix of 'a t Impl.t
                   | Pure of 'a
     
     val pure = Pure
@@ -27,7 +27,7 @@ functor FreerMonad(Impl: FUNCTOR) :> MONAD = struct
 end
 
 functor Reader(Env: sig type t end) = struct
-    type 'a t = Get of Env.t -> 'a
+    datatype 'a t = Get of Env.t -> 'a
     
     fun map f (Get k) = Get (f o k)
 end
