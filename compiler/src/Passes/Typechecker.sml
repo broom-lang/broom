@@ -188,7 +188,7 @@ end = struct
              ; typRef
             end
          | TC.ScopeType (scope as {typ, ...}) => elaborateType (TC.TypeScope scope) name typ
-         | TC.OutputType typ => typRef
+         | TC.OutputType _ | TC.OVar _ | TC.UVar _ => typRef
 
     fun elaborateExpr scope exprRef =
         case !exprRef
@@ -262,5 +262,10 @@ end = struct
              of FType.ForAll _ => raise Fail "unimplemented"
               | FType.Arrow (_, domains) => domains
               | _ => raise Fail "uncallable")
+         | TC.OVar _ => raise Fail "uncallable"
+         | TC.UVar uv =>
+            (case TypeVars.uvGet uv
+             of Either.Left uv => raise Fail "uniplemented"
+              | Either.Right typ => coerceCallee callee typ)
 end
 

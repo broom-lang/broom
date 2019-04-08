@@ -51,7 +51,7 @@ end) = struct
                  | OutputType of typ ref Output.Type.typ
                  | ScopeType of type_scope
                  | OVar of scope TypeVars.ov
-                 | UVar of (scope, typ) TypeVars.uv
+                 | UVar of (scope, typ ref) TypeVars.uv
     
     and expr = InputExpr of (typ ref, expr ref) Input.Term.expr
              | OutputExpr of (typ ref, expr ref) Output.Term.expr
