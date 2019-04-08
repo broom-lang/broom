@@ -12,6 +12,7 @@ structure Typecheck :> sig
 
     val errorToString: error -> string
 
+    (* Typecheck a program returning either the System F elaborated program or a type error. *)
     val typecheck: Cst.stmt vector -> (error, SemiFAst.Term.stmt vector) Either.t
 end = struct
     structure FTerm = SemiFAst.Term
@@ -52,6 +53,7 @@ end = struct
     val flipY = fn Sub => Super
                  | Super => Sub
 
+    (* Free type variables of a type annotation, ScopedTypeVariables style. *)
     fun annFreeVars tenv =
         fn Type.ForAll (pos, param, body) =>
             withSrcType tenv param (Type.UseT (pos, param)) (fn () =>
@@ -66,6 +68,7 @@ end = struct
             NameSortedSet.union (annFreeVars tenv domain, annFreeVars tenv codomain)
          | Type.Prim _ => NameSortedSet.empty
 
+    (* Substitute away `UseT`:s everywhere in `ann`. *)
     fun hydrate tenv ann =
         let val rec hydr =
                 fn Type.ForAll (pos, param, t) =>
@@ -86,7 +89,8 @@ end = struct
            then t
            else raise TypeError (MalformedType t)
         end
-    
+   
+    (* Pair each free type variable in `anns` with a `UVar`, ScopedTypeVariables style. *)
     fun annsSrcTypes tenv anns =
         let val fvs = Vector.foldl (fn (ann, fvs) =>
                                         NameSortedSet.union (annFreeVars tenv ann, fvs))
@@ -97,6 +101,7 @@ end = struct
         in Vector.mapi (fn (i, fv) => (fv, Type.UVar (pos, Vector.sub (uvs, i)))) fvs
         end
 
+    (* Pre-pass to extract the value names, type annotations and freee type vars in a `let` scope. *)
     fun analyzeStmts tenv stmts =
         let val names = Vector.map (fn Cst.Def (_, name, _, _) => name) stmts
             val annotations = Vector.map (fn Cst.Def (pos, _, maybeAnn, _) =>
@@ -108,11 +113,14 @@ end = struct
         in {names, annotations, srcTypes}
         end
     
+    (* Elaborate a literal constant, also returning its type *)
     fun checkConst pos = fn c as Const.Int _ => (c, Type.Prim (pos, Type.Int))
 
+    (* Typecheck `program`. *)
     fun typecheck program =
         let val tenv = TypeCtx.new ()
 
+            (* Core implementation of `assign` for universal types. *)
             fun assignForSome pos param y uv t =
                 case y
                 of Sub =>
@@ -126,6 +134,7 @@ end = struct
                        end
                    )
 
+            (* Assign a type to a unification variable because they were checked for `Sub`/`Super` relationship. *)
             and assign y uv t =
                 let fun doAssign uv =
                         fn Type.ForAll (pos, param, t') => assignForSome pos param y uv t'
@@ -147,6 +156,8 @@ end = struct
                    else raise TypeError (UvOutOfScope (TypeVars.uvName uv))
                 end
 
+            (* Subtype check AKA `<:`. Returns `option` of a function that will add coercion code
+               to result expression. *)
             fun checkSub (Type.UVar (_, uv)) (Type.UVar (_, uv')) =
                 (case (TypeVars.uvGet uv, TypeVars.uvGet uv')
                  of (Either.Left uv, Either.Left uv') =>
@@ -217,6 +228,7 @@ end = struct
               | checkSub t t' =
                 raise TypeError (TypeMismatch (t, t'))
 
+            (* Elaborate expression, returning the System F expression and type. *)
             fun check (Cst.Fn (pos, param, maybeAnn, body)) =
                 let val ann = case maybeAnn
                               of SOME ann => ann
@@ -264,6 +276,7 @@ end = struct
                 in (FTerm.Const (pos, c), t)
                 end
 
+            (* Elaborate expression to System F and instead of computing the type, validate against the given one. *)
             and checkAs (Type.ForAll (pos, param, t)) expr =
                 withOv tenv param (fn ov =>
                     let val body = checkAs (Type.substitute (param, Type.OVar (pos, ov)) t) expr
@@ -294,6 +307,8 @@ end = struct
                 in coercion expr'
                 end
 
+            (* Further elaborate System F expr with given type so that it can be called, returning
+               domain and codomain types. *)
             and coerceCallee (callee, t) =
                 (case t
                  of Type.ForAll (pos, param, t') =>
@@ -312,12 +327,14 @@ end = struct
                   | Type.Arrow (_, arr) => (callee, arr)
                   | _ => raise TypeError (Uncallable (callee, t)))
 
+            (* Elaborate a statement. *)
             and checkStmt (Cst.Def (pos, name, _, expr)) =
                 let val typ = valOf (TypeCtx.findValType tenv name)
                     val expr' = checkAs typ expr
                 in FTerm.Def (pos, {name, typ}, expr')
                 end
 
+            (* Elaborate top level statements. *)
             and checkStmts stmts =
                 let val {names, annotations, srcTypes} = analyzeStmts tenv stmts
                 in withSrcTypes tenv srcTypes (fn () =>
