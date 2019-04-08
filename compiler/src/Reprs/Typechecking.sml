@@ -50,6 +50,8 @@ end) = struct
     datatype typ = InputType of typ ref Input.Type.typ
                  | OutputType of typ ref Output.Type.typ
                  | ScopeType of type_scope
+                 | OVar of scope TypeVars.ov
+                 | UVar of (scope, typ) TypeVars.uv
     
     and expr = InputExpr of (typ ref, expr ref) Input.Term.expr
              | OutputExpr of (typ ref, expr ref) Output.Term.expr
@@ -112,9 +114,6 @@ end) = struct
                        of SOME i => if i > 0 then GREATER else EQUAL
                         | NONE => raise Fail "incomparable scopes")
         end
-
-    type ov = scope TypeVars.ov
-    type uv = (scope, typ) TypeVars.uv
 
     val ovEq = TypeVars.ovEq scopeEq
     val uvMerge = TypeVars.uvMerge compareScopes
