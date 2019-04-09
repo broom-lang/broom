@@ -236,7 +236,7 @@ end = struct
 
     and elaborateExprAs scope typRef exprRef =
         case (!typRef, !exprRef)
-        of (TC.InputType t, TC.InputExpr expr) =>
+        of (TC.OutputType t, TC.InputExpr expr) =>
             (case (t, expr)
              of (FType.ForAll _, expr) => raise Fail "unimplemented"
               | (FType.Arrow _, CTerm.Fn _) => raise Fail "unimplemented"
@@ -249,6 +249,11 @@ end = struct
          | (_, TC.OutputExpr expr) =>
             (* Assumes invariant: the whole subtree has been elaborated already. *)
             ignore (fExprType expr)
+         | (TC.OVar _ | TC.UVar _, TC.InputExpr _) =>
+            let val t' = elaborateExpr scope exprRef
+                val coercion = getOpt (subType (t', typRef), ignore)
+            in coercion exprRef
+            end
 
     and elaborateStmt scope =
         fn CTerm.Val (pos, name, SOME annTypeRef, exprRef) =>
