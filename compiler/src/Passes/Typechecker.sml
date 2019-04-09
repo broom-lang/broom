@@ -194,7 +194,16 @@ end = struct
         case !exprRef
         of TC.InputExpr expr =>
             (case expr
-             of CTerm.Let (pos, stmts, body) =>
+             of CTerm.Fn (pos, param, _, body) =>
+                 let val domain = case lookupType param scope
+                                  of SOME domain => domain
+                                   | NONE => raise Fail ("unbound variable: " ^ Name.toString param)
+                     val codomain = ref (TC.UVar (TypeVars.freshUv (valOf (TC.scopeParent scope))))
+                 in elaborateExprAs scope codomain body
+                  ; exprRef := TC.OutputExpr (FTerm.Fn (pos, {var = param, typ = domain}, body))
+                  ; ref (TC.OutputType (FType.Arrow (pos, {domain, codomain})))
+                 end
+              | CTerm.Let (pos, stmts, body) =>
                  let val stmts = Vector.map (elaborateStmt scope) stmts
                      val typ = elaborateExpr scope body
                  in exprRef := TC.OutputExpr (FTerm.Let (pos, stmts, body))

@@ -8,6 +8,7 @@ signature TYPE_VARS = sig
 
     type ('scope, 't) uv
     val newUv: 'scope -> Name.t -> ('scope, 't)  uv
+    val freshUv: 'scope -> ('scope, 't) uv
     val uvEq: ('scope, 't) uv * ('scope, 't) uv -> bool
     val uvName: ('scope, 't) uv -> Name.t
     val uvGet: ('scope, 't) uv -> (('scope, 't) uv, 't) Either.t
@@ -34,6 +35,8 @@ structure TypeVars :> TYPE_VARS = struct
     withtype ('scope, 't) uv = ('scope, 't) uv_link ref
 
     fun newUv scope name = ref (Root {descr = {scope, name}, typ = ref NONE})
+
+    fun freshUv scope = newUv scope (Name.fresh ())
    
     fun uvFind uv =
         case !uv
