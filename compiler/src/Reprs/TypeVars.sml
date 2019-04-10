@@ -5,12 +5,14 @@ signature TYPE_VARS = sig
     val newOv: 'scope -> Name.t -> 'scope ov
     val ovEq: ('scope * 'scope -> bool) -> 'scope ov * 'scope ov -> bool
     val ovName: 'scope ov -> Name.t
+    val ovInScope: ('scope * 'scope -> order) -> ('scope * 'scope ov) -> bool
 
     type ('scope, 't) uv
     val newUv: 'scope -> Name.t -> ('scope, 't)  uv
     val freshUv: 'scope -> ('scope, 't) uv
     val uvEq: ('scope, 't) uv * ('scope, 't) uv -> bool
     val uvName: ('scope, 't) uv -> Name.t
+    val uvInScope: ('scope * 'scope -> order) -> ('scope * ('scope, 'ti) uv) -> bool
     val uvGet: ('scope, 't) uv -> (('scope, 't) uv, 't) Either.t
     val uvSet: ('scope, 't) uv * 't -> unit
     val uvMerge: ('scope * 'scope -> order) -> ('scope, 't) uv * ('scope, 't) uv -> unit
@@ -29,6 +31,11 @@ structure TypeVars :> TYPE_VARS = struct
         name = name' andalso scopeEq (scope, scope')
     
     val ovName: 'scope ov -> Name.t = #name
+
+    fun ovInScope scopeCmp (scope, ov: 'scope ov) =
+        case scopeCmp (#scope ov, scope)
+        of GREATER | EQUAL => true
+         | LESS => false
     
     datatype ('scope, 't) uv_link = Root of { descr: 'scope var_descr, typ: 't option ref }
                                   | Link of ('scope, 't) uv
@@ -53,7 +60,12 @@ structure TypeVars :> TYPE_VARS = struct
         of Root root => root
          | _ => raise Fail "unreachable"
    
-    fun uvName uv = #name (#descr (uvRoot uv)) 
+    fun uvName uv = #name (#descr (uvRoot uv))
+
+    fun uvInScope scopeCmp (scope, uv) =
+        case scopeCmp (#scope (#descr (uvRoot uv)), scope)
+        of GREATER | EQUAL => true
+         | LESS => false
 
     fun uvGet uv =
         let val uv = uvFind uv

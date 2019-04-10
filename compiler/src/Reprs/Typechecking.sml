@@ -116,7 +116,9 @@ end) = struct
         end
 
     val ovEq = TypeVars.ovEq scopeEq
+    val ovInScope = TypeVars.ovInScope compareScopes
     val uvMerge = TypeVars.uvMerge compareScopes
+    val uvInScope = TypeVars.uvInScope compareScopes
 end
 
 structure TypecheckingCst = Typechecking(struct

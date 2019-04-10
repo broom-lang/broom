@@ -139,12 +139,38 @@ end = struct
 
 (***)
 
-    fun subType (typRef, superTypRef) =
+    datatype lattice_y = Sub | Super
+
+    fun assign scope (y, uv, t) =
+        let fun doAssign (uv, t) = raise Fail "unimplemented"
+        in if TC.uvInScope (scope, uv)
+           then if raise Fail "unimplemented" (* TODO: occurs check *)
+                then raise Fail "Occurs check"
+                else doAssign (uv, t)
+           else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv))
+        end
+
+    fun subType scope (typRef, superTypRef) =
         case (!typRef, !superTypRef)
-        of (TC.OutputType (FType.Prim (_, pl)), TC.OutputType (FType.Prim (_, pr))) =>
-            if pl = pr
-            then NONE
-            else raise Fail "<:"
+        of (TC.OutputType t, TC.OutputType t') =>
+            (case (t, t')
+             of (FType.Prim (_, pl), FType.Prim (_, pr)) =>
+                 if pl = pr
+                 then NONE
+                 else raise Fail "<:")
+         | (TC.UVar uv, TC.UVar uv') =>
+            (case (TypeVars.uvGet uv, TypeVars.uvGet uv')
+             of (Either.Left uv, Either.Left uv') =>
+                 if TC.uvInScope (scope, uv)
+                 then if TC.uvInScope (scope, uv')
+                      then if TypeVars.uvEq (uv, uv')
+                           then NONE
+                           else ( TC.uvMerge (uv, uv'); NONE )
+                      else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
+                 else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
+              | (Either.Left uv, Either.Right t) => ( assign scope (Sub, uv, t); NONE )
+              | (Either.Right t, Either.Left uv) => ( assign scope (Super, uv, t); NONE )
+              | (Either.Right t, Either.Right t') => subType scope (t, t'))
 
     local
         fun unfixExpr exprRef =
@@ -242,7 +268,7 @@ end = struct
               | (FType.Arrow _, CTerm.Fn _) => raise Fail "unimplemented"
               | (_, _) =>
                  let val t' = elaborateExpr scope exprRef
-                     val coercion = getOpt (subType (t', typRef), ignore)
+                     val coercion = getOpt (subType scope (t', typRef), ignore)
                  in coercion exprRef
                  end)
          | (_, TC.ScopeExpr (scope as {expr, ...})) => ignore (elaborateExpr (TC.ExprScope scope) expr)
@@ -251,7 +277,7 @@ end = struct
             ignore (fExprType expr)
          | (TC.OVar _ | TC.UVar _, TC.InputExpr _) =>
             let val t' = elaborateExpr scope exprRef
-                val coercion = getOpt (subType (t', typRef), ignore)
+                val coercion = getOpt (subType scope (t', typRef), ignore)
             in coercion exprRef
             end
 
@@ -259,7 +285,7 @@ end = struct
         fn CTerm.Val (pos, name, SOME annTypeRef, exprRef) =>
             let val exprType = elaborateExpr scope exprRef
                 val annType = elaborateType scope name annTypeRef
-                val coercion = getOpt (subType (exprType, annType), ignore)
+                val coercion = getOpt (subType scope (exprType, annType), ignore)
             in coercion exprRef
              ; FTerm.Val (pos, {var = name, typ = annTypeRef}, exprRef)
             end
