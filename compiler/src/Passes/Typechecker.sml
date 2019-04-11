@@ -142,7 +142,16 @@ end = struct
     datatype lattice_y = Sub | Super
 
     fun assign scope (y, uv, t) =
-        let fun doAssign (uv, t) = raise Fail "unimplemented"
+        let fun doAssign (uv, typRef) =
+                case !typRef
+                of TC.InputType _ => raise Fail "unreachable"
+                 | TC.OutputType t =>
+                    (case t
+                     of FType.Prim _ => TypeVars.uvSet (uv, typRef))
+                 | TC.UVar uv' => (case TypeVars.uvGet uv'
+                                   of Either.Left uv' => TC.uvMerge (uv, uv')
+                                    | Either.Right t => doAssign (uv, t))
+                 | TC.OVar _ => TypeVars.uvSet (uv, typRef)
         in if TC.uvInScope (scope, uv)
            then if TC.occurs uv t
                 then raise Fail "Occurs check"
