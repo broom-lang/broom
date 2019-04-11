@@ -144,7 +144,7 @@ end = struct
     fun assign scope (y, uv, t) =
         let fun doAssign (uv, t) = raise Fail "unimplemented"
         in if TC.uvInScope (scope, uv)
-           then if raise Fail "unimplemented" (* TODO: occurs check *)
+           then if TC.occurs uv t
                 then raise Fail "Occurs check"
                 else doAssign (uv, t)
            else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv))

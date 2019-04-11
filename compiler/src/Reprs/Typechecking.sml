@@ -2,6 +2,8 @@ signature TYPECHECKER_OUTPUT = sig
     structure Type: sig
         type kind
         type 'typ typ
+
+        val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> 'typ typ -> 'a
     end
 
     structure Term: sig
@@ -91,7 +93,19 @@ end) = struct
     and expr_scope = { parent: scope option ref
                      , expr: expr ref
                      , vals: (typ ref, expr ref) val_binding bindings }
-    
+
+    fun occurs uv =
+        let fun occStep (t, acc) = acc orelse occ t
+            and occ typRef =
+                case !typRef
+                of InputType t => Input.Type.shallowFoldl occStep false t
+                 | OutputType t => Output.Type.shallowFoldl occStep false t
+                 | ScopeType {typ, ...} => occ typ
+                 | OVar _ => false
+                 | UVar uv' => TypeVars.uvEq (uv, uv')
+        in occ
+        end
+
     val scopeParent =
         fn ItfScope {parent, ...} => !parent
          | ModScope {parent, ...} => !parent

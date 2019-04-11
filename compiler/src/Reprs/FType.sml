@@ -30,6 +30,11 @@ end) = struct
             toString domain ^ " -> " ^ toString codomain
          | UseT (_, def) => defToString def 
          | Prim (_, p) => primToString p
+
+    fun shallowFoldl f acc =
+        fn ForAll (_, _, t) => f (t, acc)
+         | Arrow (_, {domain, codomain}) => f (codomain, f (domain, acc))
+         | UseT _ | Prim _ => acc
 end
 
 structure NameFType = FType(Name)
