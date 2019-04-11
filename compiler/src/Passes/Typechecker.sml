@@ -171,6 +171,14 @@ end = struct
               | (Either.Left uv, Either.Right t) => ( assign scope (Sub, uv, t); NONE )
               | (Either.Right t, Either.Left uv) => ( assign scope (Super, uv, t); NONE )
               | (Either.Right t, Either.Right t') => subType scope (t, t'))
+         | (TC.UVar uv, _) =>
+            (case TypeVars.uvGet uv
+             of Either.Left uv => ( assign scope (Sub, uv, superTypRef); NONE )
+              | Either.Right t => subType scope (t, superTypRef))
+         | (_, TC.UVar uv) =>
+            (case TypeVars.uvGet uv
+             of Either.Left uv => ( assign scope (Super, uv, typRef); NONE )
+              | Either.Right t => subType scope (typRef, t))
 
     local
         fun unfixExpr exprRef =
