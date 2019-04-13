@@ -215,22 +215,29 @@ end = struct
              of SOME {shade, binder} =>
                  (case !shade
                   of TC.Black => SOME (#typ binder)
-                   | TC.White => SOME (elaborateType scope name (#typ binder))
+                   | TC.White => SOME (elaborateValType scope name (#typ binder))
                    | TC.Grey =>
                       raise Fail ("lookupType cycle at " ^ Name.toString name))
               | NONE => Option.mapPartial (lookupType name) (!parent))
 
-    and elaborateType scope name typRef =
+    and elaborateType scope typRef =
+        let val typ = case !typRef 
+                      of TC.InputType (CType.Arrow (pos, {domain, codomain})) =>
+                          FType.Arrow (pos, { domain = elaborateType scope domain
+                                            , codomain = elaborateType scope codomain })
+                       | TC.InputType (CType.Prim (pos, p)) => FType.Prim (pos, p)
+        in typRef := TC.OutputType typ
+         ; typRef
+        end
+
+    and elaborateValType scope name typRef =
         case !typRef
         of TC.InputType typ =>
-            let do valShadeRef name scope := TC.Grey
-                val typ = case typ
-                          of CType.Prim (pos, p) => FType.Prim (pos, p)
-            in typRef := TC.OutputType typ
-             ; valShadeRef name scope := TC.Black
-             ; typRef
-            end
-         | TC.ScopeType (scope as {typ, ...}) => elaborateType (TC.TypeScope scope) name typ
+            ( valShadeRef name scope := TC.Grey
+            ; elaborateType scope typRef
+            ; valShadeRef name scope := TC.Black
+            ; typRef )
+         | TC.ScopeType (scope as {typ, ...}) => elaborateValType (TC.TypeScope scope) name typ
          | TC.OutputType _ | TC.OVar _ | TC.UVar _ => typRef
 
     fun elaborateExpr scope exprRef =
@@ -259,7 +266,7 @@ end = struct
                   ; codomain
                  end
               | CTerm.Ann (pos, expr, t) =>
-                 ( elaborateExprAs scope t expr
+                 ( elaborateExprAs scope (elaborateType scope t) expr
                  ; t )
               | CTerm.Use (pos, name) =>
                  let val typRef = case lookupType name scope
@@ -301,7 +308,7 @@ end = struct
     and elaborateStmt scope =
         fn CTerm.Val (pos, name, SOME annTypeRef, exprRef) =>
             let val exprType = elaborateExpr scope exprRef
-                val annType = elaborateType scope name annTypeRef
+                val annType = elaborateValType scope name annTypeRef
                 val coercion = getOpt (subType scope (exprType, annType), ignore)
             in coercion exprRef
              ; FTerm.Val (pos, {var = name, typ = annTypeRef}, exprRef)
