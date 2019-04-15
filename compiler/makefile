@@ -19,6 +19,14 @@ src/Parser/parser.y.sml: src/Parser/parser.y
 src/Parser/parser.y.sig: src/Parser/parser.y
 	mlyacc $^
 
+.PHONY: itest
+itest: $(addsuffix .test, $(basename $(wildcard test/integration/*.ml)))
+
+.PHONY: %.itest
+%.test: %.ml dev
+	./$(BROOMC) <$< | diff /dev/null -
+
 .PHONY: clean
 clean:
 	rm -rf src/Parser/lexer.x.sml src/Parser/parser.y.* $(BROOMC)
+
