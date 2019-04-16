@@ -26,7 +26,7 @@ itest: $(addsuffix .test, $(basename $(wildcard test/integration/*.ml)))
 
 .PHONY: %.itest
 %.test: %.ml $(BROOMC)
-	./$(BROOMC) <$< | diff /dev/null -
+	./$(BROOMC) <$< 2>&1 | diff /dev/null -
 
 .PHONY: clean
 clean:
