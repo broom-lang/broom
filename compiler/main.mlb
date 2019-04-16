@@ -10,26 +10,18 @@ local
     ann "warnUnused true"
     in ann "allowSuccessorML true"
        in
-           src/Reprs/Pos.sml
            src/Reprs/Name.sml
-           src/Reprs/TypeVars.sml
-           src/Reprs/ValTypes.sml
-           src/Reprs/TypeCtx.sml
-           src/Reprs/Type.sml
+           src/Reprs/Pos.sml
+           src/Reprs/FType.sml 
            src/Reprs/Const.sml
-           src/Reprs/Scope.sml
            src/Reprs/Cst.sml
- 
+
            src/Reprs/FAst.sml
-
-           src/Passes/Typecheck.sml
-
-           src/Passes/TypecheckFAst.sml
-           src/Passes/TypesToF.sml
-
-           src/Reprs/CPS.sml
-
-           src/Passes/CPSConvert.sml
+           
+           src/Reprs/TypeVars.sml           
+           src/Reprs/TypeVars.sml
+           src/Reprs/Typechecking.sml
+           src/Passes/Typechecker.sml
        end
     end
 
@@ -37,8 +29,9 @@ local
         src/Parser/parser.y.sig
         src/Parser/parser.y.sml
         src/Parser/lexer.x.sml
-    in
-        src/Parser/parser.sml
+    in ann "allowSuccessorML true"
+       in src/Parser/parser.sml
+       end
     end
 in
     src/main.sml
