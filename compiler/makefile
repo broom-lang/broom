@@ -22,7 +22,11 @@ src/Parser/parser.y.sig: src/Parser/parser.y
 	mlyacc $^
 
 .PHONY: itest
-itest: $(addsuffix .test, $(basename $(wildcard test/integration/*.ml)))
+itest: itests
+	@echo "All integration tests succeeded."
+
+.PHONY: itests
+itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.ml)))
 
 .PHONY: %.itest
 %.test: %.ml $(BROOMC)
