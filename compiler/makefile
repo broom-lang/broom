@@ -28,7 +28,7 @@ itest: itests
 .PHONY: itests
 itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.ml)))
 
-.PHONY: %.itest
+.PHONY: %.test
 %.test: %.ml $(BROOMC)
 	@expected_err=$(addsuffix .err, $(basename $<)); \
 	if [ -f $$expected_err ]; then \
