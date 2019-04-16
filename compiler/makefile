@@ -1,7 +1,9 @@
 BROOMC = broomc
 
 .PHONY: dev
-dev: src/Parser/lexer.x.sml src/Parser/parser.y.sml src/Parser/parser.y.sig \
+dev: $(BROOMC)
+
+$(BROOMC): src/Parser/lexer.x.sml src/Parser/parser.y.sml src/Parser/parser.y.sig \
       $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
 	mlton -const 'Exn.keepHistory true' -output $(BROOMC) main.mlb
 
@@ -23,7 +25,7 @@ src/Parser/parser.y.sig: src/Parser/parser.y
 itest: $(addsuffix .test, $(basename $(wildcard test/integration/*.ml)))
 
 .PHONY: %.itest
-%.test: %.ml dev
+%.test: %.ml $(BROOMC)
 	./$(BROOMC) <$< | diff /dev/null -
 
 .PHONY: clean
