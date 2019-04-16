@@ -30,7 +30,12 @@ itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.ml)))
 
 .PHONY: %.itest
 %.test: %.ml $(BROOMC)
-	./$(BROOMC) <$< 2>&1 | diff /dev/null -
+	@expected_err=$(addsuffix .err, $(basename $<)); \
+	if [ -f $$expected_err ]; then \
+          ./$(BROOMC) <$< 2>&1 >/dev/null | diff $$expected_err -; \
+        else \
+	  ./$(BROOMC) <$< 2>&1 | diff /dev/null -; \
+        fi
 
 .PHONY: clean
 clean:
