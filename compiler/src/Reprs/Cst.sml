@@ -14,6 +14,14 @@ structure Cst = struct
             | Use of Pos.t * Name.t
             | Const of Pos.t * Const.t
 
+        val exprPos =
+            fn Fn (pos, _, _, _) => pos
+             | Let (pos, _, _) => pos
+             | App (pos, _) => pos
+             | Ann (pos, _, _) => pos
+             | Use (pos, _) => pos
+             | Const (pos, _) => pos
+
         fun stmtToString typeToString exprToString =
             fn Val (_, name, maybeAnn, valExpr) =>
                 "val " ^ Name.toString name ^

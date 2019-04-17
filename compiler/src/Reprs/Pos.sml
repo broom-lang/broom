@@ -19,5 +19,6 @@ end = struct
     fun next {file, index, line, col} c =
         {file = file, index = index + 1, line = nextLine line c, col = nextCol col c}
 
-    fun toString {file, index, line, col} = Int.toString line ^ ":" ^ Int.toString col
+    fun toString {file, index, line, col} =
+        file ^ " at " ^ Int.toString line ^ ":" ^ Int.toString col
 end

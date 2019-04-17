@@ -15,6 +15,15 @@ structure FAst = struct
         and ('typ, 'expr) stmt = Val of Pos.t * 'typ def * 'expr
                                | Expr of 'expr
 
+        val exprPos =
+            fn Fn (pos, _, _) => pos
+             | TFn (pos, _, _) => pos
+             | App (pos, _, _) => pos
+             | TApp (pos, _, _) => pos
+             | Let (pos, _, _) => pos
+             | Use (pos, _) => pos
+             | Const (pos, _) => pos
+
        fun defToString typeToString {var, typ} = Name.toString var ^ ": " ^ typeToString typ
 
        fun stmtToString typeToString exprToString =

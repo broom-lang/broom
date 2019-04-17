@@ -1,4 +1,9 @@
 structure Typechecker :> sig
+    datatype type_error = UnCallable of TypecheckingCst.expr * TypecheckingCst.typ
+    exception TypeError of type_error
+
+    val typeErrorToString: type_error -> string
+
     val stmtBind: (TypecheckingCst.typ ref, TypecheckingCst.expr ref) TypecheckingCst.val_binding TypecheckingCst.bindings
                   -> (TypecheckingCst.typ ref, TypecheckingCst.expr ref) Cst.Term.stmt -> unit
     val injectType: FixedCst.Type.typ -> TypecheckingCst.typ ref
@@ -22,6 +27,18 @@ end = struct
     structure TC = TypecheckingCst
     structure FTerm = FAst.Term
     structure FType = FAst.Type
+
+    datatype type_error = UnCallable of TypecheckingCst.expr * TypecheckingCst.typ
+    exception TypeError of type_error
+
+    fun typeErrorToString err =
+        let val (pos, details) = case err
+                                 of UnCallable (expr, typ) =>
+                                     ( TC.exprPos expr
+                                     , "Value " ^ TC.exprToString expr
+                                           ^ " of type " ^ TC.typeToString typ ^ " can not be called" )
+        in "TypeError in " ^ Pos.toString pos ^ ": " ^ details
+        end
 
     fun typeScope typ =
         fn CType.ForAll (pos, def as {var, kind}, _) =>
@@ -325,8 +342,8 @@ end = struct
             (case typ
              of FType.ForAll _ => raise Fail "unimplemented"
               | FType.Arrow (_, domains) => domains
-              | _ => raise Fail "uncallable")
-         | TC.OVar _ => raise Fail "uncallable"
+              | _ => raise TypeError (UnCallable (!callee, !typRef)))
+         | TC.OVar _ => raise TypeError (UnCallable (!callee, !typRef))
          | TC.UVar uv =>
             (case TypeVars.uvGet uv
              of Either.Left uv => raise Fail "uniplemented"

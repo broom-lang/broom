@@ -48,6 +48,8 @@ end = struct
                  then ()
                  else loop lexer
               end
+              handle Typechecker.TypeError err =>
+                      TextIO.output (TextIO.stdErr, Typechecker.typeErrorToString err ^ ".\n")
        in loop lexer
       end
 end
