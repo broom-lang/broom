@@ -23,7 +23,7 @@ src/Parser/parser.y.sig: src/Parser/parser.y
 
 .PHONY: itest
 itest: itests
-	@echo "All integration tests succeeded."
+	@echo "All integration tests passed."
 
 .PHONY: itests
 itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.ml)))
@@ -32,9 +32,9 @@ itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.ml)))
 %.test: %.ml $(BROOMC)
 	@expected_err=$(addsuffix .err, $(basename $<)); \
 	if [ -f $$expected_err ]; then \
-          ./$(BROOMC) <$< 2>&1 >/dev/null | diff $$expected_err -; \
+          ./$(BROOMC) $< 2>&1 >/dev/null | diff $$expected_err -; \
         else \
-	  ./$(BROOMC) <$< 2>&1 | diff /dev/null -; \
+	  ./$(BROOMC) $< 2>&1 | diff /dev/null -; \
         fi
 
 .PHONY: clean

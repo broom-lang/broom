@@ -1,6 +1,6 @@
 structure Parser : sig
-    type input = {instream: TextIO.instream, name: string}
-    val parse : bool -> input -> unit
+    type config = {debug: bool, instream: TextIO.instream, name: string}
+    val parse : config -> unit
 end = struct
   structure BroomLrVals = BroomLrValsFun(structure Token = LrParser.Token)
 
@@ -13,7 +13,7 @@ end = struct
   structure CTerm = Cst.Term
   structure TC = TypecheckingCst
 
-  fun logger debugLog str = if debugLog then TextIO.output(TextIO.stdOut, str) else ()
+  fun logger debug str = if debug then TextIO.output(TextIO.stdOut, str) else ()
 
   fun invoke lexstream =
       let fun print_error (s, i, _) =
@@ -22,10 +22,10 @@ end = struct
       in  BroomParser.parse(0, lexstream, print_error, ())
       end
 
-  type input = {instream: TextIO.instream, name: string}
+  type config = {debug: bool, instream: TextIO.instream, name: string}
 
-  fun parse debugLog {instream, name} =
-      let val log = logger debugLog
+  fun parse {debug, instream, name} =
+      let val log = logger debug
           val lexer = BroomParser.makeLexer (fn _ => (case TextIO.inputLine instream
                                                       of SOME s => s
                                                        | _ => ""))
