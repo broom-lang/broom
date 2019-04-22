@@ -1,5 +1,6 @@
 structure Parser : sig
-    val parse : bool -> unit
+    type input = {instream: TextIO.instream, name: string}
+    val parse : bool -> input -> unit
 end = struct
   structure BroomLrVals = BroomLrValsFun(structure Token = LrParser.Token)
 
@@ -21,20 +22,22 @@ end = struct
       in  BroomParser.parse(0, lexstream, print_error, ())
       end
 
-  fun parse debugLog =
+  type input = {instream: TextIO.instream, name: string}
+
+  fun parse debugLog {instream, name} =
       let val log = logger debugLog
-          val lexer = BroomParser.makeLexer (fn _ => (case TextIO.inputLine TextIO.stdIn
+          val lexer = BroomParser.makeLexer (fn _ => (case TextIO.inputLine instream
                                                       of SOME s => s
                                                        | _ => ""))
-                                            (Pos.default "<stdin>")
-          val dummyEOF = BroomLrVals.Tokens.EOF(Pos.default "<stdin>", Pos.default "<stdin>")
+                                            (Pos.default name)
+          val dummyEOF = BroomLrVals.Tokens.EOF(Pos.default name, Pos.default name)
           fun loop lexer =
               let val (program,lexer) = invoke lexer
                   val (nextToken,lexer) = BroomParser.Stream.get lexer
                   val _ = Vector.app (fn stmt => log (FixedCst.Term.stmtToString stmt ^ "\n"))
                                      program
                   val _ = log "===\n"
-                  val pos = Pos.default "<stdin>"
+                  val pos = Pos.default name
                   val stmts = Vector.map Typechecker.injectStmt program
                   val vals = NameHashTable.mkTable (0, Subscript)
                   val _ = Vector.app (Typechecker.stmtBind vals) stmts
