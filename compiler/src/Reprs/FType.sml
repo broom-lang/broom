@@ -31,6 +31,12 @@ end) = struct
          | UseT (_, def) => defToString def 
          | Prim (_, p) => primToString p
 
+    val pos =
+        fn ForAll (pos, _, _) => pos
+         | Arrow (pos, _) => pos
+         | UseT (pos, _) => pos
+         | Prim (pos, _) => pos
+
     fun shallowFoldl f acc =
         fn ForAll (_, _, t) => f (t, acc)
          | Arrow (_, {domain, codomain}) => f (codomain, f (domain, acc))

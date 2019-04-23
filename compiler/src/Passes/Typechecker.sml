@@ -1,5 +1,6 @@
 structure Typechecker :> sig
     datatype type_error = UnCallable of TypecheckingCst.expr * TypecheckingCst.typ
+                        | UnboundVal of Pos.t * Name.t
     exception TypeError of type_error
 
     val typeErrorToString: type_error -> string
@@ -29,6 +30,7 @@ end = struct
     structure FType = FAst.Type
 
     datatype type_error = UnCallable of TypecheckingCst.expr * TypecheckingCst.typ
+                        | UnboundVal of Pos.t * Name.t
     exception TypeError of type_error
 
     fun typeErrorToString err =
@@ -37,6 +39,7 @@ end = struct
                                      ( TC.exprPos expr
                                      , "Value " ^ TC.exprToString expr
                                            ^ " of type " ^ TC.typeToString typ ^ " can not be called" )
+                                  | UnboundVal (pos, name) => (pos, "Unbound variable " ^ Name.toString name)
         in "TypeError in " ^ Pos.toString pos ^ ": " ^ details
         end
 
@@ -216,14 +219,14 @@ end = struct
         val fExprType = FTerm.typeOf (ref o TC.OutputType) unfixExpr
     end
 
-    fun valShadeRef name =
+    fun valShadeRef pos name =
         fn TC.ExprScope {vals, parent, ...} =>
             (case NameHashTable.find vals name
              of SOME {shade, ...} => shade
               | NONE =>
-                 (case Option.map (valShadeRef name) (!parent)
+                 (case Option.map (valShadeRef pos name) (!parent)
                   of SOME shade => shade
-                   | NONE => raise Fail ("valShadeRef: unbound " ^ Name.toString name)))
+                   | NONE => raise TypeError (UnboundVal (pos, name))))
 
     fun lookupType name scope =
         case scope
@@ -250,10 +253,12 @@ end = struct
     and elaborateValType scope name typRef =
         case !typRef
         of TC.InputType typ =>
-            ( valShadeRef name scope := TC.Grey
-            ; elaborateType scope typRef
-            ; valShadeRef name scope := TC.Black
-            ; typRef )
+            let val pos = CType.pos typ
+            in valShadeRef pos name scope := TC.Grey
+             ; elaborateType scope typRef
+             ; valShadeRef pos name scope := TC.Black
+             ; typRef
+            end
          | TC.ScopeType (scope as {typ, ...}) => elaborateValType (TC.TypeScope scope) name typ
          | TC.OutputType _ | TC.OVar _ | TC.UVar _ => typRef
 
@@ -264,7 +269,7 @@ end = struct
              of CTerm.Fn (pos, param, _, body) =>
                  let val domain = case lookupType param scope
                                   of SOME domain => domain
-                                   | NONE => raise Fail ("unbound variable: " ^ Name.toString param)
+                                   | NONE => raise TypeError (UnboundVal (pos, param))
                      val codomain = ref (TC.UVar (TypeVars.freshUv (valOf (TC.scopeParent scope))))
                  in elaborateExprAs scope codomain body
                   ; exprRef := TC.OutputExpr (FTerm.Fn (pos, {var = param, typ = domain}, body))
@@ -288,7 +293,7 @@ end = struct
               | CTerm.Use (pos, name) =>
                  let val typRef = case lookupType name scope
                                   of SOME typRef => typRef
-                                   | NONE => raise Fail ("unbound variable: " ^ Name.toString name)
+                                   | NONE => raise TypeError (UnboundVal (pos, name))
                      val def = { var = name, typ = typRef }
                  in exprRef := TC.OutputExpr (FTerm.Use (pos, def))
                   ; typRef
@@ -346,7 +351,7 @@ end = struct
          | TC.OVar _ => raise TypeError (UnCallable (!callee, !typRef))
          | TC.UVar uv =>
             (case TypeVars.uvGet uv
-             of Either.Left uv => raise Fail "uniplemented"
+             of Either.Left uv => raise Fail "unimplemented"
               | Either.Right typ => coerceCallee callee typ)
 end
 

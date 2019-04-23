@@ -1,0 +1,2 @@
+val foo: Int = fnord
+
