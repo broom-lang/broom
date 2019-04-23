@@ -1,0 +1,1 @@
+TypeError in test/integration/occurs.ml at 1:11: Occurs check: unifying t with Int -> t would create infinite type.
