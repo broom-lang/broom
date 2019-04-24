@@ -161,13 +161,25 @@ end = struct
 
     datatype lattice_y = Sub | Super
 
+    val flipY = fn Sub => Super
+                 | Super => Sub
+
     fun assign scope (y, uv, t) =
         let fun doAssign (uv, typRef) =
                 case !typRef
                 of TC.InputType _ => raise Fail "unreachable"
                  | TC.OutputType t =>
                     (case t
-                     of FType.Prim _ => TypeVars.uvSet (uv, typRef))
+                     of FType.Arrow (pos, {domain, codomain}) =>
+                         let val domainUv = TypeVars.freshUv scope
+                             val codomainUv = TypeVars.freshUv scope
+                             val t' = FType.Arrow (pos, { domain = ref (TC.UVar domainUv)
+                                                        , codomain = ref (TC.UVar codomainUv)})
+                         in TypeVars.uvSet (uv, ref (TC.OutputType t'))
+                          ; assign scope (flipY y, domainUv, domain)
+                          ; assign scope (y, codomainUv, codomain)
+                         end
+                      | FType.Prim _ => TypeVars.uvSet (uv, typRef))
                  | TC.UVar uv' => (case TypeVars.uvGet uv'
                                    of Either.Left uv' => TC.uvMerge (uv, uv')
                                     | Either.Right t => doAssign (uv, t))
