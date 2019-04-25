@@ -81,14 +81,14 @@ end) = struct
                          , interfaces: interface ref itf_binding bindings
                          , mods: (interface ref, mod ref) mod_binding bindings
                          , types: typ ref type_binding bindings
-                         , vals: (typ ref, expr ref) val_binding bindings }
+                         , vals: (typ option ref, expr ref) val_binding bindings }
     
     and interface_scope = { parent: scope option ref
                           , interface: interface ref
                           , interfaces: interface ref itf_binding bindings
                           , mods: (interface ref, mod ref) mod_binding bindings
                           , types: typ ref type_binding bindings
-                          , vals: (typ ref, expr ref) val_binding bindings }
+                          , vals: (typ option ref, expr ref) val_binding bindings }
 
     and type_scope = { parent: scope option ref
                      , typ: typ ref
@@ -96,7 +96,7 @@ end) = struct
 
     and expr_scope = { parent: scope option ref
                      , expr: expr ref
-                     , vals: (typ ref, expr ref) val_binding bindings }
+                     , vals: (typ option ref, expr ref) val_binding bindings }
 
     val rec typeToString =
         fn InputType typ => Input.Type.toString (typeToString o op!) typ

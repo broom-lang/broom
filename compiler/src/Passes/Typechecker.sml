@@ -5,7 +5,7 @@ structure Typechecker :> sig
 
     val typeErrorToString: type_error -> string
 
-    val stmtBind: (TypecheckingCst.typ ref, TypecheckingCst.expr ref) TypecheckingCst.val_binding TypecheckingCst.bindings
+    val stmtBind: (TypecheckingCst.typ option ref, TypecheckingCst.expr ref) TypecheckingCst.val_binding TypecheckingCst.bindings
                   -> (TypecheckingCst.typ ref, TypecheckingCst.expr ref) Cst.Term.stmt -> unit
     val injectType: FixedCst.Type.typ -> TypecheckingCst.typ ref
     val injectExpr: FixedCst.Term.expr -> TypecheckingCst.expr ref
@@ -56,7 +56,7 @@ end = struct
 
     fun stmtBind vals =
         fn CTerm.Val (_, name, SOME typ, expr) =>
-            let val binding = {shade = ref TC.White, binder = {value = SOME expr, typ}}
+            let val binding = {shade = ref TC.White, binder = {value = SOME expr, typ = ref (SOME (!typ))}}
             in NameHashTable.insert vals (name, binding)
             end
          | CTerm.Expr _ => ()
@@ -64,7 +64,7 @@ end = struct
     fun exprScope expr =
         fn CTerm.Fn (_, arg, SOME domain, _) =>
             let val vals = NameHashTable.mkTable (1, Subscript)
-                val binding = {shade = ref TC.White, binder = {value = NONE, typ = domain}}
+                val binding = {shade = ref TC.White, binder = {value = NONE, typ = ref (SOME (!domain))}}
                 do NameHashTable.insert vals (arg, binding)
             in SOME {parent = ref NONE, expr, vals}
             end
@@ -246,8 +246,10 @@ end = struct
             (case NameHashTable.find vals name
              of SOME {shade, binder} =>
                  (case !shade
-                  of TC.Black => SOME (#typ binder)
-                   | TC.White => SOME (elaborateValType scope name (#typ binder))
+                  of TC.Black => SOME (ref (valOf (!(#typ binder))))
+                   | TC.White =>
+                      (case !(#typ binder)
+                       of SOME typ => SOME (elaborateValType scope name (ref typ)))
                    | TC.Grey =>
                       raise Fail ("lookupType cycle at " ^ Name.toString name))
               | NONE => Option.mapPartial (lookupType name) (!parent))
