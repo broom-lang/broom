@@ -1,3 +1,3 @@
-val n: Int = 5
-val m: Int = n
+val m = n
+val n = 5
 
