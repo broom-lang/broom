@@ -18,7 +18,7 @@ fun lookup "bogus" = 10000
     | LPAREN | RPAREN
     | EQ | DARROW | COLON | ARROW | DOT
     | EOF
-%nonterm program of stmt vector
+%nonterm program of expr
        | stmts of stmt vector
        | stmtList of stmt list
        | stmt of stmt
@@ -36,7 +36,7 @@ fun lookup "bogus" = 10000
 
 %%
 
-program : stmts (stmts)
+program : stmts (Term.Fix (Term.Let (stmtsleft, stmts, Term.Fix (Term.Const (stmtsright, Const.Int 0)))))
 
 stmts : stmtList (Vector.fromList (List.rev stmtList) (* OPTIMIZE *))
 

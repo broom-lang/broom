@@ -1,16 +1,5 @@
 structure EnterTypechecker :> sig
-    val stmtBind: (TypecheckingCst.typ option ref, TypecheckingCst.expr ref) TypecheckingCst.val_binding TypecheckingCst.bindings
-                  -> (TypecheckingCst.typ ref, TypecheckingCst.expr ref) Cst.Term.stmt -> unit
-    val injectType: FixedCst.Type.typ -> TypecheckingCst.typ ref
-    val injectExpr: FixedCst.Term.expr -> TypecheckingCst.expr ref
-    val injectStmt: FixedCst.Term.stmt
-                    -> (TypecheckingCst.typ ref, TypecheckingCst.expr ref) Cst.Term.stmt
-
-    val uplinkTypeScopes: TypecheckingCst.scope option -> TypecheckingCst.typ ref -> unit
-    val uplinkExprScopes: TypecheckingCst.scope option -> TypecheckingCst.expr ref -> unit
-    val uplinkStmtScopes: TypecheckingCst.scope option
-                          -> (TypecheckingCst.typ ref, TypecheckingCst.expr ref) Cst.Term.stmt
-                          -> unit
+    val toTypechecking: FixedCst.Term.expr -> TypecheckingCst.expr ref * TypecheckingCst.expr_scope
 end = struct
     structure CTerm = FixedCst.Term
     structure CType = FixedCst.Type
@@ -130,5 +119,11 @@ end = struct
             ; uplinkExprScopes parentScope expr )
          | CTerm.Expr expr => uplinkExprScopes parentScope expr
 
+    fun toTypechecking expr =
+        let val exprRef = injectExpr expr
+            do uplinkExprScopes NONE exprRef
+            val TC.ScopeExpr scope = !exprRef
+        in (exprRef, scope)
+        end
 end
 

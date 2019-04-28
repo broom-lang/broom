@@ -34,19 +34,13 @@ end = struct
           fun loop lexer =
               let val (program,lexer) = invoke lexer
                   val (nextToken,lexer) = BroomParser.Stream.get lexer
-                  val _ = Vector.app (fn stmt => log (FixedCst.Term.stmtToString stmt ^ "\n"))
-                                     program
+
+                  val _ = log (FixedCst.Term.exprToString program ^ "\n")
+                  
                   val _ = log "===\n"
-                  val pos = Pos.default name
-                  val stmts = Vector.map EnterTypechecker.injectStmt program
-                  val vals = NameHashTable.mkTable (0, Subscript)
-                  val _ = Vector.app (EnterTypechecker.stmtBind vals) stmts
-                  val expr = CTerm.Let ( pos, stmts
-                                       , ref (TC.InputExpr (CTerm.Const (pos, Const.Int 0))))
-                  val exprRef = ref (TC.InputExpr expr)
-                  val scope = {parent = ref NONE, expr = exprRef, vals}
-                  val _ = EnterTypechecker.uplinkExprScopes NONE (ref (TC.ScopeExpr scope))
-                  val _ = Typechecker.elaborateExpr (TC.ExprScope scope) exprRef
+
+                  val (program, rootScope) = EnterTypechecker.toTypechecking program
+                  val _ = Typechecker.elaborateExpr (TC.ExprScope rootScope) program
               in if BroomParser.sameToken(nextToken,dummyEOF)
                  then ()
                  else loop lexer
