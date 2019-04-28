@@ -15,19 +15,24 @@ end = struct
     structure FTerm = FAst.Term
     structure FType = FAst.Type
 
-    datatype type_error = UnCallable of TypecheckingCst.expr * TypecheckingCst.typ
-                        | UnboundVal of Pos.t * Name.t
-    exception TypeError of type_error
+    structure TypeError = struct
+        datatype type_error = UnCallable of TypecheckingCst.expr * TypecheckingCst.typ
+                            | UnboundVal of Pos.t * Name.t
+        exception TypeError of type_error
 
-    fun typeErrorToString err =
-        let val (pos, details) = case err
-                                 of UnCallable (expr, typ) =>
-                                     ( TC.exprPos expr
-                                     , "Value " ^ TC.exprToString expr
-                                           ^ " of type " ^ TC.typeToString typ ^ " can not be called" )
-                                  | UnboundVal (pos, name) => (pos, "Unbound variable " ^ Name.toString name)
-        in "TypeError in " ^ Pos.toString pos ^ ": " ^ details
-        end
+        fun typeErrorToString err =
+            let val (pos, details) = case err
+                                     of UnCallable (expr, typ) =>
+                                         ( TC.exprPos expr
+                                         , "Value " ^ TC.exprToString expr
+                                               ^ " of type " ^ TC.typeToString typ ^ " can not be called" )
+                                      | UnboundVal (pos, name) => (pos, "Unbound variable " ^ Name.toString name)
+            in "TypeError in " ^ Pos.toString pos ^ ": " ^ details
+            end
+    end
+    open TypeError
+
+(* Subtyping and UVar Assignment *)
 
     datatype lattice_y = Sub | Super
 
@@ -91,6 +96,8 @@ end = struct
              of Either.Left uv => ( assign scope (Super, uv, typRef); NONE )
               | Either.Right t => subType scope (typRef, t))
 
+(* Hacky Utils *)
+
     local
         fun unfixExpr exprRef =
             case !exprRef
@@ -101,7 +108,9 @@ end = struct
         val fExprType = FTerm.typeOf (ref o TC.OutputType) unfixExpr
     end
 
-    fun valShadeRef pos name =
+(* Looking up `val` types *)
+
+    fun valShadeRef pos name: TC.scope -> TC.shade ref =
         fn TC.ExprScope {vals, parent, ...} =>
             (case NameHashTable.find vals name
              of SOME {shade, ...} => shade
@@ -110,7 +119,7 @@ end = struct
                   of SOME shade => shade
                    | NONE => raise TypeError (UnboundVal (pos, name))))
 
-    fun lookupType name scope =
+    fun lookupType name scope: TC.typ ref option =
         case scope
         of TC.ExprScope {vals, parent, ...} =>
             (case NameHashTable.find vals name
@@ -119,22 +128,12 @@ end = struct
                   of TC.Black => SOME (ref (valOf (!(#typ binder))))
                    | TC.White =>
                       (case !(#typ binder)
-                       of SOME typ => SOME (elaborateValType scope name (ref typ)))
+                       of SOME typ => SOME (elaborateValType scope name (ref typ))) (* HACK *)
                    | TC.Grey =>
                       raise Fail ("lookupType cycle at " ^ Name.toString name))
               | NONE => Option.mapPartial (lookupType name) (!parent))
 
-    and elaborateType scope typRef =
-        let val typ = case !typRef 
-                      of TC.InputType (CType.Arrow (pos, {domain, codomain})) =>
-                          FType.Arrow (pos, { domain = elaborateType scope domain
-                                            , codomain = elaborateType scope codomain })
-                       | TC.InputType (CType.Prim (pos, p)) => FType.Prim (pos, p)
-        in typRef := TC.OutputType typ
-         ; typRef
-        end
-
-    and elaborateValType scope name typRef =
+    and elaborateValType scope name typRef: TC.typ ref =
         case !typRef
         of TC.InputType typ =>
             let val pos = CType.pos typ
@@ -145,6 +144,18 @@ end = struct
             end
          | TC.ScopeType (scope as {typ, ...}) => elaborateValType (TC.TypeScope scope) name typ
          | TC.OutputType _ | TC.OVar _ | TC.UVar _ => typRef
+
+(* Elaborating subtrees *)
+
+    and elaborateType scope typRef =
+        let val typ = case !typRef 
+                      of TC.InputType (CType.Arrow (pos, {domain, codomain})) =>
+                          FType.Arrow (pos, { domain = elaborateType scope domain
+                                            , codomain = elaborateType scope codomain })
+                       | TC.InputType (CType.Prim (pos, p)) => FType.Prim (pos, p)
+        in typRef := TC.OutputType typ
+         ; typRef
+        end
 
     fun elaborateExpr scope exprRef =
         case !exprRef
@@ -223,7 +234,7 @@ end = struct
             ( ignore (elaborateExpr scope exprRef)
             ; FTerm.Expr exprRef )
 
-    and coerceCallee callee typRef =
+    and coerceCallee (callee: TC.expr ref) (typRef: TC.typ ref): {domain: TC.typ ref, codomain: TC.typ ref} =
         case !typRef
         of TC.InputType _ => raise Fail "unimplemented"
          | TC.ScopeType (scope as {typ, ...}) => raise Fail "unimplemented"
