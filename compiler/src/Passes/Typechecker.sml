@@ -119,28 +119,28 @@ end = struct
                   of SOME shade => shade
                    | NONE => raise TypeError (UnboundVal (pos, name))))
 
-    fun lookupValType name scope: TC.typ option =
+    fun lookupValType pos name scope: TC.typ option =
         case scope
         of TC.ExprScope {vals, parent, ...} =>
             (case NameHashTable.find vals name
              of SOME {shade, binder} =>
                  (case !shade
                   of TC.Black => (!(#typ binder))
-                   | TC.White => SOME (elaborateValType scope name (#typ binder))
+                   | TC.White => SOME (elaborateValType scope pos name binder)
                    | TC.Grey => raise Fail ("lookupValType cycle at " ^ Name.toString name))
-              | NONE => Option.mapPartial (lookupValType name) (!parent))
+              | NONE => Option.mapPartial (lookupValType pos name) (!parent))
 
-    and elaborateValType scope name (typRef: TC.typ option ref): TC.typ =
-        case !typRef
-        of SOME typ =>
-            let val pos = TC.Type.pos typ
-                do valShadeRef pos name scope := TC.Grey
-                val typ = elabType scope typ
-            in typRef := SOME typ
-             ; valShadeRef pos name scope := TC.Black
-             ; typ
-            end
-         | NONE => raise Fail "unimplemented"
+    and elaborateValType scope pos name ({typ = typRef, value}: (TC.typ option ref, TC.expr ref) TC.val_binding): TC.typ =
+        let do valShadeRef pos name scope := TC.Grey
+            val typ = case !typRef
+                      of SOME typ => elabType scope typ
+                       | NONE => (case value
+                                  of SOME expr => !(elaborateExpr scope expr)
+                                   | NONE => raise Fail "unimplemented")
+        in typRef := SOME typ
+         ; valShadeRef pos name scope := TC.Black
+         ; typ
+        end
 
 (* Elaborating subtrees *)
 
@@ -155,12 +155,12 @@ end = struct
         ( typRef := elabType scope (!typRef)
         ; typRef )
 
-    fun elaborateExpr scope (exprRef: TC.expr ref): TC.typ ref =
+    and elaborateExpr scope (exprRef: TC.expr ref): TC.typ ref =
         case !exprRef
         of TC.InputExpr expr =>
             (case expr
              of CTerm.Fn (pos, param, _, body) =>
-                 let val domain = ref (case lookupValType param scope
+                 let val domain = ref (case lookupValType pos param scope
                                        of SOME domain => domain
                                         | NONE => raise TypeError (UnboundVal (pos, param)))
                      val codomain = ref (TC.UVar (TypeVars.freshUv (valOf (TC.scopeParent scope))))
@@ -184,7 +184,7 @@ end = struct
                  ( elaborateExprAs scope (elaborateType scope t) expr
                  ; t )
               | CTerm.Use (pos, name) =>
-                 let val typRef = ref (case lookupValType name scope
+                 let val typRef = ref (case lookupValType pos name scope
                                        of SOME typRef => typRef
                                         | NONE => raise TypeError (UnboundVal (pos, name)))
                      val def = { var = name, typ = typRef }
@@ -221,10 +221,12 @@ end = struct
             end
 
     and elaborateStmt scope =
-        fn CTerm.Val (pos, name, SOME annTypeRef, exprRef) =>
+        fn CTerm.Val (pos, name, oannTypeRef, exprRef) =>
             let val exprType = !(elaborateExpr scope exprRef)
-                val annType = valOf (lookupValType name scope)
-                do annTypeRef := annType
+                val annType = valOf (lookupValType pos name scope)
+                val annTypeRef = case oannTypeRef
+                                 of SOME annTypeRef => (annTypeRef := annType; annTypeRef)
+                                  | NONE => ref annType
                 val coercion = getOpt (subType scope (exprType, annType), ignore)
             in coercion exprRef
              ; FTerm.Val (pos, {var = name, typ = annTypeRef}, exprRef)
