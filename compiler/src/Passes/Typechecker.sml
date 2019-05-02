@@ -7,7 +7,7 @@ structure Typechecker :> sig
 
     val typeErrorToString: type_error -> string
 
-    val elaborateExpr: TypecheckingCst.scope -> TypecheckingCst.expr ref -> TypecheckingCst.typ ref
+    val elaborateExpr: TypecheckingCst.scope -> TypecheckingCst.expr ref -> TypecheckingCst.typ
    
     (* TODO: Finishing elaboration ('ejection'?) *)
 end = struct
@@ -132,7 +132,7 @@ end = struct
                 case !typRef
                 of SOME typ => elabType scope typ
                  | NONE => (case value
-                            of SOME expr => !(elaborateExpr scope expr)
+                            of SOME expr => elaborateExpr scope expr
                              | NONE => TC.UVar (TypeVars.freshUv scope))
             fun elaborateValType scope (binding as {typ = typRef, value = _}) =
                 let do valShadeRef pos name scope := TC.Grey
@@ -179,7 +179,7 @@ end = struct
         ( typRef := elabType scope (!typRef)
         ; typRef )
 
-    and elaborateExpr scope (exprRef: TC.expr ref): TC.typ ref =
+    and elaborateExpr scope (exprRef: TC.expr ref): TC.typ =
         case !exprRef
         of TC.InputExpr expr =>
             (case expr
@@ -188,9 +188,9 @@ end = struct
                                        of SOME domain => domain
                                         | NONE => raise TypeError (UnboundVal (pos, param)))
                      val codomain = ref (TC.UVar (TypeVars.freshUv (valOf (TC.scopeParent scope))))
-                 in elaborateExprAs scope codomain body
+                 in elaborateExprAs scope (!codomain) body
                   ; exprRef := TC.OutputExpr (FTerm.Fn (pos, {var = param, typ = domain}, body))
-                  ; ref (TC.OutputType (FType.Arrow (pos, {domain, codomain})))
+                  ; TC.OutputType (FType.Arrow (pos, {domain, codomain}))
                  end
               | CTerm.Let (pos, stmts, body) =>
                  let val stmts = Vector.map (elaborateStmt scope) stmts
@@ -199,39 +199,39 @@ end = struct
                   ; typ
                  end
               | CTerm.App (pos, {callee, arg}) =>
-                 let val {domain, codomain} = coerceCallee callee (!(elaborateExpr scope callee))
-                 in elaborateExprAs scope domain arg
+                 let val {domain, codomain} = coerceCallee callee (elaborateExpr scope callee)
+                 in elaborateExprAs scope (!domain) arg
                   ; exprRef := TC.OutputExpr (FTerm.App (pos, codomain, {callee, arg}))
-                  ; codomain
+                  ; !codomain
                  end
               | CTerm.Ann (pos, expr, t) =>
-                 ( elaborateExprAs scope (elaborateType scope t) expr
-                 ; t )
+                 ( elaborateExprAs scope (!(elaborateType scope t)) expr
+                 ; !t )
               | CTerm.Use (pos, name) =>
-                 let val typRef = ref (case lookupValType pos name scope
-                                       of SOME typRef => typRef
-                                        | NONE => raise TypeError (UnboundVal (pos, name)))
-                     val def = { var = name, typ = typRef }
+                 let val typ = case lookupValType pos name scope
+                               of SOME typRef => typRef
+                                | NONE => raise TypeError (UnboundVal (pos, name))
+                     val def = { var = name, typ = ref typ }
                  in exprRef := TC.OutputExpr (FTerm.Use (pos, def))
-                  ; typRef
+                  ; typ
                  end
               | CTerm.Const (pos, c) =>
                  ( exprRef := TC.OutputExpr (FTerm.Const (pos, c))
-                 ; ref (TC.OutputType (FType.Prim (pos, Const.typeOf c))) ))
+                 ; TC.OutputType (FType.Prim (pos, Const.typeOf c))) )
          | TC.ScopeExpr (scope as {expr, ...}) => elaborateExpr (TC.ExprScope scope) expr
          | TC.OutputExpr expr =>
             (* Assumes invariant: the whole subtree has been elaborated already. *)
-            fExprType expr
+            !(fExprType expr)
 
-    and elaborateExprAs scope (typRef: TC.typ ref) (exprRef: TC.expr ref): unit =
-        case (!typRef, !exprRef)
+    and elaborateExprAs scope (typ: TC.typ) (exprRef: TC.expr ref): unit =
+        case (typ, !exprRef)
         of (TC.OutputType t, TC.InputExpr expr) =>
             (case (t, expr)
              of (FType.ForAll _, expr) => raise Fail "unimplemented"
               | (FType.Arrow _, CTerm.Fn _) => raise Fail "unimplemented"
               | (_, _) =>
                  let val t' = elaborateExpr scope exprRef
-                     val coercion = getOpt (subType scope (!t', !typRef), ignore)
+                     val coercion = getOpt (subType scope (t', typ), ignore)
                  in coercion exprRef
                  end)
          | (_, TC.ScopeExpr (scope as {expr, ...})) => ignore (elaborateExpr (TC.ExprScope scope) expr)
@@ -240,13 +240,13 @@ end = struct
             ignore (fExprType expr)
          | (TC.OVar _ | TC.UVar _, TC.InputExpr _) =>
             let val t' = elaborateExpr scope exprRef
-                val coercion = getOpt (subType scope (!t', !typRef), ignore)
+                val coercion = getOpt (subType scope (t', typ), ignore)
             in coercion exprRef
             end
 
     and elaborateStmt scope =
         fn CTerm.Val (pos, name, oannTypeRef, exprRef) =>
-            let val exprType = !(elaborateExpr scope exprRef)
+            let val exprType = elaborateExpr scope exprRef
                 val annType = valOf (lookupValType pos name scope)
                 val annTypeRef = case oannTypeRef
                                  of SOME annTypeRef => (annTypeRef := annType; annTypeRef)
