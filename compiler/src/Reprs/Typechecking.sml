@@ -3,6 +3,7 @@ signature TYPECHECKER_OUTPUT = sig
         type kind
         type 'typ typ
 
+        val pos: 'typ typ -> Pos.t
         val toString: ('typ -> string) -> 'typ typ -> string
         val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> 'typ typ -> 'a
     end
@@ -154,6 +155,12 @@ end) = struct
     val ovInScope = TypeVars.ovInScope compareScopes
     val uvMerge = TypeVars.uvMerge compareScopes
     val uvInScope = TypeVars.uvInScope compareScopes
+
+    structure Type = struct
+        val rec pos = fn InputType typ => Input.Type.pos typ
+                       | ScopeType {typ, ...} => pos (!typ)
+                       | OutputType typ => Output.Type.pos typ
+    end
 end
 
 structure TypecheckingCst = Typechecking(struct
