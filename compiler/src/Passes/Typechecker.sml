@@ -120,32 +120,22 @@ end = struct
 
 (* Looking up `val` types *)
 
-    (* TODO: Get rid of this: *)
-    fun valShadeRef pos name: TC.scope -> TC.shade ref =
-        fn TC.ExprScope {vals, parent, ...} =>
-            (case NameHashTable.find vals name
-             of SOME {shade, ...} => shade
-              | NONE =>
-                 (case Option.map (valShadeRef pos name) (!parent)
-                  of SOME shade => shade
-                   | NONE => raise TypeError (UnboundVal (pos, name))))
-
     (* Get the type of the variable `name`, referenced at `pos`, from `scope` by either
        - finding the type annotation (if available) (and elaborating it if not already done)
        - elaborating the expression bound to the variable (if available)
        - returning a fresh unification variable (if neither type annotation nor bound expression
          is available or if a cycle is encountered) *)
-    fun lookupValType pos name scope: TC.typ option =
+    fun lookupValType name scope: TC.typ option =
         let fun valBindingType scope {typ = typRef, value} =
                 case !typRef
                 of SOME typ => elabType scope typ
                  | NONE => (case value
                             of SOME expr => elaborateExpr scope expr
                              | NONE => TC.UVar (TypeVars.freshUv scope))
-            fun elaborateValType scope (binding as {typ = typRef, value = _}) =
-                let do valShadeRef pos name scope := TC.Grey
+
+            fun elaborateValType scope {shade, binder = binding as {typ = typRef, value = _}} =
+                let do shade := TC.Grey
                     val typ = valBindingType scope binding
-                    val shade = valShadeRef pos name scope
                 in case !shade
                    of TC.Grey => ( typRef := SOME typ
                                  ; shade := TC.Black )
@@ -158,20 +148,22 @@ end = struct
                     | TC.White => raise Fail "unreachable"
                  ; typ
                 end
+
+            fun elaborateValTypeLoop scope {shade, binder = {typ = typRef, value = _}} =
+                let val typ = TC.UVar (TypeVars.freshUv scope)
+                in typRef := SOME typ
+                 ; shade := TC.Black
+                 ; typ
+                end
         in case scope
            of TC.ExprScope {vals, parent, ...} =>
                (case NameHashTable.find vals name
-                of SOME {shade, binder} =>
+                of SOME (binding as {shade, binder}) =>
                     (case !shade
                      of TC.Black => !(#typ binder)
-                      | TC.White => SOME (elaborateValType scope binder)
-                      | TC.Grey =>
-                         let val typ = TC.UVar (TypeVars.freshUv scope)
-                         in #typ binder := SOME typ
-                          ; shade := TC.Black
-                          ; SOME typ
-                         end)
-                 | NONE => Option.mapPartial (lookupValType pos name) (!parent))
+                      | TC.White => SOME (elaborateValType scope binding)
+                      | TC.Grey => SOME (elaborateValTypeLoop scope binding))
+                 | NONE => Option.mapPartial (lookupValType name) (!parent))
         end
 
 (* Elaborating subtrees *)
@@ -195,7 +187,7 @@ end = struct
         of TC.InputExpr expr =>
             (case expr
              of CTerm.Fn (pos, param, _, body) =>
-                 let val domain = ref (case lookupValType pos param scope
+                 let val domain = ref (case lookupValType param scope
                                        of SOME domain => domain
                                         | NONE => raise TypeError (UnboundVal (pos, param)))
                      val codomain = ref (TC.UVar (TypeVars.freshUv (valOf (TC.scopeParent scope))))
@@ -219,7 +211,7 @@ end = struct
                  ( elaborateExprAs scope (!(elaborateType scope t)) expr
                  ; !t )
               | CTerm.Use (pos, name) =>
-                 let val typ = case lookupValType pos name scope
+                 let val typ = case lookupValType name scope
                                of SOME typRef => typRef
                                 | NONE => raise TypeError (UnboundVal (pos, name))
                      val def = { var = name, typ = ref typ }
@@ -260,7 +252,7 @@ end = struct
     and elaborateStmt scope: (TC.typ ref, TC.expr ref) Cst.Term.stmt -> (TC.typ ref, TC.expr ref) FTerm.stmt =
         fn CTerm.Val (pos, name, oannTypeRef, exprRef) =>
             let val exprType = elaborateExpr scope exprRef
-                val annType = valOf (lookupValType pos name scope)
+                val annType = valOf (lookupValType name scope)
                 val annTypeRef = case oannTypeRef
                                  of SOME annTypeRef => (annTypeRef := annType; annTypeRef)
                                   | NONE => ref annType
