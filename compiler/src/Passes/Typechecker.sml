@@ -39,9 +39,9 @@ end = struct
     val flipY = fn Sub => Super
                  | Super => Sub
 
-    fun assign scope (y, uv, t) =
-        let fun doAssign (uv, typRef) =
-                case !typRef
+    fun assign scope (y, uv: (TC.scope, TC.typ) TypeVars.uv, t: TC.typ): unit =
+        let fun doAssign (uv, typ) =
+                case typ
                 of TC.InputType _ => raise Fail "unreachable"
                  | TC.OutputType t =>
                     (case t
@@ -50,15 +50,15 @@ end = struct
                              val codomainUv = TypeVars.freshUv scope
                              val t' = FType.Arrow (pos, { domain = ref (TC.UVar domainUv)
                                                         , codomain = ref (TC.UVar codomainUv)})
-                         in TypeVars.uvSet (uv, ref (TC.OutputType t'))
-                          ; assign scope (flipY y, domainUv, domain)
-                          ; assign scope (y, codomainUv, codomain)
+                         in TypeVars.uvSet (uv, TC.OutputType t')
+                          ; assign scope (flipY y, domainUv, !domain)
+                          ; assign scope (y, codomainUv, !codomain)
                          end
-                      | FType.Prim _ => TypeVars.uvSet (uv, typRef))
+                      | FType.Prim _ => TypeVars.uvSet (uv, typ))
                  | TC.UVar uv' => (case TypeVars.uvGet uv'
                                    of Either.Left uv' => TC.uvMerge (uv, uv')
                                     | Either.Right t => doAssign (uv, t))
-                 | TC.OVar _ => TypeVars.uvSet (uv, typRef)
+                 | TC.OVar _ => TypeVars.uvSet (uv, typ)
         in if TC.uvInScope (scope, uv)
            then if TC.occurs uv t
                 then raise Fail "Occurs check"
@@ -66,8 +66,8 @@ end = struct
            else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv))
         end
 
-    fun subType scope (typRef, superTypRef) =
-        case (!typRef, !superTypRef)
+    fun subType scope (typ: TC.typ, superTyp: TC.typ): (TC.expr ref -> unit) option =
+        case (typ, superTyp)
         of (TC.OutputType t, TC.OutputType t') =>
             (case (t, t')
              of (FType.Prim (_, pl), FType.Prim (_, pr)) =>
@@ -89,12 +89,12 @@ end = struct
               | (Either.Right t, Either.Right t') => subType scope (t, t'))
          | (TC.UVar uv, _) =>
             (case TypeVars.uvGet uv
-             of Either.Left uv => ( assign scope (Sub, uv, superTypRef); NONE )
-              | Either.Right t => subType scope (t, superTypRef))
+             of Either.Left uv => ( assign scope (Sub, uv, superTyp); NONE )
+              | Either.Right t => subType scope (t, superTyp))
          | (_, TC.UVar uv) =>
             (case TypeVars.uvGet uv
-             of Either.Left uv => ( assign scope (Super, uv, typRef); NONE )
-              | Either.Right t => subType scope (typRef, t))
+             of Either.Left uv => ( assign scope (Super, uv, typ); NONE )
+              | Either.Right t => subType scope (typ, t))
 
 (* Hacky Utils *)
 
@@ -119,14 +119,14 @@ end = struct
                   of SOME shade => shade
                    | NONE => raise TypeError (UnboundVal (pos, name))))
 
-    fun lookupValType name scope: TC.typ ref option =
+    fun lookupValType name scope: TC.typ option =
         case scope
         of TC.ExprScope {vals, parent, ...} =>
             (case NameHashTable.find vals name
              of SOME {shade, binder} =>
                  (case !shade
-                  of TC.Black => SOME (ref (valOf (!(#typ binder))))
-                   | TC.White => SOME (ref (elaborateValType scope name (#typ binder)))
+                  of TC.Black => (!(#typ binder))
+                   | TC.White => SOME (elaborateValType scope name (#typ binder))
                    | TC.Grey => raise Fail ("lookupValType cycle at " ^ Name.toString name))
               | NONE => Option.mapPartial (lookupValType name) (!parent))
 
@@ -155,14 +155,14 @@ end = struct
         ( typRef := elabType scope (!typRef)
         ; typRef )
 
-    fun elaborateExpr scope exprRef =
+    fun elaborateExpr scope (exprRef: TC.expr ref): TC.typ ref =
         case !exprRef
         of TC.InputExpr expr =>
             (case expr
              of CTerm.Fn (pos, param, _, body) =>
-                 let val domain = case lookupValType param scope
-                                  of SOME domain => domain
-                                   | NONE => raise TypeError (UnboundVal (pos, param))
+                 let val domain = ref (case lookupValType param scope
+                                       of SOME domain => domain
+                                        | NONE => raise TypeError (UnboundVal (pos, param)))
                      val codomain = ref (TC.UVar (TypeVars.freshUv (valOf (TC.scopeParent scope))))
                  in elaborateExprAs scope codomain body
                   ; exprRef := TC.OutputExpr (FTerm.Fn (pos, {var = param, typ = domain}, body))
@@ -175,7 +175,7 @@ end = struct
                   ; typ
                  end
               | CTerm.App (pos, {callee, arg}) =>
-                 let val {domain, codomain} = coerceCallee callee (elaborateExpr scope callee)
+                 let val {domain, codomain} = coerceCallee callee (!(elaborateExpr scope callee))
                  in elaborateExprAs scope domain arg
                   ; exprRef := TC.OutputExpr (FTerm.App (pos, codomain, {callee, arg}))
                   ; codomain
@@ -184,9 +184,9 @@ end = struct
                  ( elaborateExprAs scope (elaborateType scope t) expr
                  ; t )
               | CTerm.Use (pos, name) =>
-                 let val typRef = case lookupValType name scope
-                                  of SOME typRef => typRef
-                                   | NONE => raise TypeError (UnboundVal (pos, name))
+                 let val typRef = ref (case lookupValType name scope
+                                       of SOME typRef => typRef
+                                        | NONE => raise TypeError (UnboundVal (pos, name)))
                      val def = { var = name, typ = typRef }
                  in exprRef := TC.OutputExpr (FTerm.Use (pos, def))
                   ; typRef
@@ -199,7 +199,7 @@ end = struct
             (* Assumes invariant: the whole subtree has been elaborated already. *)
             fExprType expr
 
-    and elaborateExprAs scope typRef exprRef =
+    and elaborateExprAs scope (typRef: TC.typ ref) (exprRef: TC.expr ref): unit =
         case (!typRef, !exprRef)
         of (TC.OutputType t, TC.InputExpr expr) =>
             (case (t, expr)
@@ -207,7 +207,7 @@ end = struct
               | (FType.Arrow _, CTerm.Fn _) => raise Fail "unimplemented"
               | (_, _) =>
                  let val t' = elaborateExpr scope exprRef
-                     val coercion = getOpt (subType scope (t', typRef), ignore)
+                     val coercion = getOpt (subType scope (!t', !typRef), ignore)
                  in coercion exprRef
                  end)
          | (_, TC.ScopeExpr (scope as {expr, ...})) => ignore (elaborateExpr (TC.ExprScope scope) expr)
@@ -216,16 +216,16 @@ end = struct
             ignore (fExprType expr)
          | (TC.OVar _ | TC.UVar _, TC.InputExpr _) =>
             let val t' = elaborateExpr scope exprRef
-                val coercion = getOpt (subType scope (t', typRef), ignore)
+                val coercion = getOpt (subType scope (!t', !typRef), ignore)
             in coercion exprRef
             end
 
     and elaborateStmt scope =
         fn CTerm.Val (pos, name, SOME annTypeRef, exprRef) =>
-            let val exprType = elaborateExpr scope exprRef
-                val annType = !(valOf (lookupValType name scope)) (* HACK *)
+            let val exprType = !(elaborateExpr scope exprRef)
+                val annType = valOf (lookupValType name scope)
                 do annTypeRef := annType
-                val coercion = getOpt (subType scope (exprType, annTypeRef), ignore)
+                val coercion = getOpt (subType scope (exprType, annType), ignore)
             in coercion exprRef
              ; FTerm.Val (pos, {var = name, typ = annTypeRef}, exprRef)
             end
@@ -233,19 +233,21 @@ end = struct
             ( ignore (elaborateExpr scope exprRef)
             ; FTerm.Expr exprRef )
 
-    and coerceCallee (callee: TC.expr ref) (typRef: TC.typ ref): {domain: TC.typ ref, codomain: TC.typ ref} =
-        case !typRef
-        of TC.InputType _ => raise Fail "unimplemented"
-         | TC.ScopeType (scope as {typ, ...}) => raise Fail "unimplemented"
-         | TC.OutputType typ =>
-            (case typ
-             of FType.ForAll _ => raise Fail "unimplemented"
-              | FType.Arrow (_, domains) => domains
-              | _ => raise TypeError (UnCallable (!callee, !typRef)))
-         | TC.OVar _ => raise TypeError (UnCallable (!callee, !typRef))
-         | TC.UVar uv =>
-            (case TypeVars.uvGet uv
-             of Either.Left uv => raise Fail "unimplemented"
-              | Either.Right typ => coerceCallee callee typ)
+    and coerceCallee (callee: TC.expr ref) (typ: TC.typ): {domain: TC.typ ref, codomain: TC.typ ref} =
+        let val rec coerce =
+                fn TC.InputType _ => raise Fail "unimplemented"
+                 | TC.ScopeType (scope as {typ, ...}) => raise Fail "unimplemented"
+                 | TC.OutputType otyp =>
+                    (case otyp
+                     of FType.ForAll _ => raise Fail "unimplemented"
+                      | FType.Arrow (_, domains) => domains
+                      | _ => raise TypeError (UnCallable (!callee, typ)))
+                 | TC.OVar _ => raise TypeError (UnCallable (!callee, typ))
+                 | TC.UVar uv =>
+                    (case TypeVars.uvGet uv
+                     of Either.Left uv => raise Fail "unimplemented"
+                      | Either.Right typ => coerce typ)
+        in coerce typ
+        end
 end
 

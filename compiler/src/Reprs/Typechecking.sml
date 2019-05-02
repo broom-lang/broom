@@ -58,7 +58,7 @@ end) = struct
                  | OutputType of typ ref Output.Type.typ
                  | ScopeType of type_scope
                  | OVar of scope TypeVars.ov
-                 | UVar of (scope, typ ref) TypeVars.uv
+                 | UVar of (scope, typ) TypeVars.uv
     
     and expr = InputExpr of (typ ref, expr ref) Input.Term.expr
              | OutputExpr of (typ ref, expr ref) Output.Term.expr
@@ -117,12 +117,12 @@ end) = struct
          | ScopeExpr {expr, ...} => exprToString (!expr)
 
     fun occurs uv =
-        let fun occStep (t, acc) = acc orelse occ t
-            and occ typRef =
-                case !typRef
+        let fun occStep (t, acc) = acc orelse occ (!t)
+            and occ typ =
+                case typ
                 of InputType t => Input.Type.shallowFoldl occStep false t
                  | OutputType t => Output.Type.shallowFoldl occStep false t
-                 | ScopeType {typ, ...} => occ typ
+                 | ScopeType {typ, ...} => occ (!typ)
                  | OVar _ => false
                  | UVar uv' => TypeVars.uvEq (uv, uv')
         in occ
