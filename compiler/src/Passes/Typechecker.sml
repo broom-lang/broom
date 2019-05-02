@@ -1,6 +1,8 @@
 structure Typechecker :> sig
     datatype type_error = UnCallable of TypecheckingCst.expr * TypecheckingCst.typ
                         | UnboundVal of Pos.t * Name.t
+                        | Occurs of (TypecheckingCst.scope, TypecheckingCst.typ) TypeVars.uv
+                                  * TypecheckingCst.typ
     exception TypeError of type_error
 
     val typeErrorToString: type_error -> string
@@ -18,6 +20,8 @@ end = struct
     structure TypeError = struct
         datatype type_error = UnCallable of TypecheckingCst.expr * TypecheckingCst.typ
                             | UnboundVal of Pos.t * Name.t
+                            | Occurs of (TypecheckingCst.scope, TypecheckingCst.typ) TypeVars.uv
+                                      * TypecheckingCst.typ
         exception TypeError of type_error
 
         fun typeErrorToString err =
@@ -27,6 +31,10 @@ end = struct
                                          , "Value " ^ TC.exprToString expr
                                                ^ " of type " ^ TC.typeToString typ ^ " can not be called" )
                                       | UnboundVal (pos, name) => (pos, "Unbound variable " ^ Name.toString name)
+                                      | Occurs (uv, t) =>
+                                         ( TC.Type.pos t
+                                         , "Occurs check: unifying " ^ Name.toString (TypeVars.uvName uv)
+                                               ^ " with " ^ TC.typeToString t ^ " would create infinite type" )
             in "TypeError in " ^ Pos.toString pos ^ ": " ^ details
             end
     end
@@ -61,7 +69,7 @@ end = struct
                  | TC.OVar _ => TypeVars.uvSet (uv, typ)
         in if TC.uvInScope (scope, uv)
            then if TC.occurs uv t
-                then raise Fail "Occurs check"
+                then raise TypeError (Occurs (uv, t))
                 else doAssign (uv, t)
            else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv))
         end
