@@ -120,15 +120,26 @@ end = struct
                    | NONE => raise TypeError (UnboundVal (pos, name))))
 
     fun lookupValType pos name scope: TC.typ option =
-        let fun elaborateValType {typ = typRef, value} =
+        let fun valBindingType scope {typ = typRef, value} =
+                case !typRef
+                of SOME typ => elabType scope typ
+                 | NONE => (case value
+                            of SOME expr => !(elaborateExpr scope expr)
+                             | NONE => TC.UVar (TypeVars.freshUv scope))
+            fun elaborateValType scope (binding as {typ = typRef, value = _}) =
                 let do valShadeRef pos name scope := TC.Grey
-                    val typ = case !typRef
-                              of SOME typ => elabType scope typ
-                               | NONE => (case value
-                                          of SOME expr => !(elaborateExpr scope expr)
-                                           | NONE => raise Fail "unimplemented")
-                in typRef := SOME typ
-                 ; valShadeRef pos name scope := TC.Black
+                    val typ = valBindingType scope binding
+                    val shade = valShadeRef pos name scope
+                in case !shade
+                   of TC.Grey => ( typRef := SOME typ
+                                 ; shade := TC.Black )
+                    | TC.Black => let val typ' = valOf (!typRef)
+                                  (* HACK?: mutual subtyping: *)
+                                  in subType scope (typ, typ')
+                                   ; subType scope (typ', typ)
+                                   ; ()
+                                  end
+                    | TC.White => raise Fail "unreachable"
                  ; typ
                 end
         in case scope
@@ -137,8 +148,13 @@ end = struct
                 of SOME {shade, binder} =>
                     (case !shade
                      of TC.Black => !(#typ binder)
-                      | TC.White => SOME (elaborateValType binder)
-                      | TC.Grey => raise Fail ("lookupValType cycle at " ^ Name.toString name))
+                      | TC.White => SOME (elaborateValType scope binder)
+                      | TC.Grey =>
+                         let val typ = TC.UVar (TypeVars.freshUv scope)
+                         in #typ binder := SOME typ
+                          ; shade := TC.Black
+                          ; SOME typ
+                         end)
                  | NONE => Option.mapPartial (lookupValType pos name) (!parent))
         end
 
