@@ -17,8 +17,9 @@ end = struct
          | _ => NONE
 
     fun stmtBind vals =
-        fn CTerm.Val (_, name, SOME typ, expr) =>
-            let val binding = {shade = ref TC.White, binder = {value = SOME expr, typ = ref (SOME (!typ))}}
+        fn CTerm.Val (_, name, otyp, expr) =>
+            let val binding = { shade = ref TC.White
+                              , binder = {value = SOME expr, typ = ref (Option.map op! otyp)} }
             in NameHashTable.insert vals (name, binding)
             end
          | CTerm.Expr _ => ()
@@ -54,8 +55,8 @@ end = struct
 
     fun injectExpr (CTerm.Fix expr) =
         let val expr = case expr
-                       of CTerm.Fn (pos, arg, SOME domain, body) =>
-                           CTerm.Fn (pos, arg, SOME (injectType domain), injectExpr body)
+                       of CTerm.Fn (pos, arg, odomain, body) =>
+                           CTerm.Fn (pos, arg, Option.map injectType odomain, injectExpr body)
                         | CTerm.Let (pos, stmts, body) =>
                            CTerm.Let (pos, Vector.map injectStmt stmts, injectExpr body)
                         | CTerm.App (pos, {callee, arg}) =>
@@ -90,6 +91,7 @@ end = struct
                  ; uplinkTypeScopes parentScope codomain )
               | _ => ())
          | TC.OutputType _ => raise Fail "uplinkTypeScopes encountered an OutputType"
+         | TC.OVar _ | TC.UVar _ => ()
 
     fun uplinkExprScopes parentScope exprRef =
         case !exprRef
@@ -122,7 +124,9 @@ end = struct
     fun toTypechecking expr =
         let val exprRef = injectExpr expr
             do uplinkExprScopes NONE exprRef
-            val TC.ScopeExpr scope = !exprRef
+            val scope = case !exprRef
+                        of TC.ScopeExpr scope => scope
+                         | _ => raise Fail "unreachable"
         in (exprRef, scope)
         end
 end
