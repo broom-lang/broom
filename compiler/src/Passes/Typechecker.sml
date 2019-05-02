@@ -47,6 +47,7 @@ end = struct
     val flipY = fn Sub => Super
                  | Super => Sub
 
+    (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
     fun assign scope (y, uv: (TC.scope, TC.typ) TypeVars.uv, t: TC.typ): unit =
         let fun doAssign (uv, typ) =
                 case typ
@@ -74,6 +75,7 @@ end = struct
            else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv))
         end
 
+    (* Check that `typ` <: `superTyp` and return the (mutating) coercion if any. *)
     fun subType scope (typ: TC.typ, superTyp: TC.typ): (TC.expr ref -> unit) option =
         case (typ, superTyp)
         of (TC.OutputType t, TC.OutputType t') =>
@@ -118,6 +120,7 @@ end = struct
 
 (* Looking up `val` types *)
 
+    (* TODO: Get rid of this: *)
     fun valShadeRef pos name: TC.scope -> TC.shade ref =
         fn TC.ExprScope {vals, parent, ...} =>
             (case NameHashTable.find vals name
@@ -127,6 +130,11 @@ end = struct
                   of SOME shade => shade
                    | NONE => raise TypeError (UnboundVal (pos, name))))
 
+    (* Get the type of the variable `name`, referenced at `pos`, from `scope` by either
+       - finding the type annotation (if available) (and elaborating it if not already done)
+       - elaborating the expression bound to the variable (if available)
+       - returning a fresh unification variable (if neither type annotation nor bound expression
+         is available or if a cycle is encountered) *)
     fun lookupValType pos name scope: TC.typ option =
         let fun valBindingType scope {typ = typRef, value} =
                 case !typRef
@@ -168,6 +176,7 @@ end = struct
 
 (* Elaborating subtrees *)
 
+    (* Elaborate the type `typ` and return the elaborated version. *)
     and elabType scope (typ: TC.typ): TC.typ =
         case typ
         of TC.InputType (CType.Arrow (pos, {domain, codomain})) =>
@@ -175,10 +184,12 @@ end = struct
                                              , codomain = elaborateType scope codomain }))
          | TC.InputType (CType.Prim (pos, p)) => TC.OutputType (FType.Prim (pos, p))
 
+    (* Like `elabType` but takes a ref, assigns to it and returns it for convenience. *)
     and elaborateType scope (typRef: TC.typ ref): TC.typ ref =
         ( typRef := elabType scope (!typRef)
         ; typRef )
 
+    (* Elaborate the expression `exprRef` and return its computed type. *)
     and elaborateExpr scope (exprRef: TC.expr ref): TC.typ =
         case !exprRef
         of TC.InputExpr expr =>
@@ -223,6 +234,7 @@ end = struct
             (* Assumes invariant: the whole subtree has been elaborated already. *)
             !(fExprType expr)
 
+    (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
     and elaborateExprAs scope (typ: TC.typ) (exprRef: TC.expr ref): unit =
         case (typ, !exprRef)
         of (TC.OutputType t, TC.InputExpr expr) =>
@@ -244,7 +256,8 @@ end = struct
             in coercion exprRef
             end
 
-    and elaborateStmt scope =
+    (* Elaborate a statement and return the elaborated version. *)
+    and elaborateStmt scope: (TC.typ ref, TC.expr ref) Cst.Term.stmt -> (TC.typ ref, TC.expr ref) FTerm.stmt =
         fn CTerm.Val (pos, name, oannTypeRef, exprRef) =>
             let val exprType = elaborateExpr scope exprRef
                 val annType = valOf (lookupValType pos name scope)
@@ -259,6 +272,7 @@ end = struct
             ( ignore (elaborateExpr scope exprRef)
             ; FTerm.Expr exprRef )
 
+    (* Coerce `callee` into a function (in place) and return its `domain` and `codomain`. *)
     and coerceCallee (callee: TC.expr ref) (typ: TC.typ): {domain: TC.typ ref, codomain: TC.typ ref} =
         let val rec coerce =
                 fn TC.InputType _ => raise Fail "unimplemented"
