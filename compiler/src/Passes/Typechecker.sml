@@ -120,26 +120,26 @@ end = struct
                    | NONE => raise TypeError (UnboundVal (pos, name))))
 
     fun lookupValType pos name scope: TC.typ option =
-        case scope
-        of TC.ExprScope {vals, parent, ...} =>
-            (case NameHashTable.find vals name
-             of SOME {shade, binder} =>
-                 (case !shade
-                  of TC.Black => (!(#typ binder))
-                   | TC.White => SOME (elaborateValType scope pos name binder)
-                   | TC.Grey => raise Fail ("lookupValType cycle at " ^ Name.toString name))
-              | NONE => Option.mapPartial (lookupValType pos name) (!parent))
-
-    and elaborateValType scope pos name ({typ = typRef, value}: (TC.typ option ref, TC.expr ref) TC.val_binding): TC.typ =
-        let do valShadeRef pos name scope := TC.Grey
-            val typ = case !typRef
-                      of SOME typ => elabType scope typ
-                       | NONE => (case value
-                                  of SOME expr => !(elaborateExpr scope expr)
-                                   | NONE => raise Fail "unimplemented")
-        in typRef := SOME typ
-         ; valShadeRef pos name scope := TC.Black
-         ; typ
+        let fun elaborateValType {typ = typRef, value} =
+                let do valShadeRef pos name scope := TC.Grey
+                    val typ = case !typRef
+                              of SOME typ => elabType scope typ
+                               | NONE => (case value
+                                          of SOME expr => !(elaborateExpr scope expr)
+                                           | NONE => raise Fail "unimplemented")
+                in typRef := SOME typ
+                 ; valShadeRef pos name scope := TC.Black
+                 ; typ
+                end
+        in case scope
+           of TC.ExprScope {vals, parent, ...} =>
+               (case NameHashTable.find vals name
+                of SOME {shade, binder} =>
+                    (case !shade
+                     of TC.Black => !(#typ binder)
+                      | TC.White => SOME (elaborateValType binder)
+                      | TC.Grey => raise Fail ("lookupValType cycle at " ^ Name.toString name))
+                 | NONE => Option.mapPartial (lookupValType pos name) (!parent))
         end
 
 (* Elaborating subtrees *)
