@@ -48,12 +48,6 @@ end) = struct
     type ('typ, 'expr) val_binding = { typ: 'typ
                                      , value: 'expr option }
 
-    type 'itf itf_binding = { interface: 'itf 
-                            , shade: shade }
-
-    type ('itf, 'mod) mod_binding = { interface: 'itf
-                                    , mod: 'mod option }
-
     datatype typ = InputType of typ ref Input.Type.typ
                  | OutputType of typ ref Output.Type.typ
                  | ScopeType of type_scope
@@ -64,36 +58,12 @@ end) = struct
              | OutputExpr of (typ ref, expr ref) Output.Term.expr
              | ScopeExpr of expr_scope
 
-    and interface = InputItf of (interface ref, typ ref) Input.Interface.interface
-                  | OutputItf of typ ref Output.Type.typ
-                  | ScopeItf of interface_scope
-
-    and mod = InputMod of (interface ref, mod ref, typ ref, expr ref) Input.Module.mod
-            | OutputMod of (typ ref, expr ref) Output.Term.expr
-            | ScopeMod of mod_scope
-
-    and scope = ItfScope of interface_scope
-              | ModScope of mod_scope
-              | TypeScope of type_scope
+    and scope = TypeScope of type_scope
               | ExprScope of expr_scope
 
-    withtype mod_scope = { parent: scope option ref
-                         , mod: mod ref
-                         , interfaces: interface ref itf_binding bindings
-                         , mods: (interface ref, mod ref) mod_binding bindings
-                         , types: typ ref type_binding bindings
-                         , vals: (typ option ref, expr ref) val_binding bindings }
-    
-    and interface_scope = { parent: scope option ref
-                          , interface: interface ref
-                          , interfaces: interface ref itf_binding bindings
-                          , mods: (interface ref, mod ref) mod_binding bindings
-                          , types: typ ref type_binding bindings
-                          , vals: (typ option ref, expr ref) val_binding bindings }
-
-    and type_scope = { parent: scope option ref
-                     , typ: typ ref
-                     , types: typ ref type_binding bindings }
+    withtype type_scope = { parent: scope option ref
+                          , typ: typ ref
+                          , types: typ ref type_binding bindings }
 
     and expr_scope = { parent: scope option ref
                      , expr: expr ref
@@ -129,9 +99,7 @@ end) = struct
         end
 
     val scopeParent =
-        fn ItfScope {parent, ...} => !parent
-         | ModScope {parent, ...} => !parent
-         | TypeScope {parent, ...} => !parent
+        fn TypeScope {parent, ...} => !parent
          | ExprScope {parent, ...} => !parent
 
     val scopeEq = MLton.eq
