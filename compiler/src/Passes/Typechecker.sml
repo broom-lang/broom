@@ -8,8 +8,6 @@ structure Typechecker :> sig
     val typeErrorToString: type_error -> string
 
     val elaborateExpr: TypecheckingCst.scope -> TypecheckingCst.expr ref -> TypecheckingCst.typ
-   
-    (* TODO: Finishing elaboration ('ejection'?) *)
 end = struct
     structure CTerm = FixedCst.Term
     structure CType = FixedCst.Type

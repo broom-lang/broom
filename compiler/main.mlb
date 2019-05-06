@@ -23,6 +23,7 @@ local
            src/Reprs/Typechecking.sml
            src/Passes/EnterTypechecker.sml
            src/Passes/Typechecker.sml
+           src/Passes/ExitTypechecker.sml
        end
     end
 
