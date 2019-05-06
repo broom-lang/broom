@@ -51,8 +51,8 @@ end) = struct
     datatype typ = InputType of typ ref Input.Type.typ
                  | OutputType of typ ref Output.Type.typ
                  | ScopeType of type_scope
-                 | OVar of scope TypeVars.ov
-                 | UVar of (scope, typ) TypeVars.uv
+                 | OVar of ov
+                 | UVar of uv
     
     and expr = InputExpr of (typ ref, expr ref) Input.Term.expr
              | OutputExpr of (typ ref, expr ref) Output.Term.expr
@@ -61,9 +61,12 @@ end) = struct
     and scope = TypeScope of type_scope
               | ExprScope of expr_scope
 
-    withtype type_scope = { parent: scope option ref
-                          , typ: typ ref
-                          , types: typ ref type_binding bindings }
+    withtype ov = scope TypeVars.ov
+    and uv = (scope, typ) TypeVars.uv
+
+    and type_scope = { parent: scope option ref
+                     , typ: typ ref
+                     , types: typ ref type_binding bindings }
 
     and expr_scope = { parent: scope option ref
                      , expr: expr ref
@@ -119,10 +122,10 @@ end) = struct
                         | NONE => raise Fail "incomparable scopes")
         end
 
-    val ovEq = TypeVars.ovEq scopeEq
-    val ovInScope = TypeVars.ovInScope compareScopes
-    val uvMerge = TypeVars.uvMerge compareScopes
-    val uvInScope = TypeVars.uvInScope compareScopes
+    val ovEq: scope TypeVars.ov * ov -> bool = TypeVars.ovEq scopeEq
+    val ovInScope: scope * ov -> bool = TypeVars.ovInScope compareScopes
+    val uvMerge: uv * uv -> unit = TypeVars.uvMerge compareScopes
+    val uvInScope: scope * uv -> bool = TypeVars.uvInScope compareScopes
 
     structure Type = struct
         val rec pos = fn InputType typ => Input.Type.pos typ
