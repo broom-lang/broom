@@ -70,7 +70,6 @@ ws = [\ \t];
 "val"    => (tok0 startPos Tokens.VAL yytext);
 "type"   => (tok0 startPos Tokens.TYPE yytext);
 "fn"     => (tok0 startPos Tokens.FN yytext);
-"forall" => (tok0 startPos Tokens.FORALL yytext);
 "let"    => (tok0 startPos Tokens.LET yytext);
 "in"     => (tok0 startPos Tokens.IN yytext);
 "end"    => (tok0 startPos Tokens.END yytext);

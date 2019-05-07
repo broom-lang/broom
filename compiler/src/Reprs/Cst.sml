@@ -2,24 +2,12 @@ structure Cst = struct
     structure Type = struct
         datatype prim = datatype NameFType.prim
 
-        datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
-                      | TypeK of Pos.t
-
-        type def = {var: Name.t, kind: kind}
-
         datatype ('typ, 'expr) typ = Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
                                    | Singleton of Pos.t * 'expr
                                    | Path of 'expr
                                    | Prim of Pos.t * prim
 
-        val rec kindToString =
-            fn TypeK _ => "Type"
-             | ArrowK (_, {domain, codomain}) =>
-                kindToString domain ^ " -> " ^ kindToString codomain
-
         val primToString = NameFType.primToString
-
-        fun defToString {var, kind} = Name.toString var ^ ": " ^ kindToString kind
 
         fun toString toString exprToString =
             fn Arrow (_, {domain, codomain}) =>

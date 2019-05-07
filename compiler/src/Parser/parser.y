@@ -11,7 +11,7 @@ type expr = Term.expr
 %pos Pos.t
 
 %term INT of int | ID of string
-    | VAL | TYPE | FN | FORALL | LET | IN | END
+    | VAL | TYPE | FN | LET | IN | END
     | LPAREN | RPAREN
     | EQ | DARROW | COLON | ARROW | DOT
     | EOF
@@ -24,8 +24,6 @@ type expr = Term.expr
        | nestable of expr
        | triv of expr
        | typeAnn of Type.typ
-       | typeAnnBody of Type.typ
-       | ids of Type.def list
 
 %keyword VAL EQ
 %noshift EOF

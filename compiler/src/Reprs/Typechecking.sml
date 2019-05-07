@@ -7,7 +7,6 @@ end
 
 signature TYPECHECKER_INPUT = sig
     structure Type: sig
-        type kind
         type ('typ, 'expr) typ
 
         val pos: ('expr -> Pos.t) -> ('typ, 'expr) typ -> Pos.t
@@ -45,7 +44,7 @@ end) = struct
 
     type 'b bindings = 'b binding NameHashTable.hash_table
 
-    type 'typ type_binding = { kind: Input.Type.kind
+    type 'typ type_binding = { kind: Output.Type.kind
 		             , typ: 'typ option }
 
     type ('typ, 'expr) val_binding = { typ: 'typ
