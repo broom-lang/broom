@@ -8,7 +8,6 @@ structure Cst = struct
         type def = {var: Name.t, kind: kind}
 
         datatype ('typ, 'expr) typ = Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
-                                   | UseT of Pos.t * def
                                    | Singleton of Pos.t * 'expr
                                    | Path of 'expr
                                    | Prim of Pos.t * prim
@@ -25,21 +24,18 @@ structure Cst = struct
         fun toString toString exprToString =
             fn Arrow (_, {domain, codomain}) =>
                 toString domain ^ " -> " ^ toString codomain
-             | UseT (_, def) => defToString def
              | Singleton (_, expr) => "(= " ^ exprToString expr ^ ")"
              | Path expr => exprToString expr
              | Prim (_, p) => primToString p
 
         fun pos exprPos =
             fn Arrow (pos, _) => pos
-             | UseT (pos, _) => pos
              | Singleton (pos, _) => pos
              | Path expr => exprPos expr
              | Prim (pos, _) => pos
 
         fun shallowFoldl f acc =
             fn Arrow (_, {domain, codomain}) => f (codomain, f (domain, acc))
-             | UseT _ | Prim _ => acc
     end
 
     structure Term = struct    

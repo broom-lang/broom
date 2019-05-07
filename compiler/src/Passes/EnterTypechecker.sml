@@ -36,7 +36,6 @@ end = struct
                       of CType.Arrow (pos, {domain, codomain}) =>
                           CType.Arrow (pos, { domain = injectType domain
                                             , codomain = injectType codomain })
-                       | CType.UseT (pos, def) => CType.UseT (pos, def)
                        | CType.Path expr => CType.Path (injectExpr expr)
                        | CType.Prim (pos, p) => CType.Prim (pos, p)
             val flexType = ref (TC.InputType typ)
@@ -52,8 +51,7 @@ end = struct
                         | CTerm.Let (pos, stmts, body) =>
                            CTerm.Let (pos, Vector.map injectStmt stmts, injectExpr body)
                         | CTerm.App (pos, {callee, arg}) =>
-                           CTerm.App (pos, { callee = injectExpr callee
-                                           , arg = injectExpr arg })
+                           CTerm.App (pos, {callee = injectExpr callee, arg = injectExpr arg})
                         | CTerm.Ann (pos, expr, t) =>
                            CTerm.Ann (pos, injectExpr expr, injectType t)
                         | CTerm.Type (pos, t) => CTerm.Type (pos, injectType t)
