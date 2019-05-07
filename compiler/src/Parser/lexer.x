@@ -68,6 +68,7 @@ ws = [\ \t];
 ")"      => (tok0 startPos Tokens.RPAREN yytext);
 
 "val"    => (tok0 startPos Tokens.VAL yytext);
+"type"   => (tok0 startPos Tokens.TYPE yytext);
 "fn"     => (tok0 startPos Tokens.FN yytext);
 "forall" => (tok0 startPos Tokens.FORALL yytext);
 "let"    => (tok0 startPos Tokens.LET yytext);

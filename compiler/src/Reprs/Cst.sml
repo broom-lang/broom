@@ -1,5 +1,46 @@
 structure Cst = struct
-    structure Type = NameFType
+    structure Type = struct
+        datatype prim = datatype NameFType.prim
+
+        datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
+                      | TypeK of Pos.t
+
+        type def = {var: Name.t, kind: kind}
+
+        datatype ('typ, 'expr) typ = Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
+                                   | UseT of Pos.t * def
+                                   | Singleton of Pos.t * 'expr
+                                   | Path of 'expr
+                                   | Prim of Pos.t * prim
+
+        val rec kindToString =
+            fn TypeK _ => "Type"
+             | ArrowK (_, {domain, codomain}) =>
+                kindToString domain ^ " -> " ^ kindToString codomain
+
+        val primToString = NameFType.primToString
+
+        fun defToString {var, kind} = Name.toString var ^ ": " ^ kindToString kind
+
+        fun toString toString exprToString =
+            fn Arrow (_, {domain, codomain}) =>
+                toString domain ^ " -> " ^ toString codomain
+             | UseT (_, def) => defToString def
+             | Singleton (_, expr) => "(= " ^ exprToString expr ^ ")"
+             | Path expr => exprToString expr
+             | Prim (_, p) => primToString p
+
+        fun pos exprPos =
+            fn Arrow (pos, _) => pos
+             | UseT (pos, _) => pos
+             | Singleton (pos, _) => pos
+             | Path expr => exprPos expr
+             | Prim (pos, _) => pos
+
+        fun shallowFoldl f acc =
+            fn Arrow (_, {domain, codomain}) => f (codomain, f (domain, acc))
+             | UseT _ | Prim _ => acc
+    end
 
     structure Term = struct    
         datatype ('typ, 'expr) stmt
@@ -11,6 +52,7 @@ structure Cst = struct
             | Let of Pos.t * ('typ, 'expr) stmt vector * 'expr
             | App of Pos.t * {callee: 'expr, arg: 'expr}
             | Ann of Pos.t * 'expr * 'typ
+            | Type of Pos.t * 'typ
             | Use of Pos.t * Name.t
             | Const of Pos.t * Const.t
 
@@ -19,6 +61,7 @@ structure Cst = struct
              | Let (pos, _, _) => pos
              | App (pos, _) => pos
              | Ann (pos, _, _) => pos
+             | Type (pos, _) => pos
              | Use (pos, _) => pos
              | Const (pos, _) => pos
 
@@ -47,68 +90,37 @@ structure Cst = struct
                        "    " ^ exprToString body ^ "\nend"
                 end
              | Ann (_, expr, t) => exprToString expr ^ ": " ^ typeToString t
+             | Type (_, t) => "type " ^ typeToString t
              | Use (_, name) => Name.toString name
              | Const (_, c) => Const.toString c
-    end
-
-    structure Interface = struct
-        datatype ('itf, 'typ) decl
-            = DInt of Pos.t * Name.t * Name.t vector * 'itf
-            | DMod of Pos.t * Name.t * 'itf
-            | DTyp of Pos.t * Name.t * Name.t vector * 'typ option
-            | DVal of Pos.t * Name.t * 'typ
-
-        datatype ('itf, 'typ) interface =
-            Interface of Pos.t * ('itf, 'typ) decl vector
-    end
-
-    structure Module = struct
-	datatype ('itf, 'mod, 'typ, 'expr) def 
-            = Int of Pos.t * Name.t * Name.t vector * 'itf
-            | Mod of Pos.t * Name.t * 'itf option * 'mod
-            | Typ of Pos.t * Name.t * Name.t vector * 'typ
-            | Val of Pos.t * Name.t * 'typ option * 'expr
-
-        datatype ('itf, 'mod, 'typ, 'expr) mod =
-            Module of Pos.t * ('itf, 'mod, 'typ, 'expr) def vector
     end
 end
 
 structure FixedCst = struct
+    datatype typ' = FixT of (typ', expr') Cst.Type.typ
+    and expr' = Fix of (typ', expr') Cst.Term.expr
+
+    fun typeToString' (FixT t) = Cst.Type.toString typeToString' exprToString' t
+    and exprToString' (Fix expr) = Cst.Term.exprToString typeToString' exprToString' expr 
+
     structure Type = struct
         open Cst.Type
-
-        datatype typ = Fix of typ Cst.Type.typ
-
-        fun toString (Fix t) = Cst.Type.toString toString t
+ 
+        datatype typ = datatype typ'
+        
+        val toString = typeToString'
     end
 
     structure Term = struct
         open Cst.Term
 
-        datatype expr = Fix of (Type.typ, expr) Cst.Term.expr
+        datatype expr = datatype expr'
         
         type stmt = (Type.typ, expr) Cst.Term.stmt
 
-        fun exprToString (Fix expr) = Cst.Term.exprToString Type.toString exprToString expr
+        val exprToString = exprToString'
 
         fun stmtToString stmt = Cst.Term.stmtToString Type.toString exprToString stmt
-    end
-
-    structure Interface = struct
-        open Cst.Interface
-
-        datatype interface = Fix of (interface, Type.typ) Cst.Interface.interface
-        
-        type decl = (interface, Type.typ) Cst.Interface.decl
-    end
-
-    structure Module = struct
-        open Cst.Module
-
-        datatype mod = Fix of (Interface.interface, mod, Type.typ, Term.expr) Cst.Module.mod
-
-        type def = (Interface.interface, mod, Type.typ, Term.expr) Cst.Module.def
     end
 end
 

@@ -29,6 +29,7 @@ end = struct
             (case typ
              of FFType.Arrow (pos, {domain, codomain}) =>
                  FFType.Arrow (pos, {domain = typRefToF domain, codomain = typRefToF codomain})
+              | FFType.Type (pos, typ) => FFType.Type (pos, typRefToF typ)
               | FFType.Prim (pos, p) => FFType.Prim (pos, p))
          | TC.InputType _ => raise Fail "unimplemented"
 
@@ -52,6 +53,7 @@ end = struct
                  FFTerm.Let (pos, Vector.map (stmtToF env) stmts, exprToF env body)
               | FFTerm.App (pos, typ, {callee, arg}) =>
                  FFTerm.App (pos, typRefToF typ, {callee = exprToF env callee, arg = exprToF env arg})
+              | FFTerm.Type (pos, typ) => FFTerm.Type (pos, typRefToF typ)
               | FFTerm.Use (pos, {var, ...}) => FFTerm.Use (pos, Env.lookup (env, var))
               | FFTerm.Const (pos, c) => FFTerm.Const (pos, c))
          | TC.ScopeExpr {expr, vals, parent = _} => toUnfixedF (pushVals env vals) expr

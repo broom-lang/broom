@@ -78,23 +78,16 @@ end = struct
         case (typ, superTyp)
         of (TC.OutputType t, TC.OutputType t') =>
             (case (t, t')
-             of (FType.Prim (_, pl), FType.Prim (_, pr)) =>
+             of (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows scope (arr, arr')
+              | (FType.Prim (_, pl), FType.Prim (_, pr)) =>
                  if pl = pr
                  then NONE
-                 else raise Fail "<:")
-         | (TC.UVar uv, TC.UVar uv') =>
-            (case (TypeVars.uvGet uv, TypeVars.uvGet uv')
-             of (Either.Left uv, Either.Left uv') =>
-                 if TC.uvInScope (scope, uv)
-                 then if TC.uvInScope (scope, uv')
-                      then if TypeVars.uvEq (uv, uv')
-                           then NONE
-                           else ( TC.uvMerge (uv, uv'); NONE )
-                      else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
-                 else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
-              | (Either.Left uv, Either.Right t) => ( assign scope (Sub, uv, t); NONE )
-              | (Either.Right t, Either.Left uv) => ( assign scope (Super, uv, t); NONE )
-              | (Either.Right t, Either.Right t') => subType scope (t, t'))
+                 else raise Fail "<:"
+              | (FType.Type (pos, tref as ref t), FType.Type (_, ref t')) =>
+                 ( subType scope (t, t')
+                 ; subType scope (t', t)
+                 ; SOME (fn expr => expr := TC.OutputExpr (FTerm.Type (pos, tref)))))
+         | (TC.UVar uv, TC.UVar uv') => subUvs scope (uv, uv')
          | (TC.UVar uv, _) =>
             (case TypeVars.uvGet uv
              of Either.Left uv => ( assign scope (Sub, uv, superTyp); NONE )
@@ -103,6 +96,41 @@ end = struct
             (case TypeVars.uvGet uv
              of Either.Left uv => ( assign scope (Super, uv, typ); NONE )
               | Either.Right t => subType scope (typ, t))
+
+    and subArrows scope ({domain, codomain}, {domain = domain', codomain = codomain'}) =
+        let val coerceDomain = subType scope (!domain', !domain)
+            val coerceCodomain = subType scope (!codomain, !codomain')
+        in if isSome coerceDomain orelse isSome coerceCodomain
+           then let val coerceDomain = getOpt (coerceDomain, fn _ => ())
+                    val coerceCodomain = getOpt (coerceCodomain, fn _ => ())
+                in SOME (fn expr =>
+                             let val pos = TC.exprPos (!expr)
+                                 val param = {var = Name.fresh (), typ = domain'}
+                                 val arg = ref (TC.OutputExpr (FTerm.Use (pos, param)))
+                                 val callee = expr
+                                 do coerceDomain arg
+                                 val body = ref (TC.OutputExpr (FTerm.App (pos, codomain, {callee, arg})))
+                                 do coerceCodomain body
+                                 val expr' = FTerm.Fn (pos, param, body)
+                             in expr := TC.OutputExpr expr'
+                             end)
+                end
+           else NONE
+        end
+
+    and subUvs scope (uv: TC.uv, uv': TC.uv): (TC.expr ref -> unit) option =
+        case (TypeVars.uvGet uv, TypeVars.uvGet uv')
+        of (Either.Left uv, Either.Left uv') =>
+            if TC.uvInScope (scope, uv)
+            then if TC.uvInScope (scope, uv')
+                 then if TypeVars.uvEq (uv, uv')
+                      then NONE
+                      else ( TC.uvMerge (uv, uv'); NONE )
+                 else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
+            else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
+         | (Either.Left uv, Either.Right t) => ( assign scope (Sub, uv, t); NONE )
+         | (Either.Right t, Either.Left uv) => ( assign scope (Super, uv, t); NONE )
+         | (Either.Right t, Either.Right t') => subType scope (t, t')
 
 (* Hacky Utils *)
 
@@ -169,10 +197,19 @@ end = struct
     (* Elaborate the type `typ` and return the elaborated version. *)
     and elabType scope (typ: TC.typ): TC.typ =
         case typ
-        of TC.InputType (CType.Arrow (pos, {domain, codomain})) =>
-            TC.OutputType (FType.Arrow (pos, { domain = elaborateType scope domain
-                                             , codomain = elaborateType scope codomain }))
-         | TC.InputType (CType.Prim (pos, p)) => TC.OutputType (FType.Prim (pos, p))
+        of TC.InputType typ =>
+            (case typ
+             of CType.Arrow (pos, {domain, codomain}) =>
+                 TC.OutputType (FType.Arrow (pos, { domain = elaborateType scope domain
+                                                  , codomain = elaborateType scope codomain }))
+              | CType.Path typExpr =>
+                 (case elaborateExpr scope typExpr
+                  of TC.OutputType typ =>
+                      (case typ
+                       of FType.Type (pos, ref typ) => typ
+                        | _ => raise Fail ("Type path does not denote type at "
+                                           ^ Pos.toString (TC.exprPos (!typExpr)))))
+              | CType.Prim (pos, p) => TC.OutputType (FType.Prim (pos, p)))
 
     (* Like `elabType` but takes a ref, assigns to it and returns it for convenience. *)
     and elaborateType scope (typRef: TC.typ ref): TC.typ ref =
@@ -208,6 +245,11 @@ end = struct
               | CTerm.Ann (pos, expr, t) =>
                  ( elaborateExprAs scope (!(elaborateType scope t)) expr
                  ; !t )
+              | CTerm.Type (pos, t) =>
+                 let val t = elaborateType scope t
+                 in exprRef := TC.OutputExpr (FTerm.Type (pos, t))
+                  ; TC.OutputType (FType.Type (pos, t))
+                 end
               | CTerm.Use (pos, name) =>
                  let val typ = case lookupValType name scope
                                of SOME typRef => typRef

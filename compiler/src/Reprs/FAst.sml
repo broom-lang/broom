@@ -1,5 +1,5 @@
 structure FAst = struct
-    structure Type = Cst.Type
+    structure Type = NameFType
 
     structure Term = struct
         type 'typ def = {var: Name.t, typ: 'typ}
@@ -9,6 +9,7 @@ structure FAst = struct
                                     | App of Pos.t * 'typ * {callee: 'expr, arg: 'expr}
                                     | TApp of Pos.t * 'typ * {callee: 'expr, arg: 'typ}
                                     | Let of Pos.t * ('typ, 'expr) stmt vector * 'expr
+                                    | Type of Pos.t * 'typ
                                     | Use of Pos.t * 'typ def
                                     | Const of Pos.t * Const.t
 
@@ -21,6 +22,7 @@ structure FAst = struct
              | App (pos, _, _) => pos
              | TApp (pos, _, _) => pos
              | Let (pos, _, _) => pos
+             | Type (pos, _) => pos
              | Use (pos, _) => pos
              | Const (pos, _) => pos
 
@@ -45,6 +47,7 @@ structure FAst = struct
                in "let " ^ Vector.foldl step "" stmts ^ "in\n" ^
                       "    " ^ exprToString body ^ "\nend"
                end
+            | Type (_, t) => "[" ^ typeToString t ^ "]"
             | Use (_, {var, ...}) => Name.toString var 
             | Const (_, c) => Const.toString c
 
@@ -60,6 +63,7 @@ structure FAst = struct
                      | App (_, typ, _) => Either.Right typ
                      | TApp (_, typ, _) => Either.Right typ
                      | Let (_, _, body) => typeOf (unfixExpr body)
+                     | Type (pos, t) => Either.Left (Type.Type (pos, t))
                      | Use (_, {typ, ...}) => Either.Right typ
                      | Const (pos, c) => Either.Left (Type.Prim (pos, Const.typeOf c))
             in fixed o typeOf

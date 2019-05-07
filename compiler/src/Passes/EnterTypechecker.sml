@@ -6,15 +6,7 @@ end = struct
     structure TC = TypecheckingCst
 
     fun typeScope typ =
-        fn CType.ForAll (pos, def as {var, kind}, _) =>
-            let val types = NameHashTable.mkTable (1, Subscript)
-                val binding = { shade = ref TC.White
-                              , binder = { kind
-                                         , typ = SOME (ref (TC.InputType (CType.UseT (pos, def)))) } }
-                do NameHashTable.insert types (var, binding)
-            in SOME {parent = ref NONE, typ, types}
-            end
-         | _ => NONE
+        fn _ => NONE
 
     fun stmtBind vals =
         fn CTerm.Val (_, name, otyp, expr) =>
@@ -25,9 +17,10 @@ end = struct
          | CTerm.Expr _ => ()
 
     fun exprScope expr =
-        fn CTerm.Fn (_, arg, SOME domain, _) =>
+        fn CTerm.Fn (_, arg, odomain, _) =>
             let val vals = NameHashTable.mkTable (1, Subscript)
-                val binding = {shade = ref TC.White, binder = {value = NONE, typ = ref (SOME (!domain))}}
+                val binding = { shade = ref TC.White
+                              , binder = {value = NONE, typ = ref (Option.map op! odomain)} }
                 do NameHashTable.insert vals (arg, binding)
             in SOME {parent = ref NONE, expr, vals}
             end
@@ -38,14 +31,13 @@ end = struct
             end
          | _ => NONE
 
-    fun injectType (CType.Fix typ) =
+    fun injectType (CType.FixT typ) =
         let val typ = case typ
-                      of CType.ForAll (pos, def, body) =>
-                          CType.ForAll (pos, def, injectType body)
-                       | CType.Arrow (pos, {domain, codomain}) =>
+                      of CType.Arrow (pos, {domain, codomain}) =>
                           CType.Arrow (pos, { domain = injectType domain
                                             , codomain = injectType codomain })
                        | CType.UseT (pos, def) => CType.UseT (pos, def)
+                       | CType.Path expr => CType.Path (injectExpr expr)
                        | CType.Prim (pos, p) => CType.Prim (pos, p)
             val flexType = ref (TC.InputType typ)
         in case typeScope flexType typ
@@ -53,7 +45,7 @@ end = struct
             | NONE => flexType
         end
 
-    fun injectExpr (CTerm.Fix expr) =
+    and injectExpr (CTerm.Fix expr) =
         let val expr = case expr
                        of CTerm.Fn (pos, arg, odomain, body) =>
                            CTerm.Fn (pos, arg, Option.map injectType odomain, injectExpr body)
@@ -64,6 +56,7 @@ end = struct
                                            , arg = injectExpr arg })
                         | CTerm.Ann (pos, expr, t) =>
                            CTerm.Ann (pos, injectExpr expr, injectType t)
+                        | CTerm.Type (pos, t) => CTerm.Type (pos, injectType t)
                         | CTerm.Use (pos, name) => CTerm.Use (pos, name)
                         | CTerm.Const (pos, c) => CTerm.Const (pos, c)
             val flexpr = ref (TC.InputExpr expr)
@@ -85,8 +78,7 @@ end = struct
             ; uplinkTypeScopes (SOME (TC.TypeScope scope)) typ )
          | TC.InputType typ =>
             (case typ
-             of CType.ForAll (_, _, body) => uplinkTypeScopes parentScope body
-              | CType.Arrow (_, {domain, codomain}) =>
+             of CType.Arrow (_, {domain, codomain}) =>
                  ( uplinkTypeScopes parentScope domain
                  ; uplinkTypeScopes parentScope codomain )
               | _ => ())

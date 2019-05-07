@@ -4,9 +4,6 @@ structure Type = FixedCst.Type
 type stmt = Term.stmt
 type expr = Term.expr
 
-fun lookup "bogus" = 10000
-  | lookup s = 0
-
 %%
 
 %name Broom
@@ -14,7 +11,7 @@ fun lookup "bogus" = 10000
 %pos Pos.t
 
 %term INT of int | ID of string
-    | VAL | FN | FORALL | LET | IN | END
+    | VAL | TYPE | FN | FORALL | LET | IN | END
     | LPAREN | RPAREN
     | EQ | DARROW | COLON | ARROW | DOT
     | EOF
@@ -45,11 +42,14 @@ stmtList : ([])
 
 stmt : VAL ID EQ expr (Term.Val (VALleft, Name.fromString ID, NONE, expr))
      | VAL ID COLON typeAnn EQ expr (Term.Val (VALleft, Name.fromString ID, SOME typeAnn, expr))
+     | TYPE ID EQ typeAnn (Term.Val ( TYPEleft, Name.fromString ID, NONE
+                                    , Term.Fix (Term.Type (typeAnnleft, typeAnn)) ))
 
 expr : FN ID DARROW expr (Term.Fix (Term.Fn (FNleft, Name.fromString ID, NONE, expr)))
      | FN ID COLON typeAnn DARROW expr (Term.Fix (Term.Fn ( FNleft, Name.fromString ID, SOME typeAnn, expr)))
      | LET stmts IN expr END (Term.Fix (Term.Let (exprleft, stmts, expr)))
      | expr COLON typeAnn (Term.Fix (Term.Ann (exprleft, expr, typeAnn)))
+     | TYPE typeAnn (Term.Fix (Term.Type (typeAnnleft, typeAnn)))
      | app (app)
 
 app : app nestable (Term.Fix (Term.App (appleft, {callee = app, arg = nestable})))
@@ -61,17 +61,12 @@ nestable : LPAREN expr RPAREN (expr)
 triv : ID  (Term.Fix (Term.Use (IDleft, Name.fromString ID)))
      | INT (Term.Fix (Term.Const (INTleft, Const.Int INT)))
 
-typeAnn : FORALL ids DOT typeAnnBody (List.foldl (fn (id, t) => Type.Fix (Type.ForAll (FORALLleft, id, t)))
-                                                 typeAnnBody ids)
-        | typeAnnBody (typeAnnBody)
+typeAnn : LPAREN typeAnn RPAREN (typeAnn)
+        | typeAnn ARROW typeAnn (Type.FixT (Type.Arrow (typeAnnleft, {domain = typeAnn1, codomain = typeAnn})))
+        | LPAREN EQ expr RPAREN (Type.FixT (Type.Singleton (LPARENleft, expr)))
+        | expr (Type.FixT (case expr
+                           of Term.Fix (Term.Use (_, name)) => (case Name.toString name
+                                                                of "Int" => Type.Prim (exprleft, Type.I32)
+                                                                 | _ => Type.Path expr)
+                            | _ => Type.Path expr))
 
-typeAnnBody : LPAREN typeAnn RPAREN (typeAnn)
-            | typeAnnBody ARROW typeAnnBody (Type.Fix (Type.Arrow ( typeAnnBody1left
-                                                                  , { domain = typeAnnBody1
-                                                                    , codomain = typeAnnBody2 })))
-            | ID (Type.Fix (case ID
-                            of "Int" => Type.Prim (IDleft, Type.I32)
-                             | _ => Type.UseT (IDleft, {var = Name.fromString ID, kind = Type.TypeK IDleft})))
-
-ids : ids ID ({var = Name.fromString ID, kind = Type.TypeK IDleft} :: ids)
-    | ID ([{var = Name.fromString ID, kind = Type.TypeK IDleft}])
