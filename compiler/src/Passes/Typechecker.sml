@@ -242,6 +242,11 @@ end = struct
                   ; exprRef := TC.OutputExpr (FTerm.App (pos, codomain, {callee, arg}))
                   ; !codomain
                  end
+              | CTerm.Field (pos, expr, label) =>
+                 let val fieldType = coerceRecord scope expr (elaborateExpr scope expr) label
+                 in exprRef := TC.OutputExpr (FTerm.Field (pos, ref fieldType, expr, label))
+                  ; fieldType
+                 end
               | CTerm.Ann (pos, expr, t) =>
                  ( elaborateExprAs scope (!(elaborateType scope t)) expr
                  ; !t )
@@ -319,6 +324,22 @@ end = struct
                     (case TypeVars.uvGet uv
                      of Either.Left uv => raise Fail "unimplemented"
                       | Either.Right typ => coerce typ)
+        in coerce typ
+        end
+   
+    (* Coerce `expr` (in place) into a record with at least `label` and return the `label`:ed type. *)
+    and coerceRecord scope (expr: TC.expr ref) (typ: TC.typ) label: TC.typ =
+        let val rec coerce =
+                fn TC.UVar uv =>
+                    (case TypeVars.uvGet uv
+                     of Either.Right typ => coerce typ
+                      | Either.Left uv => let val fieldType = TC.UVar (TypeVars.freshUv scope)
+                                              val ext = ref (TC.UVar (TypeVars.freshUv scope))
+                                              val row = FType.RowExt {field = (label, ref fieldType), ext}
+                                              val typ = FType.Record (TC.exprPos (!expr), row)
+                                          in TypeVars.uvSet (uv, TC.OutputType typ)
+                                           ; fieldType
+                                          end)
         in coerce typ
         end
 end

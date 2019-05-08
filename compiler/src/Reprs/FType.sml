@@ -11,9 +11,13 @@ end) = struct
 
     datatype 'typ typ = ForAll of Pos.t * def * 'typ
                       | Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
+                      | Record of Pos.t * 'typ row
                       | Type of Pos.t * 'typ
                       | UseT of Pos.t * def
                       | Prim of Pos.t * prim
+
+    and 'typ row = RowExt of {field: Name.t * 'typ, ext: 'typ}
+                 | EmptyRow
 
     val rec kindToString =
         fn TypeK _ => "Type"
@@ -30,9 +34,15 @@ end) = struct
             "forall " ^ defToString param ^ " . " ^ toString t
          | Arrow (_, {domain, codomain}) =>
             toString domain ^ " -> " ^ toString codomain
+         | Record (_, row) => "{" ^ rowToString toString row ^ "}"
          | Type (_, t) => "[= " ^ toString t ^ "]"
          | UseT (_, def) => defToString def 
          | Prim (_, p) => primToString p
+
+    and rowToString toString =
+        fn RowExt {field = (label, fieldType), ext} =>
+            Name.toString label ^ " = " ^ toString fieldType ^ " | " ^ toString ext
+         | EmptyRow => "(||)"
 
     val pos =
         fn ForAll (pos, _, _) => pos

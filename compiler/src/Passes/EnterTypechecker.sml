@@ -50,8 +50,10 @@ end = struct
                            CTerm.Fn (pos, arg, Option.map injectType odomain, injectExpr body)
                         | CTerm.Let (pos, stmts, body) =>
                            CTerm.Let (pos, Vector.map injectStmt stmts, injectExpr body)
+                        | CTerm.Record (pos, row) => CTerm.Record (pos, injectRow row)
                         | CTerm.App (pos, {callee, arg}) =>
                            CTerm.App (pos, {callee = injectExpr callee, arg = injectExpr arg})
+                        | CTerm.Field (pos, expr, label) => CTerm.Field (pos, injectExpr expr, label)
                         | CTerm.Ann (pos, expr, t) =>
                            CTerm.Ann (pos, injectExpr expr, injectType t)
                         | CTerm.Type (pos, t) => CTerm.Type (pos, injectType t)
@@ -62,6 +64,8 @@ end = struct
            of SOME scope => ref (TC.ScopeExpr scope)
             | NONE => flexpr
         end
+
+    and injectRow row = Vector.map (fn (label, expr) => (label, injectExpr expr)) row
 
     and injectStmt (CTerm.Val (pos, name, otyp, expr)) =
         CTerm.Val (pos, name, Option.map injectType otyp, injectExpr expr)
@@ -96,13 +100,16 @@ end = struct
               | CTerm.Let (_, stmts, body) =>
                  ( Vector.app (uplinkStmtScopes parentScope) stmts
                  ; uplinkExprScopes parentScope body )
+              | CTerm.Record (_, row) => Vector.app (uplinkExprScopes parentScope o #2) row
               | CTerm.App (_, {callee, arg}) =>
                  ( uplinkExprScopes parentScope callee
                  ; uplinkExprScopes parentScope arg )
+              | CTerm.Field (_, expr, _) => uplinkExprScopes parentScope expr
               | CTerm.Ann (_, expr, t) =>
                  ( uplinkExprScopes parentScope expr
                  ; uplinkTypeScopes parentScope t )
-              | _ => ())
+              | CTerm.Type (_, typ) => uplinkTypeScopes parentScope typ
+              | CTerm.Use _ | CTerm.Const _ => ())
          | TC.OutputExpr _ => raise Fail "uplinkExprScopes encountered an OutputExpr"
 
     and uplinkStmtScopes parentScope =

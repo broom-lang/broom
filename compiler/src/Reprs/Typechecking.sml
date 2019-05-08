@@ -85,7 +85,9 @@ end) = struct
          | OutputType typ => Output.Type.toString (typeToString o op!) typ
          | ScopeType {typ, ...} => typeToString (!typ)
          | OVar ov => Name.toString (TypeVars.ovName ov)
-         | UVar uv => Name.toString (TypeVars.uvName uv)
+         | UVar uv => (case TypeVars.uvGet uv
+                       of Either.Right t => typeToString t
+                        | Either.Left uv => Name.toString (TypeVars.uvName uv))
 
     and exprToString =
         fn InputExpr expr => Input.Term.exprToString (typeToString o op!) (exprToString o op!) expr

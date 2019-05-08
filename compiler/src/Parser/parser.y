@@ -12,8 +12,8 @@ type expr = Term.expr
 
 %term INT of int | ID of string
     | VAL | TYPE | FN | LET | IN | END
-    | LPAREN | RPAREN
-    | EQ | DARROW | COLON | ARROW | DOT
+    | LPAREN | RPAREN | LBRACE | RBRACE
+    | EQ | DARROW | COLON | ARROW | DOT | COMMA
     | EOF
 %nonterm program of expr
        | stmts of stmt vector
@@ -22,6 +22,8 @@ type expr = Term.expr
        | expr of expr
        | app of expr
        | nestable of expr
+       | rowExpr of (Name.t * expr) vector
+       | rowExprList of (Name.t * expr) list
        | triv of expr
        | typeAnn of Type.typ
 
@@ -48,13 +50,21 @@ expr : FN ID DARROW expr (Term.Fix (Term.Fn (FNleft, Name.fromString ID, NONE, e
      | LET stmts IN expr END (Term.Fix (Term.Let (exprleft, stmts, expr)))
      | expr COLON typeAnn (Term.Fix (Term.Ann (exprleft, expr, typeAnn)))
      | TYPE typeAnn (Term.Fix (Term.Type (typeAnnleft, typeAnn)))
+     | expr DOT ID (Term.Fix (Term.Field (exprleft, expr, Name.fromString ID)))
      | app (app)
 
 app : app nestable (Term.Fix (Term.App (appleft, {callee = app, arg = nestable})))
     | nestable (nestable)
 
 nestable : LPAREN expr RPAREN (expr)
+         | LBRACE rowExpr RBRACE (Term.Fix (Term.Record (LBRACEleft, rowExpr)))
          | triv (triv)
+
+rowExpr : rowExprList (Vector.fromList (List.rev rowExprList) (* OPTIMIZE *))
+
+rowExprList : ([])
+            | ID EQ expr ([(Name.fromString ID, expr)])
+            | rowExprList COMMA ID EQ expr ((Name.fromString ID, expr) :: rowExprList)
 
 triv : ID  (Term.Fix (Term.Use (IDleft, Name.fromString ID)))
      | INT (Term.Fix (Term.Const (INTleft, Const.Int INT)))

@@ -8,6 +8,7 @@ structure FAst = struct
                                     | TFn of Pos.t * Type.def * 'expr
                                     | App of Pos.t * 'typ * {callee: 'expr, arg: 'expr}
                                     | TApp of Pos.t * 'typ * {callee: 'expr, arg: 'typ}
+                                    | Field of Pos.t * 'typ * 'expr * Name.t
                                     | Let of Pos.t * ('typ, 'expr) stmt vector * 'expr
                                     | Type of Pos.t * 'typ
                                     | Use of Pos.t * 'typ def
@@ -21,6 +22,7 @@ structure FAst = struct
              | TFn (pos, _, _) => pos
              | App (pos, _, _) => pos
              | TApp (pos, _, _) => pos
+             | Field (pos, _, _, _) => pos
              | Let (pos, _, _) => pos
              | Type (pos, _) => pos
              | Use (pos, _) => pos
@@ -42,6 +44,8 @@ structure FAst = struct
                "(" ^ exprToString callee ^ " " ^ exprToString arg ^ ")"
             | TApp (_, _, {callee, arg}) =>
                "(" ^ exprToString callee ^ " [" ^ typeToString arg ^ "])" 
+            | Field (_, _, expr, label) =>
+               "(" ^ exprToString expr ^ "." ^ Name.toString label ^ ")"
             | Let (_, stmts, body) =>
                let fun step (stmt, acc) = acc ^ stmtToString typeToString exprToString stmt ^ "\n"
                in "let " ^ Vector.foldl step "" stmts ^ "in\n" ^
@@ -62,6 +66,7 @@ structure FAst = struct
                         Either.Left (Type.ForAll (pos, param, fixed (typeOf (unfixExpr body))))
                      | App (_, typ, _) => Either.Right typ
                      | TApp (_, typ, _) => Either.Right typ
+                     | Field (_, typ, _, _) => Either.Right typ
                      | Let (_, _, body) => typeOf (unfixExpr body)
                      | Type (pos, t) => Either.Left (Type.Type (pos, t))
                      | Use (_, {typ, ...}) => Either.Right typ

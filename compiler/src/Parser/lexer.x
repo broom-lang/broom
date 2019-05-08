@@ -63,9 +63,12 @@ ws = [\ \t];
 ":"      => (tok0 startPos Tokens.COLON yytext);
 "->"     => (tok0 startPos Tokens.ARROW yytext);
 "."      => (tok0 startPos Tokens.DOT yytext);
+","      => (tok0 startPos Tokens.COMMA yytext);
 
 "("      => (tok0 startPos Tokens.LPAREN yytext);
 ")"      => (tok0 startPos Tokens.RPAREN yytext);
+"{"      => (tok0 startPos Tokens.LBRACE yytext);
+"}"      => (tok0 startPos Tokens.RBRACE yytext);
 
 "val"    => (tok0 startPos Tokens.VAL yytext);
 "type"   => (tok0 startPos Tokens.TYPE yytext);

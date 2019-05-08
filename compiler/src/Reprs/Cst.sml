@@ -34,16 +34,21 @@ structure Cst = struct
         datatype ('typ, 'expr) expr
             = Fn of Pos.t * Name.t * 'typ option * 'expr
             | Let of Pos.t * ('typ, 'expr) stmt vector * 'expr
+            | Record of Pos.t * 'expr row
             | App of Pos.t * {callee: 'expr, arg: 'expr}
+            | Field of Pos.t * 'expr * Name.t
             | Ann of Pos.t * 'expr * 'typ
             | Type of Pos.t * 'typ
             | Use of Pos.t * Name.t
             | Const of Pos.t * Const.t
+        withtype 'expr row = (Name.t * 'expr) vector
 
         val exprPos =
             fn Fn (pos, _, _, _) => pos
              | Let (pos, _, _) => pos
+             | Record (pos, _) => pos
              | App (pos, _) => pos
+             | Field (pos, _, _) => pos
              | Ann (pos, _, _) => pos
              | Type (pos, _) => pos
              | Use (pos, _) => pos
@@ -58,6 +63,12 @@ structure Cst = struct
                     " = " ^ exprToString valExpr
              | Expr expr => exprToString expr
 
+        fun rowToString exprToString row =
+            let fun step ((label, expr), acc) =
+                    acc ^ " " ^ Name.toString label ^ " = " ^ exprToString expr ^ ","
+            in Vector.foldl step "" row
+            end
+
         fun exprToString typeToString exprToString =
             fn Fn (_, param, maybeAnn, body) =>
                 "fn " ^ Name.toString param ^
@@ -65,8 +76,10 @@ structure Cst = struct
                      of SOME t => ": " ^ typeToString t
                       | NONE => "") ^
                     " => " ^ exprToString body
+             | Record (_, row) => "{" ^ rowToString exprToString row ^ "}"
              | App (_, {callee, arg}) =>
                 "(" ^ exprToString callee ^ " " ^ exprToString arg ^ ")"
+             | Field (_, expr, label) => "(" ^ exprToString expr ^ "." ^ Name.toString label ^ ")"
              | Let (_, stmts, body) =>
                 let fun step (stmt, acc) = acc ^ stmtToString typeToString exprToString stmt ^
                 "\n"
