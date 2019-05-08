@@ -5,6 +5,7 @@ signature TYPE_VARS = sig
     val newOv: 'scope -> Name.t -> 'scope ov
     val ovEq: ('scope * 'scope -> bool) -> 'scope ov * 'scope ov -> bool
     val ovName: 'scope ov -> Name.t
+    val ovScope: 'scope ov -> 'scope
     val ovInScope: ('scope * 'scope -> order) -> ('scope * 'scope ov) -> bool
 
     type ('scope, 't) uv
@@ -12,6 +13,7 @@ signature TYPE_VARS = sig
     val freshUv: 'scope -> ('scope, 't) uv
     val uvEq: ('scope, 't) uv * ('scope, 't) uv -> bool
     val uvName: ('scope, 't) uv -> Name.t
+    val uvScope: ('scope, 't) uv -> 'scope
     val uvInScope: ('scope * 'scope -> order) -> ('scope * ('scope, 'ti) uv) -> bool
     val uvGet: ('scope, 't) uv -> (('scope, 't) uv, 't) Either.t
     val uvSet: ('scope, 't) uv * 't -> unit
@@ -31,6 +33,8 @@ structure TypeVars :> TYPE_VARS = struct
         name = name' andalso scopeEq (scope, scope')
     
     val ovName: 'scope ov -> Name.t = #name
+
+    val ovScope: 'scope ov -> 'scope = #scope
 
     fun ovInScope scopeCmp (scope, ov: 'scope ov) =
         case scopeCmp (#scope ov, scope)
@@ -61,6 +65,8 @@ structure TypeVars :> TYPE_VARS = struct
          | _ => raise Fail "unreachable"
    
     fun uvName uv = #name (#descr (uvRoot uv))
+
+    fun uvScope uv = #scope (#descr (uvRoot uv))
 
     fun uvInScope scopeCmp (scope, uv) =
         case scopeCmp (#scope (#descr (uvRoot uv)), scope)

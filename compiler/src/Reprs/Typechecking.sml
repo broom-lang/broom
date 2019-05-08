@@ -22,6 +22,8 @@ signature TYPECHECKER_OUTPUT = sig
         type kind
         type 'typ typ
 
+        val kindToString: kind -> string
+
         val pos: 'typ typ -> Pos.t
         val toString: ('typ -> string) -> 'typ typ -> string
         val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> 'typ typ -> 'a
@@ -102,37 +104,80 @@ end) = struct
         in occ
         end
 
-    val scopeParent =
-        fn TypeScope {parent, ...} => !parent
-         | ExprScope {parent, ...} => !parent
-
-    val scopeEq = MLton.eq
-
-    fun compareScopes (scope, scope') =
-        let fun indexOf ancestor scope =
-                let fun loop i scope =
-                       if scopeEq (scope, ancestor)
-                       then SOME i
-                       else Option.mapPartial (loop (i + 1)) (scopeParent scope)
-                in loop 0 scope
-                end
-        in case indexOf scope' scope
-           of SOME i => if i > 0 then LESS else EQUAL
-            | NONE => (case indexOf scope scope'
-                       of SOME i => if i > 0 then GREATER else EQUAL
-                        | NONE => raise Fail "incomparable scopes")
-        end
-
-    val ovEq: scope TypeVars.ov * ov -> bool = TypeVars.ovEq scopeEq
-    val ovInScope: scope * ov -> bool = TypeVars.ovInScope compareScopes
-    val uvMerge: uv * uv -> unit = TypeVars.uvMerge compareScopes
-    val uvInScope: scope * uv -> bool = TypeVars.uvInScope compareScopes
-
     structure Type = struct
         val rec pos = fn InputType typ => Input.Type.pos (exprPos o op!) typ
                        | ScopeType {typ, ...} => pos (!typ)
                        | OutputType typ => Output.Type.pos typ
     end
+
+    structure Scope = struct
+        val parent =
+            fn TypeScope {parent, ...} => !parent
+             | ExprScope {parent, ...} => !parent
+
+        fun valBindingToString name {binder = {typ, value}, shade = _} =
+            let val typeStr = case !typ
+                              of SOME typ => " : " ^ typeToString typ
+                               | NONE => ""
+                val valueStr = case value
+                               of SOME (ref expr) => " = " ^ exprToString expr
+                                | NONE => ""
+            in Name.toString name ^ typeStr ^ valueStr
+            end
+
+        fun typeBindingToString name {binder = {kind, typ}, shade = _} =
+            let val typeStr = case typ
+                              of SOME (ref typ) => " = " ^ typeToString typ
+                               | NONE => ""
+            in Name.toString name ^ " : " ^ Output.Type.kindToString kind ^ typeStr
+            end
+
+        fun bindingsToString bindingToString bindings =
+            NameHashTable.foldi (fn (name, binding, acc) =>
+                                     acc ^ bindingToString name binding ^ "\n")
+                                "" bindings
+
+        val valsToString = bindingsToString valBindingToString
+
+        val typesToString = bindingsToString typeBindingToString
+
+        val rec toString =
+            fn ExprScope {parent, vals, expr = _} =>
+                let val parentStr = case !parent
+                                    of SOME parent => toString parent
+                                     | NONE => ""
+                in parentStr ^ valsToString vals
+                end
+             | TypeScope {parent, types, typ = _} =>
+                let val parentStr = case !parent
+                                    of SOME parent => toString parent
+                in parentStr ^ typesToString types
+                end
+
+        val eq = fn (TypeScope {types, ...}, TypeScope {types = types', ...}) => MLton.eq (types, types')
+                  | (ExprScope {vals, ...}, ExprScope {vals = vals', ...}) => MLton.eq (vals, vals')
+                  | _ => false
+
+        fun compare (scope, scope') =
+            let fun indexOf ancestor scope =
+                    let fun loop i scope =
+                           if eq (scope, ancestor)
+                           then SOME i
+                           else Option.mapPartial (loop (i + 1)) (parent scope)
+                    in loop 0 scope
+                    end
+            in case indexOf scope' scope
+               of SOME i => if i > 0 then LESS else EQUAL
+                | NONE => (case indexOf scope scope'
+                           of SOME i => if i > 0 then GREATER else EQUAL
+                            | NONE => raise Fail "incomparable scopes")
+            end
+    end
+
+    val ovEq: scope TypeVars.ov * ov -> bool = TypeVars.ovEq Scope.eq
+    val ovInScope: scope * ov -> bool = TypeVars.ovInScope Scope.compare
+    val uvMerge: uv * uv -> unit = TypeVars.uvMerge Scope.compare
+    val uvInScope: scope * uv -> bool = TypeVars.uvInScope Scope.compare
 end
 
 structure TypecheckingCst = Typechecking(struct

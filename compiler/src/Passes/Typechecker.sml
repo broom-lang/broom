@@ -225,7 +225,7 @@ end = struct
                  let val domain = ref (case lookupValType param scope
                                        of SOME domain => domain
                                         | NONE => raise TypeError (UnboundVal (pos, param)))
-                     val codomain = ref (TC.UVar (TypeVars.freshUv (valOf (TC.scopeParent scope))))
+                     val codomain = ref (TC.UVar (TypeVars.freshUv (valOf (TC.Scope.parent scope))))
                  in elaborateExprAs scope (!codomain) body
                   ; exprRef := TC.OutputExpr (FTerm.Fn (pos, {var = param, typ = domain}, body))
                   ; TC.OutputType (FType.Arrow (pos, {domain, codomain}))
