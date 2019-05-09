@@ -12,6 +12,8 @@ signature TYPECHECKER_INPUT = sig
         val pos: ('expr -> Pos.t) -> ('typ, 'expr) typ -> Pos.t
         val toString: ('typ -> string) -> ('expr -> string) -> ('typ, 'expr) typ -> string
         val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> ('typ, 'expr) typ -> 'a
+        val rowExtTail: {tail: 'typ -> 'typ, wrap: ('typ, 'expr) typ -> 'typ}
+                      -> ('typ, 'expr) typ -> 'typ
     end
 
     structure Term: TYPECHECKER_TERM
@@ -27,6 +29,7 @@ signature TYPECHECKER_OUTPUT = sig
         val pos: 'typ typ -> Pos.t
         val toString: ('typ -> string) -> 'typ typ -> string
         val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> 'typ typ -> 'a
+        val rowExtTail: {tail: 'typ -> 'typ, wrap: 'typ typ -> 'typ} -> 'typ typ -> 'typ
     end
 
     structure Term: TYPECHECKER_TERM
@@ -110,6 +113,12 @@ end) = struct
         val rec pos = fn InputType typ => Input.Type.pos (exprPos o op!) typ
                        | ScopeType {typ, ...} => pos (!typ)
                        | OutputType typ => Output.Type.pos typ
+
+        val rec rowExtTail =
+            fn OutputType t => Output.Type.rowExtTail {tail = rowExtTail o op!, wrap = ref o OutputType} t
+             | InputType t => Input.Type.rowExtTail {tail = rowExtTail o op!, wrap = ref o InputType} t
+             | ScopeType {typ, ...} => rowExtTail (!typ)
+             | t as OVar _ | t as UVar _ => ref t
     end
 
     structure Scope = struct

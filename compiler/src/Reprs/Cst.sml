@@ -24,6 +24,8 @@ structure Cst = struct
 
         fun shallowFoldl f acc =
             fn Arrow (_, {domain, codomain}) => f (codomain, f (domain, acc))
+
+        fun rowExtTail {wrap, tail = _} t = wrap t
     end
 
     structure Term = struct    

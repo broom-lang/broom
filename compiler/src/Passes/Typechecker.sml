@@ -79,6 +79,7 @@ end = struct
         of (TC.OutputType t, TC.OutputType t') =>
             (case (t, t')
              of (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows scope (arr, arr')
+              | (FType.RowExt (_, row), FType.RowExt _) => subRowExts scope (row, superTyp)
               | (FType.Prim (_, pl), FType.Prim (_, pr)) =>
                  if pl = pr
                  then NONE
@@ -117,6 +118,21 @@ end = struct
                 end
            else NONE
         end
+
+    and subRowExts scope ({field = (label, fieldt), ext}, row') =
+        let val (fieldt', ext') = rewriteRow label (!(TC.Type.rowExtTail (!ext))) row'
+            val coerceField = subType scope (!fieldt, fieldt')
+            val coerceExt = subType scope (!ext, ext')
+        in raise Fail "unimplemented"
+        end
+
+    and rewriteRow label (tail: TC.typ): TC.typ -> TC.typ * TC.typ =
+        fn TC.OutputType (FType.RowExt (pos, {field = (label', fieldt'), ext = ref ext})) =>
+            if label = label'
+            then (!fieldt', ext)
+            else let val (fieldt, ext) = rewriteRow label tail ext
+                 in (fieldt, TC.OutputType (FType.RowExt (pos, {field = (label', fieldt'), ext = ref ext})))
+                 end
 
     and subUvs scope (uv: TC.uv, uv': TC.uv): (TC.expr ref -> unit) option =
         case (TypeVars.uvGet uv, TypeVars.uvGet uv')
@@ -335,8 +351,7 @@ end = struct
                      of Either.Right typ => coerce typ
                       | Either.Left uv => let val fieldType = TC.UVar (TypeVars.freshUv scope)
                                               val ext = ref (TC.UVar (TypeVars.freshUv scope))
-                                              val row = FType.RowExt {field = (label, ref fieldType), ext}
-                                              val typ = FType.Record (TC.exprPos (!expr), row)
+                                              val typ = FType.RowExt (TC.exprPos (!expr), {field = (label, ref fieldType), ext})
                                           in TypeVars.uvSet (uv, TC.OutputType typ)
                                            ; fieldType
                                           end)
