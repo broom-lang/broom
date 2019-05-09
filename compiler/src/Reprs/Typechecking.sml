@@ -58,8 +58,8 @@ end) = struct
     datatype typ = InputType of (typ ref, expr ref) Input.Type.typ
                  | OutputType of typ ref Output.Type.typ
                  | ScopeType of type_scope
-                 | OVar of ov
-                 | UVar of uv
+                 | OVar of Pos.t * ov
+                 | UVar of Pos.t * uv
     
     and expr = InputExpr of (typ ref, expr ref) Input.Term.expr
              | OutputExpr of (typ ref, expr ref) Output.Term.expr
@@ -87,10 +87,10 @@ end) = struct
         fn InputType typ => Input.Type.toString (typeToString o op!) (exprToString o op!) typ
          | OutputType typ => Output.Type.toString (typeToString o op!) typ
          | ScopeType {typ, ...} => typeToString (!typ)
-         | OVar ov => Name.toString (TypeVars.ovName ov)
-         | UVar uv => (case TypeVars.uvGet uv
-                       of Either.Right t => typeToString t
-                        | Either.Left uv => Name.toString (TypeVars.uvName uv))
+         | OVar (_, ov) => Name.toString (TypeVars.ovName ov)
+         | UVar (_, uv) => (case TypeVars.uvGet uv
+                            of Either.Right t => typeToString t
+                             | Either.Left uv => Name.toString (TypeVars.uvName uv))
 
     and exprToString =
         fn InputExpr expr => Input.Term.exprToString (typeToString o op!) (exprToString o op!) expr
@@ -105,7 +105,7 @@ end) = struct
                  | OutputType t => Output.Type.shallowFoldl occStep false t
                  | ScopeType {typ, ...} => occ (!typ)
                  | OVar _ => false
-                 | UVar uv' => TypeVars.uvEq (uv, uv')
+                 | UVar (_, uv') => TypeVars.uvEq (uv, uv')
         in occ
         end
 

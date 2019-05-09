@@ -47,10 +47,10 @@ end = struct
               | FFType.Prim (pos, p) => FFType.Prim (pos, p))
          | TC.InputType _ => raise Fail "unreachable"
          | TC.ScopeType {typ, types, parent = _} => typeToUnFixedF (pushTypes env types) (!typ)
-         | TC.OVar ov => FFType.UseT (Pos.default "FIXME", Env.lookupType (env, TypeVars.ovName ov))
-         | TC.UVar uv => (case TypeVars.uvGet uv
-                          of Either.Right t => typeToUnFixedF env t
-                           | Either.Left uv => FFType.Prim (Pos.default "FIXME", FFType.Unit))
+         | TC.OVar (_, ov) => FFType.UseT (Pos.default "FIXME", Env.lookupType (env, TypeVars.ovName ov))
+         | TC.UVar (_, uv) => (case TypeVars.uvGet uv
+                               of Either.Right t => typeToUnFixedF env t
+                                | Either.Left uv => FFType.Prim (Pos.default "FIXME", FFType.Unit))
 
     and typeToF (env: env) (typ: TC.typ): FFType.typ = FFType.Fix (typeToUnFixedF env typ)
 

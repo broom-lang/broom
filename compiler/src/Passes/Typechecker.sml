@@ -55,16 +55,16 @@ end = struct
                      of FType.Arrow (pos, {domain, codomain}) =>
                          let val domainUv = TypeVars.freshUv scope
                              val codomainUv = TypeVars.freshUv scope
-                             val t' = FType.Arrow (pos, { domain = ref (TC.UVar domainUv)
-                                                        , codomain = ref (TC.UVar codomainUv)})
+                             val t' = FType.Arrow (pos, { domain = ref (TC.UVar (pos, domainUv))
+                                                        , codomain = ref (TC.UVar (pos, codomainUv))})
                          in TypeVars.uvSet (uv, TC.OutputType t')
                           ; assign scope (flipY y, domainUv, !domain)
                           ; assign scope (y, codomainUv, !codomain)
                          end
                       | FType.Prim _ => TypeVars.uvSet (uv, typ))
-                 | TC.UVar uv' => (case TypeVars.uvGet uv'
-                                   of Either.Left uv' => TC.uvMerge (uv, uv')
-                                    | Either.Right t => doAssign (uv, t))
+                 | TC.UVar (_, uv') => (case TypeVars.uvGet uv'
+                                        of Either.Left uv' => TC.uvMerge (uv, uv')
+                                         | Either.Right t => doAssign (uv, t))
                  | TC.OVar _ => TypeVars.uvSet (uv, typ)
         in if TC.uvInScope (scope, uv)
            then if TC.occurs uv t
@@ -88,12 +88,12 @@ end = struct
                  ( subType scope (t, t')
                  ; subType scope (t', t)
                  ; SOME (fn expr => expr := TC.OutputExpr (FTerm.Type (pos, tref)))))
-         | (TC.UVar uv, TC.UVar uv') => subUvs scope (uv, uv')
-         | (TC.UVar uv, _) =>
+         | (TC.UVar (_, uv), TC.UVar (pos, uv')) => subUvs scope (uv, uv')
+         | (TC.UVar (_, uv), _) =>
             (case TypeVars.uvGet uv
              of Either.Left uv => ( assign scope (Sub, uv, superTyp); NONE )
               | Either.Right t => subType scope (t, superTyp))
-         | (_, TC.UVar uv) =>
+         | (_, TC.UVar (_, uv)) =>
             (case TypeVars.uvGet uv
              of Either.Left uv => ( assign scope (Super, uv, typ); NONE )
               | Either.Right t => subType scope (typ, t))
@@ -167,13 +167,13 @@ end = struct
        - elaborating the expression bound to the variable (if available)
        - returning a fresh unification variable (if neither type annotation nor bound expression
          is available or if a cycle is encountered) *)
-    fun lookupValType name scope: TC.typ option =
+    fun lookupValType pos name scope: TC.typ option =
         let fun valBindingType scope {typ = typRef, value} =
                 case !typRef
                 of SOME typ => elabType scope typ
                  | NONE => (case value
                             of SOME expr => elaborateExpr scope expr
-                             | NONE => TC.UVar (TypeVars.freshUv scope))
+                             | NONE => TC.UVar (pos, TypeVars.freshUv scope))
 
             fun elaborateValType scope {shade, binder = binding as {typ = typRef, value = _}} =
                 let do shade := TC.Grey
@@ -191,8 +191,8 @@ end = struct
                  ; typ
                 end
 
-            fun elaborateValTypeLoop scope {shade, binder = {typ = typRef, value = _}} =
-                let val typ = TC.UVar (TypeVars.freshUv scope)
+            fun elaborateValTypeLoop scope {shade, binder = {typ = typRef, value}} =
+                let val typ = TC.UVar (pos, TypeVars.freshUv scope)
                 in typRef := SOME typ
                  ; shade := TC.Black
                  ; typ
@@ -205,7 +205,7 @@ end = struct
                      of TC.Black => !(#typ binder)
                       | TC.White => SOME (elaborateValType scope binding)
                       | TC.Grey => SOME (elaborateValTypeLoop scope binding))
-                 | NONE => Option.mapPartial (lookupValType name) (!parent))
+                 | NONE => Option.mapPartial (lookupValType pos name) (!parent))
         end
 
 (* Elaborating subtrees *)
@@ -238,10 +238,10 @@ end = struct
         of TC.InputExpr expr =>
             (case expr
              of CTerm.Fn (pos, param, _, body) =>
-                 let val domain = ref (case lookupValType param scope
+                 let val domain = ref (case lookupValType pos param scope
                                        of SOME domain => domain
                                         | NONE => raise TypeError (UnboundVal (pos, param)))
-                     val codomain = ref (TC.UVar (TypeVars.freshUv (valOf (TC.Scope.parent scope))))
+                     val codomain = ref (TC.UVar (pos, TypeVars.freshUv (valOf (TC.Scope.parent scope))))
                  in elaborateExprAs scope (!codomain) body
                   ; exprRef := TC.OutputExpr (FTerm.Fn (pos, {var = param, typ = domain}, body))
                   ; TC.OutputType (FType.Arrow (pos, {domain, codomain}))
@@ -272,7 +272,7 @@ end = struct
                   ; TC.OutputType (FType.Type (pos, t))
                  end
               | CTerm.Use (pos, name) =>
-                 let val typ = case lookupValType name scope
+                 let val typ = case lookupValType pos name scope
                                of SOME typRef => typRef
                                 | NONE => raise TypeError (UnboundVal (pos, name))
                      val def = { var = name, typ = ref typ }
@@ -313,7 +313,7 @@ end = struct
     and elaborateStmt scope: (TC.typ ref, TC.expr ref) Cst.Term.stmt -> (TC.typ ref, TC.expr ref) FTerm.stmt =
         fn CTerm.Val (pos, name, oannTypeRef, exprRef) =>
             let val exprType = elaborateExpr scope exprRef
-                val annType = valOf (lookupValType name scope)
+                val annType = valOf (lookupValType pos name scope)
                 val annTypeRef = case oannTypeRef
                                  of SOME annTypeRef => (annTypeRef := annType; annTypeRef)
                                   | NONE => ref annType
@@ -336,7 +336,7 @@ end = struct
                       | FType.Arrow (_, domains) => domains
                       | _ => raise TypeError (UnCallable (!callee, typ)))
                  | TC.OVar _ => raise TypeError (UnCallable (!callee, typ))
-                 | TC.UVar uv =>
+                 | TC.UVar (_, uv) =>
                     (case TypeVars.uvGet uv
                      of Either.Left uv => raise Fail "unimplemented"
                       | Either.Right typ => coerce typ)
@@ -346,11 +346,11 @@ end = struct
     (* Coerce `expr` (in place) into a record with at least `label` and return the `label`:ed type. *)
     and coerceRecord scope (expr: TC.expr ref) (typ: TC.typ) label: TC.typ =
         let val rec coerce =
-                fn TC.UVar uv =>
+                fn TC.UVar (pos, uv) =>
                     (case TypeVars.uvGet uv
                      of Either.Right typ => coerce typ
-                      | Either.Left uv => let val fieldType = TC.UVar (TypeVars.freshUv scope)
-                                              val ext = ref (TC.UVar (TypeVars.freshUv scope))
+                      | Either.Left uv => let val fieldType = TC.UVar (pos, TypeVars.freshUv scope)
+                                              val ext = ref (TC.UVar (pos, TypeVars.freshUv scope))
                                               val typ = FType.RowExt (TC.exprPos (!expr), {field = (label, ref fieldType), ext})
                                           in TypeVars.uvSet (uv, TC.OutputType typ)
                                            ; fieldType
