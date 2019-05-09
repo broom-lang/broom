@@ -36,6 +36,11 @@ end = struct
                       of CType.Arrow (pos, {domain, codomain}) =>
                           CType.Arrow (pos, { domain = injectType domain
                                             , codomain = injectType codomain })
+                       | CType.Record (pos, row) => CType.Record (pos, injectType row)
+                       | CType.RowExt (pos, {field = (label, fieldt), ext}) =>
+                          CType.RowExt (pos, { field = (label, injectType fieldt)
+                                             , ext = injectType ext })
+                       | CType.EmptyRow pos => CType.EmptyRow pos
                        | CType.Path expr => CType.Path (injectExpr expr)
                        | CType.Prim (pos, p) => CType.Prim (pos, p)
             val flexType = ref (TC.InputType typ)

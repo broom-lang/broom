@@ -3,6 +3,9 @@ structure Cst = struct
         datatype prim = datatype NameFType.prim
 
         datatype ('typ, 'expr) typ = Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
+                                   | Record of Pos.t * 'typ
+                                   | RowExt of Pos.t * {field: Name.t * 'typ, ext: 'typ}
+                                   | EmptyRow of Pos.t
                                    | Singleton of Pos.t * 'expr
                                    | Path of 'expr
                                    | Prim of Pos.t * prim
@@ -12,6 +15,10 @@ structure Cst = struct
         fun toString toString exprToString =
             fn Arrow (_, {domain, codomain}) =>
                 toString domain ^ " -> " ^ toString codomain
+             | Record (_, row) => "{" ^ toString row ^ "}"
+             | RowExt (_, {field = (label, fieldt), ext}) =>
+                Name.toString label ^ ": " ^ toString fieldt ^ " | " ^ toString ext
+             | EmptyRow _ => "(||)"
              | Singleton (_, expr) => "(= " ^ exprToString expr ^ ")"
              | Path expr => exprToString expr
              | Prim (_, p) => primToString p

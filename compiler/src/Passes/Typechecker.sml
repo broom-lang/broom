@@ -79,7 +79,9 @@ end = struct
         of (TC.OutputType t, TC.OutputType t') =>
             (case (t, t')
              of (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows scope (arr, arr')
+              | (FType.Record (_, ref row), FType.Record (_, ref row')) => subType scope (row, row')
               | (FType.RowExt (_, row), FType.RowExt _) => subRowExts scope (row, superTyp)
+              | (FType.EmptyRow _, FType.EmptyRow _) => NONE
               | (FType.Prim (_, pl), FType.Prim (_, pr)) =>
                  if pl = pr
                  then NONE
@@ -120,17 +122,17 @@ end = struct
         end
 
     and subRowExts scope ({field = (label, fieldt), ext}, row') =
-        let val (fieldt', ext') = rewriteRow label (!(TC.Type.rowExtTail (!ext))) row'
+        let val (fieldt', ext') = reorderRow label (!(TC.Type.rowExtTail (!ext))) row'
             val coerceField = subType scope (!fieldt, fieldt')
             val coerceExt = subType scope (!ext, ext')
-        in raise Fail "unimplemented"
+        in raise Fail "unimplemented" (* PROBLEM: How to combine coercions since this is not about records specifically? *)
         end
 
-    and rewriteRow label (tail: TC.typ): TC.typ -> TC.typ * TC.typ =
+    and reorderRow label (tail: TC.typ): TC.typ -> TC.typ * TC.typ =
         fn TC.OutputType (FType.RowExt (pos, {field = (label', fieldt'), ext = ref ext})) =>
             if label = label'
             then (!fieldt', ext)
-            else let val (fieldt, ext) = rewriteRow label tail ext
+            else let val (fieldt, ext) = reorderRow label tail ext
                  in (fieldt, TC.OutputType (FType.RowExt (pos, {field = (label', fieldt'), ext = ref ext})))
                  end
 
@@ -218,6 +220,11 @@ end = struct
              of CType.Arrow (pos, {domain, codomain}) =>
                  TC.OutputType (FType.Arrow (pos, { domain = elaborateType scope domain
                                                   , codomain = elaborateType scope codomain }))
+              | CType.Record (pos, row) => TC.OutputType (FType.Record (pos, elaborateType scope row))
+              | CType.RowExt (pos, {field = (label, fieldt), ext}) =>
+                 TC.OutputType (FType.RowExt (pos, { field = (label, elaborateType scope fieldt)
+                                                   , ext = elaborateType scope ext }))
+              | CType.EmptyRow pos => TC.OutputType (FType.EmptyRow pos)
               | CType.Path typExpr =>
                  (case elaborateExpr scope typExpr
                   of TC.OutputType typ =>
@@ -226,6 +233,7 @@ end = struct
                         | _ => raise Fail ("Type path does not denote type at "
                                            ^ Pos.toString (TC.exprPos (!typExpr)))))
               | CType.Prim (pos, p) => TC.OutputType (FType.Prim (pos, p)))
+         | TC.OutputType _ => typ (* assumes invariant: entire subtree has been elaborated already *)
 
     (* Like `elabType` but takes a ref, assigns to it and returns it for convenience. *)
     and elaborateType scope (typRef: TC.typ ref): TC.typ ref =
@@ -346,15 +354,25 @@ end = struct
     (* Coerce `expr` (in place) into a record with at least `label` and return the `label`:ed type. *)
     and coerceRecord scope (expr: TC.expr ref) (typ: TC.typ) label: TC.typ =
         let val rec coerce =
-                fn TC.UVar (pos, uv) =>
+                fn TC.OutputType typ =>
+                    (case typ
+                     of FType.Record (_, row) => coerceRow (!row))
+                 | TC.UVar (pos, uv) =>
                     (case TypeVars.uvGet uv
                      of Either.Right typ => coerce typ
                       | Either.Left uv => let val fieldType = TC.UVar (pos, TypeVars.freshUv scope)
                                               val ext = ref (TC.UVar (pos, TypeVars.freshUv scope))
-                                              val typ = FType.RowExt (TC.exprPos (!expr), {field = (label, ref fieldType), ext})
+                                              val pos = TC.exprPos (!expr)
+                                              val row = FType.RowExt (pos, {field = (label, ref fieldType), ext})
+                                              val typ = FType.Record (pos, ref (TC.OutputType row))
                                           in TypeVars.uvSet (uv, TC.OutputType typ)
                                            ; fieldType
                                           end)
+            and coerceRow =
+                fn TC.OutputType (FType.RowExt (_, {field = (label', fieldt), ext})) =>
+                    if label' = label
+                    then !fieldt
+                    else coerceRow (!ext)
         in coerce typ
         end
 end

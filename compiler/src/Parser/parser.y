@@ -26,6 +26,7 @@ type expr = Term.expr
        | rowExprList of (Name.t * expr) list
        | triv of expr
        | typeAnn of Type.typ
+       | rowType of (Type.typ, Term.expr) Cst.Type.typ
 
 %keyword VAL EQ
 %noshift EOF
@@ -71,10 +72,17 @@ triv : ID  (Term.Fix (Term.Use (IDleft, Name.fromString ID)))
 
 typeAnn : LPAREN typeAnn RPAREN (typeAnn)
         | typeAnn ARROW typeAnn (Type.FixT (Type.Arrow (typeAnnleft, {domain = typeAnn1, codomain = typeAnn})))
+        | LBRACE rowType RBRACE (Type.FixT (Type.Record (LBRACEleft, Type.FixT rowType)))
+        | LBRACE RBRACE (Type.FixT (Type.Record (LBRACEleft, Type.FixT (Type.EmptyRow LBRACEleft))))
         | LPAREN EQ expr RPAREN (Type.FixT (Type.Singleton (LPARENleft, expr)))
         | expr (Type.FixT (case expr
                            of Term.Fix (Term.Use (_, name)) => (case Name.toString name
                                                                 of "Int" => Type.Prim (exprleft, Type.I32)
                                                                  | _ => Type.Path expr)
                             | _ => Type.Path expr))
+
+rowType: ID COLON typeAnn (Type.RowExt (IDleft, { field = (Name.fromString ID, typeAnn)
+                                                , ext = Type.FixT (Type.EmptyRow typeAnnright) }))
+       | ID COLON typeAnn COMMA rowType (Type.RowExt (IDleft, { field = (Name.fromString ID, typeAnn)
+                                                              , ext = Type.FixT rowType }))
 
