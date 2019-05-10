@@ -10,20 +10,19 @@ end = struct
         val lookupVal: ('t, 'v) t * Name.t -> 'v
         val lookupType: ('t, 'v) t * Name.t -> 't
     end = struct
-        type ('t, 'v) t = { types: 't NameSortedMap.map
-                          , vals: 'v NameSortedMap.map }
+        type ('t, 'v) t = {types: 't NameSortedMap.map, vals: 'v NameSortedMap.map}
 
         val empty = {types = NameSortedMap.empty, vals = NameSortedMap.empty}
 
         fun insertVal {types, vals} (k, v) = {types, vals = NameSortedMap.insert (vals, k, v)}
         fun insertType {types, vals} (k, v) = {types = NameSortedMap.insert (types, k, v), vals}
 
+        (* Unlike `NameSortedMap.lookup`, provide the missing name when compiler bugs out: *)
         fun lookup (map, name) = case NameSortedMap.find (map, name)
                                  of SOME v => v
                                   | NONE => raise Fail ("Not found: " ^ Name.toString name)
 
         fun lookupVal ({types = _, vals}, name) = lookup (vals, name)
-
         fun lookupType ({types, vals = _}, name) = lookup (types, name)
     end
 
@@ -85,12 +84,18 @@ end = struct
                  Fn (pos, Env.lookupVal (env, var), exprToF env body)
               | TFn (pos, {var, ...}, body) =>
                  TFn (pos, Env.lookupType (env, var), exprToF env body)
+              | Extend (pos, typ, fields, record) =>
+                 Extend ( pos, typRefToF env typ
+                        , Vector.map (Pair.second (exprToF env)) fields
+                        , Option.map (exprToF env) record)
               | Let (pos, stmts, body) =>
                  Let (pos, Vector.map (stmtToF env) stmts, exprToF env body)
               | App (pos, typ, {callee, arg}) =>
                  App (pos, typRefToF env typ, {callee = exprToF env callee, arg = exprToF env arg})
               | TApp (pos, typ, {callee, arg}) =>
                  TApp (pos, typRefToF env typ, {callee = exprToF env callee, arg = typRefToF env arg})
+              | Field (pos, typ, expr, label) =>
+                 Field (pos, typRefToF env typ, exprToF env expr, label)
               | Type (pos, typ) => Type (pos, typRefToF env typ)
               | Use (pos, {var, ...}) => Use (pos, Env.lookupVal (env, var))
               | Const (pos, c) => Const (pos, c))

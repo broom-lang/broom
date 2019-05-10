@@ -8,6 +8,8 @@ local
     in ann "allowSuccessorML true"
        in
            src/Util/Either.sml
+           src/Util/Bimappable.sml
+           src/Util/Pair.sml
 
            src/Reprs/Util/Name.sml
            src/Reprs/Util/Pos.sml

@@ -34,6 +34,7 @@ end = struct
 
     val toString = fn String s => s
                     | Fresh i => "g__" ^ Int.toString i
+                    | FreshString (s, i) => s ^ Int.toString i
 
     local
         val counter = ref 0
