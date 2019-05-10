@@ -24,31 +24,35 @@ end = struct
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
     fun assign scope (y, uv: (TC.scope, TC.typ) TypeVars.uv, t: TC.typ): unit =
-        let fun doAssign (uv, typ) =
-                case typ
-                of TC.InputType _ => raise Fail "unreachable"
-                 | TC.OutputType t =>
-                    (case t
-                     of FType.Arrow (pos, {domain, codomain}) =>
-                         let val domainUv = TypeVars.freshUv scope
-                             val codomainUv = TypeVars.freshUv scope
-                             val t' = FType.Arrow (pos, { domain = ref (TC.UVar (pos, domainUv))
-                                                        , codomain = ref (TC.UVar (pos, codomainUv))})
-                         in TypeVars.uvSet (uv, TC.OutputType t')
-                          ; assign scope (flipY y, domainUv, !domain)
-                          ; assign scope (y, codomainUv, !codomain)
-                         end
-                      | FType.Prim _ => TypeVars.uvSet (uv, typ))
-                 | TC.UVar (_, uv') => (case TypeVars.uvGet uv'
-                                        of Either.Left uv' => TC.uvMerge (uv, uv')
-                                         | Either.Right t => doAssign (uv, t))
-                 | TC.OVar _ => TypeVars.uvSet (uv, typ)
-        in if TC.uvInScope (scope, uv)
-           then if TC.occurs uv t
-                then raise TypeError (Occurs (uv, t))
-                else doAssign (uv, t)
-           else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv))
+        if TC.uvInScope (scope, uv)
+        then if TC.occurs uv t
+             then raise TypeError (Occurs (uv, t))
+             else doAssign scope y (uv, t)
+        else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv))
+
+    and doAssign scope y (uv, typ) =
+        case typ
+        of TC.InputType _ => raise Fail "unreachable"
+         | TC.OutputType t =>
+            (case t
+             of FType.Arrow (pos, domains) => doAssignArrow scope y uv pos domains
+              | FType.Prim _ => TypeVars.uvSet (uv, typ))
+         | TC.UVar (_, uv') => doAssignUv scope y (uv, uv')
+         | TC.OVar _ => TypeVars.uvSet (uv, typ)
+
+    and doAssignArrow scope y uv pos {domain, codomain} =
+        let val domainUv = TypeVars.freshUv scope
+            val codomainUv = TypeVars.freshUv scope
+            val t' = FType.Arrow (pos, { domain = ref (TC.UVar (pos, domainUv))
+                                       , codomain = ref (TC.UVar (pos, codomainUv))})
+        in TypeVars.uvSet (uv, TC.OutputType t')
+         ; assign scope (flipY y, domainUv, !domain) (* contravariance *)
+         ; assign scope (y, codomainUv, !codomain)
         end
+
+    and doAssignUv scope y (uv, uv') = case TypeVars.uvGet uv'
+                                       of Either.Left uv' => TC.uvMerge (uv, uv')
+                                        | Either.Right t => doAssign scope y (uv, t)
 
     (* Check that `typ` <: `superTyp` and return the (mutating) coercion if any. *)
     fun subType scope (typ: TC.typ, superTyp: TC.typ): (TC.expr ref -> unit) option =
@@ -68,14 +72,8 @@ end = struct
                  ; subType scope (t', t)
                  ; SOME (fn expr => expr := TC.OutputExpr (FTerm.Type (pos, tref)))))
          | (TC.UVar (_, uv), TC.UVar (_, uv')) => subUvs scope (uv, uv')
-         | (TC.UVar (_, uv), _) =>
-            (case TypeVars.uvGet uv
-             of Either.Left uv => ( assign scope (Sub, uv, superTyp); NONE )
-              | Either.Right t => subType scope (t, superTyp))
-         | (_, TC.UVar (_, uv)) =>
-            (case TypeVars.uvGet uv
-             of Either.Left uv => ( assign scope (Super, uv, typ); NONE )
-              | Either.Right t => subType scope (typ, t))
+         | (TC.UVar (_, uv), _) => subUv scope uv superTyp
+         | (_, TC.UVar (_, uv)) => superUv scope uv typ
 
     and subArrows scope ({domain, codomain}, {domain = domain', codomain = codomain'}) =
         let val coerceDomain = subType scope (!domain', !domain)
@@ -151,5 +149,13 @@ end = struct
          | (Either.Left uv, Either.Right t) => ( assign scope (Sub, uv, t); NONE )
          | (Either.Right t, Either.Left uv) => ( assign scope (Super, uv, t); NONE )
          | (Either.Right t, Either.Right t') => subType scope (t, t')
+
+    and subUv scope uv superTyp = case TypeVars.uvGet uv
+                                  of Either.Left uv => (assign scope (Sub, uv, superTyp); NONE)
+                                   | Either.Right t => subType scope (t, superTyp)
+
+    and superUv scope uv subTyp = case TypeVars.uvGet uv
+                                  of Either.Left uv => (assign scope (Super, uv, subTyp); NONE)
+                                   | Either.Right t => subType scope (subTyp, t)
 end
 
