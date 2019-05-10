@@ -11,6 +11,7 @@ end = struct
                                       structure Lex = BroomLex)
 
   structure TC = TypecheckingCst
+  exception TypeError = TypeError.TypeError
 
   fun logger debug str = if debug then TextIO.output(TextIO.stdOut, str) else ()
 
@@ -46,8 +47,8 @@ end = struct
                  then ()
                  else loop lexer
               end
-              handle Typechecker.TypeError err =>
-                      TextIO.output (TextIO.stdErr, Typechecker.typeErrorToString err ^ ".\n")
+              handle TypeError err =>
+                      TextIO.output (TextIO.stdErr, TypeError.toString err ^ ".\n")
        in loop lexer
       end
 end
