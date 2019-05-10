@@ -1,6 +1,6 @@
 structure Cst = struct
     structure Type = struct
-        datatype prim = datatype NameFType.prim
+        structure Prim = PrimType
 
         datatype ('typ, 'expr) typ = Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
                                    | Record of Pos.t * 'typ
@@ -8,9 +8,7 @@ structure Cst = struct
                                    | EmptyRow of Pos.t
                                    | Singleton of Pos.t * 'expr
                                    | Path of 'expr
-                                   | Prim of Pos.t * prim
-
-        val primToString = NameFType.primToString
+                                   | Prim of Pos.t * Prim.t
 
         fun toString toString exprToString =
             fn Arrow (_, {domain, codomain}) =>
@@ -21,7 +19,7 @@ structure Cst = struct
              | EmptyRow _ => "(||)"
              | Singleton (_, expr) => "(= " ^ exprToString expr ^ ")"
              | Path expr => exprToString expr
-             | Prim (_, p) => primToString p
+             | Prim (_, p) => Prim.toString p
 
         fun pos exprPos =
             fn Arrow (pos, _) => pos

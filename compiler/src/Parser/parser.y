@@ -77,7 +77,7 @@ typeAnn : LPAREN typeAnn RPAREN (typeAnn)
         | LPAREN EQ expr RPAREN (Type.FixT (Type.Singleton (LPARENleft, expr)))
         | expr (Type.FixT (case expr
                            of Term.Fix (Term.Use (_, name)) => (case Name.toString name
-                                                                of "Int" => Type.Prim (exprleft, Type.I32)
+                                                                of "Int" => Type.Prim (exprleft, Type.Prim.I32)
                                                                  | _ => Type.Path expr)
                             | _ => Type.Path expr))
 

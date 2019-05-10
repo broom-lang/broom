@@ -2,7 +2,7 @@ functor FType(Var: sig
     type t 
     val toString: t -> string
 end) = struct
-    datatype prim = Unit | I32
+    structure Prim = PrimType
 
     datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
                   | TypeK of Pos.t
@@ -16,15 +16,12 @@ end) = struct
                       | EmptyRow of Pos.t
                       | Type of Pos.t * 'typ
                       | UseT of Pos.t * def
-                      | Prim of Pos.t * prim
+                      | Prim of Pos.t * Prim.t
 
     val rec kindToString =
         fn TypeK _ => "Type"
          | ArrowK (_, {domain, codomain}) =>
             kindToString domain ^ " -> " ^ kindToString codomain
-
-    val primToString = fn Unit => "()"
-                        | I32 => "I32"
 
     fun defToString {var, kind} = Var.toString var ^ ": " ^ kindToString kind
 
@@ -39,7 +36,7 @@ end) = struct
          | EmptyRow _ => "(||)"
          | Type (_, t) => "[= " ^ toString t ^ "]"
          | UseT (_, def) => defToString def 
-         | Prim (_, p) => primToString p
+         | Prim (_, p) => Prim.toString p
 
     val pos =
         fn ForAll (pos, _, _) => pos
