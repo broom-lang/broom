@@ -83,6 +83,9 @@ end) = struct
          | OutputExpr expr => Output.Term.exprPos expr
          | ScopeExpr {expr, ...} => exprPos (!expr)
 
+    val wrapOE = ref o OutputExpr
+    val wrapOT = ref o OutputType
+
     val rec typeToString =
         fn InputType typ => Input.Type.toString (typeToString o op!) (exprToString o op!) typ
          | OutputType typ => Output.Type.toString (typeToString o op!) typ

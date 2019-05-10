@@ -6,6 +6,7 @@ structure FAst = struct
 
         datatype ('typ, 'expr) expr = Fn of Pos.t * 'typ def * 'expr
                                     | TFn of Pos.t * Type.def * 'expr
+                                    | Extend of Pos.t * 'typ * (Name.t * 'expr) vector * 'expr option
                                     | App of Pos.t * 'typ * {callee: 'expr, arg: 'expr}
                                     | TApp of Pos.t * 'typ * {callee: 'expr, arg: 'typ}
                                     | Field of Pos.t * 'typ * 'expr * Name.t
@@ -20,6 +21,7 @@ structure FAst = struct
         val exprPos =
             fn Fn (pos, _, _) => pos
              | TFn (pos, _, _) => pos
+             | Extend (pos, _, _, _) => pos
              | App (pos, _, _) => pos
              | TApp (pos, _, _) => pos
              | Field (pos, _, _, _) => pos
@@ -40,6 +42,9 @@ structure FAst = struct
                "\\" ^ defToString typeToString param ^ " => " ^ exprToString body
             | TFn (_, param, body) =>
                "/\\" ^ Type.defToString param ^ " => " ^ exprToString body
+            | Extend (_, _, fields, record) =>
+               "{" ^ getOpt (Option.map exprToString record, "")
+                   ^ " with " ^ fieldExprsToString exprToString fields ^ "}"
             | App (_, _, {callee, arg}) =>
                "(" ^ exprToString callee ^ " " ^ exprToString arg ^ ")"
             | TApp (_, _, {callee, arg}) =>
@@ -55,6 +60,12 @@ structure FAst = struct
             | Use (_, {var, ...}) => Name.toString var 
             | Const (_, c) => Const.toString c
 
+        and fieldExprsToString exprToString fields =
+            let fun step ((label, expr), acc) =
+                    acc ^ ", " ^ Name.toString label ^ " = " ^ exprToString expr
+            in Vector.foldl step "" fields
+            end
+
         fun typeOf fixType unfixExpr =
             let val fixed = fn Either.Left unfixed => fixType unfixed
                              | Either.Right fixed => fixed
@@ -64,8 +75,7 @@ structure FAst = struct
                                                       , codomain = fixed (typeOf (unfixExpr body))}))
                      | TFn (pos, param, body) =>
                         Either.Left (Type.ForAll (pos, param, fixed (typeOf (unfixExpr body))))
-                     | App (_, typ, _) => Either.Right typ
-                     | TApp (_, typ, _) => Either.Right typ
+                     | Extend (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => Either.Right typ
                      | Field (_, typ, _, _) => Either.Right typ
                      | Let (_, _, body) => typeOf (unfixExpr body)
                      | Type (pos, t) => Either.Left (Type.Type (pos, t))
@@ -73,6 +83,18 @@ structure FAst = struct
                      | Const (pos, c) => Either.Left (Type.Prim (pos, Const.typeOf c))
             in fixed o typeOf
             end
+
+        datatype ('typ, 'expr) Binder = ValueBinder of 'typ def * 'expr option
+                                      | TypeBinder of Type.def * 'typ option
+
+        fun foldBinders f acc =
+            fn Fn (_, def, _) => f (ValueBinder (def, NONE), acc)
+             | TFn (_, def, _) => f (TypeBinder (def, NONE), acc)
+             | Let (_, stmts, _) =>
+                Vector.foldl (fn (Val (_, def, expr), acc) => f (ValueBinder (def, SOME expr), acc)
+                               | (Expr _, acc) => acc)
+                             acc stmts
+             | Extend _ | App _ | TApp _ | Field _ | Type _ | Use _ | Const _ => acc
     end
 end
 

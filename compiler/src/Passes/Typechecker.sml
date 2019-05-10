@@ -38,6 +38,17 @@ end = struct
     end
     open TypeError
 
+    fun fexprValBindings fexpr =
+        let val addBinder =
+                fn (FTerm.ValueBinder ({var, typ}, value), bindings) =>
+                    ( NameHashTable.insert bindings (var, { binder = {typ = ref (SOME (!typ)), value}
+                                                          , shade = ref TC.White })
+                    ; bindings )
+            val bindings = NameHashTable.mkTable (0, Subscript)
+        in FTerm.foldBinders addBinder bindings fexpr
+        end
+
+
 (* Subtyping and UVar Assignment *)
 
     datatype lattice_y = Sub | Super
@@ -110,7 +121,7 @@ end = struct
                              let val pos = TC.exprPos (!expr)
                                  val param = {var = Name.fresh (), typ = domain'}
                                  val arg = ref (TC.OutputExpr (FTerm.Use (pos, param)))
-                                 val callee = expr
+                                 val callee = ref (!expr)
                                  do coerceDomain arg
                                  val body = ref (TC.OutputExpr (FTerm.App (pos, codomain, {callee, arg})))
                                  do coerceCodomain body
@@ -121,11 +132,36 @@ end = struct
            else NONE
         end
 
-    and subRowExts scope ({field = (label, fieldt), ext}, row') =
+    and subRowExts scope (row as {field = (label, fieldt), ext}, row') =
         let val (fieldt', ext') = reorderRow label (!(TC.Type.rowExtTail (!ext))) row'
             val coerceField = subType scope (!fieldt, fieldt')
             val coerceExt = subType scope (!ext, ext')
-        in raise Fail "unimplemented" (* PROBLEM: How to combine coercions since this is not about records specifically? *)
+        in (* FIXME: This coercion combination assumes this is a record row: *)
+           SOME (fn expr =>
+                     let val pos = TC.exprPos (!expr)
+                         val recordTyp = TC.wrapOT (FType.Record (pos, TC.wrapOT (FType.RowExt (pos, row))))
+                         val row' = {field = (label, ref fieldt'), ext = ref ext'}
+                         val recordTyp' = TC.wrapOT (FType.Record (pos, TC.wrapOT (FType.RowExt (pos, row'))))
+                         val recordDef = {var = Name.fresh (), typ = recordTyp}
+                         val recordBind = FTerm.Val (pos, recordDef, ref (!expr))
+                         val recordRef = TC.wrapOE (FTerm.Use (pos, recordDef))
+                         val fieldGet = TC.wrapOE (FTerm.Field (pos, fieldt, recordRef, label))
+                         do getOpt (coerceField, fn _ => ()) fieldGet
+                         val fieldDef = {var = Name.freshen label, typ = ref fieldt'}
+                         val fieldRedef = FTerm.Val (pos, fieldDef, fieldGet)
+                         val extTyp = TC.wrapOT (FType.Record (pos, ref ext'))
+                         val extGet = TC.wrapOE (FTerm.Use (pos, recordDef))
+                         do getOpt (coerceExt, fn _ => ()) extGet
+                         val extRedef = FTerm.Val (pos, {var = Name.fresh (), typ = ref ext'}, extGet)
+                         val body = TC.wrapOE (FTerm.Extend ( pos, recordTyp'
+                                                            , Vector.fromList [(label, TC.wrapOE (FTerm.Use (pos, fieldDef)))]
+                                                            , SOME (TC.wrapOE (FTerm.Use (pos, recordDef))) ))
+                         val expr' = FTerm.Let (pos, Vector.fromList [recordBind, fieldRedef, extRedef], body)
+                         val expr' = TC.ScopeExpr { parent = ref (SOME scope) (* FIXME: Children will skip this :( *)
+                                                  , vals = fexprValBindings expr'
+                                                  , expr = TC.wrapOE expr' }
+                     in expr := expr'
+                     end)
         end
 
     and reorderRow label (tail: TC.typ): TC.typ -> TC.typ * TC.typ =
@@ -260,6 +296,12 @@ end = struct
                  in exprRef := TC.OutputExpr (FTerm.Let (pos, stmts, body))
                   ; typ
                  end
+              | CTerm.Record (pos, fields) =>
+                 let val (rowType, rowExpr) = elaborateFields scope pos fields
+                     val typ = TC.OutputType (FType.Record (pos, ref rowType))
+                 in exprRef := rowExpr
+                  ; typ
+                 end
               | CTerm.App (pos, {callee, arg}) =>
                  let val {domain, codomain} = coerceCallee callee (elaborateExpr scope callee)
                  in elaborateExprAs scope (!domain) arg
@@ -294,6 +336,18 @@ end = struct
          | TC.OutputExpr expr =>
             (* Assumes invariant: the whole subtree has been elaborated already. *)
             !(fExprType expr)
+
+    and elaborateFields scope pos (fields: TC.expr ref CTerm.row): TC.typ * TC.expr =
+        let fun elaborateField (field as (label, expr), (rowType, fieldExprs)) =
+                let val pos = TC.exprPos (!expr)
+                    val fieldt = elaborateExpr scope expr
+                in ( FType.RowExt (pos, {field = (label, ref fieldt), ext = TC.wrapOT rowType})
+                   , field :: fieldExprs )
+                end
+            val (rowType, fieldExprs) = Vector.foldr elaborateField (FType.EmptyRow pos, []) fields
+            val rowType = TC.OutputType rowType
+        in (rowType, TC.OutputExpr (FTerm.Extend (pos, ref rowType, Vector.fromList fieldExprs, NONE)))
+        end
 
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
     and elaborateExprAs scope (typ: TC.typ) (exprRef: TC.expr ref): unit =

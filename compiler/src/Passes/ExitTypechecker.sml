@@ -18,8 +18,15 @@ end = struct
         fun insertVal {types, vals} (k, v) = {types, vals = NameSortedMap.insert (vals, k, v)}
         fun insertType {types, vals} (k, v) = {types = NameSortedMap.insert (types, k, v), vals}
 
-        fun lookupVal ({types = _, vals}, name) = NameSortedMap.lookup (vals, name)
-        fun lookupType ({types, vals = _}, name) = NameSortedMap.lookup (types, name)
+        fun lookupVal ({types = _, vals}, name) =
+            case NameSortedMap.find (vals, name)
+            of SOME v => v
+             | NONE => raise Fail ("Not found: " ^ Name.toString name)
+
+        fun lookupType ({types, vals = _}, name) =
+            case NameSortedMap.find (types, name)
+            of SOME t => t
+             | NONE => raise Fail ("Not found: " ^ Name.toString name)
     end
 
     structure TC = TypecheckingCst
@@ -42,6 +49,10 @@ end = struct
                  FFType.ForAll (pos, Env.lookupType (env, var), typRefToF env body)
               | FFType.Arrow (pos, {domain, codomain}) =>
                  FFType.Arrow (pos, {domain = typRefToF env domain, codomain = typRefToF env codomain})
+              | FFType.Record (pos, row) => FFType.Record (pos, typRefToF env row)
+              | FFType.RowExt (pos, {field = (label, fieldt), ext}) =>
+                 FFType.RowExt (pos, {field = (label, typRefToF env fieldt), ext = typRefToF env ext})
+              | FFType.EmptyRow pos => FFType.EmptyRow pos
               | FFType.Type (pos, typ) => FFType.Type (pos, typRefToF env typ)
               | FFType.UseT (pos, {var, ...}) => FFType.UseT (pos, Env.lookupType (env, var))
               | FFType.Prim (pos, p) => FFType.Prim (pos, p))

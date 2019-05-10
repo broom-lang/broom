@@ -15,7 +15,7 @@ structure Cst = struct
         fun toString toString exprToString =
             fn Arrow (_, {domain, codomain}) =>
                 toString domain ^ " -> " ^ toString codomain
-             | Record (_, row) => "{" ^ toString row ^ "}"
+             | Record (_, row) => "{" ^ toString row ^ "}" (* TODO: Extend to `Extend` as in FAst. *)
              | RowExt (_, {field = (label, fieldt), ext}) =>
                 Name.toString label ^ ": " ^ toString fieldt ^ " | " ^ toString ext
              | EmptyRow _ => "(||)"

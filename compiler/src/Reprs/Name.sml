@@ -7,19 +7,28 @@ structure Name :> sig
     val fromString: string -> t
     val toString: t -> string
     val fresh: unit -> t
+    val freshen: t -> t
 
     structure OrdKey : ORD_KEY where type ord_key = t
 end = struct
     datatype t = String of string
                | Fresh of int
+               | FreshString of string * int
 
     val hash = fn String s => HashString.hashString s
                 | Fresh i => Word.fromInt i
+                | FreshString (s, i) => Word.+ (HashString.hashString s, Word.fromInt i)
 
     val compare = fn (String s, String s') => String.compare (s, s')
                    | (Fresh i, Fresh i') => Int.compare (i, i')
+                   | (FreshString (s, i), FreshString (s', i')) =>
+                      (case Int.compare (i, i')
+                       of EQUAL => String.compare (s, s')
+                        | ord => ord)
                    | (String _, Fresh _) => LESS
                    | (Fresh _, String _) => GREATER
+                   | (FreshString _, _) => GREATER
+                   | (_, FreshString _) => LESS
 
     val fromString = String
 
@@ -28,11 +37,19 @@ end = struct
 
     local
         val counter = ref 0
+        fun next () = let val res = !counter
+                      in counter := res + 1
+                       ; res
+                      end
     in
-        fun fresh () = let val i = !counter
-                       in counter := i + 1
-                        ; Fresh i
-                       end
+        fun fresh () = Fresh (next ())
+
+        fun freshen name =
+             let val i = next ()
+             in case name
+                of String s | FreshString (s, _) => FreshString (s, i)
+                 | Fresh _ => Fresh i
+             end
     end
 
     structure OrdKey = struct
