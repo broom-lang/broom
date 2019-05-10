@@ -35,10 +35,80 @@ signature TYPECHECKER_OUTPUT = sig
     structure Term: TYPECHECKER_TERM
 end
 
+signature TYPECHECKING = sig
+    structure Input: TYPECHECKER_INPUT
+    structure Output: TYPECHECKER_OUTPUT
+
+    datatype shade = White | Grey | Black
+    
+    type 'b binding = { shade: shade ref
+                      , binder: 'b }
+
+    type 'typ type_binding = { kind: Output.Type.kind
+		             , typ: 'typ option }
+
+    type 'binder bindings = 'binder binding NameHashTable.hash_table (* HACK: should be opaque *)
+
+    type ('typ, 'expr) val_binding = { typ: 'typ
+                                     , value: 'expr option }
+
+    datatype typ = InputType of (typ ref, expr ref) Input.Type.typ
+                 | OutputType of typ ref Output.Type.typ
+                 | ScopeType of type_scope
+                 | OVar of Pos.t * ov
+                 | UVar of Pos.t * uv
+    
+    and expr = InputExpr of (typ ref, expr ref) Input.Term.expr
+             | OutputExpr of (typ ref, expr ref) Output.Term.expr
+             | ScopeExpr of expr_scope
+
+    and scope = TypeScope of type_scope
+              | ExprScope of expr_scope
+
+    withtype ov = scope TypeVars.ov
+    and uv = (scope, typ) TypeVars.uv
+
+    and type_scope = { parent: scope option ref
+                     , typ: typ ref
+                     , types: typ ref type_binding bindings }
+
+    and expr_scope = { parent: scope option ref
+                     , expr: expr ref
+                     , vals: (typ option ref, expr ref) val_binding bindings }
+
+    val wrapOT: typ ref Output.Type.typ -> typ ref
+    val wrapOE: (typ ref, expr ref) Output.Term.expr -> expr ref
+
+    structure Type: sig
+        val pos: typ -> Pos.t
+        val toString: typ -> string
+        val rowExtTail: typ -> typ ref
+    end
+
+    structure Expr: sig
+        val pos: expr -> Pos.t
+        val toString: expr -> string
+    end
+
+    structure Scope: sig
+        val parent: scope -> scope option
+    end
+
+    val occurs: uv -> typ -> bool
+    val uvInScope: scope * uv -> bool
+    val uvMerge: uv * uv -> unit
+end
+
 functor Typechecking(Puts: sig
     structure Input: TYPECHECKER_INPUT
     structure Output: TYPECHECKER_OUTPUT
-end) = struct
+end) :> TYPECHECKING where
+    type ('typ, 'expr) Input.Type.typ = ('typ, 'expr) Puts.Input.Type.typ and
+    type ('typ, 'expr) Input.Term.expr = ('typ, 'expr) Puts.Input.Term.expr and
+    type Output.Type.kind = Puts.Output.Type.kind and
+    type 'typ Output.Type.typ = 'typ Puts.Output.Type.typ and
+    type ('typ, 'expr) Output.Term.expr = ('typ, 'expr) Puts.Output.Term.expr
+= struct
     structure Input = Puts.Input
     structure Output = Puts.Output
 
@@ -78,11 +148,7 @@ end) = struct
     and expr_scope = { parent: scope option ref
                      , expr: expr ref
                      , vals: (typ option ref, expr ref) val_binding bindings }
-    val rec exprPos =
-        fn InputExpr expr => Input.Term.exprPos expr
-         | OutputExpr expr => Output.Term.exprPos expr
-         | ScopeExpr {expr, ...} => exprPos (!expr)
-
+    
     val wrapOE = ref o OutputExpr
     val wrapOT = ref o OutputType
 
@@ -112,10 +178,21 @@ end) = struct
         in occ
         end
 
+    structure Expr = struct
+        val rec pos =
+            fn InputExpr expr => Input.Term.exprPos expr
+             | OutputExpr expr => Output.Term.exprPos expr
+             | ScopeExpr {expr, ...} => pos (!expr)
+
+        val toString = exprToString
+    end
+
     structure Type = struct
-        val rec pos = fn InputType typ => Input.Type.pos (exprPos o op!) typ
+        val rec pos = fn InputType typ => Input.Type.pos (Expr.pos o op!) typ
                        | ScopeType {typ, ...} => pos (!typ)
                        | OutputType typ => Output.Type.pos typ
+
+        val toString = typeToString
 
         val rec rowExtTail =
             fn OutputType t => Output.Type.rowExtTail {tail = rowExtTail o op!, wrap = ref o OutputType} t
@@ -188,8 +265,6 @@ end) = struct
             end
     end
 
-    val ovEq: scope TypeVars.ov * ov -> bool = TypeVars.ovEq Scope.eq
-    val ovInScope: scope * ov -> bool = TypeVars.ovInScope Scope.compare
     val uvMerge: uv * uv -> unit = TypeVars.uvMerge Scope.compare
     val uvInScope: scope * uv -> bool = TypeVars.uvInScope Scope.compare
 end

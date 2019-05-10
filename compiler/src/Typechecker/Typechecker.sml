@@ -92,7 +92,7 @@ end = struct
                       (case typ
                        of FType.Type (_, ref typ) => typ
                         | _ => raise Fail ("Type path does not denote type at "
-                                           ^ Pos.toString (TC.exprPos (!typExpr)))))
+                                           ^ Pos.toString (TC.Expr.pos (!typExpr)))))
               | CType.Prim (pos, p) => TC.OutputType (FType.Prim (pos, p)))
          | TC.OutputType _ => typ (* assumes invariant: entire subtree has been elaborated already *)
 
@@ -164,7 +164,7 @@ end = struct
 
     and elaborateFields scope pos (fields: TC.expr ref CTerm.row): TC.typ * TC.expr =
         let fun elaborateField (field as (label, expr), (rowType, fieldExprs)) =
-                let val pos = TC.exprPos (!expr)
+                let val pos = TC.Expr.pos (!expr)
                     val fieldt = elaborateExpr scope expr
                 in ( FType.RowExt (pos, {field = (label, ref fieldt), ext = TC.wrapOT rowType})
                    , field :: fieldExprs )
@@ -241,7 +241,7 @@ end = struct
                      of Either.Right typ => coerce typ
                       | Either.Left uv => let val fieldType = TC.UVar (pos, TypeVars.freshUv scope)
                                               val ext = ref (TC.UVar (pos, TypeVars.freshUv scope))
-                                              val pos = TC.exprPos (!expr)
+                                              val pos = TC.Expr.pos (!expr)
                                               val row = FType.RowExt (pos, {field = (label, ref fieldType), ext})
                                               val typ = FType.Record (pos, ref (TC.OutputType row))
                                           in TypeVars.uvSet (uv, TC.OutputType typ)

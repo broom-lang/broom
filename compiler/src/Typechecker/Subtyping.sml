@@ -82,7 +82,7 @@ end = struct
            then let val coerceDomain = getOpt (coerceDomain, fn _ => ())
                     val coerceCodomain = getOpt (coerceCodomain, fn _ => ())
                 in SOME (fn expr =>
-                             let val pos = TC.exprPos (!expr)
+                             let val pos = TC.Expr.pos (!expr)
                                  val param = {var = Name.fresh (), typ = domain'}
                                  val arg = ref (TC.OutputExpr (FTerm.Use (pos, param)))
                                  val callee = ref (!expr)
@@ -102,7 +102,7 @@ end = struct
             val coerceExt = subType scope (!ext, ext')
         in (* FIXME: This coercion combination assumes this is a record row: *)
            SOME (fn expr =>
-                     let val pos = TC.exprPos (!expr)
+                     let val pos = TC.Expr.pos (!expr)
                          val recordTyp = TC.wrapOT (FType.Record (pos, TC.wrapOT (FType.RowExt (pos, row))))
                          val row' = {field = (label, ref fieldt'), ext = ref ext'}
                          val recordTyp' = TC.wrapOT (FType.Record (pos, TC.wrapOT (FType.RowExt (pos, row'))))
