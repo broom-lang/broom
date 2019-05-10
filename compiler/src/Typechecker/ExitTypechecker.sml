@@ -18,20 +18,24 @@ end = struct
         fun insertVal {types, vals} (k, v) = {types, vals = NameSortedMap.insert (vals, k, v)}
         fun insertType {types, vals} (k, v) = {types = NameSortedMap.insert (types, k, v), vals}
 
-        fun lookupVal ({types = _, vals}, name) =
-            case NameSortedMap.find (vals, name)
-            of SOME v => v
-             | NONE => raise Fail ("Not found: " ^ Name.toString name)
+        fun lookup (map, name) = case NameSortedMap.find (map, name)
+                                 of SOME v => v
+                                  | NONE => raise Fail ("Not found: " ^ Name.toString name)
 
-        fun lookupType ({types, vals = _}, name) =
-            case NameSortedMap.find (types, name)
-            of SOME t => t
-             | NONE => raise Fail ("Not found: " ^ Name.toString name)
+        fun lookupVal ({types = _, vals}, name) = lookup (vals, name)
+
+        fun lookupType ({types, vals = _}, name) = lookup (types, name)
     end
 
     structure TC = TypecheckingCst
+    datatype tc_typ = datatype TC.typ
+    datatype tc_expr = datatype TC.expr
     structure FFType = FixedFAst.Type
+    datatype typ = datatype FAst.Type.typ
     structure FFTerm = FixedFAst.Term
+    datatype expr = datatype FAst.Term.expr
+    datatype stmt = datatype FAst.Term.stmt
+    datatype either = datatype Either.t
 
     type env = (FFType.def, FFType.typ FFTerm.def) Env.t
 
@@ -43,25 +47,25 @@ end = struct
 
     fun typeToUnFixedF (env: env) (typ: TC.typ): FFType.typ FAst.Type.typ =
         case typ
-        of TC.OutputType typ =>
+        of OutputType typ =>
             (case typ
-             of FFType.ForAll (pos, {var, ...}, body) =>
-                 FFType.ForAll (pos, Env.lookupType (env, var), typRefToF env body)
-              | FFType.Arrow (pos, {domain, codomain}) =>
-                 FFType.Arrow (pos, {domain = typRefToF env domain, codomain = typRefToF env codomain})
-              | FFType.Record (pos, row) => FFType.Record (pos, typRefToF env row)
-              | FFType.RowExt (pos, {field = (label, fieldt), ext}) =>
-                 FFType.RowExt (pos, {field = (label, typRefToF env fieldt), ext = typRefToF env ext})
-              | FFType.EmptyRow pos => FFType.EmptyRow pos
+             of ForAll (pos, {var, ...}, body) =>
+                 ForAll (pos, Env.lookupType (env, var), typRefToF env body)
+              | Arrow (pos, {domain, codomain}) =>
+                 Arrow (pos, {domain = typRefToF env domain, codomain = typRefToF env codomain})
+              | Record (pos, row) => Record (pos, typRefToF env row)
+              | RowExt (pos, {field = (label, fieldt), ext}) =>
+                 RowExt (pos, {field = (label, typRefToF env fieldt), ext = typRefToF env ext})
+              | EmptyRow pos => EmptyRow pos
               | FFType.Type (pos, typ) => FFType.Type (pos, typRefToF env typ)
-              | FFType.UseT (pos, {var, ...}) => FFType.UseT (pos, Env.lookupType (env, var))
-              | FFType.Prim (pos, p) => FFType.Prim (pos, p))
-         | TC.InputType _ => raise Fail "unreachable"
-         | TC.ScopeType {typ, types, parent = _} => typeToUnFixedF (pushTypes env types) (!typ)
-         | TC.OVar (_, ov) => FFType.UseT (Pos.default "FIXME", Env.lookupType (env, TypeVars.ovName ov))
-         | TC.UVar (_, uv) => (case TypeVars.uvGet uv
-                               of Either.Right t => typeToUnFixedF env t
-                                | Either.Left _ => FFType.Prim (Pos.default "FIXME", FFType.Prim.Unit))
+              | UseT (pos, {var, ...}) => UseT (pos, Env.lookupType (env, var))
+              | Prim (pos, p) => Prim (pos, p))
+         | InputType _ => raise Fail "unreachable"
+         | ScopeType {typ, types, parent = _} => typeToUnFixedF (pushTypes env types) (!typ)
+         | OVar (_, ov) => UseT (Pos.default "FIXME", Env.lookupType (env, TypeVars.ovName ov))
+         | UVar (_, uv) => (case TypeVars.uvGet uv
+                               of Right t => typeToUnFixedF env t
+                                | Left _ => Prim (Pos.default "FIXME", FFType.Prim.Unit))
 
     and typeToF (env: env) (typ: TC.typ): FFType.typ = FFType.Fix (typeToUnFixedF env typ)
 
@@ -75,31 +79,30 @@ end = struct
 
     fun toUnfixedF (env: env) (expr: TC.expr ref): (FFType.typ, FFTerm.expr) FAst.Term.expr =
         case !expr
-        of TC.OutputExpr expr =>
+        of OutputExpr expr =>
             (case expr
-             of FFTerm.Fn (pos, {var, typ = _}, body) =>
-                 FFTerm.Fn (pos, Env.lookupVal (env, var), exprToF env body)
-              | FFTerm.TFn (pos, {var, ...}, body) =>
-                 FFTerm.TFn (pos, Env.lookupType (env, var), exprToF env body)
-              | FFTerm.Let (pos, stmts, body) =>
-                 FFTerm.Let (pos, Vector.map (stmtToF env) stmts, exprToF env body)
-              | FFTerm.App (pos, typ, {callee, arg}) =>
-                 FFTerm.App (pos, typRefToF env typ, {callee = exprToF env callee, arg = exprToF env arg})
-              | FFTerm.TApp (pos, typ, {callee, arg}) =>
-                 FFTerm.TApp (pos, typRefToF env typ, {callee = exprToF env callee, arg = typRefToF env arg})
-              | FFTerm.Type (pos, typ) => FFTerm.Type (pos, typRefToF env typ)
-              | FFTerm.Use (pos, {var, ...}) => FFTerm.Use (pos, Env.lookupVal (env, var))
-              | FFTerm.Const (pos, c) => FFTerm.Const (pos, c))
-         | TC.ScopeExpr {expr, vals, parent = _} => toUnfixedF (pushVals env vals) expr
-         | TC.InputExpr _ => raise Fail "unreachable"
+             of Fn (pos, {var, typ = _}, body) =>
+                 Fn (pos, Env.lookupVal (env, var), exprToF env body)
+              | TFn (pos, {var, ...}, body) =>
+                 TFn (pos, Env.lookupType (env, var), exprToF env body)
+              | Let (pos, stmts, body) =>
+                 Let (pos, Vector.map (stmtToF env) stmts, exprToF env body)
+              | App (pos, typ, {callee, arg}) =>
+                 App (pos, typRefToF env typ, {callee = exprToF env callee, arg = exprToF env arg})
+              | TApp (pos, typ, {callee, arg}) =>
+                 TApp (pos, typRefToF env typ, {callee = exprToF env callee, arg = typRefToF env arg})
+              | Type (pos, typ) => Type (pos, typRefToF env typ)
+              | Use (pos, {var, ...}) => Use (pos, Env.lookupVal (env, var))
+              | Const (pos, c) => Const (pos, c))
+         | ScopeExpr {expr, vals, parent = _} => toUnfixedF (pushVals env vals) expr
+         | InputExpr _ => raise Fail "unreachable"
 
     and exprToF (env: env) (expr: TC.expr ref): FFTerm.expr = FFTerm.Fix (toUnfixedF env expr)
 
     and stmtToF (env: env) stmt =
         case stmt
-        of FFTerm.Val (pos, {var, typ = _}, expr) =>
-            FFTerm.Val (pos, Env.lookupVal (env, var), exprToF env expr)
-         | FFTerm.Expr expr => FFTerm.Expr (exprToF env expr)
+        of Val (pos, {var, typ = _}, expr) => Val (pos, Env.lookupVal (env, var), exprToF env expr)
+         | Expr expr => Expr (exprToF env expr)
 
     val toF = exprToF Env.empty
 end
