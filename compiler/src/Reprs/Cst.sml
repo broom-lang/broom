@@ -123,8 +123,6 @@ structure FixedCst = struct
         type stmt = (Type.typ, expr) Cst.Term.stmt
 
         val exprToString = exprToString'
-
-        fun stmtToString stmt = Cst.Term.stmtToString Type.toString exprToString stmt
     end
 end
 

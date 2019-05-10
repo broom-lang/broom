@@ -10,7 +10,6 @@ end = struct
                                       structure ParserData = BroomLrVals.ParserData
                                       structure Lex = BroomLex)
 
-  structure CTerm = Cst.Term
   structure TC = TypecheckingCst
 
   fun logger debug str = if debug then TextIO.output(TextIO.stdOut, str) else ()
@@ -24,7 +23,7 @@ end = struct
 
   type config = {debug: bool, instream: TextIO.instream, name: string}
 
-  fun parse {debug, instream, name} =
+  fun parse ({debug, instream, name}: config): unit =
       let val log = logger debug
           val lexer = BroomParser.makeLexer (fn _ => (case TextIO.inputLine instream
                                                       of SOME s => s

@@ -112,11 +112,7 @@ structure FixedFAst = struct
 
         datatype expr = Fix of (Type.typ, expr) FAst.Term.expr
         
-        type stmt = (Type.typ, expr) FAst.Term.stmt
-
         fun exprToString (Fix expr) = FAst.Term.exprToString Type.toString exprToString expr
-
-        fun stmtToString stmt = FAst.Term.stmtToString Type.toString exprToString stmt
     end
 end
 

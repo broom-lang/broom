@@ -101,7 +101,7 @@ end = struct
                  ( subType scope (t, t')
                  ; subType scope (t', t)
                  ; SOME (fn expr => expr := TC.OutputExpr (FTerm.Type (pos, tref)))))
-         | (TC.UVar (_, uv), TC.UVar (pos, uv')) => subUvs scope (uv, uv')
+         | (TC.UVar (_, uv), TC.UVar (_, uv')) => subUvs scope (uv, uv')
          | (TC.UVar (_, uv), _) =>
             (case TypeVars.uvGet uv
              of Either.Left uv => ( assign scope (Sub, uv, superTyp); NONE )
@@ -152,7 +152,7 @@ end = struct
                          val extTyp = TC.wrapOT (FType.Record (pos, ref ext'))
                          val extGet = TC.wrapOE (FTerm.Use (pos, recordDef))
                          do getOpt (coerceExt, fn _ => ()) extGet
-                         val extRedef = FTerm.Val (pos, {var = Name.fresh (), typ = ref ext'}, extGet)
+                         val extRedef = FTerm.Val (pos, {var = Name.fresh (), typ = extTyp}, extGet)
                          val body = TC.wrapOE (FTerm.Extend ( pos, recordTyp'
                                                             , Vector.fromList [(label, TC.wrapOE (FTerm.Use (pos, fieldDef)))]
                                                             , SOME (TC.wrapOE (FTerm.Use (pos, recordDef))) ))
@@ -229,7 +229,7 @@ end = struct
                  ; typ
                 end
 
-            fun elaborateValTypeLoop scope {shade, binder = {typ = typRef, value}} =
+            fun elaborateValTypeLoop scope {shade, binder = {typ = typRef, value = _}} =
                 let val typ = TC.UVar (pos, TypeVars.freshUv scope)
                 in typRef := SOME typ
                  ; shade := TC.Black
@@ -265,7 +265,7 @@ end = struct
                  (case elaborateExpr scope typExpr
                   of TC.OutputType typ =>
                       (case typ
-                       of FType.Type (pos, ref typ) => typ
+                       of FType.Type (_, ref typ) => typ
                         | _ => raise Fail ("Type path does not denote type at "
                                            ^ Pos.toString (TC.exprPos (!typExpr)))))
               | CType.Prim (pos, p) => TC.OutputType (FType.Prim (pos, p)))
@@ -313,7 +313,7 @@ end = struct
                  in exprRef := TC.OutputExpr (FTerm.Field (pos, ref fieldType, expr, label))
                   ; fieldType
                  end
-              | CTerm.Ann (pos, expr, t) =>
+              | CTerm.Ann (_, expr, t) =>
                  ( elaborateExprAs scope (!(elaborateType scope t)) expr
                  ; !t )
               | CTerm.Type (pos, t) =>

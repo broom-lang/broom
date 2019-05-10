@@ -61,7 +61,7 @@ end = struct
          | TC.OVar (_, ov) => FFType.UseT (Pos.default "FIXME", Env.lookupType (env, TypeVars.ovName ov))
          | TC.UVar (_, uv) => (case TypeVars.uvGet uv
                                of Either.Right t => typeToUnFixedF env t
-                                | Either.Left uv => FFType.Prim (Pos.default "FIXME", FFType.Prim.Unit))
+                                | Either.Left _ => FFType.Prim (Pos.default "FIXME", FFType.Prim.Unit))
 
     and typeToF (env: env) (typ: TC.typ): FFType.typ = FFType.Fix (typeToUnFixedF env typ)
 

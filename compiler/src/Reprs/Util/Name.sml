@@ -64,4 +64,3 @@ structure NameHashTable = HashTableFn(type hash_key = Name.t
 
 structure NameSortedMap = BinaryMapFn(Name.OrdKey)
 
-structure NameSortedSet = BinarySetFn(Name.OrdKey)
