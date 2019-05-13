@@ -1,13 +1,10 @@
-functor FType(Var: sig
-    type t 
-    val toString: t -> string
-end) = struct
+structure FType = struct
     structure Prim = PrimType
 
     datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
                   | TypeK of Pos.t
 
-    type def = {var: Var.t, kind: kind}
+    type def = {var: Name.t, kind: kind}
 
     datatype 'typ typ = ForAll of Pos.t * def * 'typ
                       | Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
@@ -23,7 +20,7 @@ end) = struct
          | ArrowK (_, {domain, codomain}) =>
             kindToString domain ^ " -> " ^ kindToString codomain
 
-    fun defToString {var, kind} = Var.toString var ^ ": " ^ kindToString kind
+    fun defToString {var, kind} = Name.toString var ^ ": " ^ kindToString kind
 
     fun toString toString =
         fn ForAll (_, param, t) =>
@@ -61,6 +58,4 @@ end) = struct
         fn RowExt (_, {ext, ...}) => tail ext
          | t => wrap t
 end
-
-structure NameFType = FType(Name)
 

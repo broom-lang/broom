@@ -31,7 +31,12 @@ signature TYPECHECKER_OUTPUT = sig
         val rowExtTail: {tail: 'typ -> 'typ, wrap: 'typ typ -> 'typ} -> 'typ typ -> 'typ
     end
 
-    structure Term: TYPECHECKER_TERM
+    structure Term: sig
+        type 'typ expr
+
+        val exprPos: 'typ expr -> Pos.t
+        val exprToString: ('typ -> string) -> 'typ expr -> string
+    end
 end
 
 signature TYPECHECKING = sig
@@ -52,13 +57,13 @@ signature TYPECHECKING = sig
                                      , value: 'expr option }
 
     datatype typ = InputType of expr ref Input.Type.typ
-                 | OutputType of typ ref Output.Type.typ
+                 | OutputType of typ Output.Type.typ
                  | ScopeType of type_scope
                  | OVar of Pos.t * ov
                  | UVar of Pos.t * uv
     
     and expr = InputExpr of (typ option ref, expr ref) Input.Term.expr
-             | OutputExpr of (typ ref, expr ref) Output.Term.expr
+             | OutputExpr of typ Output.Term.expr
              | ScopeExpr of expr_scope
 
     and scope = TypeScope of type_scope
@@ -68,20 +73,17 @@ signature TYPECHECKING = sig
     and uv = (scope, typ) TypeVars.uv
 
     and type_scope = { parent: scope option ref
-                     , typ: typ ref
+                     , typ: typ
                      , types: typ ref type_binding bindings }
 
     and expr_scope = { parent: scope option ref
-                     , expr: expr ref
+                     , expr: expr
                      , vals: (typ option ref, expr ref) val_binding bindings }
-
-    val wrapOT: typ ref Output.Type.typ -> typ ref
-    val wrapOE: (typ ref, expr ref) Output.Term.expr -> expr ref
 
     structure Type: sig
         val pos: typ -> Pos.t
         val toString: typ -> string
-        val rowExtTail: typ -> typ ref
+        val rowExtTail: typ -> typ
     end
 
     structure Expr: sig
@@ -106,7 +108,7 @@ end) :> TYPECHECKING where
     type ('typ, 'expr) Input.Term.expr = ('typ, 'expr) Puts.Input.Term.expr and
     type Output.Type.kind = Puts.Output.Type.kind and
     type 'typ Output.Type.typ = 'typ Puts.Output.Type.typ and
-    type ('typ, 'expr) Output.Term.expr = ('typ, 'expr) Puts.Output.Term.expr
+    type 'typ Output.Term.expr = 'typ Puts.Output.Term.expr
 = struct
     structure Input = Puts.Input
     structure Output = Puts.Output
@@ -125,13 +127,13 @@ end) :> TYPECHECKING where
                                      , value: 'expr option }
 
     datatype typ = InputType of expr ref Input.Type.typ
-                 | OutputType of typ ref Output.Type.typ
+                 | OutputType of typ Output.Type.typ
                  | ScopeType of type_scope
                  | OVar of Pos.t * ov
                  | UVar of Pos.t * uv
     
     and expr = InputExpr of (typ option ref, expr ref) Input.Term.expr
-             | OutputExpr of (typ ref, expr ref) Output.Term.expr
+             | OutputExpr of typ Output.Term.expr
              | ScopeExpr of expr_scope
 
     and scope = TypeScope of type_scope
@@ -141,20 +143,17 @@ end) :> TYPECHECKING where
     and uv = (scope, typ) TypeVars.uv
 
     and type_scope = { parent: scope option ref
-                     , typ: typ ref
+                     , typ: typ
                      , types: typ ref type_binding bindings }
 
     and expr_scope = { parent: scope option ref
-                     , expr: expr ref
+                     , expr: expr
                      , vals: (typ option ref, expr ref) val_binding bindings }
     
-    val wrapOE = ref o OutputExpr
-    val wrapOT = ref o OutputType
-
     val rec typeToString =
         fn InputType typ => Input.Type.toString (exprToString o op!) typ
-         | OutputType typ => Output.Type.toString (typeToString o op!) typ
-         | ScopeType {typ, ...} => typeToString (!typ)
+         | OutputType typ => Output.Type.toString typeToString typ
+         | ScopeType {typ, ...} => typeToString typ
          | OVar (_, ov) => Name.toString (TypeVars.ovName ov)
          | UVar (_, uv) => (case TypeVars.uvGet uv
                             of Either.Right t => typeToString t
@@ -162,16 +161,16 @@ end) :> TYPECHECKING where
 
     and exprToString =
         fn InputExpr expr => Input.Term.exprToString (Option.toString typeToString o op!) (exprToString o op!) expr
-         | OutputExpr expr => Output.Term.exprToString (typeToString o op!) (exprToString o op!) expr
-         | ScopeExpr {expr, ...} => exprToString (!expr)
+         | OutputExpr expr => Output.Term.exprToString typeToString expr
+         | ScopeExpr {expr, ...} => exprToString expr
 
     fun occurs uv =
-        let fun occStep (t, acc) = acc orelse occ (!t)
+        let fun occStep (t, acc) = acc orelse occ t
             and occ typ =
                 case typ
-                of InputType t => Input.Type.shallowFoldl occStep false t
+                of InputType t => raise Fail "unreachable"
                  | OutputType t => Output.Type.shallowFoldl occStep false t
-                 | ScopeType {typ, ...} => occ (!typ)
+                 | ScopeType {typ, ...} => occ typ
                  | OVar _ => false
                  | UVar (_, uv') => TypeVars.uvEq (uv, uv')
         in occ
@@ -181,23 +180,23 @@ end) :> TYPECHECKING where
         val rec pos =
             fn InputExpr expr => Input.Term.exprPos expr
              | OutputExpr expr => Output.Term.exprPos expr
-             | ScopeExpr {expr, ...} => pos (!expr)
+             | ScopeExpr {expr, ...} => pos expr
 
         val toString = exprToString
     end
 
     structure Type = struct
         val rec pos = fn InputType typ => Input.Type.pos (Expr.pos o op!) typ
-                       | ScopeType {typ, ...} => pos (!typ)
+                       | ScopeType {typ, ...} => pos typ
                        | OutputType typ => Output.Type.pos typ
 
         val toString = typeToString
 
         val rec rowExtTail =
-            fn OutputType t => Output.Type.rowExtTail {tail = rowExtTail o op!, wrap = ref o OutputType} t
-             | InputType t => Input.Type.rowExtTail t
-             | ScopeType {typ, ...} => rowExtTail (!typ)
-             | t as OVar _ | t as UVar _ => ref t
+            fn OutputType t => Output.Type.rowExtTail {tail = rowExtTail, wrap = OutputType} t
+             | InputType t => InputType (Input.Type.rowExtTail t)
+             | ScopeType {typ, ...} => rowExtTail typ
+             | t as OVar _ | t as UVar _ => t
     end
 
     structure Scope = struct

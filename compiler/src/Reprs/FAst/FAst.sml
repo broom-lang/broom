@@ -1,22 +1,22 @@
 structure FAst = struct
-    structure Type = NameFType
+    structure Type = FType
 
     structure Term = struct
         type 'typ def = {var: Name.t, typ: 'typ}
 
-        datatype ('typ, 'expr) expr = Fn of Pos.t * 'typ def * 'expr
-                                    | TFn of Pos.t * Type.def * 'expr
-                                    | Extend of Pos.t * 'typ * (Name.t * 'expr) vector * 'expr option
-                                    | App of Pos.t * 'typ * {callee: 'expr, arg: 'expr}
-                                    | TApp of Pos.t * 'typ * {callee: 'expr, arg: 'typ}
-                                    | Field of Pos.t * 'typ * 'expr * Name.t
-                                    | Let of Pos.t * ('typ, 'expr) stmt vector * 'expr
-                                    | Type of Pos.t * 'typ
-                                    | Use of Pos.t * 'typ def
-                                    | Const of Pos.t * Const.t
+        datatype 'typ expr = Fn of Pos.t * 'typ def * 'typ expr
+                           | TFn of Pos.t * Type.def * 'typ expr
+                           | Extend of Pos.t * 'typ * (Name.t * 'typ expr) vector * 'typ expr option
+                           | App of Pos.t * 'typ * {callee: 'typ expr, arg: 'typ expr}
+                           | TApp of Pos.t * 'typ * {callee: 'typ expr, arg: 'typ}
+                           | Field of Pos.t * 'typ * 'typ expr * Name.t
+                           | Let of Pos.t * 'typ stmt vector * 'typ expr
+                           | Type of Pos.t * 'typ
+                           | Use of Pos.t * 'typ def
+                           | Const of Pos.t * Const.t
 
-        and ('typ, 'expr) stmt = Val of Pos.t * 'typ def * 'expr
-                               | Expr of 'expr
+        and 'typ stmt = Val of Pos.t * 'typ def * 'typ expr
+                      | Expr of 'typ expr
 
         val exprPos =
             fn Fn (pos, _, _) => pos
@@ -32,37 +32,37 @@ structure FAst = struct
 
        fun defToString typeToString {var, typ} = Name.toString var ^ ": " ^ typeToString typ
 
-       fun stmtToString typeToString exprToString =
+       fun stmtToString typeToString =
            fn Val (_, def, valExpr) =>
-               "val " ^ defToString typeToString def ^ " = " ^ exprToString valExpr
-            | Expr expr => exprToString expr
+               "val " ^ defToString typeToString def ^ " = " ^ exprToString typeToString valExpr
+            | Expr expr => exprToString typeToString expr
 
-       fun exprToString typeToString exprToString =
+       and exprToString typeToString =
            fn Fn (_, param, body) =>
-               "\\" ^ defToString typeToString param ^ " => " ^ exprToString body
+               "\\" ^ defToString typeToString param ^ " => " ^ exprToString typeToString body
             | TFn (_, param, body) =>
-               "/\\" ^ Type.defToString param ^ " => " ^ exprToString body
+               "/\\" ^ Type.defToString param ^ " => " ^ exprToString typeToString body
             | Extend (_, _, fields, record) =>
-               "{" ^ getOpt (Option.map exprToString record, "")
-                   ^ " with " ^ fieldExprsToString exprToString fields ^ "}"
+               "{" ^ getOpt (Option.map (exprToString typeToString) record, "")
+                   ^ " with " ^ fieldExprsToString typeToString fields ^ "}"
             | App (_, _, {callee, arg}) =>
-               "(" ^ exprToString callee ^ " " ^ exprToString arg ^ ")"
+               "(" ^ exprToString typeToString callee ^ " " ^ exprToString typeToString arg ^ ")"
             | TApp (_, _, {callee, arg}) =>
-               "(" ^ exprToString callee ^ " [" ^ typeToString arg ^ "])" 
+               "(" ^ exprToString typeToString callee ^ " [" ^ typeToString arg ^ "])" 
             | Field (_, _, expr, label) =>
-               "(" ^ exprToString expr ^ "." ^ Name.toString label ^ ")"
+               "(" ^ exprToString typeToString expr ^ "." ^ Name.toString label ^ ")"
             | Let (_, stmts, body) =>
-               let fun step (stmt, acc) = acc ^ stmtToString typeToString exprToString stmt ^ "\n"
+               let fun step (stmt, acc) = acc ^ stmtToString typeToString stmt ^ "\n"
                in "let " ^ Vector.foldl step "" stmts ^ "in\n" ^
-                      "    " ^ exprToString body ^ "\nend"
+                      "    " ^ exprToString typeToString body ^ "\nend"
                end
             | Type (_, t) => "[" ^ typeToString t ^ "]"
             | Use (_, {var, ...}) => Name.toString var 
             | Const (_, c) => Const.toString c
 
-        and fieldExprsToString exprToString fields =
+        and fieldExprsToString typeToString fields =
             let fun step ((label, expr), acc) =
-                    acc ^ ", " ^ Name.toString label ^ " = " ^ exprToString expr
+                    acc ^ ", " ^ Name.toString label ^ " = " ^ exprToString typeToString expr
             in Vector.foldl step "" fields
             end
 
@@ -84,8 +84,8 @@ structure FAst = struct
             in fixed o typeOf
             end
 
-        datatype ('typ, 'expr) Binder = ValueBinder of 'typ def * 'expr option
-                                      | TypeBinder of Type.def * 'typ option
+        datatype 'typ binder = ValueBinder of 'typ def * 'typ expr option
+                             | TypeBinder of Type.def * 'typ option
 
         fun foldBinders f acc =
             fn Fn (_, def, _) => f (ValueBinder (def, NONE), acc)
@@ -110,9 +110,9 @@ structure FixedFAst = struct
     structure Term = struct
         open FAst.Term
 
-        datatype expr = Fix of (Type.typ, expr) FAst.Term.expr
+        datatype expr = Fix of Type.typ FAst.Term.expr
         
-        fun exprToString (Fix expr) = FAst.Term.exprToString Type.toString exprToString expr
+        fun exprToString (Fix expr) = FAst.Term.exprToString Type.toString expr
     end
 end
 
