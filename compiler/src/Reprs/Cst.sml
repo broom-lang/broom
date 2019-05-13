@@ -2,39 +2,39 @@ structure Cst = struct
     structure Type :> sig
         structure Prim: PRIM_TYPE
 
-        datatype 'expr typ = Arrow of Pos.t * {domain: 'expr typ, codomain: 'expr typ}
-                           | Record of Pos.t * 'expr typ
-                           | RowExt of Pos.t * 'expr row_ext
-                           | EmptyRow of Pos.t
-                           | Singleton of Pos.t * 'expr
-                           | Path of 'expr
-                           | Prim of Pos.t * Prim.t
+        datatype ('typ, 'expr) typ = Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
+                                   | Record of Pos.t * 'typ
+                                   | RowExt of Pos.t * ('typ, 'expr) row_ext
+                                   | EmptyRow of Pos.t
+                                   | Singleton of Pos.t * 'expr
+                                   | Path of 'expr
+                                   | Prim of Pos.t * Prim.t
 
-        withtype 'expr row_ext = {field: Name.t * 'expr typ, ext: 'expr typ}
+        withtype ('typ, 'expr) row_ext = {field: Name.t * 'typ, ext: 'typ}
 
-        val toString: ('expr -> string) -> 'expr typ -> string
-        val pos: ('expr -> Pos.t) -> 'expr typ -> Pos.t
-        val shallowFoldl: ('expr typ * 'a -> 'a) -> 'a -> 'expr typ -> 'a
-        val rowExtTail: 'expr typ -> 'expr typ
+        val toString: ('typ -> string) -> ('expr -> string) -> ('typ, 'expr) typ -> string
+        val pos: ('expr -> Pos.t) -> ('typ, 'expr) typ -> Pos.t
+        val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> ('typ, 'expr) typ -> 'a
+        val rowExtTail: ('typ, 'expr) typ -> ('typ, 'expr) typ
     end = struct
         structure Prim = PrimType
 
-        datatype 'expr typ = Arrow of Pos.t * {domain: 'expr typ, codomain: 'expr typ}
-                           | Record of Pos.t * 'expr typ
-                           | RowExt of Pos.t * 'expr row_ext
-                           | EmptyRow of Pos.t
-                           | Singleton of Pos.t * 'expr
-                           | Path of 'expr
-                           | Prim of Pos.t * Prim.t
+        datatype ('typ, 'expr) typ = Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
+                                   | Record of Pos.t * 'typ
+                                   | RowExt of Pos.t * ('typ, 'expr) row_ext
+                                   | EmptyRow of Pos.t
+                                   | Singleton of Pos.t * 'expr
+                                   | Path of 'expr
+                                   | Prim of Pos.t * Prim.t
 
-        withtype 'expr row_ext = {field: Name.t * 'expr typ, ext: 'expr typ}
+        withtype ('typ, 'expr) row_ext = {field: Name.t * 'typ, ext: 'typ}
 
-        fun toString exprToString t =
+        fun toString typeToString exprToString t =
             let val rec toString = fn Arrow (_, {domain, codomain}) =>
-                                       toString domain ^ " -> " ^ toString codomain
-                                    | Record (_, row) => "{" ^ toString row ^ "}" (* TODO: Extend to `Extend` as in FAst. *)
+                                       typeToString domain ^ " -> " ^ typeToString codomain
+                                    | Record (_, row) => "{" ^ typeToString row ^ "}" (* TODO: Extend to `Extend` as in FAst. *)
                                     | RowExt (_, {field = (label, fieldt), ext}) =>
-                                       Name.toString label ^ ": " ^ toString fieldt ^ " | " ^ toString ext
+                                       Name.toString label ^ ": " ^ typeToString fieldt ^ " | " ^ typeToString ext
                                     | EmptyRow _ => "(||)"
                                     | Singleton (_, expr) => "(= " ^ exprToString expr ^ ")"
                                     | Path expr => exprToString expr
@@ -55,39 +55,41 @@ structure Cst = struct
     end
 
     structure Term :> sig
-        datatype ('bt, 'be) stmt = Val of Pos.t * Name.t * 'bt * 'be
-                                 | Expr of ('bt, 'be) expr
+        datatype ('typ, 'bt, 'expr, 'be) stmt = Val of Pos.t * Name.t * 'bt * 'be
+                                       | Expr of 'expr
     
-        and ('bt, 'be) expr = Fn of Pos.t * Name.t * 'bt * ('bt, 'be) expr
-                            | Let of Pos.t * ('bt, 'be) stmt vector * ('bt, 'be) expr
-                            | Record of Pos.t * ('bt, 'be) row
-                            | App of Pos.t * {callee: ('bt, 'be) expr, arg: ('bt, 'be) expr}
-                            | Field of Pos.t * ('bt, 'be) expr * Name.t
-                            | Ann of Pos.t * ('bt, 'be) expr * ('bt, 'be) expr Type.typ
-                            | Type of Pos.t * ('bt, 'be) expr Type.typ
+        and ('typ, 'bt, 'expr, 'be) expr = Fn of Pos.t * Name.t * 'bt * 'expr
+                            | Let of Pos.t * ('typ, 'bt, 'expr, 'be) stmt vector * 'expr
+                            | Record of Pos.t * 'expr row
+                            | App of Pos.t * {callee: 'expr, arg: 'expr}
+                            | Field of Pos.t * 'expr * Name.t
+                            | Ann of Pos.t * 'expr * 'typ
+                            | Type of Pos.t * 'typ
                             | Use of Pos.t * Name.t
                             | Const of Pos.t * Const.t
 
-        withtype ('bt, 'be) row = (Name.t * ('bt, 'be) expr) vector
+        withtype 'expr row = (Name.t * 'expr) vector
 
-        val exprPos: ('bt, 'be) expr -> Pos.t
-        val exprToString: ('bt -> string) -> ('be -> string) -> ('bt, 'be) expr -> string
-        val stmtToString: ('bt -> string) -> ('be -> string) -> ('bt, 'be) stmt -> string
+        val exprPos: ('typ, 'bt, 'expr, 'be) expr -> Pos.t
+        val exprToString: ('typ -> string) -> ('bt -> string) -> ('expr -> string) -> ('be -> string)
+                        -> ('typ, 'bt, 'expr, 'be) expr -> string
+        val stmtToString: ('typ -> string) -> ('bt -> string) -> ('expr -> string) -> ('be -> string)
+                        -> ('typ, 'bt, 'expr, 'be) stmt -> string
     end = struct
-        datatype ('bt, 'be) stmt = Val of Pos.t * Name.t * 'bt * 'be
-                                 | Expr of ('bt, 'be) expr
+        datatype ('typ, 'bt, 'expr, 'be) stmt = Val of Pos.t * Name.t * 'bt * 'be
+                                 | Expr of 'expr
     
-        and ('bt, 'be) expr = Fn of Pos.t * Name.t * 'bt * ('bt, 'be) expr
-                            | Let of Pos.t * ('bt, 'be) stmt vector * ('bt, 'be) expr
-                            | Record of Pos.t * ('bt, 'be) row
-                            | App of Pos.t * {callee: ('bt, 'be) expr, arg: ('bt, 'be) expr}
-                            | Field of Pos.t * ('bt, 'be) expr * Name.t
-                            | Ann of Pos.t * ('bt, 'be) expr * ('bt, 'be) expr Type.typ
-                            | Type of Pos.t * ('bt, 'be) expr Type.typ
+        and ('typ, 'bt, 'expr, 'be) expr = Fn of Pos.t * Name.t * 'bt * 'expr
+                            | Let of Pos.t * ('typ, 'bt, 'expr, 'be) stmt vector * 'expr
+                            | Record of Pos.t * 'expr row
+                            | App of Pos.t * {callee: 'expr, arg: 'expr}
+                            | Field of Pos.t * 'expr * Name.t
+                            | Ann of Pos.t * 'expr * 'typ
+                            | Type of Pos.t * 'typ
                             | Use of Pos.t * Name.t
                             | Const of Pos.t * Const.t
 
-        withtype ('bt, 'be) row = (Name.t * ('bt, 'be) expr) vector
+        withtype 'expr row = (Name.t * 'expr) vector
 
         val exprPos =
             fn Fn (pos, _, _, _) => pos
@@ -100,32 +102,32 @@ structure Cst = struct
              | Use (pos, _) => pos
              | Const (pos, _) => pos
 
-        fun stmtToString (btToString: 'bt -> string) (beToString: 'be -> string): ('bt, 'be) stmt -> string =
+        fun stmtToString typeToString btToString exprToString beToString =
             fn Val (_, name, ann, valExpr) =>
                 "val " ^ Name.toString name ^ btToString ann ^ " = " ^ beToString valExpr
-             | Expr expr => exprToString btToString beToString expr
+             | Expr expr => exprToString expr
 
-        and rowToString exprToString row =
+        fun rowToString exprToString row =
             let fun step ((label, expr), acc) =
                     acc ^ " " ^ Name.toString label ^ " = " ^ exprToString expr ^ ","
             in Vector.foldl step "" row
             end
 
-        and exprToString (btToString: 'bt -> string) (beToString: 'be -> string) expr: string =
+        fun exprToString typeToString btToString exprToString beToString expr =
             let val rec toString = fn Fn (_, param, ann, body) =>
-                                       "fn " ^ Name.toString param ^ btToString ann ^ " => " ^ toString body
-                                    | Record (_, row) => "{" ^ rowToString toString row ^ "}"
+                                       "fn " ^ Name.toString param ^ btToString ann ^ " => " ^ exprToString body
+                                    | Record (_, row) => "{" ^ rowToString exprToString row ^ "}"
                                     | App (_, {callee, arg}) =>
-                                       "(" ^ toString callee ^ " " ^ toString arg ^ ")"
-                                    | Field (_, expr, label) => "(" ^ toString expr ^ "." ^ Name.toString label ^ ")"
+                                       "(" ^ exprToString callee ^ " " ^ exprToString arg ^ ")"
+                                    | Field (_, expr, label) => "(" ^ exprToString expr ^ "." ^ Name.toString label ^ ")"
                                     | Let (_, stmts, body) =>
-                                       let fun step (stmt, acc) = acc ^ stmtToString btToString beToString stmt ^
+                                       let fun step (stmt, acc) = acc ^ stmtToString typeToString btToString exprToString beToString stmt ^
                                        "\n"
                                        in "let " ^ Vector.foldl step "" stmts ^ "in\n" ^
-                                             "    " ^ toString body ^ "\nend"
+                                             "    " ^ exprToString body ^ "\nend"
                                        end
-                                    | Ann (_, expr, t) => toString expr ^ ": " ^ Type.toString toString t
-                                    | Type (_, t) => "type " ^ Type.toString toString t
+                                    | Ann (_, expr, t) => exprToString expr ^ ": " ^ typeToString t
+                                    | Type (_, t) => "type " ^ typeToString t
                                     | Use (_, name) => Name.toString name
                                     | Const (_, c) => Const.toString c
             in toString expr
@@ -134,12 +136,12 @@ structure Cst = struct
 end
 
 structure FixedCst = struct
-    datatype typ' = FixT of (typ' option, expr') Cst.Term.expr Cst.Type.typ
-    and expr' = Fix of (typ' option, expr') Cst.Term.expr
+    datatype typ' = FixT of (typ', (typ', typ' option, expr', expr') Cst.Term.expr) Cst.Type.typ
+    and expr' = Fix of (typ', typ' option, expr', expr') Cst.Term.expr
 
     fun typeToString' (FixT t) =
-         Cst.Type.toString (Cst.Term.exprToString (Option.toString typeToString') exprToString') t
-    and exprToString' (Fix expr) = Cst.Term.exprToString (Option.toString typeToString') exprToString' expr 
+         Cst.Type.toString typeToString' (Cst.Term.exprToString typeToString' (Option.toString typeToString') exprToString' exprToString') t
+    and exprToString' (Fix expr) = Cst.Term.exprToString typeToString' (Option.toString typeToString') exprToString' exprToString' expr 
 
     structure Type = struct
         open Cst.Type
@@ -154,7 +156,7 @@ structure FixedCst = struct
 
         datatype fexpr = datatype expr'
         
-        type stmt = (Type.ftyp option, fexpr) Cst.Term.stmt
+        type stmt = (Type.ftyp, Type.ftyp option, fexpr, fexpr) Cst.Term.stmt
 
         val exprToString = exprToString'
     end

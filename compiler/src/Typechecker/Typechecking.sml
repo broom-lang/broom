@@ -1,21 +1,20 @@
-signature TYPECHECKER_TERM = sig
-    type ('bt, 'be) expr
-
-    val exprPos: ('bt, 'be) expr -> Pos.t
-    val exprToString: ('bt -> string) -> ('be -> string) -> ('bt, 'be) expr -> string
-end
-
 signature TYPECHECKER_INPUT = sig
     structure Type: sig
-        type 'expr typ
+        type ('typ, 'expr) typ
 
-        val pos: ('expr -> Pos.t) -> 'expr typ -> Pos.t
-        val toString: ('expr -> string) -> 'expr typ -> string
-        val shallowFoldl: ('expr typ * 'a -> 'a) -> 'a -> 'expr typ -> 'a
-        val rowExtTail: 'expr typ -> 'expr typ
+        val pos: ('expr -> Pos.t) -> ('typ, 'expr) typ -> Pos.t
+        val toString: ('typ -> string) -> ('expr -> string) -> ('typ, 'expr) typ -> string
+        val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> ('typ, 'expr) typ -> 'a
+        val rowExtTail: ('typ, 'expr) typ -> ('typ, 'expr) typ
     end
 
-    structure Term: TYPECHECKER_TERM
+    structure Term: sig
+        type ('typ, 'bt, 'be) expr
+
+        val exprPos: ('typ, 'bt, 'be) expr -> Pos.t
+        val exprToString: ('typ -> string) -> ('bt -> string) -> ('be -> string)
+                        -> ('typ, 'bt, 'be) expr -> string
+    end
 end
 
 signature TYPECHECKER_OUTPUT = sig
@@ -56,13 +55,13 @@ signature TYPECHECKING = sig
     type ('typ, 'expr) val_binding = { typ: 'typ
                                      , value: 'expr option }
 
-    datatype typ = InputType of expr ref Input.Type.typ
+    datatype typ = InputType of (typ, expr) Input.Type.typ
                  | OutputType of typ Output.Type.typ
                  | ScopeType of type_scope
                  | OVar of Pos.t * ov
                  | UVar of Pos.t * uv
     
-    and expr = InputExpr of (typ option ref, expr ref) Input.Term.expr
+    and expr = InputExpr of (typ, typ option ref, expr ref) Input.Term.expr
              | OutputExpr of typ Output.Term.expr
              | ScopeExpr of expr_scope
 
@@ -104,8 +103,8 @@ functor Typechecking(Puts: sig
     structure Input: TYPECHECKER_INPUT
     structure Output: TYPECHECKER_OUTPUT
 end) :> TYPECHECKING where
-    type 'expr Input.Type.typ = 'expr Puts.Input.Type.typ and
-    type ('typ, 'expr) Input.Term.expr = ('typ, 'expr) Puts.Input.Term.expr and
+    type ('typ, 'expr) Input.Type.typ = ('typ, 'expr) Puts.Input.Type.typ and
+    type ('typ, 'bt, 'be) Input.Term.expr = ('typ, 'bt, 'be) Puts.Input.Term.expr and
     type Output.Type.kind = Puts.Output.Type.kind and
     type 'typ Output.Type.typ = 'typ Puts.Output.Type.typ and
     type 'typ Output.Term.expr = 'typ Puts.Output.Term.expr
@@ -126,13 +125,13 @@ end) :> TYPECHECKING where
     type ('typ, 'expr) val_binding = { typ: 'typ
                                      , value: 'expr option }
 
-    datatype typ = InputType of expr ref Input.Type.typ
+    datatype typ = InputType of (typ, expr) Input.Type.typ
                  | OutputType of typ Output.Type.typ
                  | ScopeType of type_scope
                  | OVar of Pos.t * ov
                  | UVar of Pos.t * uv
     
-    and expr = InputExpr of (typ option ref, expr ref) Input.Term.expr
+    and expr = InputExpr of (typ, typ option ref, expr ref) Input.Term.expr
              | OutputExpr of typ Output.Term.expr
              | ScopeExpr of expr_scope
 
@@ -151,7 +150,7 @@ end) :> TYPECHECKING where
                      , vals: (typ option ref, expr ref) val_binding bindings }
     
     val rec typeToString =
-        fn InputType typ => Input.Type.toString (exprToString o op!) typ
+        fn InputType typ => Input.Type.toString typeToString exprToString typ
          | OutputType typ => Output.Type.toString typeToString typ
          | ScopeType {typ, ...} => typeToString typ
          | OVar (_, ov) => Name.toString (TypeVars.ovName ov)
@@ -160,7 +159,7 @@ end) :> TYPECHECKING where
                              | Either.Left uv => Name.toString (TypeVars.uvName uv))
 
     and exprToString =
-        fn InputExpr expr => Input.Term.exprToString (Option.toString typeToString o op!) (exprToString o op!) expr
+        fn InputExpr expr => Input.Term.exprToString typeToString (Option.toString typeToString o op!) (exprToString o op!) expr
          | OutputExpr expr => Output.Term.exprToString typeToString expr
          | ScopeExpr {expr, ...} => exprToString expr
 
@@ -186,7 +185,7 @@ end) :> TYPECHECKING where
     end
 
     structure Type = struct
-        val rec pos = fn InputType typ => Input.Type.pos (Expr.pos o op!) typ
+        val rec pos = fn InputType typ => Input.Type.pos Expr.pos typ
                        | ScopeType {typ, ...} => pos typ
                        | OutputType typ => Output.Type.pos typ
 

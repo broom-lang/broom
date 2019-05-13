@@ -1,5 +1,5 @@
 structure EnterTypechecker :> sig
-    val toTypechecking: FixedCst.Term.expr -> TypecheckingCst.expr ref * TypecheckingCst.expr_scope
+    val toTypechecking: FixedCst.Term.expr -> TypecheckingCst.expr * TypecheckingCst.expr_scope
 end = struct
     structure CTerm = FixedCst.Term
     structure CType = FixedCst.Type
@@ -31,7 +31,7 @@ end = struct
             end
          | _ => NONE
 
-    fun injectType (CType.FixT typ) =
+    fun injectType (CType.FixT typ): TC.typ =
         let val typ = case typ
                       of CType.Arrow (pos, {domain, codomain}) =>
                           CType.Arrow (pos, { domain = injectType domain
@@ -43,16 +43,16 @@ end = struct
                        | CType.EmptyRow pos => CType.EmptyRow pos
                        | CType.Path expr => CType.Path (injectExpr expr)
                        | CType.Prim (pos, p) => CType.Prim (pos, p)
-            val flexType = ref (TC.InputType typ)
-        in case typeScope flexType typ
-           of SOME scope => ref (TC.ScopeType scope)
-            | NONE => flexType
+            val typ = TC.InputType typ
+        in case typeScope typ typ
+           of SOME scope => TC.ScopeType scope
+            | NONE => typ
         end
 
-    and injectExpr (CTerm.Fix expr) =
+    and injectExpr (CTerm.Fix expr): TC.expr =
         let val expr = case expr
                        of CTerm.Fn (pos, arg, odomain, body) =>
-                           CTerm.Fn (pos, arg, Option.map injectType odomain, injectExpr body)
+                           CTerm.Fn (pos, arg, ref (Option.map injectType odomain), injectExpr body)
                         | CTerm.Let (pos, stmts, body) =>
                            CTerm.Let (pos, Vector.map injectStmt stmts, injectExpr body)
                         | CTerm.Record (pos, row) => CTerm.Record (pos, injectRow row)
@@ -64,16 +64,16 @@ end = struct
                         | CTerm.Type (pos, t) => CTerm.Type (pos, injectType t)
                         | CTerm.Use (pos, name) => CTerm.Use (pos, name)
                         | CTerm.Const (pos, c) => CTerm.Const (pos, c)
-            val flexpr = ref (TC.InputExpr expr)
-        in case exprScope flexpr expr
-           of SOME scope => ref (TC.ScopeExpr scope)
-            | NONE => flexpr
+            val expr = TC.InputExpr exp
+        in case exprScope expr expr
+           of SOME scope => TC.ScopeExpr scope
+            | NONE => expr
         end
 
     and injectRow row = Vector.map (fn (label, expr) => (label, injectExpr expr)) row
 
     and injectStmt (CTerm.Val (pos, name, otyp, expr)) =
-        CTerm.Val (pos, name, Option.map injectType otyp, injectExpr expr)
+        CTerm.Val (pos, name, ref (Option.map injectType otyp), injectExpr expr)
       | injectStmt (CTerm.Expr expr) = CTerm.Expr (injectExpr expr)
 
 (***)
