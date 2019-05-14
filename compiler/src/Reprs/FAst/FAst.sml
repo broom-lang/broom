@@ -66,23 +66,17 @@ structure FAst = struct
             in Vector.foldl step "" fields
             end
 
-        fun typeOf fixType unfixExpr =
-            let val fixed = fn Either.Left unfixed => fixType unfixed
-                             | Either.Right fixed => fixed
-                val rec typeOf =
-                    fn Fn (pos, {typ = domain, ...}, body) =>
-                        Either.Left (Type.Arrow (pos, { domain
-                                                      , codomain = fixed (typeOf (unfixExpr body))}))
-                     | TFn (pos, param, body) =>
-                        Either.Left (Type.ForAll (pos, param, fixed (typeOf (unfixExpr body))))
-                     | Extend (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => Either.Right typ
-                     | Field (_, typ, _, _) => Either.Right typ
-                     | Let (_, _, body) => typeOf (unfixExpr body)
-                     | Type (pos, t) => Either.Left (Type.Type (pos, t))
-                     | Use (_, {typ, ...}) => Either.Right typ
-                     | Const (pos, c) => Either.Left (Type.Prim (pos, Const.typeOf c))
-            in fixed o typeOf
-            end
+        fun typeOf (fixT: 'typ Type.typ -> 'typ): 'typ expr -> 'typ =
+            fn Fn (pos, {typ = domain, ...}, body) =>
+                fixT (Type.Arrow (pos, {domain, codomain = typeOf fixT body}))
+             | TFn (pos, param, body) =>
+                fixT (Type.ForAll (pos, param, typeOf fixT body))
+             | Extend (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => typ
+             | Field (_, typ, _, _) => typ
+             | Let (_, _, body) => typeOf fixT body
+             | Type (pos, t) => fixT (Type.Type (pos, t))
+             | Use (_, {typ, ...}) => typ
+             | Const (pos, c) => fixT (Type.Prim (pos, Const.typeOf c))
 
         datatype 'typ binder = ValueBinder of 'typ def * 'typ expr option
                              | TypeBinder of Type.def * 'typ option

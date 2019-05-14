@@ -1,5 +1,5 @@
 signature TYPE_ERROR = sig
-    datatype t = UnCallable of TypecheckingCst.expr * TypecheckingCst.typ
+    datatype t = UnCallable of TypecheckingCst.typ FAst.Term.expr * TypecheckingCst.typ
                | UnboundVal of Pos.t * Name.t
                | Occurs of (TypecheckingCst.scope, TypecheckingCst.typ) TypeVars.uv
                          * TypecheckingCst.typ
@@ -12,7 +12,7 @@ end
 structure TypeError :> TYPE_ERROR = struct
     structure TC = TypecheckingCst
 
-    datatype t = UnCallable of TypecheckingCst.expr * TypecheckingCst.typ
+    datatype t = UnCallable of TypecheckingCst.typ FAst.Term.expr * TypecheckingCst.typ
                | UnboundVal of Pos.t * Name.t
                | Occurs of (TypecheckingCst.scope, TypecheckingCst.typ) TypeVars.uv
                          * TypecheckingCst.typ
@@ -22,8 +22,8 @@ structure TypeError :> TYPE_ERROR = struct
     fun toString err =
         let val (pos, details) = case err
                                  of UnCallable (expr, typ) =>
-                                     ( TC.Expr.pos expr
-                                     , "Value " ^ TC.Expr.toString expr
+                                     ( FAst.Term.exprPos expr
+                                     , "Value " ^ FAst.Term.exprToString TC.Type.toString expr
                                            ^ " of type " ^ TC.Type.toString typ ^ " can not be called" )
                                   | UnboundVal (pos, name) => (pos, "Unbound variable " ^ Name.toString name)
                                   | Occurs (uv, t) =>

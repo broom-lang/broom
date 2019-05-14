@@ -1,6 +1,6 @@
 structure Cst = struct
     structure Type :> sig
-        structure Prim: PRIM_TYPE
+        structure Prim: PRIM_TYPE where type t = PrimType.t
 
         datatype ('typ, 'expr) typ = Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
                                    | Record of Pos.t * 'typ

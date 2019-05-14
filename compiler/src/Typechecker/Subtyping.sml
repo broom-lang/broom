@@ -1,6 +1,7 @@
 structure Subtyping :> sig
     type coercion = (TypecheckingCst.typ FAst.Term.expr -> TypecheckingCst.typ FAst.Term.expr) option
-    
+   
+    val applyCoercion: coercion -> TypecheckingCst.typ FAst.Term.expr -> TypecheckingCst.typ FAst.Term.expr
     val subType: TypecheckingCst.scope -> TypecheckingCst.typ * TypecheckingCst.typ -> coercion
 end = struct
     val identity = Fn.identity
