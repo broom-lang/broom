@@ -30,6 +30,7 @@ local
        in
            src/Reprs/FAst/FType.sml 
            src/Reprs/FAst/FAst.sml
+           src/Reprs/FAst/Typechecker.sml
            
            src/Typechecker/TypeVars.sml
            src/Typechecker/Typechecking.sml

@@ -1,5 +1,5 @@
 structure Parser : sig
-    type config = {debug: bool, instream: TextIO.instream, name: string}
+    type config = {debug: bool, lint: bool, instream: TextIO.instream, name: string}
     val parse : config -> unit
 end = struct
   structure BroomLrVals = BroomLrValsFun(structure Token = LrParser.Token)
@@ -22,9 +22,9 @@ end = struct
       in  BroomParser.parse(0, lexstream, print_error, ())
       end
 
-  type config = {debug: bool, instream: TextIO.instream, name: string}
+  type config = {debug: bool, lint: bool, instream: TextIO.instream, name: string}
 
-  fun parse ({debug, instream, name}: config): unit =
+  fun parse ({debug, lint, instream, name}: config): unit =
       let val log = logger debug
           val lexer = BroomParser.makeLexer (fn _ => (case TextIO.inputLine instream
                                                       of SOME s => s
@@ -43,6 +43,10 @@ end = struct
 
                   val program = ExitTypechecker.exprToF program
                   val _ = log (FixedFAst.Term.toString program ^ "\n")
+
+                  val _ = if lint
+                          then ignore (Either.unwrap (FAstTypechecker.typecheck program))
+                          else ()
               in if BroomParser.sameToken(nextToken,dummyEOF)
                  then ()
                  else loop lexer
