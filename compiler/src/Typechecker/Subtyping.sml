@@ -1,21 +1,20 @@
 structure Subtyping :> sig
-    val subType: TypecheckingCst.scope -> TypecheckingCst.typ * TypecheckingCst.typ
-               -> (TypecheckingCst.expr ref -> unit) option
+    type coercion = (TypecheckingCst.typ FAst.Term.expr -> TypecheckingCst.typ FAst.Term.expr) option
+    
+    val subType: TypecheckingCst.scope -> TypecheckingCst.typ * TypecheckingCst.typ -> coercion
 end = struct
+    val identity = Fn.identity
     structure TC = TypecheckingCst
     structure FType = FAst.Type
     structure FTerm = FAst.Term
     open TypeError
 
-    fun fexprValBindings fexpr =
-        let val addBinder =
-                fn (FTerm.ValueBinder ({var, typ}, value), bindings) =>
-                    ( NameHashTable.insert bindings (var, { binder = {typ = ref (SOME (!typ)), value}
-                                                          , shade = ref TC.White })
-                    ; bindings )
-            val bindings = NameHashTable.mkTable (0, Subscript)
-        in FTerm.foldBinders addBinder bindings fexpr
-        end
+    type coercion = (TC.typ FTerm.expr -> TC.typ FTerm.expr) option
+
+    fun applyCoercion (coerce: coercion) expr =
+        case coerce
+        of SOME f => f expr
+         | NONE => expr
 
     datatype lattice_y = Sub | Super
 
@@ -43,11 +42,11 @@ end = struct
     and doAssignArrow scope y uv pos {domain, codomain} =
         let val domainUv = TypeVars.freshUv scope
             val codomainUv = TypeVars.freshUv scope
-            val t' = FType.Arrow (pos, { domain = ref (TC.UVar (pos, domainUv))
-                                       , codomain = ref (TC.UVar (pos, codomainUv))})
+            val t' = FType.Arrow (pos, { domain = TC.UVar (pos, domainUv)
+                                       , codomain = TC.UVar (pos, codomainUv)})
         in TypeVars.uvSet (uv, TC.OutputType t')
-         ; assign scope (flipY y, domainUv, !domain) (* contravariance *)
-         ; assign scope (y, codomainUv, !codomain)
+         ; assign scope (flipY y, domainUv, domain) (* contravariance *)
+         ; assign scope (y, codomainUv, codomain)
         end
 
     and doAssignUv scope y (uv, uv') = case TypeVars.uvGet uv'
@@ -55,88 +54,75 @@ end = struct
                                         | Either.Right t => doAssign scope y (uv, t)
 
     (* Check that `typ` <: `superTyp` and return the (mutating) coercion if any. *)
-    fun subType scope (typ: TC.typ, superTyp: TC.typ): (TC.expr ref -> unit) option =
+    fun subType scope (typ: TC.typ, superTyp: TC.typ): coercion =
         case (typ, superTyp)
         of (TC.OutputType t, TC.OutputType t') =>
             (case (t, t')
              of (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows scope (arr, arr')
-              | (FType.Record (_, ref row), FType.Record (_, ref row')) => subType scope (row, row')
+              | (FType.Record (_, row), FType.Record (_, row')) => subType scope (row, row')
               | (FType.RowExt (_, row), FType.RowExt _) => subRowExts scope (row, superTyp)
               | (FType.EmptyRow _, FType.EmptyRow _) => NONE
               | (FType.Prim (_, pl), FType.Prim (_, pr)) =>
                  if pl = pr
                  then NONE
                  else raise Fail "<:"
-              | (FType.Type (pos, tref as ref t), FType.Type (_, ref t')) =>
+              | (FType.Type (pos, t), FType.Type (_, t')) =>
                  ( subType scope (t, t')
                  ; subType scope (t', t)
-                 ; SOME (fn expr => expr := TC.OutputExpr (FTerm.Type (pos, tref)))))
+                 ; SOME (fn _ => FTerm.Type (pos, t))))
          | (TC.UVar (_, uv), TC.UVar (_, uv')) => subUvs scope (uv, uv')
          | (TC.UVar (_, uv), _) => subUv scope uv superTyp
          | (_, TC.UVar (_, uv)) => superUv scope uv typ
 
     and subArrows scope ({domain, codomain}, {domain = domain', codomain = codomain'}) =
-        let val coerceDomain = subType scope (!domain', !domain)
-            val coerceCodomain = subType scope (!codomain, !codomain')
+        let val coerceDomain = subType scope (domain', domain)
+            val coerceCodomain = subType scope (codomain, codomain')
         in if isSome coerceDomain orelse isSome coerceCodomain
-           then let val coerceDomain = getOpt (coerceDomain, fn _ => ())
-                    val coerceCodomain = getOpt (coerceCodomain, fn _ => ())
-                in SOME (fn expr =>
-                             let val pos = TC.Expr.pos (!expr)
-                                 val param = {var = Name.fresh (), typ = domain'}
-                                 val arg = ref (TC.OutputExpr (FTerm.Use (pos, param)))
-                                 val callee = ref (!expr)
-                                 do coerceDomain arg
-                                 val body = ref (TC.OutputExpr (FTerm.App (pos, codomain, {callee, arg})))
-                                 do coerceCodomain body
-                                 val expr' = FTerm.Fn (pos, param, body)
-                             in expr := TC.OutputExpr expr'
-                             end)
-                end
+           then SOME (fn callee =>
+                          let val pos = FTerm.exprPos callee
+                              val param = {var = Name.fresh (), typ = domain'}
+                              val arg = applyCoercion coerceDomain (FTerm.Use (pos, param))
+                              val body = applyCoercion coerceCodomain (FTerm.App (pos, codomain, {callee, arg}))
+                          in FTerm.Fn (pos, param, body)
+                          end)
            else NONE
         end
 
     and subRowExts scope (row as {field = (label, fieldt), ext}, row') =
-        let val (fieldt', ext') = reorderRow label (!(TC.Type.rowExtTail (!ext))) row'
-            val coerceField = subType scope (!fieldt, fieldt')
-            val coerceExt = subType scope (!ext, ext')
+        let val (fieldt', ext') = reorderRow label (TC.Type.rowExtTail ext) row'
+            val coerceField = subType scope (fieldt, fieldt')
+            val coerceExt = subType scope (ext, ext')
         in (* FIXME: This coercion combination assumes this is a record row: *)
            SOME (fn expr =>
-                     let val pos = TC.Expr.pos (!expr)
-                         val recordTyp = TC.wrapOT (FType.Record (pos, TC.wrapOT (FType.RowExt (pos, row))))
-                         val row' = {field = (label, ref fieldt'), ext = ref ext'}
-                         val recordTyp' = TC.wrapOT (FType.Record (pos, TC.wrapOT (FType.RowExt (pos, row'))))
+                     let val pos = FTerm.exprPos expr
+                         val recordTyp = TC.OutputType (FType.Record (pos, TC.OutputType (FType.RowExt (pos, row))))
+                         val row' = {field = (label, fieldt'), ext = ext'}
+                         val recordTyp' = TC.OutputType (FType.Record (pos, TC.OutputType (FType.RowExt (pos, row'))))
                          val recordDef = {var = Name.fresh (), typ = recordTyp}
-                         val recordBind = FTerm.Val (pos, recordDef, ref (!expr))
-                         val recordRef = TC.wrapOE (FTerm.Use (pos, recordDef))
-                         val fieldGet = TC.wrapOE (FTerm.Field (pos, fieldt, recordRef, label))
-                         do getOpt (coerceField, fn _ => ()) fieldGet
-                         val fieldDef = {var = Name.freshen label, typ = ref fieldt'}
+                         val recordBind = FTerm.Val (pos, recordDef, expr)
+                         val recordRef = FTerm.Use (pos, recordDef)
+                         val fieldGet = applyCoercion coerceField (FTerm.Field (pos, fieldt, recordRef, label))
+                         val fieldDef = {var = Name.freshen label, typ = fieldt'}
                          val fieldRedef = FTerm.Val (pos, fieldDef, fieldGet)
-                         val extTyp = TC.wrapOT (FType.Record (pos, ref ext'))
-                         val extGet = TC.wrapOE (FTerm.Use (pos, recordDef))
-                         do getOpt (coerceExt, fn _ => ()) extGet
+                         val extTyp = TC.OutputType (FType.Record (pos, ext'))
+                         val extGet = applyCoercion coerceExt (FTerm.Use (pos, recordDef))
                          val extRedef = FTerm.Val (pos, {var = Name.fresh (), typ = extTyp}, extGet)
-                         val body = TC.wrapOE (FTerm.Extend ( pos, recordTyp'
-                                                            , Vector.fromList [(label, TC.wrapOE (FTerm.Use (pos, fieldDef)))]
-                                                            , SOME (TC.wrapOE (FTerm.Use (pos, recordDef))) ))
-                         val expr' = FTerm.Let (pos, Vector.fromList [recordBind, fieldRedef, extRedef], body)
-                         val expr' = TC.ScopeExpr { parent = ref (SOME scope) (* FIXME: Children will skip this :( *)
-                                                  , vals = fexprValBindings expr'
-                                                  , expr = TC.wrapOE expr' }
-                     in expr := expr'
+                         val body = FTerm.Extend ( pos, recordTyp'
+                                                            , Vector.fromList [(label, FTerm.Use (pos, fieldDef))]
+                                                            , SOME (FTerm.Use (pos, recordDef)) )
+                     in FTerm.Let (pos, Vector.fromList [recordBind, fieldRedef, extRedef], body)
                      end)
         end
 
     and reorderRow label (tail: TC.typ): TC.typ -> TC.typ * TC.typ =
-        fn TC.OutputType (FType.RowExt (pos, {field = (label', fieldt'), ext = ref ext})) =>
+        fn TC.OutputType (FType.RowExt (pos, {field = (label', fieldt'), ext = ext})) =>
             if label = label'
-            then (!fieldt', ext)
+            then (fieldt', ext)
             else let val (fieldt, ext) = reorderRow label tail ext
-                 in (fieldt, TC.OutputType (FType.RowExt (pos, {field = (label', fieldt'), ext = ref ext})))
+                 in (fieldt, TC.OutputType (FType.RowExt (pos, {field = (label', fieldt'), ext = ext})))
                  end
 
-    and subUvs scope (uv: TC.uv, uv': TC.uv): (TC.expr ref -> unit) option =
+    and subUvs scope (uv: TC.uv, uv': TC.uv): coercion =
         case (TypeVars.uvGet uv, TypeVars.uvGet uv')
         of (Either.Left uv, Either.Left uv') =>
             if TC.uvInScope (scope, uv)

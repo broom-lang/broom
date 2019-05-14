@@ -9,11 +9,11 @@ signature TYPECHECKER_INPUT = sig
     end
 
     structure Term: sig
-        type ('typ, 'bt, 'be) expr
+        type ('typ, 'bt, 'expr, 'be) expr
 
-        val exprPos: ('typ, 'bt, 'be) expr -> Pos.t
-        val exprToString: ('typ -> string) -> ('bt -> string) -> ('be -> string)
-                        -> ('typ, 'bt, 'be) expr -> string
+        val exprPos: ('typ, 'bt, 'expr, 'be) expr -> Pos.t
+        val exprToString: ('typ -> string) -> ('bt -> string) -> ('expr -> string) -> ('be -> string)
+                        -> ('typ, 'bt, 'expr, 'be) expr -> string
     end
 end
 
@@ -61,7 +61,7 @@ signature TYPECHECKING = sig
                  | OVar of Pos.t * ov
                  | UVar of Pos.t * uv
     
-    and expr = InputExpr of (typ, typ option ref, expr ref) Input.Term.expr
+    and expr = InputExpr of (typ, typ option ref, expr, expr ref) Input.Term.expr
              | OutputExpr of typ Output.Term.expr
              | ScopeExpr of expr_scope
 
@@ -104,7 +104,7 @@ functor Typechecking(Puts: sig
     structure Output: TYPECHECKER_OUTPUT
 end) :> TYPECHECKING where
     type ('typ, 'expr) Input.Type.typ = ('typ, 'expr) Puts.Input.Type.typ and
-    type ('typ, 'bt, 'be) Input.Term.expr = ('typ, 'bt, 'be) Puts.Input.Term.expr and
+    type ('typ, 'bt, 'expr, 'be) Input.Term.expr = ('typ, 'bt, 'expr, 'be) Puts.Input.Term.expr and
     type Output.Type.kind = Puts.Output.Type.kind and
     type 'typ Output.Type.typ = 'typ Puts.Output.Type.typ and
     type 'typ Output.Term.expr = 'typ Puts.Output.Term.expr
@@ -131,7 +131,7 @@ end) :> TYPECHECKING where
                  | OVar of Pos.t * ov
                  | UVar of Pos.t * uv
     
-    and expr = InputExpr of (typ, typ option ref, expr ref) Input.Term.expr
+    and expr = InputExpr of (typ, typ option ref, expr, expr ref) Input.Term.expr
              | OutputExpr of typ Output.Term.expr
              | ScopeExpr of expr_scope
 
@@ -159,7 +159,8 @@ end) :> TYPECHECKING where
                              | Either.Left uv => Name.toString (TypeVars.uvName uv))
 
     and exprToString =
-        fn InputExpr expr => Input.Term.exprToString typeToString (Option.toString typeToString o op!) (exprToString o op!) expr
+        fn InputExpr expr => Input.Term.exprToString typeToString (Option.toString typeToString o op!)
+                                                     exprToString (exprToString o op!) expr
          | OutputExpr expr => Output.Term.exprToString typeToString expr
          | ScopeExpr {expr, ...} => exprToString expr
 

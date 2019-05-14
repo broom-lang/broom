@@ -136,11 +136,10 @@ structure Cst = struct
 end
 
 structure FixedCst = struct
-    datatype typ' = FixT of (typ', (typ', typ' option, expr', expr') Cst.Term.expr) Cst.Type.typ
+    datatype typ' = FixT of (typ', expr') Cst.Type.typ
     and expr' = Fix of (typ', typ' option, expr', expr') Cst.Term.expr
 
-    fun typeToString' (FixT t) =
-         Cst.Type.toString typeToString' (Cst.Term.exprToString typeToString' (Option.toString typeToString') exprToString' exprToString') t
+    fun typeToString' (FixT t) = Cst.Type.toString typeToString' exprToString' t
     and exprToString' (Fix expr) = Cst.Term.exprToString typeToString' (Option.toString typeToString') exprToString' exprToString' expr 
 
     structure Type = struct

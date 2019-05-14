@@ -36,7 +36,7 @@ type typ = Type.ftyp
 
 %%
 
-program : stmts (Term.Fix (Term.Let (stmtsleft, stmts, Term.Const (stmtsright, Const.Int 0))))
+program : stmts (Term.Fix (Term.Let (stmtsleft, stmts, Term.Fix (Term.Const (stmtsright, Const.Int 0)))))
 
 stmts : stmtList (Vector.fromList (List.rev stmtList) (* OPTIMIZE *))
 
@@ -56,11 +56,11 @@ expr : FN ID DARROW expr (Term.Fix (Term.Fn (FNleft, Name.fromString ID, NONE, e
      | expr DOT ID (Term.Fix (Term.Field (exprleft, expr, Name.fromString ID)))
      | app (app)
 
-app : app nestable (Term.App (appleft, {callee = app, arg = nestable}))
+app : app nestable (Term.Fix (Term.App (appleft, {callee = app, arg = nestable})))
     | nestable (nestable)
 
 nestable : LPAREN expr RPAREN (expr)
-         | LBRACE rowExpr RBRACE (Term.Record (LBRACEleft, rowExpr))
+         | LBRACE rowExpr RBRACE (Term.Fix (Term.Record (LBRACEleft, rowExpr)))
          | triv (triv)
 
 rowExpr : rowExprList (Vector.fromList (List.rev rowExprList) (* OPTIMIZE *))
@@ -69,8 +69,8 @@ rowExprList : ([])
             | ID EQ expr ([(Name.fromString ID, expr)])
             | rowExprList COMMA ID EQ expr ((Name.fromString ID, expr) :: rowExprList)
 
-triv : ID  (Term.Use (IDleft, Name.fromString ID))
-     | INT (Term.Const (INTleft, Const.Int INT))
+triv : ID  (Term.Fix (Term.Use (IDleft, Name.fromString ID)))
+     | INT (Term.Fix (Term.Const (INTleft, Const.Int INT)))
 
 typeAnn : LPAREN typeAnn RPAREN (typeAnn)
         | typeAnn ARROW typeAnn (Type.FixT (Type.Arrow (typeAnnleft, {domain = typeAnn1, codomain = typeAnn})))
