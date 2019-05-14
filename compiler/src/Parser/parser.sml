@@ -41,7 +41,7 @@ end = struct
                   val (program, rootScope) = EnterTypechecker.toTypechecking program
                   val (_, program) = Typechecker.elaborateExpr (TC.ExprScope rootScope) program
 
-                  val program = ExitTypechecker.fToF program
+                  val program = ExitTypechecker.exprToF program
                   val _ = log (FixedFAst.Term.toString program ^ "\n")
               in if BroomParser.sameToken(nextToken,dummyEOF)
                  then ()

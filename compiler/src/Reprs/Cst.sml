@@ -140,7 +140,8 @@ structure FixedCst = struct
     and expr' = Fix of (typ', typ' option, expr', expr') Cst.Term.expr
 
     fun typeToString' (FixT t) = Cst.Type.toString typeToString' exprToString' t
-    and exprToString' (Fix expr) = Cst.Term.exprToString typeToString' (Option.toString typeToString') exprToString' exprToString' expr 
+    and exprToString' (Fix expr) =
+        Cst.Term.exprToString typeToString' (Option.toString (fn t => ": " ^ typeToString' t)) exprToString' exprToString' expr 
 
     structure Type = struct
         open Cst.Type
