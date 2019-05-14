@@ -45,13 +45,13 @@ end = struct
                          else raise Fail (FFType.toString (#1 ts) ^ " != " ^ FFType.toString (#2 ts))
 
     fun check env =
-        fn App (_, typ, app) => checkApp env typ app
-         | Let (_, stmts, body) => checkLet env stmts body
-         | Use (pos, def) => checkUse env pos def
+        fn App app => checkApp env app
+         | Let lett => checkLet env lett
+         | Use use => checkUse env use
          | Type (pos, t) => Fix (FFType.Type (pos, t))
          | Const (pos, c) => Fix (Prim (pos, Const.typeOf c))
 
-    and checkApp env typ {callee, arg} =
+    and checkApp env (_, typ, {callee, arg}) =
         case check env callee
         of Fix (Arrow (_, {domain, codomain})) =>
             let val argType = check env arg
@@ -61,13 +61,13 @@ end = struct
             end
          | t => raise Fail ("Uncallable: " ^ FFTerm.toString callee ^ ": " ^ FFType.toString t)
 
-    and checkLet env stmts body =
+    and checkLet env (_, stmts, body) =
         let val env = pushStmts env stmts
         in Vector.app (checkStmt env) stmts
          ; check env body
         end
 
-    and checkUse env pos {var, typ} =
+    and checkUse env (pos, {var, typ}) =
         let val t = case Env.find (env, var)
                     of SOME t => t
                      | NONE => raise Fail ("Out of scope: " ^ Name.toString var ^ " at " ^ Pos.toString pos)
