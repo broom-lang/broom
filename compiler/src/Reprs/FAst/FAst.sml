@@ -104,9 +104,9 @@ structure FixedFAst = struct
     structure Term = struct
         open FAst.Term
 
-        datatype expr = Fix of Type.typ FAst.Term.expr
-        
-        fun exprToString (Fix expr) = FAst.Term.exprToString Type.toString expr
+        type expr = Type.typ FAst.Term.expr
+
+        val toString = FAst.Term.exprToString Type.toString
     end
 end
 

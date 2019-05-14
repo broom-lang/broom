@@ -1,5 +1,6 @@
 structure ExitTypechecker :> sig
     val toF: TypecheckingCst.expr -> FixedFAst.Term.expr
+    val fToF: TypecheckingCst.typ FAst.Term.expr -> FixedFAst.Term.expr
 end = struct
     structure Env :> sig
         type ('t, 'v) t
@@ -74,40 +75,39 @@ end = struct
         in NameHashTable.foldi step env vals
         end
 
-    fun fToF (env: env): TC.typ FAst.Term.expr -> FFType.typ FAst.Term.expr =
+    fun fexprToF (env: env): TC.typ FAst.Term.expr -> FFType.typ FAst.Term.expr =
         fn Fn (pos, {var, typ = _}, body) =>
-            Fn (pos, Env.lookupVal (env, var), fToF env body)
+            Fn (pos, Env.lookupVal (env, var), fexprToF env body)
          | TFn (pos, {var, ...}, body) =>
-            TFn (pos, Env.lookupType (env, var), fToF env body)
+            TFn (pos, Env.lookupType (env, var), fexprToF env body)
          | Extend (pos, typ, fields, record) =>
             Extend ( pos, typeToF env typ
-                   , Vector.map (Pair.second (fToF env)) fields
-                   , Option.map (fToF env) record)
+                   , Vector.map (Pair.second (fexprToF env)) fields
+                   , Option.map (fexprToF env) record)
          | Let (pos, stmts, body) =>
-            Let (pos, Vector.map (stmtToF env) stmts, fToF env body)
+            Let (pos, Vector.map (stmtToF env) stmts, fexprToF env body)
          | App (pos, typ, {callee, arg}) =>
-            App (pos, typeToF env typ, {callee = fToF env callee, arg = fToF env arg})
+            App (pos, typeToF env typ, {callee = fexprToF env callee, arg = fexprToF env arg})
          | TApp (pos, typ, {callee, arg}) =>
-            TApp (pos, typeToF env typ, {callee = fToF env callee, arg = typeToF env arg})
+            TApp (pos, typeToF env typ, {callee = fexprToF env callee, arg = typeToF env arg})
          | Field (pos, typ, expr, label) =>
-            Field (pos, typeToF env typ, fToF env expr, label)
+            Field (pos, typeToF env typ, fexprToF env expr, label)
          | Type (pos, typ) => Type (pos, typeToF env typ)
          | Use (pos, {var, ...}) => Use (pos, Env.lookupVal (env, var))
          | Const (pos, c) => Const (pos, c)
 
-    and toUnfixedF (env: env) (expr: TC.expr): FFType.typ FAst.Term.expr =
+    and exprToF (env: env) (expr: TC.expr): FFType.typ FAst.Term.expr =
         case expr
-        of OutputExpr expr => fToF env expr
-         | ScopeExpr {expr, vals, parent = _} => toUnfixedF (pushVals env vals) expr
+        of OutputExpr expr => fexprToF env expr
+         | ScopeExpr {expr, vals, parent = _} => exprToF (pushVals env vals) expr
          | InputExpr _ => raise Fail "unreachable"
-
-    and exprToF (env: env) (expr: TC.expr): FFTerm.expr = FFTerm.Fix (toUnfixedF env expr)
 
     and stmtToF (env: env) stmt =
         case stmt
-        of Val (pos, {var, typ = _}, expr) => Val (pos, Env.lookupVal (env, var), fToF env expr)
-         | Expr expr => Expr (fToF env expr)
+        of Val (pos, {var, typ = _}, expr) => Val (pos, Env.lookupVal (env, var), fexprToF env expr)
+         | Expr expr => Expr (fexprToF env expr)
 
     val toF = exprToF Env.empty
+    val fToF = fexprToF Env.empty
 end
 

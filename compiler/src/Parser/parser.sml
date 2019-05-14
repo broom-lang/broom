@@ -39,10 +39,10 @@ end = struct
                   val _ = log "===\n"
 
                   val (program, rootScope) = EnterTypechecker.toTypechecking program
-                  val _ = Typechecker.elaborateExpr (TC.ExprScope rootScope) program
+                  val (_, program) = Typechecker.elaborateExpr (TC.ExprScope rootScope) program
 
-                  val program = ExitTypechecker.toF program
-                  val _ = log (FixedFAst.Term.exprToString program ^ "\n")
+                  val program = ExitTypechecker.fToF program
+                  val _ = log (FixedFAst.Term.toString program ^ "\n")
               in if BroomParser.sameToken(nextToken,dummyEOF)
                  then ()
                  else loop lexer
