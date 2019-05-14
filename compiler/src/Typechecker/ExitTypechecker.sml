@@ -35,7 +35,7 @@ end = struct
 
     and typeToF (typ: TC.typ): FFType.typ = FFType.Fix (typeToUnFixedF typ)
 
-    val rec exprToF: TC.typ FAst.Term.expr -> FFType.typ FAst.Term.expr =
+    val rec exprToF: TC.typ FAst.Term.expr -> FFTerm.expr =
         fn Fn (pos, {var, typ}, body) =>
             Fn (pos, {var, typ = typeToF typ}, exprToF body)
          | TFn (pos, param, body) => TFn (pos, param, exprToF body)
