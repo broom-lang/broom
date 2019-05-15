@@ -6,6 +6,7 @@ structure Name :> sig
 
     val fromString: string -> t
     val toString: t -> string
+    val toDoc: t -> PPrint.t
     val fresh: unit -> t
     val freshen: t -> t
 
@@ -57,6 +58,9 @@ end = struct
         type ord_key = t
         val compare = compare
     end
+
+    structure ToDoc = ToDocFromToString(struct type t = t val toString = toString end)
+    open ToDoc
 end
 
 structure NameHashTable = HashTableFn(type hash_key = Name.t

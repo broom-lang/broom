@@ -34,7 +34,7 @@ end = struct
           fun loop lexer =
               let val (program,lexer) = invoke lexer
                   val (nextToken,lexer) = BroomParser.Stream.get lexer
-                  val _ = log (FixedCst.Term.exprToString program ^ "\n")
+                  val _ = log (PPrint.pretty 80 (FixedCst.Term.exprToDoc program) ^ "\n")
                   
                   val _ = log "===\n"
 
@@ -42,7 +42,7 @@ end = struct
                   val (_, program) = Typechecker.elaborateExpr (TC.ExprScope rootScope) program
 
                   val program = ExitTypechecker.exprToF program
-                  val _ = log (FixedFAst.Term.toString program ^ "\n")
+                  val _ = log (PPrint.pretty 80 (FixedFAst.Term.toDoc program) ^ "\n")
 
                   val _ = if lint
                           then ignore (Either.unwrap (FAstTypechecker.typecheck program))
@@ -52,7 +52,7 @@ end = struct
                  else loop lexer
               end
               handle TypeError err =>
-                      TextIO.output (TextIO.stdErr, TypeError.toString err ^ ".\n")
+                      TextIO.output (TextIO.stdErr, PPrint.pretty 80 (TypeError.toDoc err))
        in loop lexer
       end
 end

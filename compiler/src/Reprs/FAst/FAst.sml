@@ -2,6 +2,14 @@ structure FAst = struct
     structure Type = FType
 
     structure Term = struct
+        val text = PPrint.text
+        val op<> = PPrint.<>
+        val op<+> = PPrint.<+>
+        val op<++> = PPrint.<++>
+        val parens = PPrint.parens
+        val brackets = PPrint.brackets
+        val braces = PPrint.braces
+
         type 'typ def = {var: Name.t, typ: 'typ}
 
         datatype 'typ expr = Fn of Pos.t * 'typ def * 'typ expr
@@ -30,41 +38,42 @@ structure FAst = struct
              | Use (pos, _) => pos
              | Const (pos, _) => pos
 
-       fun defToString typeToString {var, typ} = Name.toString var ^ ": " ^ typeToString typ
+       fun defToDoc typeToDoc {var, typ} = Name.toDoc var <> text ":" <+> typeToDoc typ
 
-       fun stmtToString typeToString =
+       fun stmtToDoc typeToDoc =
            fn Val (_, def, valExpr) =>
-               "val " ^ defToString typeToString def ^ " = " ^ exprToString typeToString valExpr
-            | Expr expr => exprToString typeToString expr
+               text "val" <+> defToDoc typeToDoc def <+> text "=" <+> exprToDoc typeToDoc valExpr
+            | Expr expr => exprToDoc typeToDoc expr
 
-       and exprToString typeToString =
+       and fieldToDoc exprToDoc (label, expr) = Name.toDoc label <+> text "=" <+> exprToDoc expr
+
+       and exprToDoc typeToDoc =
            fn Fn (_, param, body) =>
-               "\\" ^ defToString typeToString param ^ " => " ^ exprToString typeToString body
+               text "\\" <> defToDoc typeToDoc param <+> text "=>" <+> exprToDoc typeToDoc body
             | TFn (_, param, body) =>
-               "/\\" ^ Type.defToString param ^ " => " ^ exprToString typeToString body
+               text "/\\" <> Type.defToDoc param <+> text "=>" <+> exprToDoc typeToDoc body
             | Extend (_, _, fields, record) =>
-               "{" ^ getOpt (Option.map (exprToString typeToString) record, "")
-                   ^ " with " ^ fieldExprsToString typeToString fields ^ "}"
+               braces (PPrint.align (PPrint.punctuate PPrint.newline
+                                                      (Vector.map (fieldToDoc (exprToDoc typeToDoc)) fields)
+                                     <> (case record
+                                         of SOME record => text " with" <+> exprToDoc typeToDoc record
+                                          | NONE => PPrint.empty)))
             | App (_, _, {callee, arg}) =>
-               "(" ^ exprToString typeToString callee ^ " " ^ exprToString typeToString arg ^ ")"
+               parens (exprToDoc typeToDoc callee <+> exprToDoc typeToDoc arg)
             | TApp (_, _, {callee, arg}) =>
-               "(" ^ exprToString typeToString callee ^ " [" ^ typeToString arg ^ "])" 
+               parens (exprToDoc typeToDoc callee <+> brackets (typeToDoc arg))
             | Field (_, _, expr, label) =>
-               "(" ^ exprToString typeToString expr ^ "." ^ Name.toString label ^ ")"
+               parens (exprToDoc typeToDoc expr <> text "." <> Name.toDoc label)
             | Let (_, stmts, body) =>
-               let fun step (stmt, acc) = acc ^ stmtToString typeToString stmt ^ "\n"
-               in "let " ^ Vector.foldl step "" stmts ^ "in\n" ^
-                      "    " ^ exprToString typeToString body ^ "\nend"
-               end
-            | Type (_, t) => "[" ^ typeToString t ^ "]"
-            | Use (_, {var, ...}) => Name.toString var 
-            | Const (_, c) => Const.toString c
+               text "let" <+> PPrint.align (PPrint.punctuate PPrint.newline
+                                                             (Vector.map (stmtToDoc typeToDoc) stmts))
+               <++> text "in" <+> exprToDoc typeToDoc body
+               <++> text "end"
+            | Type (_, t) => brackets (typeToDoc t)
+            | Use (_, {var, ...}) => Name.toDoc var 
+            | Const (_, c) => Const.toDoc c
 
-        and fieldExprsToString typeToString fields =
-            let fun step ((label, expr), acc) =
-                    acc ^ ", " ^ Name.toString label ^ " = " ^ exprToString typeToString expr
-            in Vector.foldl step "" fields
-            end
+        fun exprToString toDoc = PPrint.pretty 80 o toDoc
 
         fun typeOf (fixT: 'typ Type.typ -> 'typ): 'typ expr -> 'typ =
             fn Fn (pos, {typ = domain, ...}, body) =>
@@ -98,7 +107,8 @@ structure FixedFAst = struct
 
         datatype typ = Fix of typ FAst.Type.typ
 
-        fun toString (Fix t) = FAst.Type.toString toString t
+        fun toDoc (Fix t) = FAst.Type.toDoc toDoc t
+        val toString = FAst.Type.toString toDoc
     end
 
     structure Term = struct
@@ -106,7 +116,8 @@ structure FixedFAst = struct
 
         type expr = Type.typ FAst.Term.expr
 
-        val toString = FAst.Term.exprToString Type.toString
+        val toDoc = FAst.Term.exprToDoc Type.toDoc
+        val toString = FAst.Term.exprToString toDoc
     end
 end
 

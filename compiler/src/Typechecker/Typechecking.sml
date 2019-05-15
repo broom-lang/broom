@@ -3,7 +3,7 @@ signature TYPECHECKER_INPUT = sig
         type ('typ, 'expr) typ
 
         val pos: ('expr -> Pos.t) -> ('typ, 'expr) typ -> Pos.t
-        val toString: ('typ -> string) -> ('expr -> string) -> ('typ, 'expr) typ -> string
+        val toDoc: ('typ -> PPrint.t) -> ('expr -> PPrint.t) -> ('typ, 'expr) typ -> PPrint.t
         val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> ('typ, 'expr) typ -> 'a
         val rowExtTail: ('typ, 'expr) typ -> ('typ, 'expr) typ
     end
@@ -12,8 +12,8 @@ signature TYPECHECKER_INPUT = sig
         type ('typ, 'bt, 'expr, 'be) expr
 
         val exprPos: ('typ, 'bt, 'expr, 'be) expr -> Pos.t
-        val exprToString: ('typ -> string) -> ('bt -> string) -> ('expr -> string) -> ('be -> string)
-                        -> ('typ, 'bt, 'expr, 'be) expr -> string
+        val exprToDoc: ('typ -> PPrint.t) -> ('bt -> PPrint.t) -> ('expr -> PPrint.t) -> ('be -> PPrint.t)
+                        -> ('typ, 'bt, 'expr, 'be) expr -> PPrint.t
     end
 end
 
@@ -22,10 +22,10 @@ signature TYPECHECKER_OUTPUT = sig
         type kind
         type 'typ typ
 
-        val kindToString: kind -> string
+        val kindToDoc: kind -> PPrint.t
 
         val pos: 'typ typ -> Pos.t
-        val toString: ('typ -> string) -> 'typ typ -> string
+        val toDoc: ('typ -> PPrint.t) -> 'typ typ -> PPrint.t
         val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> 'typ typ -> 'a
         val rowExtTail: {tail: 'typ -> 'typ, wrap: 'typ typ -> 'typ} -> 'typ typ -> 'typ
     end
@@ -34,7 +34,7 @@ signature TYPECHECKER_OUTPUT = sig
         type 'typ expr
 
         val exprPos: 'typ expr -> Pos.t
-        val exprToString: ('typ -> string) -> 'typ expr -> string
+        val exprToDoc: ('typ -> PPrint.t) -> 'typ expr -> PPrint.t
     end
 end
 
@@ -81,13 +81,13 @@ signature TYPECHECKING = sig
 
     structure Type: sig
         val pos: typ -> Pos.t
-        val toString: typ -> string
+        val toDoc: typ -> PPrint.t
         val rowExtTail: typ -> typ
     end
 
     structure Expr: sig
         val pos: expr -> Pos.t
-        val toString: expr -> string
+        val toDoc: expr -> PPrint.t
     end
 
     structure Scope: sig
@@ -111,6 +111,10 @@ end) :> TYPECHECKING where
 = struct
     structure Input = Puts.Input
     structure Output = Puts.Output
+
+    val text = PPrint.text
+    val op<> = PPrint.<>
+    val op<+> = PPrint.<+>
 
     datatype shade = White | Grey | Black
 
@@ -149,20 +153,21 @@ end) :> TYPECHECKING where
                      , expr: expr
                      , vals: (typ option ref, expr ref) val_binding bindings }
     
-    val rec typeToString =
-        fn InputType typ => Input.Type.toString typeToString exprToString typ
-         | OutputType typ => Output.Type.toString typeToString typ
-         | ScopeType {typ, ...} => typeToString typ
-         | OVar (_, ov) => Name.toString (TypeVars.ovName ov)
+    val rec typeToDoc =
+        fn InputType typ => Input.Type.toDoc typeToDoc exprToDoc typ
+         | OutputType typ => Output.Type.toDoc typeToDoc typ
+         | ScopeType {typ, ...} => typeToDoc typ
+         | OVar (_, ov) => Name.toDoc (TypeVars.ovName ov)
          | UVar (_, uv) => (case TypeVars.uvGet uv
-                            of Either.Right t => typeToString t
-                             | Either.Left uv => Name.toString (TypeVars.uvName uv))
+                            of Either.Right t => typeToDoc t
+                             | Either.Left uv => Name.toDoc (TypeVars.uvName uv))
 
-    and exprToString =
-        fn InputExpr expr => Input.Term.exprToString typeToString (Option.toString typeToString o op!)
-                                                     exprToString (exprToString o op!) expr
-         | OutputExpr expr => Output.Term.exprToString typeToString expr
-         | ScopeExpr {expr, ...} => exprToString expr
+    and annToDoc = fn ann => Option.mapOr (fn t => text ":" <+> typeToDoc t) PPrint.empty (!ann)
+
+    and exprToDoc =
+        fn InputExpr expr => Input.Term.exprToDoc typeToDoc annToDoc exprToDoc (exprToDoc o op!) expr
+         | OutputExpr expr => Output.Term.exprToDoc typeToDoc expr
+         | ScopeExpr {expr, ...} => exprToDoc expr
 
     fun occurs uv =
         let fun occStep (t, acc) = acc orelse occ t
@@ -182,7 +187,7 @@ end) :> TYPECHECKING where
              | OutputExpr expr => Output.Term.exprPos expr
              | ScopeExpr {expr, ...} => pos expr
 
-        val toString = exprToString
+        val toDoc = exprToDoc
     end
 
     structure Type = struct
@@ -190,7 +195,7 @@ end) :> TYPECHECKING where
                        | ScopeType {typ, ...} => pos typ
                        | OutputType typ => Output.Type.pos typ
 
-        val toString = typeToString
+        val toDoc = typeToDoc
 
         val rec rowExtTail =
             fn OutputType t => Output.Type.rowExtTail {tail = rowExtTail, wrap = OutputType} t
@@ -204,43 +209,43 @@ end) :> TYPECHECKING where
             fn TypeScope {parent, ...} => !parent
              | ExprScope {parent, ...} => !parent
 
-        fun valBindingToString name {binder = {typ, value}, shade = _} =
-            let val typeStr = case !typ
-                              of SOME typ => " : " ^ typeToString typ
-                               | NONE => ""
-                val valueStr = case value
-                               of SOME (ref expr) => " = " ^ exprToString expr
-                                | NONE => ""
-            in Name.toString name ^ typeStr ^ valueStr
+        fun valBindingToDoc name {binder = {typ, value}, shade = _} =
+            let val typeDoc = case !typ
+                              of SOME typ => text " :" <+> typeToDoc typ
+                               | NONE => PPrint.empty 
+                val valueDoc = case value
+                               of SOME (ref expr) => text " =" <+> exprToDoc expr
+                                | NONE => PPrint.empty
+            in Name.toDoc name <> typeDoc <> valueDoc
             end
 
-        fun typeBindingToString name {binder = {kind, typ}, shade = _} =
-            let val typeStr = case typ
-                              of SOME (ref typ) => " = " ^ typeToString typ
-                               | NONE => ""
-            in Name.toString name ^ " : " ^ Output.Type.kindToString kind ^ typeStr
+        fun typeBindingToDoc name {binder = {kind, typ}, shade = _} =
+            let val typeDoc = case typ
+                              of SOME (ref typ) => text " =" <+> typeToDoc typ
+                               | NONE => PPrint.empty
+            in Name.toDoc name <+> text ":" <+> Output.Type.kindToDoc kind <> typeDoc
             end
 
-        fun bindingsToString bindingToString bindings =
+        fun bindingsToDoc bindingToDoc bindings =
             NameHashTable.foldi (fn (name, binding, acc) =>
-                                     acc ^ bindingToString name binding ^ "\n")
-                                "" bindings
+                                     acc <> bindingToDoc name binding <> PPrint.newline)
+                                PPrint.empty bindings
 
-        val valsToString = bindingsToString valBindingToString
+        val valsToDoc = bindingsToDoc valBindingToDoc
 
-        val typesToString = bindingsToString typeBindingToString
+        val typesToDoc = bindingsToDoc typeBindingToDoc
 
-        val rec toString =
+        val rec toDoc =
             fn ExprScope {parent, vals, expr = _} =>
-                let val parentStr = case !parent
-                                    of SOME parent => toString parent
-                                     | NONE => ""
-                in parentStr ^ valsToString vals
+                let val parentDoc = case !parent
+                                    of SOME parent => toDoc parent
+                                     | NONE => PPrint.empty
+                in parentDoc <> valsToDoc vals
                 end
              | TypeScope {parent, types, typ = _} =>
-                let val parentStr = case !parent
-                                    of SOME parent => toString parent
-                in parentStr ^ typesToString types
+                let val parentDoc = case !parent
+                                    of SOME parent => toDoc parent
+                in parentDoc <> typesToDoc types
                 end
 
         val eq = fn (TypeScope {types, ...}, TypeScope {types = types', ...}) => MLton.eq (types, types')

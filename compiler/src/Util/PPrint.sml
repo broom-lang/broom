@@ -149,3 +149,13 @@ signature TO_DOC = sig
     val toDoc : t -> PPrint.t
 end
 
+functor ToDocFromToString (ToString: TO_STRING) :> TO_DOC where type t = ToString.t = struct
+    type t = ToString.t
+    val toDoc = PPrint.text o ToString.toString
+end
+
+functor ToStringFromToDoc (ToDoc: TO_DOC) :> TO_STRING where type t = ToDoc.t = struct
+    type t = ToDoc.t
+    val toString = PPrint.pretty 80 o ToDoc.toDoc
+end
+

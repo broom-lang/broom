@@ -5,6 +5,7 @@ structure Pos :> sig
     val next: t -> char -> t
 
     val toString: t -> string
+    val toDoc: t -> PPrint.t
 end = struct
     type t = {file: string, index: int, line: int, col: int}
 
@@ -21,4 +22,7 @@ end = struct
 
     fun toString {file, index = _, line, col} =
         file ^ " at " ^ Int.toString line ^ ":" ^ Int.toString col
+
+    structure ToDoc = ToDocFromToString(struct type t = t val toString = toString end)
+    val toDoc = ToDoc.toDoc
 end

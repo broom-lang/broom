@@ -1,4 +1,10 @@
 structure FType = struct
+    val text = PPrint.text
+    val op<> = PPrint.<>
+    val op<+> = PPrint.<+>
+    val brackets = PPrint.brackets
+    val braces = PPrint.braces
+
     structure Prim = PrimType
 
     datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
@@ -15,25 +21,27 @@ structure FType = struct
                       | UseT of Pos.t * def
                       | Prim of Pos.t * Prim.t
 
-    val rec kindToString =
-        fn TypeK _ => "Type"
+    val rec kindToDoc =
+        fn TypeK _ => text "Type"
          | ArrowK (_, {domain, codomain}) =>
-            kindToString domain ^ " -> " ^ kindToString codomain
+            kindToDoc domain <+> text "->" <+> kindToDoc codomain
 
-    fun defToString {var, kind} = Name.toString var ^ ": " ^ kindToString kind
+    fun defToDoc {var, kind} = Name.toDoc var <> text ":" <+> kindToDoc kind
 
-    fun toString toString =
+    fun toDoc toDoc =
         fn ForAll (_, param, t) =>
-            "forall " ^ defToString param ^ " . " ^ toString t
+            text "forall" <+> defToDoc param <+> text "." <+> toDoc t
          | Arrow (_, {domain, codomain}) =>
-            toString domain ^ " -> " ^ toString codomain
-         | Record (_, row) => "{" ^ toString row ^ "}"
+            toDoc domain <+> text "->" <+> toDoc codomain
+         | Record (_, row) => braces (toDoc row)
          | RowExt (_, {field = (label, fieldType), ext}) =>
-            Name.toString label ^ ": " ^ toString fieldType ^ " | " ^ toString ext
-         | EmptyRow _ => "(||)"
-         | Type (_, t) => "[= " ^ toString t ^ "]"
-         | UseT (_, def) => defToString def 
-         | Prim (_, p) => Prim.toString p
+            Name.toDoc label <> text ":" <+> toDoc fieldType <+> text "|" <+> toDoc ext
+         | EmptyRow _ => text "(||)"
+         | Type (_, t) => brackets (text "=" <+> toDoc t)
+         | UseT (_, def) => defToDoc def 
+         | Prim (_, p) => Prim.toDoc p
+
+    fun toString toDoc = PPrint.pretty 80 o toDoc
 
     val pos =
         fn ForAll (pos, _, _) => pos
