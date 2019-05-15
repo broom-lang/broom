@@ -10,8 +10,10 @@ local
            src/Util/Fn.sml
            src/Util/Option.sml
            src/Util/Either.sml
+           src/Util/Monoid.sml
            src/Util/Bimappable.sml
            src/Util/Pair.sml
+           src/Util/PPrint.sml
 
            src/Reprs/Util/Name.sml
            src/Reprs/Util/Pos.sml
