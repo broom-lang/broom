@@ -32,10 +32,21 @@ end = struct
         in Vector.foldl pushStmt env stmts
         end
 
+    fun rowLabelType (Fix row) label =
+        case row
+        of RowExt (_, {field = (label', fieldt), ext}) =>
+            if label' = label
+            then SOME fieldt
+            else rowLabelType ext label
+         | EmptyRow _ => NONE
+
     fun eq env (Fix t, Fix t') =
         case (t, t')
         of (Arrow (_, {domain, codomain}), Arrow (_, {domain = domain', codomain = codomain'})) =>
             eq env (domain, domain') andalso eq env (codomain, codomain')
+         | (Record (_, row), Record (_, row')) => eq env (row, row')
+         | (RowExt (_, {field = (label, fieldt), ext}), RowExt (_, {field = (label', fieldt'), ext = ext'})) =>
+            label = label' andalso eq env (fieldt, fieldt') andalso eq env (ext, ext')
          | (EmptyRow _, EmptyRow _) => true
          | (FFType.Type (_, t), FFType.Type (_, t')) => eq env (t, t')
          | (Prim (_, p), Prim (_, p')) => p = p' (* HACK? *)
@@ -45,11 +56,33 @@ end = struct
                          else raise Fail (FFType.toString (#1 ts) ^ " != " ^ FFType.toString (#2 ts))
 
     fun check env =
-        fn App app => checkApp env app
+        fn Fn f => checkFn env f
+         | Extend ext => checkExtend env ext
+         | App app => checkApp env app
+         | Field access => checkField env access
          | Let lett => checkLet env lett
          | Use use => checkUse env use
          | Type (pos, t) => Fix (FFType.Type (pos, t))
          | Const (pos, c) => Fix (Prim (pos, Const.typeOf c))
+
+    and checkFn env (pos, {var = param, typ = domain}, body) =
+        let val env = Env.insert (env, param, domain)
+        in Fix (Arrow (pos, {domain, codomain = check env body}))
+        end
+
+    and checkExtend env (pos, typ, fields, orec) =
+        let val recordRow = case orec
+                            of SOME record =>
+                                (case check env record
+                                 of Fix (Record (_, row)) => row
+                                  | t => raise Fail ("Not a record: " ^ FFTerm.toString record ^ ": " ^ FFType.toString t))
+                             | NONE => Fix (EmptyRow pos)
+            fun checkRowField ((label, fieldt), row) =
+                Fix (RowExt (pos, {field = (label, check env fieldt), ext = row}))
+            val t = Fix (Record (pos, Vector.foldr checkRowField recordRow fields))
+        in checkEq env (typ, t)
+         ; typ
+        end
 
     and checkApp env (_, typ, {callee, arg}) =
         case check env callee
@@ -60,6 +93,15 @@ end = struct
              ; typ
             end
          | t => raise Fail ("Uncallable: " ^ FFTerm.toString callee ^ ": " ^ FFType.toString t)
+
+    and checkField env (_, typ, expr, label) =
+        case check env expr
+        of t as Fix (Record (_, row)) =>
+            (case rowLabelType row label
+             of SOME fieldt => fieldt
+              | NONE => raise Fail ("Record " ^ FFTerm.toString expr ^ ": " ^ FFType.toString t
+                                    ^ " does not have field " ^ Name.toString label))
+         | t => raise Fail ("Not a record: " ^ FFTerm.toString expr ^ ": " ^ FFType.toString t)
 
     and checkLet env (_, stmts, body) =
         let val env = pushStmts env stmts
