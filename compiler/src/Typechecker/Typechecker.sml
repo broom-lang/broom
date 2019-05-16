@@ -106,7 +106,7 @@ end = struct
                  in (typ, FTerm.Let (pos, stmts, body))
                  end
               | CTerm.Record (pos, fields) =>
-                 let val (rowType, rowExpr) = elaborateFields scope pos fields
+                 let val (rowType, rowExpr) = elaborateRowExpr scope pos fields
                      val typ = TC.OutputType (FType.Record (pos, rowType))
                  in (typ, rowExpr)
                  end
@@ -141,16 +141,20 @@ end = struct
          | TC.ScopeExpr (scope as {expr, ...}) => elaborateExpr (TC.ExprScope scope) expr
          | TC.OutputExpr expr => (FTerm.typeOf TC.OutputType expr, expr)
 
-    and elaborateFields scope pos (fields: TC.expr CTerm.row): TC.typ * TC.typ FTerm.expr =
+    and elaborateRowExpr scope pos ({fields, ext}: TC.expr CTerm.row): TC.typ * TC.typ FTerm.expr =
         let fun elaborateField (field as (label, expr), (rowType, fieldExprs)) =
                 let val pos = TC.Expr.pos expr
                     val (fieldt, expr) = elaborateExpr scope expr
-                in ( FType.RowExt (pos, {field = (label, fieldt), ext = TC.OutputType rowType})
+                in ( TC.OutputType (FType.RowExt (pos, {field = (label, fieldt), ext = rowType}))
                    , (label, expr) :: fieldExprs )
                 end
-            val (rowType, fieldExprs) = Vector.foldr elaborateField (FType.EmptyRow pos, []) fields
-            val rowType = TC.OutputType rowType
-        in (rowType, FTerm.Extend (pos, rowType, Vector.fromList fieldExprs, NONE))
+            val (extType, extExpr) = case ext
+                                     of SOME ext => let val (t, ext) = elaborateExpr scope ext
+                                                    in (t, SOME ext)
+                                                    end
+                                      | NONE => (TC.OutputType (FType.EmptyRow pos), NONE)
+            val (rowType, fieldExprs) = Vector.foldr elaborateField (extType, []) fields
+        in (rowType, FTerm.Extend (pos, rowType, Vector.fromList fieldExprs, extExpr))
         end
 
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)

@@ -70,7 +70,8 @@ end = struct
             | NONE => iexpr
         end
 
-    and injectRow row = Vector.map (fn (label, expr) => (label, injectExpr expr)) row
+    and injectRow {fields, ext} = { fields = Vector.map (fn (label, expr) => (label, injectExpr expr)) fields
+                                  , ext = Option.map injectExpr ext }
 
     and injectStmt (CTerm.Val (pos, name, otyp, expr)) =
         CTerm.Val (pos, name, ref (Option.map injectType otyp), ref (injectExpr expr))
@@ -103,7 +104,9 @@ end = struct
               | CTerm.Let (_, stmts, body) =>
                  ( Vector.app (uplinkStmtScopes parentScope) stmts
                  ; uplinkExprScopes parentScope body )
-              | CTerm.Record (_, row) => Vector.app (uplinkExprScopes parentScope o #2) row
+              | CTerm.Record (_, {fields, ext}) =>
+                 ( Vector.app (uplinkExprScopes parentScope o #2) fields
+                 ; Option.app (uplinkExprScopes parentScope) ext )
               | CTerm.App (_, {callee, arg}) =>
                  ( uplinkExprScopes parentScope callee
                  ; uplinkExprScopes parentScope arg )

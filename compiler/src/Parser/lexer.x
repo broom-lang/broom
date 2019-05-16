@@ -62,6 +62,7 @@ ws = [\ \t];
 "=>"     => (tok0 startPos Tokens.DARROW yytext);
 ":"      => (tok0 startPos Tokens.COLON yytext);
 "->"     => (tok0 startPos Tokens.ARROW yytext);
+".."     => (tok0 startPos Tokens.DDOT yytext);
 "."      => (tok0 startPos Tokens.DOT yytext);
 ","      => (tok0 startPos Tokens.COMMA yytext);
 

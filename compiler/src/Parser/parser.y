@@ -15,7 +15,7 @@ type typ = Type.ftyp
 %term INT of int | ID of string
     | VAL | TYPE | FN | LET | IN | END
     | LPAREN | RPAREN | LBRACE | RBRACE
-    | EQ | DARROW | COLON | ARROW | DOT | COMMA
+    | EQ | DARROW | COLON | ARROW | DDOT | DOT | COMMA
     | EOF
 %nonterm program of expr
        | stmts of stmt vector
@@ -24,8 +24,11 @@ type typ = Type.ftyp
        | expr of expr
        | app of expr
        | nestable of expr
-       | rowExpr of (Name.t * expr) vector
-       | rowExprList of (Name.t * expr) list
+       | record of expr
+       | fieldExprs of (Name.t * expr) vector
+       | fieldExprList of (Name.t * expr) list
+       | fieldExpr of (Name.t * expr)
+       | optSplat of expr option
        | triv of expr
        | typeAnn of typ
        | rowType of typ
@@ -60,14 +63,22 @@ app : app nestable (Term.Fix (Term.App (appleft, {callee = app, arg = nestable})
     | nestable (nestable)
 
 nestable : LPAREN expr RPAREN (expr)
-         | LBRACE rowExpr RBRACE (Term.Fix (Term.Record (LBRACEleft, rowExpr)))
+         | record (record)
          | triv (triv)
 
-rowExpr : rowExprList (Vector.fromList (List.rev rowExprList) (* OPTIMIZE *))
+record : LBRACE fieldExprs optSplat RBRACE (Term.Fix (Term.Record (LBRACEleft, {fields = fieldExprs, ext = optSplat})))
 
-rowExprList : ([])
-            | ID EQ expr ([(Name.fromString ID, expr)])
-            | rowExprList COMMA ID EQ expr ((Name.fromString ID, expr) :: rowExprList)
+fieldExprs : fieldExprList (Vector.fromList (List.rev fieldExprList) (* OPTIMIZE *))
+
+fieldExprList : ([])
+              | fieldExpr ([fieldExpr])
+              | fieldExprList COMMA fieldExpr (fieldExpr :: fieldExprList)
+
+fieldExpr : ID ((Name.fromString ID, Term.Fix (Term.Use (IDleft, Name.fromString ID))))
+          | ID EQ expr ((Name.fromString ID, expr))
+
+optSplat : (NONE)
+         | DDOT expr (SOME expr)
 
 triv : ID  (Term.Fix (Term.Use (IDleft, Name.fromString ID)))
      | INT (Term.Fix (Term.Const (INTleft, Const.Int INT)))

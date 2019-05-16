@@ -36,7 +36,7 @@ structure Cst = struct
         fun toDoc typeToDoc exprToDoc t =
             let val rec toDoc = fn Arrow (_, {domain, codomain}) =>
                                        typeToDoc domain <> text " -> " <> typeToDoc codomain
-                                    | Record (_, row) => braces (typeToDoc row) (* TODO: Extend to `Extend` as in FAst. *)
+                                    | Record (_, row) => braces (typeToDoc row)
                                     | RowExt (_, {field = (label, fieldt), ext}) =>
                                        Name.toDoc label <> text ": " <> typeToDoc fieldt <> text " | " <> typeToDoc ext
                                     | EmptyRow _ => text "(||)"
@@ -60,19 +60,19 @@ structure Cst = struct
 
     structure Term :> sig
         datatype ('typ, 'bt, 'expr, 'be) stmt = Val of Pos.t * Name.t * 'bt * 'be
-                                       | Expr of 'expr
+                                              | Expr of 'expr
     
         and ('typ, 'bt, 'expr, 'be) expr = Fn of Pos.t * Name.t * 'bt * 'expr
-                            | Let of Pos.t * ('typ, 'bt, 'expr, 'be) stmt vector * 'expr
-                            | Record of Pos.t * 'expr row
-                            | App of Pos.t * {callee: 'expr, arg: 'expr}
-                            | Field of Pos.t * 'expr * Name.t
-                            | Ann of Pos.t * 'expr * 'typ
-                            | Type of Pos.t * 'typ
-                            | Use of Pos.t * Name.t
-                            | Const of Pos.t * Const.t
+                                         | Let of Pos.t * ('typ, 'bt, 'expr, 'be) stmt vector * 'expr
+                                         | Record of Pos.t * 'expr row
+                                         | App of Pos.t * {callee: 'expr, arg: 'expr}
+                                         | Field of Pos.t * 'expr * Name.t
+                                         | Ann of Pos.t * 'expr * 'typ
+                                         | Type of Pos.t * 'typ
+                                         | Use of Pos.t * Name.t
+                                         | Const of Pos.t * Const.t
 
-        withtype 'expr row = (Name.t * 'expr) vector
+        withtype 'expr row = {fields: (Name.t * 'expr) vector, ext: 'expr option}
 
         val exprPos: ('typ, 'bt, 'expr, 'be) expr -> Pos.t
         val exprToDoc: ('typ -> PPrint.t) -> ('bt -> PPrint.t) -> ('expr -> PPrint.t) -> ('be -> PPrint.t)
@@ -89,19 +89,19 @@ structure Cst = struct
         val braces = PPrint.braces
 
         datatype ('typ, 'bt, 'expr, 'be) stmt = Val of Pos.t * Name.t * 'bt * 'be
-                                 | Expr of 'expr
+                                              | Expr of 'expr
     
         and ('typ, 'bt, 'expr, 'be) expr = Fn of Pos.t * Name.t * 'bt * 'expr
-                            | Let of Pos.t * ('typ, 'bt, 'expr, 'be) stmt vector * 'expr
-                            | Record of Pos.t * 'expr row
-                            | App of Pos.t * {callee: 'expr, arg: 'expr}
-                            | Field of Pos.t * 'expr * Name.t
-                            | Ann of Pos.t * 'expr * 'typ
-                            | Type of Pos.t * 'typ
-                            | Use of Pos.t * Name.t
-                            | Const of Pos.t * Const.t
+                                         | Let of Pos.t * ('typ, 'bt, 'expr, 'be) stmt vector * 'expr
+                                         | Record of Pos.t * 'expr row
+                                         | App of Pos.t * {callee: 'expr, arg: 'expr}
+                                         | Field of Pos.t * 'expr * Name.t
+                                         | Ann of Pos.t * 'expr * 'typ
+                                         | Type of Pos.t * 'typ
+                                         | Use of Pos.t * Name.t
+                                         | Const of Pos.t * Const.t
 
-        withtype 'expr row = (Name.t * 'expr) vector
+        withtype 'expr row = {fields: (Name.t * 'expr) vector, ext: 'expr option}
 
         val exprPos =
             fn Fn (pos, _, _, _) => pos
@@ -119,9 +119,11 @@ structure Cst = struct
                 text "val " <> Name.toDoc name <> btToDoc ann <> text " = " <> beToDoc valExpr
              | Expr expr => exprToDoc expr
 
-        fun rowToDoc exprToDoc row =
+        fun rowToDoc exprToDoc {fields, ext} =
             let fun entryToDoc (label, expr) = Name.toDoc label <+> text "=" <+> exprToDoc expr
-            in PPrint.punctuate (text ",") (Vector.map entryToDoc row)
+                val fieldsDoc = PPrint.punctuate (text ", ") (Vector.map entryToDoc fields)
+                val extDoc = Option.mapOr (fn ext => text " .." <+> exprToDoc ext) PPrint.empty ext
+            in fieldsDoc <> extDoc
             end
 
         fun exprToDoc typeToDoc btToDoc exprToDoc beToDoc expr =
