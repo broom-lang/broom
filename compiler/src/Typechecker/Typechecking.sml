@@ -27,6 +27,8 @@ signature TYPECHECKER_OUTPUT = sig
         val pos: 'typ typ -> Pos.t
         val toDoc: ('typ -> PPrint.t) -> 'typ typ -> PPrint.t
         val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> 'typ typ -> 'a
+        val substitute: ('typ typ -> 'typ) -> (Name.t * 'typ -> 'typ -> 'typ)
+                        -> Name.t * 'typ -> 'typ typ -> 'typ
         val rowExtTail: {tail: 'typ -> 'typ, wrap: 'typ typ -> 'typ} -> 'typ typ -> 'typ
     end
 
@@ -82,6 +84,7 @@ signature TYPECHECKING = sig
     structure Type: sig
         val pos: typ -> Pos.t
         val toDoc: typ -> PPrint.t
+        val substitute: Name.t * typ -> typ -> typ
         val rowExtTail: typ -> typ
     end
 
@@ -196,6 +199,11 @@ end) :> TYPECHECKING where
                        | OutputType typ => Output.Type.pos typ
 
         val toDoc = typeToDoc
+
+        fun substitute (kv: Name.t * typ) =
+            fn OutputType t => Output.Type.substitute OutputType substitute kv t
+             | InputType _ => raise Fail "Encountered InputType"
+             | ScopeType {parent, types, typ} => ScopeType {parent, types, typ = substitute kv typ}
 
         val rec rowExtTail =
             fn OutputType t => Output.Type.rowExtTail {tail = rowExtTail, wrap = OutputType} t

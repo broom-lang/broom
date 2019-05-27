@@ -62,6 +62,23 @@ structure FType = struct
          | Type (_, t) => f (t, acc)
          | UseT _ | Prim _ => acc
 
+    fun substitute (fix: 'typ typ -> 'typ) (substituteFixed: Name.t * 'typ -> 'typ -> 'typ)
+                   (kv as (name: Name.t, t': 'typ)) (t: 'typ typ): 'typ =
+        let val substFixed = substituteFixed kv
+            val rec subst =
+                fn t as ForAll (pos, {var, kind}, body) =>
+                    fix (if var = name then t else ForAll (pos, {var, kind}, substFixed body))
+                 | Arrow (pos, {domain, codomain}) =>
+                    fix (Arrow (pos, {domain = substFixed domain, codomain = substFixed codomain}))
+                 | Record (pos, row) => fix (Record (pos, substFixed row))
+                 | RowExt (pos, {field = (label, fieldt), ext}) =>
+                    fix (RowExt (pos, {field = (label, substFixed fieldt), ext = substFixed ext}))
+                 | Type (pos, t) => fix (Type (pos, substFixed t))
+                 | t as UseT (pos, {var, kind}) => if var = name then t' else fix t
+                 | t as (EmptyRow _ | Prim _) => fix t
+        in subst t
+        end
+
     fun rowExtTail {tail, wrap} =
         fn RowExt (_, {ext, ...}) => tail ext
          | t => wrap t
