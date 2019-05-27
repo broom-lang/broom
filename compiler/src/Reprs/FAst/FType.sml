@@ -65,5 +65,7 @@ structure FType = struct
     fun rowExtTail {tail, wrap} =
         fn RowExt (_, {ext, ...}) => tail ext
          | t => wrap t
+
+    fun unit pos = Prim (pos, Prim.Unit)
 end
 

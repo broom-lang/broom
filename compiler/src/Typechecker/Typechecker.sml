@@ -180,12 +180,11 @@ end = struct
     (* Elaborate a statement and return the elaborated version. *)
     and elaborateStmt scope: (TC.typ, TC.typ option ref, TC.expr, TC.expr ref) Cst.Term.stmt -> TC.typ FTerm.stmt =
         fn CTerm.Val (pos, name, _, exprRef) =>
-            let val (exprType, expr) = elaborateExpr scope (!exprRef)
-                val annType = valOf (lookupValType pos name scope)
-                val coercion = subType scope (exprType, annType)
-            in FTerm.Val (pos, {var = name, typ = annType}, applyCoercion coercion expr)
+            let val t = valOf (lookupValType pos name scope) (* `name` is in `scope` by construction *)
+                val expr = elaborateExprAs scope t (!exprRef)
+            in FTerm.Val (pos, {var = name, typ = t}, expr)
             end
-         | CTerm.Expr expr => FTerm.Expr (#2 (elaborateExpr scope expr))
+         | CTerm.Expr expr => FTerm.Expr (elaborateExprAs scope (TC.OutputType (FType.unit (TC.Expr.pos expr))) expr)
 
     (* Coerce `callee` into a function (in place) and return its `domain` and `codomain`. *)
     and coerceCallee (typ: TC.typ, callee: TC.typ FTerm.expr): {domain: TC.typ, codomain: TC.typ} =
