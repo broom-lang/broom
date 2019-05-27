@@ -1,5 +1,6 @@
 signature TYPE_ERROR = sig
     datatype t = UnCallable of TypecheckingCst.typ FAst.Term.expr * TypecheckingCst.typ
+               | UnDottable of TypecheckingCst.typ FAst.Term.expr * TypecheckingCst.typ
                | UnboundVal of Pos.t * Name.t
                | Occurs of (TypecheckingCst.scope, TypecheckingCst.typ) TypeVars.uv
                          * TypecheckingCst.typ
@@ -16,6 +17,7 @@ structure TypeError :> TYPE_ERROR = struct
     val op<+> = PPrint.<+>
 
     datatype t = UnCallable of TypecheckingCst.typ FAst.Term.expr * TypecheckingCst.typ
+               | UnDottable of TypecheckingCst.typ FAst.Term.expr * TypecheckingCst.typ
                | UnboundVal of Pos.t * Name.t
                | Occurs of (TypecheckingCst.scope, TypecheckingCst.typ) TypeVars.uv
                          * TypecheckingCst.typ
@@ -28,6 +30,10 @@ structure TypeError :> TYPE_ERROR = struct
                                      ( FAst.Term.exprPos expr
                                      , text "Value" <+> FAst.Term.exprToDoc TC.Type.toDoc expr
                                            <+> text "of type" <+> TC.Type.toDoc typ <+> text "can not be called." )
+                                  | UnDottable (expr, typ) =>
+                                     ( FAst.Term.exprPos expr
+                                     , text "Value" <+> FAst.Term.exprToDoc TC.Type.toDoc expr
+                                           <+> text "of type" <+> TC.Type.toDoc typ <+> text "is not a record or module." )
                                   | UnboundVal (pos, name) => (pos, text "Unbound variable" <+> Name.toDoc name <> text ".")
                                   | Occurs (uv, t) =>
                                      ( TC.Type.pos t

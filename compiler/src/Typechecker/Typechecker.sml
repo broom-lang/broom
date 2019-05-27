@@ -169,13 +169,14 @@ end = struct
                      val coercion = subType scope (t', typ)
                  in applyCoercion coercion expr
                  end)
-         | (_, TC.ScopeExpr (scope as {expr, ...})) => elaborateExprAs (TC.ExprScope scope) typ expr
-         | (_, TC.OutputExpr expr) => expr
          | (TC.OVar _ | TC.UVar _, TC.InputExpr _) =>
             let val (t', expr) = elaborateExpr scope expr
                 val coercion = subType scope (t', typ)
             in applyCoercion coercion expr
             end
+         | (_, TC.ScopeExpr (scope as {expr, ...})) => elaborateExprAs (TC.ExprScope scope) typ expr
+         | (_, TC.OutputExpr expr) => expr
+         | (TC.InputType _, _) => raise Fail "Encountered InputType"
 
     (* Elaborate a statement and return the elaborated version. *)
     and elaborateStmt scope: (TC.typ, TC.typ option ref, TC.expr, TC.expr ref) Cst.Term.stmt -> TC.typ FTerm.stmt =
@@ -189,9 +190,7 @@ end = struct
     (* Coerce `callee` into a function (in place) and return its `domain` and `codomain`. *)
     and coerceCallee (typ: TC.typ, callee: TC.typ FTerm.expr): {domain: TC.typ, codomain: TC.typ} =
         let val rec coerce =
-                fn TC.InputType _ => raise Fail "unimplemented"
-                 | TC.ScopeType (scope as {typ, ...}) => raise Fail "unimplemented"
-                 | TC.OutputType otyp =>
+                fn TC.OutputType otyp =>
                     (case otyp
                      of FType.ForAll _ => raise Fail "unimplemented"
                       | FType.Arrow (_, domains) => domains
@@ -201,15 +200,20 @@ end = struct
                     (case TypeVars.uvGet uv
                      of Either.Left uv => raise Fail "unimplemented"
                       | Either.Right typ => coerce typ)
+                 | TC.ScopeType (scope as {typ, ...}) => raise Fail "unimplemented"
+                 | TC.InputType _ => raise Fail "Encountered InputType"
         in coerce typ
         end
    
     (* Coerce `expr` (in place) into a record with at least `label` and return the `label`:ed type. *)
     and coerceRecord scope (typ: TC.typ, expr: TC.typ FTerm.expr) label: TC.typ =
         let val rec coerce =
-                fn TC.OutputType typ =>
-                    (case typ
-                     of FType.Record (_, row) => coerceRow row)
+                fn TC.OutputType otyp =>
+                    (case otyp
+                     of FType.ForAll _ => raise Fail "unimplemented"
+                      | FType.Record (_, row) => coerceRow row
+                      | _ => raise TypeError (UnCallable (expr, typ)))
+                 | TC.OVar _ => raise TypeError (UnDottable (expr, typ))
                  | TC.UVar (pos, uv) =>
                     (case TypeVars.uvGet uv
                      of Either.Right typ => coerce typ
@@ -221,6 +225,8 @@ end = struct
                                           in TypeVars.uvSet (uv, TC.OutputType typ)
                                            ; fieldType
                                           end)
+                 | TC.ScopeType _ => raise Fail "unimplemented"
+                 | TC.InputType _ => raise Fail "Encountered InputType"
             and coerceRow =
                 fn TC.OutputType (FType.RowExt (_, {field = (label', fieldt), ext})) =>
                     if label' = label
