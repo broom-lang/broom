@@ -25,7 +25,10 @@ end = struct
                 case !typRef
                 of SOME typ => elaborateType scope typ
                  | NONE => (case value
-                            of SOME (ref expr) => #1 (elaborateExpr scope expr)
+                            of SOME exprRef => let val (t, expr) = elaborateExpr scope (!exprRef)
+                                               in exprRef := TC.OutputExpr expr
+                                                ; t
+                                               end
                              | NONE => TC.UVar (pos, TypeVars.freshUv scope))
 
             fun elaborateValType scope {shade, binder = binding as {typ = typRef, value = _}} =
