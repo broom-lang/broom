@@ -84,6 +84,7 @@ signature TYPECHECKING = sig
     structure Type: sig
         val pos: typ -> Pos.t
         val toDoc: typ -> PPrint.t
+        val toString: typ -> string
         val substitute: Name.t * typ -> typ -> typ
         val rowExtTail: typ -> typ
     end
@@ -91,6 +92,7 @@ signature TYPECHECKING = sig
     structure Expr: sig
         val pos: expr -> Pos.t
         val toDoc: expr -> PPrint.t
+        val toString: expr -> string
     end
 
     structure Scope: sig
@@ -191,6 +193,7 @@ end) :> TYPECHECKING where
              | ScopeExpr {expr, ...} => pos expr
 
         val toDoc = exprToDoc
+        val toString = PPrint.pretty 80 o toDoc
     end
 
     structure Type = struct
@@ -199,6 +202,7 @@ end) :> TYPECHECKING where
                        | OutputType typ => Output.Type.pos typ
 
         val toDoc = typeToDoc
+        val toString = PPrint.pretty 80 o toDoc
 
         fun substitute (kv: Name.t * typ) =
             fn OutputType t => Output.Type.substitute OutputType substitute kv t

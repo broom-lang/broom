@@ -59,7 +59,9 @@ end = struct
         case (typ, superTyp)
         of (TC.OutputType t, TC.OutputType t') =>
             (case (t, t')
-             of (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows scope expr (arr, arr')
+             of (FType.ForAll _, _) => raise Fail "unimplemented"
+              | (_, FType.ForAll _) => raise Fail "unimplemented"
+              | (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows scope expr (arr, arr')
               | (FType.Record (_, row), FType.Record (_, row')) => subType scope expr (row, row')
               | (FType.RowExt (_, row), FType.RowExt _) => subRowExts scope expr (row, superTyp)
               | (FType.EmptyRow _, FType.EmptyRow _) => NONE
@@ -70,7 +72,10 @@ end = struct
               | (FType.Type (pos, t), FType.Type (_, t')) =>
                  ( subType scope expr (t, t')
                  ; subType scope expr (t', t)
-                 ; SOME (fn _ => FTerm.Type (pos, t))))
+                 ; SOME (fn _ => FTerm.Type (pos, t)))
+              | (FType.UseT _, _) => raise Fail "unimplemented"
+              | (_, FType.UseT _) => raise Fail "unimplemented"
+              | _ => raise TypeError (NonSubType (expr, typ, superTyp)))
          | (TC.UVar (_, uv), TC.UVar (_, uv')) => subUvs scope expr (uv, uv')
          | (TC.UVar (_, uv), _) => subUv scope expr uv superTyp
          | (_, TC.UVar (_, uv)) => superUv scope expr uv typ
@@ -122,7 +127,8 @@ end = struct
             else let val (fieldt, ext) = reorderRow expr label tail ext
                  in (fieldt, TC.OutputType (FType.RowExt (pos, {field = (label', fieldt'), ext = ext})))
                  end
-         | t => raise Fail ("unimplemented at " ^ Pos.toString (TC.Expr.pos expr))
+         (* FIXME: `t` is actually row tail, not the type of `expr`. *)
+         | t as TC.OutputType _ => raise TypeError (MissingField (expr, t, label))
 
     and subUvs scope expr (uv: TC.uv, uv': TC.uv): coercion =
         case (TypeVars.uvGet uv, TypeVars.uvGet uv')
