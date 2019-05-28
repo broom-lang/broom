@@ -32,6 +32,9 @@ type typ = Type.ftyp
        | triv of expr
        | typeAnn of typ
        | rowType of typ
+       | rowFields of (Name.t * typ) vector
+       | rowFieldList of (Name.t * typ) list
+       | rowExt of typ option
 
 %keyword VAL EQ
 %noshift EOF
@@ -94,8 +97,19 @@ typeAnn : LPAREN typeAnn RPAREN (typeAnn)
                                            | _ => Type.Path expr)
                  | _ => Type.Path expr))
 
-rowType: ID COLON typeAnn (Type.FixT (Type.RowExt (IDleft, { field = (Name.fromString ID, typeAnn)
-                                                , ext = Type.FixT (Type.EmptyRow typeAnnright) })))
-       | ID COLON typeAnn COMMA rowType (Type.FixT (Type.RowExt (IDleft, { field = (Name.fromString ID, typeAnn)
-                                                              , ext = rowType })))
+rowType: rowFields rowExt (let val ext = case rowExt
+                                         of SOME ext => ext
+                                          | NONE => Type.FixT (Type.EmptyRow rowExtleft)
+                           in Type.FixT (Type.RowExt (rowFieldsleft, {fields = rowFields, ext = ext}))
+                           end)
+
+rowFields : rowFieldList (Vector.fromList (List.rev rowFieldList) (* OPTIMIZE *))
+
+rowFieldList : ([])
+             | ID COLON typeAnn ([(Name.fromString ID, typeAnn)])
+             | ID COLON typeAnn COMMA rowFieldList ((Name.fromString ID, typeAnn) :: rowFieldList)
+
+rowExt : (NONE)
+       | DDOT (SOME (Type.FixT (Type.WildRow DDOTleft)))
+       | DDOT typeAnn (SOME typeAnn)
 

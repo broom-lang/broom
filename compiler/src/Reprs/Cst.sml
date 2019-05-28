@@ -6,11 +6,12 @@ structure Cst = struct
                                    | Record of Pos.t * 'typ
                                    | RowExt of Pos.t * ('typ, 'expr) row_ext
                                    | EmptyRow of Pos.t
+                                   | WildRow of Pos.t
                                    | Singleton of Pos.t * 'expr
                                    | Path of 'expr
                                    | Prim of Pos.t * Prim.t
 
-        withtype ('typ, 'expr) row_ext = {field: Name.t * 'typ, ext: 'typ}
+        withtype ('typ, 'expr) row_ext = {fields: (Name.t * 'typ) vector, ext: 'typ}
 
         val toDoc: ('typ -> PPrint.t) -> ('expr -> PPrint.t) -> ('typ, 'expr) typ -> PPrint.t
         val pos: ('expr -> Pos.t) -> ('typ, 'expr) typ -> Pos.t
@@ -19,6 +20,7 @@ structure Cst = struct
     end = struct
         structure Prim = PrimType
         val op<> = PPrint.<>
+        val op<+> = PPrint.<+>
         val text = PPrint.text
         val parens = PPrint.parens
         val braces = PPrint.braces
@@ -27,19 +29,27 @@ structure Cst = struct
                                    | Record of Pos.t * 'typ
                                    | RowExt of Pos.t * ('typ, 'expr) row_ext
                                    | EmptyRow of Pos.t
+                                   | WildRow of Pos.t
                                    | Singleton of Pos.t * 'expr
                                    | Path of 'expr
                                    | Prim of Pos.t * Prim.t
 
-        withtype ('typ, 'expr) row_ext = {field: Name.t * 'typ, ext: 'typ}
+        withtype ('typ, 'expr) row_ext = {fields: (Name.t * 'typ) vector, ext: 'typ}
 
         fun toDoc typeToDoc exprToDoc t =
             let val rec toDoc = fn Arrow (_, {domain, codomain}) =>
                                        typeToDoc domain <> text " -> " <> typeToDoc codomain
                                     | Record (_, row) => braces (typeToDoc row)
-                                    | RowExt (_, {field = (label, fieldt), ext}) =>
-                                       Name.toDoc label <> text ": " <> typeToDoc fieldt <> text " | " <> typeToDoc ext
+                                    | RowExt (_, {fields, ext}) =>
+                                       let fun fieldToDoc (label, fieldt) = 
+                                               Name.toDoc label <> text ": " <> typeToDoc fieldt
+                                           val fieldsDoc =
+                                               PPrint.punctuate (text ", ")
+                                                                (Vector.map fieldToDoc fields)
+                                       in fieldsDoc <+> text "|" <+> typeToDoc ext
+                                       end
                                     | EmptyRow _ => text "(||)"
+                                    | WildRow _ => text ".."
                                     | Singleton (_, expr) => parens (text "= " <> exprToDoc expr)
                                     | Path expr => exprToDoc expr
                                     | Prim (_, p) => Prim.toDoc p

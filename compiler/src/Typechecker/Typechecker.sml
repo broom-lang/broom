@@ -70,9 +70,13 @@ end = struct
                  TC.OutputType (FType.Arrow (pos, { domain = elaborateType scope domain
                                                   , codomain = elaborateType scope codomain }))
               | CType.Record (pos, row) => TC.OutputType (FType.Record (pos, elaborateType scope row))
-              | CType.RowExt (pos, {field = (label, fieldt), ext}) =>
-                 TC.OutputType (FType.RowExt (pos, { field = (label, elaborateType scope fieldt)
-                                                   , ext = elaborateType scope ext }))
+              | CType.RowExt (pos, {fields, ext}) =>
+                 let fun elaborateField ((label, t), acc) = (label, elaborateType scope t) :: acc
+                     fun constructStep (field, ext) = TC.OutputType (FType.RowExt (pos, {field, ext}))
+                     val revFields = Vector.foldl elaborateField [] fields
+                     val ext = elaborateType scope ext
+                 in List.foldl constructStep ext revFields
+                 end
               | CType.EmptyRow pos => TC.OutputType (FType.EmptyRow pos)
               | CType.Path typExpr =>
                  (case #1 (elaborateExpr scope typExpr)
