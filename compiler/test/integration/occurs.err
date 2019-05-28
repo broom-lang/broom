@@ -1,1 +1,1 @@
-TypeError in test/integration/occurs.ml at 1:11: Occurs check: unifying g__1 with I32 -> g__1 would create infinite type.
+TypeError in test/integration/occurs.ml at 1:11: Occurs check: unifying g__0 with I32 -> g__0 would create infinite type.
