@@ -148,7 +148,9 @@ end = struct
                 end
             val (extType, extExpr) = case ext
                                      of SOME ext => let val (t, ext) = elaborateExpr scope ext
-                                                    in (t, SOME ext)
+                                                    in case t
+                                                       of TC.OutputType (FType.Record (_, row)) =>
+                                                           (row, SOME ext)
                                                     end
                                       | NONE => (TC.OutputType (FType.EmptyRow pos), NONE)
             val (rowType, fieldExprs) = Vector.foldr elaborateField (extType, []) fields

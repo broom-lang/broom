@@ -42,7 +42,8 @@ structure FAst = struct
 
        fun stmtToDoc typeToDoc =
            fn Val (_, def, valExpr) =>
-               text "val" <+> defToDoc typeToDoc def <+> text "=" <+> exprToDoc typeToDoc valExpr
+               text "val" <+> defToDoc typeToDoc def <+> text "="
+                   <+> PPrint.align (exprToDoc typeToDoc valExpr)
             | Expr expr => exprToDoc typeToDoc expr
 
        and fieldToDoc exprToDoc (label, expr) = Name.toDoc label <+> text "=" <+> exprToDoc expr
