@@ -11,6 +11,7 @@ end = struct
     open TypeError
 
     type coercion = (TC.typ FTerm.expr -> TC.typ FTerm.expr) option
+    type field_coercion = Name.t * (TC.typ FTerm.expr -> TC.typ FTerm.expr)
 
     fun applyCoercion (coerce: coercion) expr =
         case coerce
@@ -54,7 +55,7 @@ end = struct
                                        of Either.Left uv' => TC.uvMerge (uv, uv')
                                         | Either.Right t => doAssign scope y (uv, t)
 
-    (* Check that `typ` <: `superTyp` and return the (mutating) coercion if any. *)
+    (* Check that `typ` <: `superTyp` and return the coercion if any. *)
     fun subType scope expr (typ: TC.typ, superTyp: TC.typ): coercion =
         case (typ, superTyp)
         of (TC.OutputType t, TC.OutputType t') =>
@@ -62,8 +63,12 @@ end = struct
              of (FType.ForAll _, _) => raise Fail "unimplemented"
               | (_, FType.ForAll _) => raise Fail "unimplemented"
               | (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows scope expr (arr, arr')
-              | (FType.Record (_, row), FType.Record (_, row')) => subType scope expr (row, row')
-              | (FType.RowExt (_, row), FType.RowExt _) => subRowExts scope expr (row, superTyp)
+              | (FType.Record (_, row), FType.Record (_, row')) => 
+                 (case subRows scope expr (row, row')
+                  of [] => NONE)
+              | (FType.RowExt _, FType.RowExt _) =>
+                ( subRows scope expr (typ, superTyp)
+                ; NONE ) (* No values of row type exist => coercion unnecessary *)
               | (FType.EmptyRow _, FType.EmptyRow _) => NONE
               | (FType.Prim (_, pl), FType.Prim (_, pr)) =>
                  if pl = pr
@@ -94,30 +99,18 @@ end = struct
            else NONE
         end
 
-    and subRowExts scope expr (row as {field = (label, fieldt), ext}, row') =
-        let val (fieldt', ext') = reorderRow expr label (TC.Type.rowExtTail ext) row'
-            val coerceField = subType scope expr (fieldt, fieldt')
-            val coerceExt = subType scope expr (ext, ext')
-        in (* FIXME: This coercion combination assumes this is a record row: *)
-           SOME (fn expr =>
-                     let val pos = FTerm.exprPos expr
-                         val recordTyp = TC.OutputType (FType.Record (pos, TC.OutputType (FType.RowExt (pos, row))))
-                         val row' = {field = (label, fieldt'), ext = ext'}
-                         val recordTyp' = TC.OutputType (FType.Record (pos, TC.OutputType (FType.RowExt (pos, row'))))
-                         val recordDef = {var = Name.fresh (), typ = recordTyp}
-                         val recordBind = FTerm.Val (pos, recordDef, expr)
-                         val recordRef = FTerm.Use (pos, recordDef)
-                         val fieldGet = applyCoercion coerceField (FTerm.Field (pos, fieldt, recordRef, label))
-                         val fieldDef = {var = Name.freshen label, typ = fieldt'}
-                         val fieldRedef = FTerm.Val (pos, fieldDef, fieldGet)
-                         val extTyp = TC.OutputType (FType.Record (pos, ext'))
-                         val extGet = applyCoercion coerceExt (FTerm.Use (pos, recordDef))
-                         val extRedef = FTerm.Val (pos, {var = Name.fresh (), typ = extTyp}, extGet)
-                         val body = FTerm.Extend ( pos, recordTyp'
-                                                            , Vector.fromList [(label, FTerm.Use (pos, fieldDef))]
-                                                            , SOME (FTerm.Use (pos, recordDef)) )
-                     in FTerm.Let (pos, Vector.fromList [recordBind, fieldRedef, extRedef], body)
-                     end)
+    and subRows scope expr (rows: TC.typ * TC.typ): field_coercion list =
+        let val rec subExts =
+                fn (row, TC.OutputType (FType.RowExt (_, {field = (label, fieldt'), ext = ext'}))) =>
+                    let val (fieldt, ext) = reorderRow expr label (TC.Type.rowExtTail ext') row
+                        val coerceField = subType scope expr (fieldt, fieldt')
+                        val coerceExt = subExts (ext, ext')
+                    in case coerceField
+                       of SOME coerceField => (label, coerceField) :: coerceExt
+                        | NONE => coerceExt
+                    end
+                 | rows => (subType scope expr rows; [])
+        in subExts rows
         end
 
     and reorderRow expr label (tail: TC.typ): TC.typ -> TC.typ * TC.typ =
