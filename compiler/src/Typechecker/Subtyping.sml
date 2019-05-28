@@ -2,7 +2,8 @@ structure Subtyping :> sig
     type coercion = (TypecheckingCst.typ FAst.Term.expr -> TypecheckingCst.typ FAst.Term.expr) option
    
     val applyCoercion: coercion -> TypecheckingCst.typ FAst.Term.expr -> TypecheckingCst.typ FAst.Term.expr
-    val subType: TypecheckingCst.scope -> TypecheckingCst.typ * TypecheckingCst.typ -> coercion
+    val subType: TypecheckingCst.scope -> TypecheckingCst.expr
+                 -> TypecheckingCst.typ * TypecheckingCst.typ -> coercion
 end = struct
     structure TC = TypecheckingCst
     structure FType = FAst.Type
@@ -54,29 +55,29 @@ end = struct
                                         | Either.Right t => doAssign scope y (uv, t)
 
     (* Check that `typ` <: `superTyp` and return the (mutating) coercion if any. *)
-    fun subType scope (typ: TC.typ, superTyp: TC.typ): coercion =
+    fun subType scope expr (typ: TC.typ, superTyp: TC.typ): coercion =
         case (typ, superTyp)
         of (TC.OutputType t, TC.OutputType t') =>
             (case (t, t')
-             of (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows scope (arr, arr')
-              | (FType.Record (_, row), FType.Record (_, row')) => subType scope (row, row')
-              | (FType.RowExt (_, row), FType.RowExt _) => subRowExts scope (row, superTyp)
+             of (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows scope expr (arr, arr')
+              | (FType.Record (_, row), FType.Record (_, row')) => subType scope expr (row, row')
+              | (FType.RowExt (_, row), FType.RowExt _) => subRowExts scope expr (row, superTyp)
               | (FType.EmptyRow _, FType.EmptyRow _) => NONE
               | (FType.Prim (_, pl), FType.Prim (_, pr)) =>
                  if pl = pr
                  then NONE
                  else raise Fail "<:"
               | (FType.Type (pos, t), FType.Type (_, t')) =>
-                 ( subType scope (t, t')
-                 ; subType scope (t', t)
+                 ( subType scope expr (t, t')
+                 ; subType scope expr (t', t)
                  ; SOME (fn _ => FTerm.Type (pos, t))))
-         | (TC.UVar (_, uv), TC.UVar (_, uv')) => subUvs scope (uv, uv')
-         | (TC.UVar (_, uv), _) => subUv scope uv superTyp
-         | (_, TC.UVar (_, uv)) => superUv scope uv typ
+         | (TC.UVar (_, uv), TC.UVar (_, uv')) => subUvs scope expr (uv, uv')
+         | (TC.UVar (_, uv), _) => subUv scope expr uv superTyp
+         | (_, TC.UVar (_, uv)) => superUv scope expr uv typ
 
-    and subArrows scope ({domain, codomain}, {domain = domain', codomain = codomain'}) =
-        let val coerceDomain = subType scope (domain', domain)
-            val coerceCodomain = subType scope (codomain, codomain')
+    and subArrows scope expr ({domain, codomain}, {domain = domain', codomain = codomain'}) =
+        let val coerceDomain = subType scope expr (domain', domain)
+            val coerceCodomain = subType scope expr (codomain, codomain')
         in if isSome coerceDomain orelse isSome coerceCodomain
            then SOME (fn callee =>
                           let val pos = FTerm.exprPos callee
@@ -88,10 +89,10 @@ end = struct
            else NONE
         end
 
-    and subRowExts scope (row as {field = (label, fieldt), ext}, row') =
-        let val (fieldt', ext') = reorderRow label (TC.Type.rowExtTail ext) row'
-            val coerceField = subType scope (fieldt, fieldt')
-            val coerceExt = subType scope (ext, ext')
+    and subRowExts scope expr (row as {field = (label, fieldt), ext}, row') =
+        let val (fieldt', ext') = reorderRow expr label (TC.Type.rowExtTail ext) row'
+            val coerceField = subType scope expr (fieldt, fieldt')
+            val coerceExt = subType scope expr (ext, ext')
         in (* FIXME: This coercion combination assumes this is a record row: *)
            SOME (fn expr =>
                      let val pos = FTerm.exprPos expr
@@ -114,15 +115,16 @@ end = struct
                      end)
         end
 
-    and reorderRow label (tail: TC.typ): TC.typ -> TC.typ * TC.typ =
+    and reorderRow expr label (tail: TC.typ): TC.typ -> TC.typ * TC.typ =
         fn TC.OutputType (FType.RowExt (pos, {field = (label', fieldt'), ext = ext})) =>
             if label = label'
             then (fieldt', ext)
-            else let val (fieldt, ext) = reorderRow label tail ext
+            else let val (fieldt, ext) = reorderRow expr label tail ext
                  in (fieldt, TC.OutputType (FType.RowExt (pos, {field = (label', fieldt'), ext = ext})))
                  end
+         | t => raise Fail ("unimplemented at " ^ Pos.toString (TC.Expr.pos expr))
 
-    and subUvs scope (uv: TC.uv, uv': TC.uv): coercion =
+    and subUvs scope expr (uv: TC.uv, uv': TC.uv): coercion =
         case (TypeVars.uvGet uv, TypeVars.uvGet uv')
         of (Either.Left uv, Either.Left uv') =>
             if TC.uvInScope (scope, uv)
@@ -134,14 +136,14 @@ end = struct
             else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
          | (Either.Left uv, Either.Right t) => ( assign scope (Sub, uv, t); NONE )
          | (Either.Right t, Either.Left uv) => ( assign scope (Super, uv, t); NONE )
-         | (Either.Right t, Either.Right t') => subType scope (t, t')
+         | (Either.Right t, Either.Right t') => subType scope expr (t, t')
 
-    and subUv scope uv superTyp = case TypeVars.uvGet uv
-                                  of Either.Left uv => (assign scope (Sub, uv, superTyp); NONE)
-                                   | Either.Right t => subType scope (t, superTyp)
+    and subUv scope expr uv superTyp = case TypeVars.uvGet uv
+                                       of Either.Left uv => (assign scope (Sub, uv, superTyp); NONE)
+                                        | Either.Right t => subType scope expr (t, superTyp)
 
-    and superUv scope uv subTyp = case TypeVars.uvGet uv
-                                  of Either.Left uv => (assign scope (Super, uv, subTyp); NONE)
-                                   | Either.Right t => subType scope (subTyp, t)
+    and superUv scope expr uv subTyp = case TypeVars.uvGet uv
+                                       of Either.Left uv => (assign scope (Super, uv, subTyp); NONE)
+                                        | Either.Right t => subType scope expr (subTyp, t)
 end
 

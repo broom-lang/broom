@@ -37,12 +37,7 @@ end = struct
                 in case !shade
                    of TC.Grey => ( typRef := SOME typ
                                  ; shade := TC.Black )
-                    | TC.Black => let val typ' = valOf (!typRef)
-                                  (* HACK?: mutual subtyping: *)
-                                  in subType scope (typ, typ')
-                                   ; subType scope (typ', typ)
-                                   ; ()
-                                  end
+                    | TC.Black => () 
                     | TC.White => raise Fail "unreachable"
                  ; typ
                 end
@@ -168,14 +163,14 @@ end = struct
              of (FType.ForAll _, expr) => raise Fail "unimplemented"
               | (FType.Arrow _, CTerm.Fn _) => raise Fail "unimplemented"
               | (_, _) =>
-                 let val (t', expr) = elaborateExpr scope expr
-                     val coercion = subType scope (t', typ)
-                 in applyCoercion coercion expr
+                 let val (t', fexpr) = elaborateExpr scope expr
+                     val coercion = subType scope expr (t', typ)
+                 in applyCoercion coercion fexpr
                  end)
          | (TC.OVar _ | TC.UVar _, TC.InputExpr _) =>
-            let val (t', expr) = elaborateExpr scope expr
-                val coercion = subType scope (t', typ)
-            in applyCoercion coercion expr
+            let val (t', fexpr) = elaborateExpr scope expr
+                val coercion = subType scope expr (t', typ)
+            in applyCoercion coercion fexpr
             end
          | (_, TC.ScopeExpr (scope as {expr, ...})) => elaborateExprAs (TC.ExprScope scope) typ expr
          | (_, TC.OutputExpr expr) => expr
