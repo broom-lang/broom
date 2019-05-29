@@ -20,7 +20,7 @@ end = struct
        - elaborating the expression bound to the variable (if available)
        - returning a fresh unification variable (if neither type annotation nor bound expression
          is available or if a cycle is encountered) *)
-    fun lookupValType pos name scope: TC.typ option =
+    fun lookupValType expr name scope: TC.typ option =
         let fun valBindingType scope {typ = typRef, value} =
                 case !typRef
                 of SOME typ => elaborateType scope typ
@@ -29,7 +29,7 @@ end = struct
                                                in exprRef := TC.OutputExpr expr
                                                 ; t
                                                end
-                             | NONE => TC.UVar (pos, TypeVars.freshUv scope))
+                             | NONE => TC.UVar (TC.Expr.pos expr, TypeVars.freshUv scope))
 
             fun elaborateValType scope {shade, binder = binding as {typ = typRef, value = _}} =
                 let do shade := TC.Grey
@@ -37,13 +37,16 @@ end = struct
                 in case !shade
                    of TC.Grey => ( typRef := SOME typ
                                  ; shade := TC.Black )
-                    | TC.Black => () 
+                    | TC.Black =>
+                       (* So, we went to `elaborateValTypeLoop` inside the `valBindingType` call.
+                          `typ` better be a subtype of the type inferred from usage sites: *)
+                       ignore (subType scope expr (typ, valOf (!typRef)))
                     | TC.White => raise Fail "unreachable"
                  ; typ
                 end
 
             fun elaborateValTypeLoop scope {shade, binder = {typ = typRef, value = _}} =
-                let val typ = TC.UVar (pos, TypeVars.freshUv scope)
+                let val typ = TC.UVar (TC.Expr.pos expr, TypeVars.freshUv scope)
                 in typRef := SOME typ
                  ; shade := TC.Black
                  ; typ
@@ -56,7 +59,7 @@ end = struct
                      of TC.Black => !(#typ binder)
                       | TC.White => SOME (elaborateValType scope binding)
                       | TC.Grey => SOME (elaborateValTypeLoop scope binding))
-                 | NONE => Option.mapPartial (lookupValType pos name) (!parent))
+                 | NONE => Option.mapPartial (lookupValType expr name) (!parent))
         end
 
 (* Elaborating subtrees *)
@@ -94,7 +97,7 @@ end = struct
         of TC.InputExpr expr =>
             (case expr
              of CTerm.Fn (pos, param, _, body) =>
-                 let val domain = case lookupValType pos param scope
+                 let val domain = case lookupValType exprRef param scope
                                   of SOME domain => domain
                                    | NONE => raise TypeError (UnboundVal (pos, param))
                      val codomain = TC.UVar (pos, TypeVars.freshUv (valOf (TC.Scope.parent scope)))
@@ -132,7 +135,7 @@ end = struct
                  in (TC.OutputType (FType.Type (pos, t)), FTerm.Type (pos, t))
                  end
               | CTerm.Use (pos, name) =>
-                 let val typ = case lookupValType pos name scope
+                 let val typ = case lookupValType exprRef name scope
                                of SOME typ => typ
                                 | NONE => raise TypeError (UnboundVal (pos, name))
                      val def = {var = name, typ}
@@ -185,7 +188,7 @@ end = struct
     (* Elaborate a statement and return the elaborated version. *)
     and elaborateStmt scope: (TC.typ, TC.typ option ref, TC.expr, TC.expr ref) Cst.Term.stmt -> TC.typ FTerm.stmt =
         fn CTerm.Val (pos, name, _, exprRef) =>
-            let val t = valOf (lookupValType pos name scope) (* `name` is in `scope` by construction *)
+            let val t = valOf (lookupValType (!exprRef) name scope) (* `name` is in `scope` by construction *)
                 val expr = elaborateExprAs scope t (!exprRef)
             in FTerm.Val (pos, {var = name, typ = t}, expr)
             end
