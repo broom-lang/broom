@@ -206,8 +206,8 @@ end) :> TYPECHECKING where
 
         fun substitute (kv: Name.t * typ) =
             fn OutputType t => Output.Type.substitute OutputType substitute kv t
-             | InputType _ => raise Fail "Encountered InputType"
-             | ScopeType {parent, types, typ} => ScopeType {parent, types, typ = substitute kv typ}
+             | InputType _ => raise Fail "encountered InputType"
+             | ScopeType {parent, types, typ} => raise Fail "encountered ScopeType"
 
         val rec rowExtTail =
             fn OutputType t => Output.Type.rowExtTail {tail = rowExtTail, wrap = OutputType} t
