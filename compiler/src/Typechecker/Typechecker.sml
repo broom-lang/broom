@@ -110,11 +110,7 @@ end = struct
                      val (typ, body) = elaborateExpr scope body
                  in (typ, FTerm.Let (pos, stmts, body))
                  end
-              | CTerm.Record (pos, fields) =>
-                 let val (rowType, rowExpr) = elaborateRowExpr scope pos fields
-                     val typ = TC.OutputType (FType.Record (pos, rowType))
-                 in (typ, rowExpr)
-                 end
+              | CTerm.Record (pos, fields) => elaborateRecord scope pos fields
               | CTerm.App (pos, {callee, arg}) =>
                  let val ct as (_, callee) = elaborateExpr scope callee
                      val {domain, codomain} = coerceCallee ct 
@@ -146,7 +142,7 @@ end = struct
          | TC.ScopeExpr (scope as {expr, ...}) => elaborateExpr (TC.ExprScope scope) expr
          | TC.OutputExpr expr => (FTerm.typeOf TC.OutputType expr, expr)
 
-    and elaborateRowExpr scope pos ({fields, ext}: TC.expr CTerm.row): TC.typ * TC.typ FTerm.expr =
+    and elaborateRecord scope pos ({fields, ext}: TC.expr CTerm.row): TC.typ * TC.typ FTerm.expr =
         let fun elaborateField (field as (label, expr), (rowType, fieldExprs)) =
                 let val pos = TC.Expr.pos expr
                     val (fieldt, expr) = elaborateExpr scope expr
@@ -161,7 +157,8 @@ end = struct
                                                     end
                                       | NONE => (TC.OutputType (FType.EmptyRow pos), NONE)
             val (rowType, fieldExprs) = Vector.foldr elaborateField (extType, []) fields
-        in (rowType, FTerm.Extend (pos, rowType, Vector.fromList fieldExprs, extExpr))
+            val typ = TC.OutputType (FType.Record (pos, rowType))
+        in (typ, FTerm.Extend (pos, typ, Vector.fromList fieldExprs, extExpr))
         end
 
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)

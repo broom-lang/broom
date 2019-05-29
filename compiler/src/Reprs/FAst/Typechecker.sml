@@ -40,15 +40,17 @@ end = struct
             else rowLabelType ext label
          | EmptyRow _ => NONE
 
-    fun eq env (Fix t, Fix t') =
+    fun eq env (ft as Fix t, ft' as Fix t') =
         case (t, t')
-        of (Arrow (_, {domain, codomain}), Arrow (_, {domain = domain', codomain = codomain'})) =>
+        of (ForAll _, _) | (_, ForAll _) => raise Fail "unimplemented"
+         | (Arrow (_, {domain, codomain}), Arrow (_, {domain = domain', codomain = codomain'})) =>
             eq env (domain, domain') andalso eq env (codomain, codomain')
          | (Record (_, row), Record (_, row')) => eq env (row, row')
          | (RowExt (_, {field = (label, fieldt), ext}), RowExt (_, {field = (label', fieldt'), ext = ext'})) =>
             label = label' andalso eq env (fieldt, fieldt') andalso eq env (ext, ext')
          | (EmptyRow _, EmptyRow _) => true
          | (FFType.Type (_, t), FFType.Type (_, t')) => eq env (t, t')
+         | (UseT _, _) | (_, UseT _) => raise Fail "unimplemented"
          | (Prim (_, p), Prim (_, p')) => p = p' (* HACK? *)
 
     fun checkEq env ts = if eq env ts
