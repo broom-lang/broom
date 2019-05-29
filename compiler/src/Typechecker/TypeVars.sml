@@ -1,16 +1,18 @@
 signature TYPE_VARS = sig
     exception Reset of Name.t
+
+    datatype predicativity = Predicative | Impredicative
     
     type 'scope ov
-    val newOv: 'scope -> Name.t -> 'scope ov
+    val newOv: 'scope -> predicativity * Name.t -> 'scope ov
     val ovEq: ('scope * 'scope -> bool) -> 'scope ov * 'scope ov -> bool
     val ovName: 'scope ov -> Name.t
     val ovScope: 'scope ov -> 'scope
     val ovInScope: ('scope * 'scope -> order) -> ('scope * 'scope ov) -> bool
 
     type ('scope, 't) uv
-    val newUv: 'scope -> Name.t -> ('scope, 't)  uv
-    val freshUv: 'scope -> ('scope, 't) uv
+    val newUv: 'scope -> predicativity * Name.t -> ('scope, 't)  uv
+    val freshUv: 'scope -> predicativity -> ('scope, 't) uv
     val uvEq: ('scope, 't) uv * ('scope, 't) uv -> bool
     val uvName: ('scope, 't) uv -> Name.t
     val uvScope: ('scope, 't) uv -> 'scope
@@ -23,13 +25,16 @@ end
 structure TypeVars :> TYPE_VARS = struct
     exception Reset of Name.t
 
-    type 'scope var_descr = { name: Name.t, scope: 'scope }
+    datatype predicativity = Predicative | Impredicative
+
+    type 'scope var_descr = {name: Name.t, scope: 'scope, predicativity: predicativity ref}
 
     type 'scope ov = 'scope var_descr
 
-    fun newOv scope name = {scope, name}
+    fun newOv scope (predicativity, name) = {scope, name, predicativity = ref predicativity}
    
-    fun ovEq scopeEq ({name, scope}, {name = name', scope = scope'}) =
+    fun ovEq scopeEq ( {name, scope, ...}: 'var var_descr
+                     , {name = name', scope = scope', ...}: 'var var_descr ) =
         name = name' andalso scopeEq (scope, scope')
     
     val ovName: 'scope ov -> Name.t = #name
@@ -45,9 +50,10 @@ structure TypeVars :> TYPE_VARS = struct
                                   | Link of ('scope, 't) uv
     withtype ('scope, 't) uv = ('scope, 't) uv_link ref
 
-    fun newUv scope name = ref (Root {descr = {scope, name}, typ = ref NONE})
+    fun newUv scope (predicativity, name) =
+        ref (Root {descr = {scope, name, predicativity = ref predicativity}, typ = ref NONE})
 
-    fun freshUv scope = newUv scope (Name.fresh ())
+    fun freshUv scope predicativity = newUv scope (predicativity, Name.fresh ())
    
     fun uvFind uv =
         case !uv
@@ -84,16 +90,25 @@ structure TypeVars :> TYPE_VARS = struct
 
     fun uvSet (uv, t) = #typ (uvRoot uv) := SOME t
 
+    fun updatePredicativity outerPredRef innerPred =
+        case (!outerPredRef, innerPred)
+        of (Impredicative, Predicative) => outerPredRef := Predicative
+         | _ => ()
+
     fun uvMerge scopeCmp (uv, uv') =
         let val uv = uvFind uv
             val uv' = uvFind uv'
         in case (!uv, !uv')
-           of ( Root {descr = {scope, ...}, ...}
-              , Root {descr = {scope = scope', ...}, ...} ) =>
+           of ( Root {descr = {scope, predicativity, ...}, ...}
+              , Root {descr = {scope = scope', predicativity = predicativity', ...}, ...} ) =>
                (case scopeCmp (scope, scope')
-                of LESS => uv := Link uv'
-                 | GREATER => uv' := Link uv
-                 | EQUAL => uv := Link uv') (* OPTIMIZE: Union by rank here? *)
+                of LESS => ( uv := Link uv'
+                           ; updatePredicativity predicativity' (!predicativity) )
+                 | GREATER => ( uv' := Link uv
+                              ; updatePredicativity predicativity (!predicativity') )
+                 | EQUAL => (* OPTIMIZE: Union by rank here? *)
+                    ( uv := Link uv'
+                    ; updatePredicativity predicativity' (!predicativity) ))
             | _ => raise Fail "unreachable"
         end
 end

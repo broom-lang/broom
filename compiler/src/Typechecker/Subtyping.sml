@@ -5,6 +5,7 @@ structure Subtyping :> sig
     val subType: TypecheckingCst.scope -> TypecheckingCst.expr
                  -> TypecheckingCst.typ * TypecheckingCst.typ -> coercion
 end = struct
+    datatype predicativity = datatype TypeVars.predicativity
     structure TC = TypecheckingCst
     structure FType = FAst.Type
     structure FTerm = FAst.Term
@@ -42,8 +43,8 @@ end = struct
          | TC.OVar _ => TypeVars.uvSet (uv, typ)
 
     and doAssignArrow scope y uv pos {domain, codomain} =
-        let val domainUv = TypeVars.freshUv scope
-            val codomainUv = TypeVars.freshUv scope
+        let val domainUv = TypeVars.freshUv scope Predicative
+            val codomainUv = TypeVars.freshUv scope Predicative
             val t' = FType.Arrow (pos, { domain = TC.UVar (pos, domainUv)
                                        , codomain = TC.UVar (pos, codomainUv)})
         in TypeVars.uvSet (uv, TC.OutputType t')

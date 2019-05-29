@@ -2,6 +2,7 @@ structure Typechecker :> sig
     val elaborateExpr: TypecheckingCst.scope -> TypecheckingCst.expr
                      -> TypecheckingCst.typ * TypecheckingCst.typ FAst.Term.expr
 end = struct
+    datatype predicativity = datatype TypeVars.predicativity
     structure CTerm = FixedCst.Term
     structure CType = FixedCst.Type
     structure TC = TypecheckingCst
@@ -29,7 +30,7 @@ end = struct
                                                in exprRef := TC.OutputExpr expr
                                                 ; t
                                                end
-                             | NONE => TC.UVar (TC.Expr.pos expr, TypeVars.freshUv scope))
+                             | NONE => TC.UVar (TC.Expr.pos expr, TypeVars.freshUv scope Predicative))
 
             fun elaborateValType scope {shade, binder = binding as {typ = typRef, value = _}} =
                 let do shade := TC.Grey
@@ -46,7 +47,7 @@ end = struct
                 end
 
             fun elaborateValTypeLoop scope {shade, binder = {typ = typRef, value = _}} =
-                let val typ = TC.UVar (TC.Expr.pos expr, TypeVars.freshUv scope)
+                let val typ = TC.UVar (TC.Expr.pos expr, TypeVars.freshUv scope Predicative)
                 in typRef := SOME typ
                  ; shade := TC.Black
                  ; typ
@@ -100,7 +101,7 @@ end = struct
                  let val domain = case lookupValType exprRef param scope
                                   of SOME domain => domain
                                    | NONE => raise TypeError (UnboundVal (pos, param))
-                     val codomain = TC.UVar (pos, TypeVars.freshUv (valOf (TC.Scope.parent scope)))
+                     val codomain = TC.UVar (pos, TypeVars.freshUv (valOf (TC.Scope.parent scope)) Predicative)
                      val body = elaborateExprAs scope codomain body
                  in ( TC.OutputType (FType.Arrow (pos, {domain, codomain}))
                     , FTerm.Fn (pos, {var = param, typ = domain}, body) )
@@ -221,8 +222,8 @@ end = struct
                  | TC.UVar (pos, uv) =>
                     (case TypeVars.uvGet uv
                      of Either.Right typ => coerce typ
-                      | Either.Left uv => let val fieldType = TC.UVar (pos, TypeVars.freshUv scope)
-                                              val ext = TC.UVar (pos, TypeVars.freshUv scope)
+                      | Either.Left uv => let val fieldType = TC.UVar (pos, TypeVars.freshUv scope Predicative)
+                                              val ext = TC.UVar (pos, TypeVars.freshUv scope Predicative)
                                               val pos = FTerm.exprPos expr
                                               val row = FType.RowExt (pos, {field = (label, fieldType), ext})
                                               val typ = FType.Record (pos, TC.OutputType row)
