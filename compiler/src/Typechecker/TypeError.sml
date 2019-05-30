@@ -4,8 +4,7 @@ signature TYPE_ERROR = sig
                | UnDottable of TypecheckingCst.typ FAst.Term.expr * TypecheckingCst.typ
                | UnboundVal of Pos.t * Name.t
                | MissingField of TypecheckingCst.expr * TypecheckingCst.typ * Name.t
-               | Occurs of (TypecheckingCst.scope, TypecheckingCst.typ) TypeVars.uv
-                         * TypecheckingCst.typ
+               | Occurs of TypecheckingCst.uv * TypecheckingCst.typ
    
     exception TypeError of t
 
@@ -23,8 +22,7 @@ structure TypeError :> TYPE_ERROR = struct
                | UnDottable of TypecheckingCst.typ FAst.Term.expr * TypecheckingCst.typ
                | UnboundVal of Pos.t * Name.t
                | MissingField of TypecheckingCst.expr * TypecheckingCst.typ * Name.t
-               | Occurs of (TypecheckingCst.scope, TypecheckingCst.typ) TypeVars.uv
-                         * TypecheckingCst.typ
+               | Occurs of TypecheckingCst.uv * TypecheckingCst.typ
     
     exception TypeError of t
 

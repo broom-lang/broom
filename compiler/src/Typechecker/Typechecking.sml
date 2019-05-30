@@ -57,29 +57,34 @@ signature TYPECHECKING = sig
     type ('typ, 'expr) val_binding = { typ: 'typ
                                      , value: 'expr option }
 
+    type scope_id
+
     datatype typ = InputType of (typ, expr) Input.Type.typ
                  | OutputType of typ Output.Type.typ
-                 | ScopeType of type_scope
+                 | ScopeType of {scope: type_scope, typ: typ}
                  | OVar of Pos.t * ov
                  | UVar of Pos.t * uv
     
     and expr = InputExpr of (typ, typ option ref, expr, expr ref) Input.Term.expr
              | OutputExpr of typ Output.Term.expr
-             | ScopeExpr of expr_scope
+             | ScopeExpr of {scope: expr_scope, expr: expr}
 
     and scope = TypeScope of type_scope
               | ExprScope of expr_scope
 
-    withtype ov = scope TypeVars.ov
-    and uv = (scope, typ) TypeVars.uv
+    and type_scope = TFnScope of scope_id * type_bindings
+                   | InterfaceScope of scope_id * type_bindings
 
-    and type_scope = { parent: scope option ref
-                     , typ: typ
-                     , types: typ ref type_binding bindings }
+    and expr_scope = FnScope of scope_id * expr_bindings
+                   | BlockScope of scope_id * expr_bindings
 
-    and expr_scope = { parent: scope option ref
-                     , expr: expr
-                     , vals: (typ option ref, expr ref) val_binding bindings }
+    withtype ov = scope list TypeVars.ov
+    and uv = (scope list, typ) TypeVars.uv
+
+    and type_bindings = typ ref type_binding bindings
+    and expr_bindings = (typ option ref, expr ref) val_binding bindings
+
+    and env = scope list
 
     structure Type: sig
         val pos: typ -> Pos.t
@@ -96,11 +101,19 @@ signature TYPECHECKING = sig
     end
 
     structure Scope: sig
-        val parent: scope -> scope option
+        val forFn: expr_bindings -> expr_scope
+        val forBlock: expr_bindings -> expr_scope
+    end
+
+    structure Env: sig
+        type env = env
+        
+        val pushExprScope: env -> expr_scope -> env
+        val parent: env -> env option
     end
 
     val occurs: uv -> typ -> bool
-    val uvInScope: scope * uv -> bool
+    val uvInScope: env * uv -> bool
     val uvMerge: uv * uv -> unit
 end
 
@@ -134,30 +147,35 @@ end) :> TYPECHECKING where
     type ('typ, 'expr) val_binding = { typ: 'typ
                                      , value: 'expr option }
 
+    type scope_id = int
+
     datatype typ = InputType of (typ, expr) Input.Type.typ
                  | OutputType of typ Output.Type.typ
-                 | ScopeType of type_scope
+                 | ScopeType of {scope: type_scope, typ: typ}
                  | OVar of Pos.t * ov
                  | UVar of Pos.t * uv
     
     and expr = InputExpr of (typ, typ option ref, expr, expr ref) Input.Term.expr
              | OutputExpr of typ Output.Term.expr
-             | ScopeExpr of expr_scope
+             | ScopeExpr of {scope: expr_scope, expr: expr}
 
     and scope = TypeScope of type_scope
               | ExprScope of expr_scope
 
-    withtype ov = scope TypeVars.ov
-    and uv = (scope, typ) TypeVars.uv
+    and type_scope = TFnScope of scope_id * type_bindings
+                   | InterfaceScope of scope_id * type_bindings
 
-    and type_scope = { parent: scope option ref
-                     , typ: typ
-                     , types: typ ref type_binding bindings }
+    and expr_scope = FnScope of scope_id * expr_bindings
+                   | BlockScope of scope_id * expr_bindings
 
-    and expr_scope = { parent: scope option ref
-                     , expr: expr
-                     , vals: (typ option ref, expr ref) val_binding bindings }
-    
+    withtype ov = scope list TypeVars.ov
+    and uv = (scope list, typ) TypeVars.uv
+
+    and type_bindings = typ ref type_binding bindings
+    and expr_bindings = (typ option ref, expr ref) val_binding bindings
+
+    and env = scope list
+
     val rec typeToDoc =
         fn InputType typ => Input.Type.toDoc typeToDoc exprToDoc typ
          | OutputType typ => Output.Type.toDoc typeToDoc typ
@@ -207,7 +225,7 @@ end) :> TYPECHECKING where
         fun substitute (kv: Name.t * typ) =
             fn OutputType t => Output.Type.substitute OutputType substitute kv t
              | InputType _ => raise Fail "encountered InputType"
-             | ScopeType {parent, types, typ} => raise Fail "encountered ScopeType"
+             | ScopeType _ => raise Fail "encountered ScopeType"
 
         val rec rowExtTail =
             fn OutputType t => Output.Type.rowExtTail {tail = rowExtTail, wrap = OutputType} t
@@ -217,9 +235,20 @@ end) :> TYPECHECKING where
     end
 
     structure Scope = struct
-        val parent =
-            fn TypeScope {parent, ...} => !parent
-             | ExprScope {parent, ...} => !parent
+        local val counter = ref 0
+        in fun allocId () = let val id = !counter
+                            in counter := id + 1
+                             ; id
+                            end
+        end
+
+        fun forFn vals = FnScope (allocId (), vals)
+        fun forBlock vals = BlockScope (allocId (), vals)
+
+        fun id ( TypeScope (TFnScope (id, _) | InterfaceScope (id, _))
+               | ExprScope (FnScope (id, _) | BlockScope (id, _)) ) = id
+
+        val eq = MLton.eq o Pair.bimap id id
 
         fun valBindingToDoc name {binder = {typ, value}, shade = _} =
             let val typeDoc = case !typ
@@ -248,40 +277,44 @@ end) :> TYPECHECKING where
         val typesToDoc = bindingsToDoc typeBindingToDoc
 
         val rec toDoc =
-            fn ExprScope {parent, vals, expr = _} =>
-                let val parentDoc = case !parent
-                                    of SOME parent => toDoc parent
-                                     | NONE => PPrint.empty
-                in parentDoc <> valsToDoc vals
-                end
-             | TypeScope {parent, types, typ = _} =>
-                let val parentDoc = case !parent
-                                    of SOME parent => toDoc parent
-                in parentDoc <> typesToDoc types
-                end
+            fn ExprScope (FnScope (_, vals) | BlockScope (_, vals)) => valsToDoc vals
+             | TypeScope (TFnScope (_, types) | InterfaceScope (_, types)) => typesToDoc types
+    end
 
-        val eq = fn (TypeScope {types, ...}, TypeScope {types = types', ...}) => MLton.eq (types, types')
-                  | (ExprScope {vals, ...}, ExprScope {vals = vals', ...}) => MLton.eq (vals, vals')
-                  | _ => false
+    structure Env = struct
+        type env = env
 
-        fun compare (scope, scope') =
-            let fun indexOf ancestor scope =
-                    let fun loop i scope =
-                           if eq (scope, ancestor)
-                           then SOME i
-                           else Option.mapPartial (loop (i + 1)) (parent scope)
-                    in loop 0 scope
+        fun pushExprScope env scope = ExprScope scope :: env
+
+        val parent = fn [] => NONE
+                      | _ :: env' => SOME env'
+
+        val toDoc = List.foldl (fn (scope, parentDoc) => Scope.toDoc scope <> parentDoc) PPrint.empty
+        
+        fun compare (env, env') =
+            let fun indexOf env scope =
+                    let fun loop i = fn scope' :: env' =>
+                                         if Scope.eq (scope', scope)
+                                         then SOME i
+                                         else loop (i + 1) env'
+                                      | [] => NONE
+                    in loop 0 env
                     end
-            in case indexOf scope' scope
-               of SOME i => if i > 0 then LESS else EQUAL
-                | NONE => (case indexOf scope scope'
-                           of SOME i => if i > 0 then GREATER else EQUAL
-                            | NONE => raise Fail "incomparable scopes")
+            in case env
+               of scope :: _ =>
+                   (case indexOf env' scope
+                    of SOME i => if i > 0 then GREATER else EQUAL
+                     | NONE => (case env'
+                                of scope' :: _ => (case indexOf env scope'
+                                                   of SOME i => if i > 0 then LESS else EQUAL
+                                                    | NONE => raise Fail "incomparable scopes")
+                                 | [] => LESS))
+                | [] => if List.null env' then EQUAL else GREATER
             end
     end
 
-    val uvMerge: uv * uv -> unit = TypeVars.uvMerge Scope.compare
-    val uvInScope: scope * uv -> bool = TypeVars.uvInScope Scope.compare
+    val uvMerge: uv * uv -> unit = TypeVars.uvMerge Env.compare
+    val uvInScope: env * uv -> bool = TypeVars.uvInScope Env.compare
 end
 
 structure TypecheckingCst = Typechecking(struct

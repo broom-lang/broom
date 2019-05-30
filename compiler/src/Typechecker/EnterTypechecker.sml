@@ -22,12 +22,12 @@ end = struct
                 val binding = { shade = ref TC.White
                               , binder = {value = NONE, typ = domain} }
                 do NameHashTable.insert vals (arg, binding)
-            in SOME {parent = ref NONE, expr, vals}
+            in SOME {scope = TC.Scope.forFn vals, expr}
             end
          | CTerm.Let (_, stmts, _) =>
             let val vals = NameHashTable.mkTable (0, Subscript)
                 do Vector.app (stmtBind vals) stmts
-            in SOME {parent = ref NONE, expr, vals}
+            in SOME {scope = TC.Scope.forBlock vals, expr}
             end
          | _ => NONE
 
@@ -77,58 +77,10 @@ end = struct
         CTerm.Val (pos, name, ref (Option.map injectType otyp), ref (injectExpr expr))
       | injectStmt (CTerm.Expr expr) = CTerm.Expr (injectExpr expr)
 
-(***)
-
-    fun uplinkTypeScopes parentScope =
-        fn TC.ScopeType (scope as {parent, typ, ...}) =>
-            ( parent := parentScope
-            ; uplinkTypeScopes (SOME (TC.TypeScope scope)) typ )
-         | TC.InputType typ =>
-            (case typ
-             of CType.Arrow (_, {domain, codomain}) =>
-                 ( uplinkTypeScopes parentScope domain
-                 ; uplinkTypeScopes parentScope codomain )
-              | _ => ())
-         | TC.OutputType _ => raise Fail "uplinkTypeScopes encountered an OutputType"
-         | TC.OVar _ | TC.UVar _ => ()
-
-    fun uplinkExprScopes parentScope =
-        fn TC.ScopeExpr (scope as {parent, expr, ...}) =>
-            ( parent := parentScope
-            ; uplinkExprScopes (SOME (TC.ExprScope scope)) expr )
-         | TC.InputExpr expr =>
-            (case expr
-             of CTerm.Fn (_, _, domain, body) =>
-                 ( Option.app (uplinkTypeScopes parentScope) (!domain)
-                 ; uplinkExprScopes parentScope body )
-              | CTerm.Let (_, stmts, body) =>
-                 ( Vector.app (uplinkStmtScopes parentScope) stmts
-                 ; uplinkExprScopes parentScope body )
-              | CTerm.Record (_, {fields, ext}) =>
-                 ( Vector.app (uplinkExprScopes parentScope o #2) fields
-                 ; Option.app (uplinkExprScopes parentScope) ext )
-              | CTerm.App (_, {callee, arg}) =>
-                 ( uplinkExprScopes parentScope callee
-                 ; uplinkExprScopes parentScope arg )
-              | CTerm.Field (_, expr, _) => uplinkExprScopes parentScope expr
-              | CTerm.Ann (_, expr, t) =>
-                 ( uplinkExprScopes parentScope expr
-                 ; uplinkTypeScopes parentScope t )
-              | CTerm.Type (_, typ) => uplinkTypeScopes parentScope typ
-              | CTerm.Use _ | CTerm.Const _ => ())
-         | TC.OutputExpr _ => raise Fail "uplinkExprScopes encountered an OutputExpr"
-
-    and uplinkStmtScopes parentScope =
-        fn CTerm.Val (_, _, typ, expr) =>
-            ( Option.app (uplinkTypeScopes parentScope) (!typ)
-            ; uplinkExprScopes parentScope (!expr) )
-         | CTerm.Expr expr => uplinkExprScopes parentScope expr
-
     fun toTypechecking expr =
         let val expr = injectExpr expr
-            do uplinkExprScopes NONE expr
             val scope = case expr 
-                        of TC.ScopeExpr scope => scope
+                        of TC.ScopeExpr {scope, expr = _} => scope
                          | _ => raise Fail "unreachable"
         in (expr, scope)
         end
