@@ -42,6 +42,7 @@ end = struct
                                              , ext = injectType ext })
                        | CType.EmptyRow pos => CType.EmptyRow pos
                        | CType.Path expr => CType.Path (injectExpr expr)
+                       | CType.Type pos => CType.Type pos
                        | CType.Prim (pos, p) => CType.Prim (pos, p)
             val typ = TC.InputType typ
         in case typeScope typ typ

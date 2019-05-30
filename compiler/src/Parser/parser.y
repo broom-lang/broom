@@ -88,6 +88,7 @@ triv : ID  (Term.Fix (Term.Use (IDleft, Name.fromString ID)))
 
 typeAnn : LPAREN typeAnn RPAREN (typeAnn)
         | typeAnn ARROW typeAnn (Type.FixT (Type.Arrow (typeAnnleft, {domain = typeAnn1, codomain = typeAnn})))
+        | TYPE (Type.FixT (Type.Type TYPEleft))
         | LBRACE rowType RBRACE (Type.FixT (Type.Record (LBRACEleft, rowType)))
         | LBRACE RBRACE (Type.FixT (Type.Record (LBRACEleft, Type.FixT (Type.EmptyRow LBRACEleft))))
         | LPAREN EQ expr RPAREN (Type.FixT (Type.Singleton (LPARENleft, expr)))

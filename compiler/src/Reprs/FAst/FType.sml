@@ -41,7 +41,7 @@ structure FType = struct
             Name.toDoc label <> text ":" <+> toDoc fieldType <+> text "|" <+> toDoc ext
          | EmptyRow _ => text "(||)"
          | Type (_, t) => brackets (text "=" <+> toDoc t)
-         | UseT (_, def) => defToDoc def 
+         | UseT (_, {var, kind = _}) => Name.toDoc var
          | Prim (_, p) => Prim.toDoc p
 
     fun toString toDoc = PPrint.pretty 80 o toDoc
@@ -66,6 +66,12 @@ structure FType = struct
          | EmptyRow _ => acc
          | Type (_, t) => f (t, acc)
          | UseT _ | Prim _ => acc
+
+    fun splitExistentials splitExistentials =
+        fn Exists (_, def, body) => let val (defs, body) = splitExistentials body
+                                    in (def :: defs, body)
+                                    end
+         | t => ([], t)
 
     fun substitute (fix: 'typ typ -> 'typ) (substituteFixed: Name.t * 'typ -> 'typ -> 'typ)
                    (kv as (name: Name.t, t': 'typ)) (t: 'typ typ): 'typ =

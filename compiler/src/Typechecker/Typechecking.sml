@@ -20,6 +20,7 @@ end
 signature TYPECHECKER_OUTPUT = sig
     structure Type: sig
         type kind
+        type def = {var: Name.t, kind: kind}
         type 'typ typ
 
         val kindToDoc: kind -> PPrint.t
@@ -27,6 +28,7 @@ signature TYPECHECKER_OUTPUT = sig
         val pos: 'typ typ -> Pos.t
         val toDoc: ('typ -> PPrint.t) -> 'typ typ -> PPrint.t
         val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> 'typ typ -> 'a
+        val splitExistentials: ('typ -> def list * 'typ typ) -> 'typ typ -> def list * 'typ typ
         val substitute: ('typ typ -> 'typ) -> (Name.t * 'typ -> 'typ -> 'typ)
                         -> Name.t * 'typ -> 'typ typ -> 'typ
         val rowExtTail: {tail: 'typ -> 'typ, wrap: 'typ typ -> 'typ} -> 'typ typ -> 'typ
@@ -90,6 +92,7 @@ signature TYPECHECKING = sig
         val pos: typ -> Pos.t
         val toDoc: typ -> PPrint.t
         val toString: typ -> string
+        val splitExistentials: typ -> Output.Type.def list * typ Output.Type.typ
         val substitute: Name.t * typ -> typ -> typ
         val rowExtTail: typ -> typ
     end
@@ -103,6 +106,7 @@ signature TYPECHECKING = sig
     structure Scope: sig
         val forFn: expr_bindings -> expr_scope
         val forBlock: expr_bindings -> expr_scope
+        val forTFn: type_bindings -> type_scope
     end
 
     structure Env: sig
@@ -222,6 +226,11 @@ end) :> TYPECHECKING where
         val toDoc = typeToDoc
         val toString = PPrint.pretty 80 o toDoc
 
+        val rec splitExistentials =
+            fn OutputType t => Output.Type.splitExistentials splitExistentials t
+             | InputType _ => raise Fail "encountered InputType"
+             | ScopeType {typ, ...} => splitExistentials typ
+
         fun substitute (kv: Name.t * typ) =
             fn OutputType t => Output.Type.substitute OutputType substitute kv t
              | InputType _ => raise Fail "encountered InputType"
@@ -244,11 +253,12 @@ end) :> TYPECHECKING where
 
         fun forFn vals = FnScope (allocId (), vals)
         fun forBlock vals = BlockScope (allocId (), vals)
+        fun forTFn types = TFnScope (allocId (), types)
 
         fun id ( TypeScope (TFnScope (id, _) | InterfaceScope (id, _))
                | ExprScope (FnScope (id, _) | BlockScope (id, _)) ) = id
 
-        val eq = MLton.eq o Pair.bimap id id
+        val eq = op= o Pair.bimap id id
 
         fun valBindingToDoc name {binder = {typ, value}, shade = _} =
             let val typeDoc = case !typ

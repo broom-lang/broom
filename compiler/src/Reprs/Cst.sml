@@ -8,6 +8,7 @@ structure Cst = struct
                                    | EmptyRow of Pos.t
                                    | WildRow of Pos.t
                                    | Singleton of Pos.t * 'expr
+                                   | Type of Pos.t
                                    | Path of 'expr
                                    | Prim of Pos.t * Prim.t
 
@@ -31,6 +32,7 @@ structure Cst = struct
                                    | EmptyRow of Pos.t
                                    | WildRow of Pos.t
                                    | Singleton of Pos.t * 'expr
+                                   | Type of Pos.t
                                    | Path of 'expr
                                    | Prim of Pos.t * Prim.t
 
@@ -51,6 +53,7 @@ structure Cst = struct
                                     | EmptyRow _ => text "(||)"
                                     | WildRow _ => text ".."
                                     | Singleton (_, expr) => parens (text "= " <> exprToDoc expr)
+                                    | Type _ => text "type"
                                     | Path expr => exprToDoc expr
                                     | Prim (_, p) => Prim.toDoc p
             in toDoc t
@@ -58,7 +61,12 @@ structure Cst = struct
 
         fun pos exprPos =
             fn Arrow (pos, _) => pos
+             | Record (pos, _) => pos
+             | RowExt (pos, _) => pos
+             | EmptyRow pos => pos
+             | WildRow pos => pos
              | Singleton (pos, _) => pos
+             | Type pos => pos
              | Path expr => exprPos expr
              | Prim (pos, _) => pos
 

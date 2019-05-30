@@ -84,12 +84,19 @@ end = struct
                  end
               | CType.EmptyRow pos => TC.OutputType (FType.EmptyRow pos)
               | CType.Path typExpr =>
-                 (case #1 (elaborateExpr env typExpr)
-                  of TC.OutputType typ =>
-                      (case typ
-                       of FType.Type (_, typ) => typ
-                        | _ => raise Fail ("Type path does not denote type at "
-                                           ^ Pos.toString (TC.Expr.pos typExpr))))
+                 let val (typ, _) = elaborateExpr env typExpr
+                 in case typ
+                    of TC.OutputType ftyp =>
+                        (case ftyp
+                         of FType.Type (_, typ) => typ
+                          | _ => raise Fail ("Type path " ^ TC.Type.toString typ
+                                             ^ "does not denote type at " ^ Pos.toString (TC.Expr.pos typExpr)))
+                 end
+              | CType.Type pos =>
+                 let val def = {var = Name.fresh (), kind = FType.TypeK pos}
+                     val body = TC.OutputType (FType.Type (pos, TC.OutputType (FType.UseT (pos, def))))
+                 in TC.OutputType (FType.Exists (pos, def, body))
+                 end
               | CType.Prim (pos, p) => TC.OutputType (FType.Prim (pos, p)))
          | TC.OutputType _ => typ (* assumes invariant: entire subtree has been elaborated already *)
 
@@ -98,14 +105,35 @@ end = struct
         case exprRef
         of TC.InputExpr expr =>
             (case expr
-             of CTerm.Fn (pos, param, _, body) =>
-                 let val domain = case lookupValType exprRef param env
-                                  of SOME domain => domain
-                                   | NONE => raise TypeError (UnboundVal (pos, param))
+             of CTerm.Fn (pos, param, paramType, body) =>
+                 let val (typeDefs, domain) =
+                         case !paramType
+                         of SOME domain => 
+                             let val domain = elaborateType env domain
+                             in Pair.second TC.OutputType (TC.Type.splitExistentials domain)
+                             end
+                          | NONE => ([], TC.UVar (pos, TypeVars.freshUv (valOf (TC.Env.parent env)) Predicative))
+                     do paramType := SOME domain
+                     val env = case typeDefs
+                               of _ :: _ =>
+                                   let val fnScope :: env = env
+                                       val bindings = NameHashTable.mkTable (1, Subscript)
+                                       do List.app (fn {var, kind} =>
+                                                     let val binding = { binder = {kind, typ = NONE}
+                                                                       , shade = ref TC.Black }
+                                                     in NameHashTable.insert bindings (var, binding)
+                                                     end)
+                                                   typeDefs
+                                       val typesScope = TC.TypeScope (TC.Scope.forTFn bindings)
+                                   in fnScope :: typesScope :: env
+                                   end
+                                | [] => env
                      val codomain = TC.UVar (pos, TypeVars.freshUv (valOf (TC.Env.parent env)) Predicative)
                      val body = elaborateExprAs env codomain body
                  in ( TC.OutputType (FType.Arrow (pos, {domain, codomain}))
-                    , FTerm.Fn (pos, {var = param, typ = domain}, body) )
+                    , case typeDefs
+                      of _ :: _ => raise Fail "unimplemented"
+                       | [] => FTerm.Fn (pos, {var = param, typ = domain}, body) )
                  end
               | CTerm.Let (pos, stmts, body) =>
                  let val stmts = Vector.map (elaborateStmt env) stmts
