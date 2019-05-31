@@ -49,7 +49,7 @@ structure TypeError :> TYPE_ERROR = struct
                                            <+> Name.toDoc label)
                                   | Occurs (uv, t) =>
                                      ( TC.Type.pos t
-                                     , text "Occurs check: unifying" <+> Name.toDoc (TypeVars.uvName uv)
+                                     , text "Occurs check: unifying" <+> text "^" <> Name.toDoc (TypeVars.uvName uv)
                                            <+> text "with" <+> TC.Type.toDoc t <+> text "would create infinite type." )
         in text "TypeError in" <+> Pos.toDoc pos <> text ":" <+> details
         end

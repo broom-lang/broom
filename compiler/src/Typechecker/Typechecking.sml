@@ -194,7 +194,7 @@ end) :> TYPECHECKING where
          | OVar (_, ov) => Name.toDoc (TypeVars.ovName ov)
          | UVar (_, uv) => (case TypeVars.uvGet uv
                             of Either.Right t => typeToDoc t
-                             | Either.Left uv => Name.toDoc (TypeVars.uvName uv))
+                             | Either.Left uv => text "^" <> Name.toDoc (TypeVars.uvName uv))
 
     and annToDoc = fn ann => Option.mapOr (fn t => text ":" <+> typeToDoc t) PPrint.empty (!ann)
 
@@ -241,11 +241,11 @@ end) :> TYPECHECKING where
             in Pair.second OutputType (split t)
             end
 
-        fun substitute (kv: Name.t * typ) =
+        fun substitute (kv as (name, t'): Name.t * typ) =
             fn OutputType t => Output.Type.substitute OutputType substitute kv t
              | InputType _ => raise Fail "encountered InputType"
              | ScopeType _ => raise Fail "encountered ScopeType"
-             | t as OVar _ => t
+             | t as OVar (_, ov) => if TypeVars.ovName ov = name then t' else t (* HACK? *)
              | t as UVar (_, uv) => (case TypeVars.uvGet uv
                                      of Either.Left _ => t
                                       | Either.Right t => substitute kv t)

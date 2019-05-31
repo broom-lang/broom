@@ -240,8 +240,7 @@ end = struct
                       | Either.Right typ => coerce callee typ)
                  | TC.ScopeType (scope as {typ, ...}) => raise Fail "unimplemented"
                  | TC.InputType _ => raise Fail "Encountered InputType"
-        in print ("focusing " ^ FTerm.exprToString (FTerm.exprToDoc TC.Type.toDoc) callee ^ " : " ^ TC.Type.toString typ)
-         ; coerce callee typ
+        in coerce callee typ
         end
    
     (* Coerce `expr` (in place) into a record with at least `label` and return the `label`:ed type. *)
