@@ -18,11 +18,9 @@ end = struct
 
     fun exprScope expr =
         fn CTerm.Fn (_, arg, domain, _) =>
-            let val vals = NameHashTable.mkTable (1, Subscript)
-                val binding = { shade = ref TC.White
+            let val binding = { shade = ref TC.White
                               , binder = {value = NONE, typ = domain} }
-                do NameHashTable.insert vals (arg, binding)
-            in SOME {scope = TC.Scope.forFn vals, expr}
+            in SOME {scope = TC.Scope.forFn (arg, binding), expr}
             end
          | CTerm.Let (_, stmts, _) =>
             let val vals = NameHashTable.mkTable (0, Subscript)

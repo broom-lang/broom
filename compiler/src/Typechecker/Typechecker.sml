@@ -53,8 +53,8 @@ end = struct
                  ; typ
                 end
         in case env
-           of TC.ExprScope (TC.FnScope (_, vals) | TC.BlockScope (_, vals)) :: parent =>
-               (case NameHashTable.find vals name
+           of TC.ExprScope scope :: parent =>
+               (case TC.Scope.exprFind scope name
                 of SOME (binding as {shade, binder}) =>
                     (case !shade
                      of TC.Black => !(#typ binder)
@@ -108,32 +108,31 @@ end = struct
              of CTerm.Fn (pos, param, paramType, body) =>
                  let val (typeDefs, domain) =
                          case !paramType
-                         of SOME domain => 
-                             let val domain = elaborateType env domain
-                             in Pair.second TC.OutputType (TC.Type.splitExistentials domain)
-                             end
-                          | NONE => ([], TC.UVar (pos, TypeVars.freshUv (valOf (TC.Env.parent env)) Predicative))
+                         of SOME domain =>
+                             Pair.second SOME (TC.Type.splitExistentials (elaborateType env domain))
+                          | NONE => ([], NONE)
+                     val env = let val fnScope :: env = env
+                                   fun pushDef ({var, kind}, env) =
+                                       let val bindingRef = ref NONE
+                                           val scope = TC.TypeScope (TC.Scope.forTFn (var, bindingRef))
+                                           val env = scope :: env
+                                           val typ = TC.OVar (pos, TypeVars.newOv env (Predicative, var))
+                                       in bindingRef := SOME { binder = {kind, typ = ref typ}
+                                                             , shade = ref TC.Black }
+                                        ; env
+                                       end
+                               in fnScope :: List.foldr pushDef env typeDefs
+                               end
+                     val domain = case domain
+                                  of SOME domain => domain
+                                   | NONE => TC.UVar (pos, TypeVars.freshUv env Predicative)
                      do paramType := SOME domain
-                     val env = case typeDefs
-                               of _ :: _ =>
-                                   let val fnScope :: env = env
-                                       val bindings = NameHashTable.mkTable (1, Subscript)
-                                       do List.app (fn {var, kind} =>
-                                                     let val binding = { binder = {kind, typ = NONE}
-                                                                       , shade = ref TC.Black }
-                                                     in NameHashTable.insert bindings (var, binding)
-                                                     end)
-                                                   typeDefs
-                                       val typesScope = TC.TypeScope (TC.Scope.forTFn bindings)
-                                   in fnScope :: typesScope :: env
-                                   end
-                                | [] => env
-                     val codomain = TC.UVar (pos, TypeVars.freshUv (valOf (TC.Env.parent env)) Predicative)
+                     val codomain = TC.UVar (pos, TypeVars.freshUv env Predicative)
                      val body = elaborateExprAs env codomain body
-                 in ( TC.OutputType (FType.Arrow (pos, {domain, codomain}))
-                    , case typeDefs
-                      of _ :: _ => raise Fail "unimplemented"
-                       | [] => FTerm.Fn (pos, {var = param, typ = domain}, body) )
+                     val t = TC.OutputType (FType.Arrow (pos, {domain, codomain}))
+                     val f = FTerm.Fn (pos, {var = param, typ = domain}, body)
+                 in ( List.foldr (fn (def, t) => TC.OutputType (FType.ForAll (pos, def, t))) t typeDefs
+                    , List.foldr (fn (def, f) => FTerm.TFn (pos, def, f)) f typeDefs)
                  end
               | CTerm.Let (pos, stmts, body) =>
                  let val stmts = Vector.map (elaborateStmt env) stmts
@@ -143,7 +142,7 @@ end = struct
               | CTerm.Record (pos, fields) => elaborateRecord env pos fields
               | CTerm.App (pos, {callee, arg}) =>
                  let val ct as (_, callee) = elaborateExpr env callee
-                     val {domain, codomain} = coerceCallee ct 
+                     val (callee, {domain, codomain}) = coerceCallee env ct 
                      val arg = elaborateExprAs env domain arg
                  in (codomain, FTerm.App (pos, codomain, {callee, arg}))
                  end
@@ -221,22 +220,28 @@ end = struct
             end
          | CTerm.Expr expr => FTerm.Expr (elaborateExprAs env (TC.OutputType (FType.unit (TC.Expr.pos expr))) expr)
 
-    (* Coerce `callee` into a function (in place) and return its `domain` and `codomain`. *)
-    and coerceCallee (typ: TC.typ, callee: TC.typ FTerm.expr): {domain: TC.typ, codomain: TC.typ} =
-        let val rec coerce =
+    (* Coerce `callee` into a function and return t coerced and its `domain` and `codomain`. *)
+    and coerceCallee env (typ: TC.typ, callee: TC.typ FTerm.expr): TC.typ FTerm.expr * {domain: TC.typ, codomain: TC.typ} =
+        let fun coerce callee =
                 fn TC.OutputType otyp =>
                     (case otyp
-                     of FType.ForAll _ => raise Fail "unimplemented"
-                      | FType.Arrow (_, domains) => domains
+                     of FType.ForAll (_, {var, kind}, t) =>
+                         let val pos = FTerm.exprPos callee
+                             val uv = TC.UVar (pos, TypeVars.newUv env (Predicative, var))
+                             val calleeType = TC.Type.substitute (var, uv) t
+                         in coerce (FTerm.TApp (pos, calleeType, {callee, arg = uv})) calleeType
+                         end
+                      | FType.Arrow (_, domains) => (callee, domains)
                       | _ => raise TypeError (UnCallable (callee, typ)))
                  | TC.OVar _ => raise TypeError (UnCallable (callee, typ))
                  | TC.UVar (_, uv) =>
                     (case TypeVars.uvGet uv
                      of Either.Left uv => raise Fail "unimplemented"
-                      | Either.Right typ => coerce typ)
+                      | Either.Right typ => coerce callee typ)
                  | TC.ScopeType (scope as {typ, ...}) => raise Fail "unimplemented"
                  | TC.InputType _ => raise Fail "Encountered InputType"
-        in coerce typ
+        in print ("focusing " ^ FTerm.exprToString (FTerm.exprToDoc TC.Type.toDoc) callee ^ " : " ^ TC.Type.toString typ)
+         ; coerce callee typ
         end
    
     (* Coerce `expr` (in place) into a record with at least `label` and return the `label`:ed type. *)

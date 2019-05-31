@@ -11,6 +11,11 @@ end = struct
     structure FTerm = FAst.Term
     open TypeError
 
+    fun findType env name =
+        case TC.Env.typeFind env name
+        of SOME binding => !(#typ (#binder binding))
+         | NONE => raise Fail ("Unbound type: " ^ Name.toString name)
+
     type coercion = (TC.typ FTerm.expr -> TC.typ FTerm.expr) option
     type field_coercion = Name.t * (TC.typ FTerm.expr -> TC.typ FTerm.expr)
 
@@ -38,7 +43,8 @@ end = struct
          | TC.OutputType t =>
             (case t
              of FType.Arrow (pos, domains) => doAssignArrow env y uv pos domains
-              | FType.Prim _ => TypeVars.uvSet (uv, typ))
+              | FType.Prim _ => TypeVars.uvSet (uv, typ)
+              | FType.UseT (_, {var, ...}) => doAssign env y (uv, findType env var))
          | TC.UVar (_, uv') => doAssignUv env y (uv, uv')
          | TC.OVar _ => TypeVars.uvSet (uv, typ)
 
@@ -79,12 +85,22 @@ end = struct
                  ( subType env expr (t, t')
                  ; subType env expr (t', t)
                  ; SOME (fn _ => FTerm.Type (pos, t)))
-              | (FType.UseT _, _) => raise Fail "unimplemented"
-              | (_, FType.UseT _) => raise Fail "unimplemented"
+              | (FType.UseT (_, {var, ...}), _) => subType env expr (findType env var, superTyp)
+              | (_, FType.UseT (_, {var, ...})) => subType env expr (typ, findType env var)
               | _ => raise TypeError (NonSubType (expr, typ, superTyp)))
+         | (TC.OVar (_, ov), TC.OVar (_, ov')) =>
+            if TC.ovInScope (env, ov)
+            then if TC.ovInScope (env, ov')
+                 then if TC.ovEq (ov, ov')
+                      then NONE
+                      else raise TypeError (NonSubType (expr, typ, superTyp))
+                 else raise Fail ("Opaque type out of scope: " ^ TC.Type.toString superTyp)
+            else raise Fail ("Opaque type out of scope: " ^ TC.Type.toString typ)
          | (TC.UVar (_, uv), TC.UVar (_, uv')) => subUvs env expr (uv, uv')
          | (TC.UVar (_, uv), _) => subUv env expr uv superTyp
          | (_, TC.UVar (_, uv)) => superUv env expr uv typ
+         | (TC.ScopeType _, _) | (_, TC.ScopeType _) => raise Fail "encountered ScopeType"
+         | _ => raise TypeError (NonSubType (expr, typ, superTyp))
 
     and subArrows env expr ({domain, codomain}, {domain = domain', codomain = codomain'}) =
         let val coerceDomain = subType env expr (domain', domain)

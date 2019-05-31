@@ -51,13 +51,11 @@ signature TYPECHECKING = sig
     type 'b binding = { shade: shade ref
                       , binder: 'b }
 
-    type 'typ type_binding = { kind: Output.Type.kind
-		             , typ: 'typ option }
+    type 'typ type_binder = {kind: Output.Type.kind, typ: 'typ}
+
+    type ('typ, 'expr) val_binder = {typ: 'typ, value: 'expr option}
 
     type 'binder bindings = 'binder binding NameHashTable.hash_table (* HACK: should be opaque *)
-
-    type ('typ, 'expr) val_binding = { typ: 'typ
-                                     , value: 'expr option }
 
     type scope_id
 
@@ -74,17 +72,19 @@ signature TYPECHECKING = sig
     and scope = TypeScope of type_scope
               | ExprScope of expr_scope
 
-    and type_scope = TFnScope of scope_id * type_bindings
+    and type_scope = TFnScope of scope_id * Name.t * type_binding option ref
                    | InterfaceScope of scope_id * type_bindings
 
-    and expr_scope = FnScope of scope_id * expr_bindings
+    and expr_scope = FnScope of scope_id * Name.t * expr_binding
                    | BlockScope of scope_id * expr_bindings
 
     withtype ov = scope list TypeVars.ov
     and uv = (scope list, typ) TypeVars.uv
 
-    and type_bindings = typ ref type_binding bindings
-    and expr_bindings = (typ option ref, expr ref) val_binding bindings
+    and type_binding = typ ref type_binder binding
+    and type_bindings = typ ref type_binder bindings
+    and expr_binding = (typ option ref, expr ref) val_binder binding
+    and expr_bindings = (typ option ref, expr ref) val_binder bindings
 
     and env = scope list
 
@@ -92,7 +92,7 @@ signature TYPECHECKING = sig
         val pos: typ -> Pos.t
         val toDoc: typ -> PPrint.t
         val toString: typ -> string
-        val splitExistentials: typ -> Output.Type.def list * typ Output.Type.typ
+        val splitExistentials: typ -> Output.Type.def list * typ
         val substitute: Name.t * typ -> typ -> typ
         val rowExtTail: typ -> typ
     end
@@ -104,9 +104,12 @@ signature TYPECHECKING = sig
     end
 
     structure Scope: sig
-        val forFn: expr_bindings -> expr_scope
+        val forFn: Name.t * expr_binding -> expr_scope
         val forBlock: expr_bindings -> expr_scope
-        val forTFn: type_bindings -> type_scope
+        val forTFn: Name.t * type_binding option ref -> type_scope
+        
+        val exprFind: expr_scope -> Name.t -> expr_binding option
+        val typeFind: type_scope -> Name.t -> type_binding option
     end
 
     structure Env: sig
@@ -114,9 +117,13 @@ signature TYPECHECKING = sig
         
         val pushExprScope: env -> expr_scope -> env
         val parent: env -> env option
+        val exprFind: env -> Name.t -> expr_binding option
+        val typeFind: env -> Name.t -> type_binding option
     end
 
     val occurs: uv -> typ -> bool
+    val ovEq: ov * ov -> bool
+    val ovInScope: env * ov -> bool
     val uvInScope: env * uv -> bool
     val uvMerge: uv * uv -> unit
 end
@@ -145,11 +152,9 @@ end) :> TYPECHECKING where
 
     type 'b bindings = 'b binding NameHashTable.hash_table
 
-    type 'typ type_binding = { kind: Output.Type.kind
-		             , typ: 'typ option }
+    type 'typ type_binder = {kind: Output.Type.kind, typ: 'typ}
 
-    type ('typ, 'expr) val_binding = { typ: 'typ
-                                     , value: 'expr option }
+    type ('typ, 'expr) val_binder = {typ: 'typ, value: 'expr option}
 
     type scope_id = int
 
@@ -166,17 +171,19 @@ end) :> TYPECHECKING where
     and scope = TypeScope of type_scope
               | ExprScope of expr_scope
 
-    and type_scope = TFnScope of scope_id * type_bindings
+    and type_scope = TFnScope of scope_id * Name.t * type_binding option ref
                    | InterfaceScope of scope_id * type_bindings
 
-    and expr_scope = FnScope of scope_id * expr_bindings
+    and expr_scope = FnScope of scope_id * Name.t * expr_binding
                    | BlockScope of scope_id * expr_bindings
 
     withtype ov = scope list TypeVars.ov
     and uv = (scope list, typ) TypeVars.uv
 
-    and type_bindings = typ ref type_binding bindings
-    and expr_bindings = (typ option ref, expr ref) val_binding bindings
+    and type_binding = typ ref type_binder binding
+    and type_bindings = typ ref type_binder bindings
+    and expr_binding = (typ option ref, expr ref) val_binder binding
+    and expr_bindings = (typ option ref, expr ref) val_binder bindings
 
     and env = scope list
 
@@ -226,15 +233,22 @@ end) :> TYPECHECKING where
         val toDoc = typeToDoc
         val toString = PPrint.pretty 80 o toDoc
 
-        val rec splitExistentials =
-            fn OutputType t => Output.Type.splitExistentials splitExistentials t
-             | InputType _ => raise Fail "encountered InputType"
-             | ScopeType {typ, ...} => splitExistentials typ
+        fun splitExistentials t =
+            let val rec split = 
+                    fn OutputType t => Output.Type.splitExistentials split t
+                     | InputType _ => raise Fail "encountered InputType"
+                     | ScopeType {typ, ...} => split typ
+            in Pair.second OutputType (split t)
+            end
 
         fun substitute (kv: Name.t * typ) =
             fn OutputType t => Output.Type.substitute OutputType substitute kv t
              | InputType _ => raise Fail "encountered InputType"
              | ScopeType _ => raise Fail "encountered ScopeType"
+             | t as OVar _ => t
+             | t as UVar (_, uv) => (case TypeVars.uvGet uv
+                                     of Either.Left _ => t
+                                      | Either.Right t => substitute kv t)
 
         val rec rowExtTail =
             fn OutputType t => Output.Type.rowExtTail {tail = rowExtTail, wrap = OutputType} t
@@ -251,12 +265,27 @@ end) :> TYPECHECKING where
                             end
         end
 
-        fun forFn vals = FnScope (allocId (), vals)
+        fun forFn (name, binding) = FnScope (allocId (), name, binding)
         fun forBlock vals = BlockScope (allocId (), vals)
-        fun forTFn types = TFnScope (allocId (), types)
+        fun forTFn (name, binding) = TFnScope (allocId (), name, binding)
 
-        fun id ( TypeScope (TFnScope (id, _) | InterfaceScope (id, _))
-               | ExprScope (FnScope (id, _) | BlockScope (id, _)) ) = id
+        fun id ( TypeScope (TFnScope (id, _, _) | InterfaceScope (id, _))
+               | ExprScope (FnScope (id, _, _) | BlockScope (id, _)) ) = id
+
+        fun exprFind scope name =
+            case scope
+            of FnScope (_, name', binding) => if name' = name then SOME binding else NONE
+             | BlockScope (_, bindings) => NameHashTable.find bindings name
+
+        fun typeFind scope name =
+            case scope
+            of TFnScope (_, name', binding) =>
+                if name' = name
+                then case !binding
+                     of SOME binding => SOME binding
+                      | NONE => raise Fail ("uninitialized binding for " ^ Name.toString name)
+                else NONE
+             | InterfaceScope (_, bindings) => NameHashTable.find bindings name
 
         val eq = op= o Pair.bimap id id
 
@@ -271,9 +300,7 @@ end) :> TYPECHECKING where
             end
 
         fun typeBindingToDoc name {binder = {kind, typ}, shade = _} =
-            let val typeDoc = case typ
-                              of SOME (ref typ) => text " =" <+> typeToDoc typ
-                               | NONE => PPrint.empty
+            let val typeDoc = text " =" <+> typeToDoc (!typ)
             in Name.toDoc name <+> text ":" <+> Output.Type.kindToDoc kind <> typeDoc
             end
 
@@ -287,8 +314,10 @@ end) :> TYPECHECKING where
         val typesToDoc = bindingsToDoc typeBindingToDoc
 
         val rec toDoc =
-            fn ExprScope (FnScope (_, vals) | BlockScope (_, vals)) => valsToDoc vals
-             | TypeScope (TFnScope (_, types) | InterfaceScope (_, types)) => typesToDoc types
+            fn ExprScope (FnScope (_, name, binding)) => valBindingToDoc name binding
+             | ExprScope (BlockScope (_, vals)) => valsToDoc vals
+             | TypeScope (TFnScope (_, name, ref (SOME binding))) => typeBindingToDoc name binding
+             | TypeScope (InterfaceScope (_, types)) => typesToDoc types
     end
 
     structure Env = struct
@@ -298,6 +327,22 @@ end) :> TYPECHECKING where
 
         val parent = fn [] => NONE
                       | _ :: env' => SOME env'
+
+        fun exprFind env name =
+            case env
+            of ExprScope scope :: env => (case Scope.exprFind scope name
+                                          of SOME binding => SOME binding
+                                           | NONE => exprFind env name)
+             | TypeScope _ :: env => exprFind env name
+             | [] => NONE
+
+        fun typeFind env name =
+            case env
+            of TypeScope scope :: env => (case Scope.typeFind scope name
+                                          of SOME binding => SOME binding
+                                           | NONE => typeFind env name)
+             | ExprScope _ :: env => typeFind env name
+             | [] => NONE
 
         val toDoc = List.foldl (fn (scope, parentDoc) => Scope.toDoc scope <> parentDoc) PPrint.empty
         
@@ -321,8 +366,15 @@ end) :> TYPECHECKING where
                                  | [] => LESS))
                 | [] => if List.null env' then EQUAL else GREATER
             end
+
+        (* OPTIMIZE: *)
+        fun eq envs = case compare envs
+                      of EQUAL => true
+                       | _ => false
     end
 
+    val ovEq = TypeVars.ovEq Env.eq
+    val ovInScope = TypeVars.ovInScope Env.compare
     val uvMerge: uv * uv -> unit = TypeVars.uvMerge Env.compare
     val uvInScope: env * uv -> bool = TypeVars.uvInScope Env.compare
 end
