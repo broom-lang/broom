@@ -6,7 +6,7 @@
        DOT "." DDOT ".."
        LPAREN "(" RPAREN ")" LBRACE "{" RBRACE "}"
        BAR "|" AMP "&"
-       COLON ":"
+       COLON ":" SEAL ":>"
        COMMA "," SEMICOLON ";"
        EOF
 
@@ -27,7 +27,7 @@ stmt : pattern "=" expr ";" {()}
 
 (* Expressions *)
 
-expr : (* expr ":" typ {()} *)
+expr : expr ":>" nestableTyp {()}
      | binapp {()}
 
 binapp : binapp BINOP app {()}
