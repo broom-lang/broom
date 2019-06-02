@@ -5,7 +5,7 @@
        EQ "=" RDARROW "=>"
        DOT "." DDOT ".."
        LPAREN "(" RPAREN ")" LBRACE "{" RBRACE "}"
-       BAR "|"
+       BAR "|" AMP "&"
        COLON ":"
        COMMA "," SEMICOLON ";"
        EOF
@@ -69,6 +69,9 @@ tail : {()}
      | ".." expr {()}
 
 triv : VAR {()}
+     | const {()}
+
+const : "(" ")" {()}
 
 (* Patterns *)
 
@@ -85,19 +88,25 @@ nestableTyp : purelyTyp {()}
 
 purelyTyp : "{" row "}" {()}
           | "interface" decls "end" {()}
+          | "(" row ")" {()}
           | "(" "=" expr ")" {()}
 
-row : rowFields rowTail {()}
+row : ":" {()}
+    | rowFields {()}
+    | rowTail {()}
+    | rowFields rowTail {()}
 
-rowFields : (* {()} *)
-          | rowField {()}
+rowFields : rowField {()}
           | rowFields "," rowField {()}
 
 rowField : VAR ":" typ {()}
 
-rowTail : {()}
-        | ".." {()}
-        | ".." typ {()}
+rowTail : "&" {()}
+        | "|" {()}
+        | "&" typ {()}
+        | "|" typ {()}
+
+(* Declarations *)
 
 decls : {()}
       | decls decl {()}
