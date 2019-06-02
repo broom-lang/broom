@@ -1,2 +1,4 @@
-parser.y.*
+parser.ml
+parser.mli
+parser.conflicts
 
