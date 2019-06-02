@@ -1,9 +1,13 @@
 %token VAR BINOP
-       (*TYPE "type"*)
+       WILD "_"
+       BEGIN "begin" END "end" MODULE "module"
+       TYPE "type" INTERFACE "interface"
        EQ "=" RDARROW "=>"
+       DOT "." DDOT ".."
        LPAREN "(" RPAREN ")" LBRACE "{" RBRACE "}"
        BAR "|"
-       COLON ":" SEMICOLON ";"
+       COLON ":"
+       COMMA "," SEMICOLON ";"
        EOF
 
 %start <unit> program
@@ -18,27 +22,29 @@ stmts : {()}
       | stmts stmt {()}
 
 stmt : pattern "=" expr ";" {()}
+     | "type" pattern "=" expr ";" {()}
      | expr ";" {()}
 
 (* Expressions *)
 
-expr : (*expr ":" typ {()}
-     |*) binapp {()}
+expr : (* expr ":" typ {()} *)
+     | binapp {()}
 
 binapp : binapp BINOP app {()}
        | app {()}
 
 app : app nestableExpr {()}
+    | "type" nestableTyp {()}
     | nestableExpr {()}
 
-nestableExpr : lambda {()}
-             | block {()}
-             (*| "type" typ {()}*)
+nestableExpr : "{" clauses "}" {()}
+             | "{" rowExpr "}" {()}
+             | "begin" stmts "end" {()}
+             | "module" stmts "end" {()}
+             | nestableExpr "." VAR {()}
              | "(" BINOP ")" {()}
              | "(" expr ")" {()}
              | triv {()}
-
-lambda : "{" clauses "}" {()}
 
 clauses : clauses clause {()}
         | clause {()}
@@ -50,7 +56,17 @@ params : params param {()}
 
 param : pattern "=>" {()}
 
-block : "{" stmts "}" {()}
+rowExpr : fields tail {()}
+
+fields : {()}
+       | field {()}
+       | fields "," field {()}
+
+field : VAR "=" expr {()}
+      | VAR {()}
+
+tail : {()}
+     | ".." expr {()}
 
 triv : VAR {()}
 
@@ -61,6 +77,33 @@ pattern : pattern ":" typ {()}
 
 (* Types *)
 
-typ : "(" "=" typ ")" {()}
+typ : purelyTyp {()}
     | expr {()}
+
+nestableTyp : purelyTyp {()}
+            | nestableExpr {()}
+
+purelyTyp : "{" row "}" {()}
+          | "interface" decls "end" {()}
+          | "(" "=" expr ")" {()}
+
+row : rowFields rowTail {()}
+
+rowFields : (* {()} *)
+          | rowField {()}
+          | rowFields "," rowField {()}
+
+rowField : VAR ":" typ {()}
+
+rowTail : {()}
+        | ".." {()}
+        | ".." typ {()}
+
+decls : {()}
+      | decls decl {()}
+
+decl : VAR ":" typ ";" {()}
+     | "type" VAR "=" typ ";" {()}
+     | "type" VAR ":" typ ";" {()}
+     | "type" VAR ";" {()}
 
