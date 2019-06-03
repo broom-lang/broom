@@ -22,7 +22,7 @@ stmts : {()}
       | stmts stmt {()}
 
 stmt : pattern "=" expr ";" {()}
-     | "type" pattern "=" expr ";" {()}
+     | pattern "=" purelyTyp ";" {()}
      | expr ";" {()}
 
 (* Expressions *)
@@ -55,7 +55,7 @@ clause : "|" params expr {()}
 params : params param {()}
        | param {()}
 
-param : pattern "=>" {()}
+param : apattern "=>" {()}
 
 rowExpr : fields tail {()}
 
@@ -76,8 +76,11 @@ const : "(" ")" {()}
 
 (* Patterns *)
 
-pattern : pattern ":" typ {()}
-        | VAR {()}
+pattern : pattern "|" apattern {()}
+        | apattern {()}
+
+apattern : apattern "&" expr {()}
+         | expr {()}
 
 (* Types *)
 
