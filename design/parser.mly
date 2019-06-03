@@ -4,7 +4,7 @@
        TYPE "type" INTERFACE "interface"
        EQ "=" RDARROW "=>"
        DOT "." DDOT ".."
-       LPAREN "(" RPAREN ")" LBRACE "{" RBRACE "}"
+       LPAREN "(" RPAREN ")" LBRACKET "[" RBRACKET "]" LBRACE "{" RBRACE "}"
        BAR "|" AMP "&"
        COLON ":" SEAL ":>"
        COMMA "," SEMICOLON ";"
@@ -40,6 +40,7 @@ app : app nestableExpr {()}
 nestableExpr : "{" clauses "}" {()}
              | "{" rowExpr "}" {()}
              | "do" stmts "end" {()}
+             | "[" "|" stmts "]" {()}
              | "module" stmts "end" {()}
              | nestableExpr "." VAR {()}
              | "(" BINOP ")" {()}
