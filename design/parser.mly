@@ -1,6 +1,6 @@
 %token VAR BINOP
        WILD "_"
-       BEGIN "begin" END "end" MODULE "module"
+       DO "do" END "end" MODULE "module"
        TYPE "type" INTERFACE "interface"
        EQ "=" RDARROW "=>"
        DOT "." DDOT ".."
@@ -39,7 +39,7 @@ app : app nestableExpr {()}
 
 nestableExpr : "{" clauses "}" {()}
              | "{" rowExpr "}" {()}
-             | "begin" stmts "end" {()}
+             | "do" stmts "end" {()}
              | "module" stmts "end" {()}
              | nestableExpr "." VAR {()}
              | "(" BINOP ")" {()}
