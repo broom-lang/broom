@@ -10,6 +10,8 @@
        COMMA "," SEMICOLON ";"
        EOF
 
+(* Semicolon and `end` inference can be added to lexer if desired. *)
+
 %start <unit> program
 
 %%
@@ -21,16 +23,18 @@ program : stmts EOF {()}
 stmts : {()}
       | stmts stmt {()}
 
-stmt : pattern "=" expr ";" {()}
-     | pattern "=" purelyTyp ";" {()}
+(* pattern "=" expr ";"
+ | "type" pattern "=" typ ";"
+ is what we are getting at, but ambiguous due to the typ -> expr production *)
+stmt : pattern "=" typ ";" {()}
      | expr ";" {()}
 
 (* Expressions *)
 
-expr : expr ":>" nestableTyp {()}
+expr : expr ":>" nestableTyp {()} (* `":" typ` would be ambiguous in several ways *)
      | binapp {()}
 
-binapp : binapp BINOP app {()}
+binapp : binapp BINOP app {()} (* need auxiliary precedence parser because of custom binops *)
        | app {()}
 
 app : app nestableExpr {()}
@@ -55,7 +59,7 @@ clause : "|" params expr {()}
 params : params param {()}
        | param {()}
 
-param : apattern "=>" {()}
+param : apattern "=>" {()} (* or-patterns need to be parenthesized to be unambiguous *)
 
 rowExpr : fields tail {()}
 
@@ -80,7 +84,7 @@ pattern : pattern "|" apattern {()}
         | apattern {()}
 
 apattern : apattern "&" expr {()}
-         | expr {()}
+         | expr {()} (* validating that expr is a valid pattern is easier outside grammar proper *)
 
 (* Types *)
 
