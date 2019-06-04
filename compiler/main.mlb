@@ -42,6 +42,8 @@ local
            src/Typechecker/Subtyping.sml
            src/Typechecker/Typechecker.sml
            src/Typechecker/ExitTypechecker.sml
+
+           src/Reprs/Cps.sml
            
            src/Parser/parser.sml
        end
