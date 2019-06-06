@@ -6,7 +6,7 @@
        DOT "." DDOT ".."
        LPAREN "(" RPAREN ")" LBRACKET "[" RBRACKET "]" LBRACE "{" RBRACE "}"
        BAR "|" AMP "&"
-       COLON ":" SEAL ":>"
+       COLON ":"
        COMMA "," SEMICOLON ";"
        EOF
 
@@ -23,22 +23,18 @@ program : stmts EOF {()}
 stmts : {()}
       | stmts stmt {()}
 
-(* pattern "=" expr ";"
- | "type" pattern "=" typ ";"
- is what we are getting at, but ambiguous due to the typ -> expr production *)
-stmt : pattern "=" typ ";" {()}
+stmt : pattern "=" expr ";" {()}
      | expr ";" {()}
 
 (* Expressions *)
 
-expr : expr ":>" nestableTyp {()} (* `":" typ` would be ambiguous in several ways *)
+expr : expr ":" typeAnn {()}
      | binapp {()}
 
 binapp : binapp BINOP app {()} (* need auxiliary precedence parser because of custom binops *)
        | app {()}
 
 app : app nestableExpr {()}
-    | "type" nestableTyp {()}
     | nestableExpr {()}
 
 nestableExpr : "{" clauses "}" {()}
@@ -48,6 +44,7 @@ nestableExpr : "{" clauses "}" {()}
              | "module" stmts "end" {()}
              | nestableExpr "." VAR {()}
              | "(" BINOP ")" {()}
+             | purelyTyp {()}
              | "(" expr ")" {()}
              | triv {()}
 
@@ -88,15 +85,13 @@ apattern : apattern "&" expr {()}
 
 (* Types *)
 
-typ : purelyTyp {()}
-    | expr {()}
+typ : expr {()}
 
-nestableTyp : purelyTyp {()}
-            | nestableExpr {()}
+typeAnn : binapp {()}
 
 purelyTyp : "{" row "}" {()}
           | "interface" decls "end" {()}
-          | "(" row ")" {()}
+          | "(" "|" row "|" ")" {()}
           | "(" "=" expr ")" {()}
 
 row : ":" {()}
@@ -110,9 +105,7 @@ rowFields : rowField {()}
 rowField : VAR ":" typ {()}
 
 rowTail : "&" {()}
-        | "|" {()}
         | "&" typ {()}
-        | "|" typ {()}
 
 (* Declarations *)
 
