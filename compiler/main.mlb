@@ -43,7 +43,8 @@ local
            src/Typechecker/Typechecker.sml
            src/Typechecker/ExitTypechecker.sml
 
-           src/Reprs/Cps.sml
+           src/Reprs/Cps/Id.sml
+           src/Reprs/Cps/Cps.sml
            
            src/Parser/parser.sml
        end
