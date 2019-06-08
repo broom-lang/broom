@@ -139,6 +139,10 @@ end = struct
                      val (typ, body) = elaborateExpr env body
                  in (typ, FTerm.Let (pos, stmts, body))
                  end
+              | CTerm.If (pos, _, _, _) =>
+                 let val t = (TC.UVar (pos, TypeVars.freshUv env Predicative))
+                 in (t, elaborateExprAs env t exprRef)
+                 end
               | CTerm.Record (pos, fields) => elaborateRecord env pos fields
               | CTerm.App (pos, {callee, arg}) =>
                  let val ct as (_, callee) = elaborateExpr env callee
@@ -192,24 +196,33 @@ end = struct
 
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
     and elaborateExprAs env (typ: TC.typ) (expr: TC.expr): TC.typ FTerm.expr =
-        case (typ, expr)
-        of (TC.OutputType t, TC.InputExpr iexpr) =>
-            (case (t, iexpr)
-             of (FType.ForAll _, expr) => raise Fail "unimplemented"
-              | (FType.Arrow _, CTerm.Fn _) => raise Fail "unimplemented"
-              | (_, _) =>
-                 let val (t', fexpr) = elaborateExpr env expr
-                     val coercion = subType env expr (t', typ)
-                 in applyCoercion coercion fexpr
-                 end)
-         | (TC.OVar _ | TC.UVar _, TC.InputExpr _) =>
-            let val (t', fexpr) = elaborateExpr env expr
-                val coercion = subType env expr (t', typ)
-            in applyCoercion coercion fexpr
-            end
-         | (_, TC.ScopeExpr {scope, expr}) => elaborateExprAs (TC.Env.pushExprScope env scope) typ expr
-         | (_, TC.OutputExpr expr) => expr
-         | (TC.InputType _, _) => raise Fail "Encountered InputType"
+        case expr
+        of TC.InputExpr iexpr =>
+            (case iexpr
+             of CTerm.Fn (_, param, paramType, body) =>
+                 (case typ
+                  of TC.OutputType (FType.Arrow (_, {domain, codomain})) =>
+                      raise Fail "unimplemented"
+                   | _ => coerceExprTo env typ expr)
+              | CTerm.If (pos, cond, conseq, alt) =>
+                 FTerm.If (pos, elaborateExprAs env 
+                                                (TC.OutputType (FType.Prim (pos, FType.Prim.Bool)))
+                                                cond
+                              , elaborateExprAs env typ conseq
+                              , elaborateExprAs env typ alt )
+              | _ =>
+                (case typ
+                 of TC.OutputType (FType.ForAll _) => raise Fail "unimplemented"
+                  | _ => coerceExprTo env typ expr))
+         | TC.ScopeExpr {scope, expr} => elaborateExprAs (TC.Env.pushExprScope env scope) typ expr
+         | TC.OutputExpr expr => expr
+
+    (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)
+    and coerceExprTo env (typ: TC.typ) (expr: TC.expr): TC.typ FTerm.expr =
+        let val (t', fexpr) = elaborateExpr env expr
+            val coercion = subType env expr (t', typ)
+        in applyCoercion coercion fexpr
+        end
 
     (* Elaborate a statement and return the elaborated version. *)
     and elaborateStmt env: (TC.typ, TC.typ option ref, TC.expr, TC.expr ref) Cst.Term.stmt -> TC.typ FTerm.stmt =

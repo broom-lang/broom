@@ -12,16 +12,18 @@ type typ = Type.ftyp
 
 %pos Pos.t
 
-%term INT of int | ID of string
-    | VAL | TYPE | FN | LET | IN | END
+%term INT of int | BOOL of bool | ID of string
+    | VAL | TYPE | FN | LET | IN | END | IF | THEN | ELSE
     | LPAREN | RPAREN | LBRACE | RBRACE
     | EQ | DARROW | COLON | ARROW | DDOT | DOT | COMMA
+    | AMP
     | EOF
 %nonterm program of expr
        | stmts of stmt vector
        | stmtList of stmt list
        | stmt of stmt
        | expr of expr
+       | body of expr
        | app of expr
        | nestable of expr
        | record of expr
@@ -30,11 +32,14 @@ type typ = Type.ftyp
        | fieldExpr of (Name.t * expr)
        | optSplat of expr option
        | triv of expr
-       | typeAnn of typ
+       | typ of typ
+       | nonArrowTyp of typ
+       | nestableTyp of typ
+       | purelyTyp of typ
        | rowType of typ
        | rowFields of (Name.t * typ) vector
        | rowFieldList of (Name.t * typ) list
-       | rowExt of typ option
+       | rowExt of typ
 
 %keyword VAL EQ
 %noshift EOF
@@ -44,29 +49,36 @@ type typ = Type.ftyp
 
 program : stmts (Term.Fix (Term.Let (stmtsleft, stmts, Term.Fix (Term.Const (stmtsright, Const.Int 0)))))
 
+(* Statements *)
+
 stmts : stmtList (Vector.fromList (List.rev stmtList) (* OPTIMIZE *))
 
 stmtList : ([])
          | stmtList stmt (stmt :: stmtList)
 
 stmt : VAL ID EQ expr (Term.Val (VALleft, Name.fromString ID, NONE, expr))
-     | VAL ID COLON typeAnn EQ expr (Term.Val (VALleft, Name.fromString ID, SOME typeAnn, expr))
-     | TYPE ID EQ typeAnn (Term.Val ( TYPEleft, Name.fromString ID, NONE
-                                    , Term.Fix (Term.Type (typeAnnleft, typeAnn)) ))
+     | VAL ID COLON typ EQ expr (Term.Val (VALleft, Name.fromString ID, SOME typ, expr))
+     | TYPE ID EQ typ (Term.Val ( TYPEleft, Name.fromString ID, NONE
+                                , Term.Fix (Term.Type (typleft, typ)) ))
+
+(* Expressions *)
 
 expr : FN ID DARROW expr (Term.Fix (Term.Fn (FNleft, Name.fromString ID, NONE, expr)))
-     | FN ID COLON typeAnn DARROW expr (Term.Fix (Term.Fn ( FNleft, Name.fromString ID, SOME typeAnn, expr)))
-     | LET stmts IN expr END (Term.Fix (Term.Let (exprleft, stmts, expr)))
-     | expr COLON typeAnn (Term.Fix (Term.Ann (exprleft, expr, typeAnn)))
-     | TYPE typeAnn (Term.Fix (Term.Type (typeAnnleft, typeAnn)))
-     | expr DOT ID (Term.Fix (Term.Field (exprleft, expr, Name.fromString ID)))
+     | FN ID COLON typ DARROW expr (Term.Fix (Term.Fn (FNleft, Name.fromString ID, SOME typ, expr)))
+     | IF expr THEN expr ELSE expr (Term.Fix (Term.If (IFleft, expr1, expr2, expr3)))
+     | body (body)
+
+body : body COLON nestableTyp (Term.Fix (Term.Ann (bodyleft, body, nestableTyp)))
      | app (app)
 
 app : app nestable (Term.Fix (Term.App (appleft, {callee = app, arg = nestable})))
     | nestable (nestable)
 
-nestable : LPAREN expr RPAREN (expr)
+nestable : LET stmts IN expr END (Term.Fix (Term.Let (exprleft, stmts, expr)))
          | record (record)
+         | nestable DOT ID (Term.Fix (Term.Field (nestableleft, nestable, Name.fromString ID)))
+         | LPAREN TYPE typ RPAREN (Term.Fix (Term.Type (typleft, typ)))
+         | LPAREN expr RPAREN (expr)
          | triv (triv)
 
 record : LBRACE fieldExprs optSplat RBRACE (Term.Fix (Term.Record (LBRACEleft, {fields = fieldExprs, ext = optSplat})))
@@ -83,34 +95,47 @@ fieldExpr : ID ((Name.fromString ID, Term.Fix (Term.Use (IDleft, Name.fromString
 optSplat : (NONE)
          | DDOT expr (SOME expr)
 
-triv : ID  (Term.Fix (Term.Use (IDleft, Name.fromString ID)))
+triv : BOOL (Term.Fix (Term.Const (BOOLleft, Const.Bool BOOL)))
+     | ID (Term.Fix (Term.Use (IDleft, Name.fromString ID)))
      | INT (Term.Fix (Term.Const (INTleft, Const.Int INT)))
 
-typeAnn : LPAREN typeAnn RPAREN (typeAnn)
-        | typeAnn ARROW typeAnn (Type.FixT (Type.Arrow (typeAnnleft, {domain = typeAnn1, codomain = typeAnn})))
-        | TYPE (Type.FixT (Type.Type TYPEleft))
-        | LBRACE rowType RBRACE (Type.FixT (Type.Record (LBRACEleft, rowType)))
-        | LBRACE RBRACE (Type.FixT (Type.Record (LBRACEleft, Type.FixT (Type.EmptyRow LBRACEleft))))
-        | LPAREN EQ expr RPAREN (Type.FixT (Type.Singleton (LPARENleft, expr)))
-        | expr (Type.FixT (case expr
-                of Term.Fix (Term.Use (_, name)) => (case Name.toString name
-                                          of "Int" => Type.Prim (exprleft, Type.Prim.I32)
-                                           | _ => Type.Path expr)
-                 | _ => Type.Path expr))
+(* Types *)
 
-rowType: rowFields rowExt (let val ext = case rowExt
-                                         of SOME ext => ext
-                                          | NONE => Type.FixT (Type.EmptyRow rowExtleft)
-                           in Type.FixT (Type.RowExt (rowFieldsleft, {fields = rowFields, ext = ext}))
-                           end)
+typ : nonArrowTyp ARROW typ (Type.FixT (Type.Arrow (typleft, { domain = nonArrowTyp
+                                                             , codomain = typ })))
+    | nonArrowTyp (nonArrowTyp)
+
+nonArrowTyp : purelyTyp (purelyTyp)
+            | LPAREN typ RPAREN (typ)
+            | expr (Type.FixT (case expr
+                               of Term.Fix (Term.Use (_, name)) => (case Name.toString name
+                                                                    of "Int" => Type.Prim (exprleft, Type.Prim.I32)
+                                                                     | _ => Type.Path expr)
+                                | _ => Type.Path expr)) 
+
+nestableTyp : purelyTyp (purelyTyp)
+            | LPAREN typ RPAREN (typ)
+            | nestable (Type.FixT (case nestable
+                               of Term.Fix (Term.Use (_, name)) => (case Name.toString name
+                                                                    of "Int" => Type.Prim (nestableleft, Type.Prim.I32)
+                                                                     | _ => Type.Path nestable)
+                                | _ => Type.Path nestable)) 
+
+purelyTyp : TYPE (Type.FixT (Type.Type TYPEleft))
+          | LBRACE rowType RBRACE (Type.FixT (Type.Record (LBRACEleft, rowType)))
+          | LPAREN EQ expr RPAREN (Type.FixT (Type.Singleton (LPARENleft, expr)))
+
+rowType: COLON (Type.FixT (Type.EmptyRow COLONleft))
+       | rowFields (Type.FixT (Type.RowExt (rowFieldsleft, { fields = rowFields
+                                                           , ext = Type.FixT (Type.EmptyRow rowFieldsright) })))
+       | rowExt (Type.FixT (Type.RowExt (rowExtleft, {fields = Vector.fromList [], ext = rowExt})))
+       | rowFields rowExt (Type.FixT (Type.RowExt (rowFieldsleft, {fields = rowFields, ext = rowExt})))
 
 rowFields : rowFieldList (Vector.fromList (List.rev rowFieldList) (* OPTIMIZE *))
 
-rowFieldList : ([])
-             | ID COLON typeAnn ([(Name.fromString ID, typeAnn)])
-             | ID COLON typeAnn COMMA rowFieldList ((Name.fromString ID, typeAnn) :: rowFieldList)
+rowFieldList : ID COLON typ ([(Name.fromString ID, typ)])
+             | ID COLON typ COMMA rowFieldList ((Name.fromString ID, typ) :: rowFieldList)
 
-rowExt : (NONE)
-       | DDOT (SOME (Type.FixT (Type.WildRow DDOTleft)))
-       | DDOT typeAnn (SOME typeAnn)
+rowExt : AMP (Type.FixT (Type.WildRow AMPleft))
+       | AMP typ (typ)
 

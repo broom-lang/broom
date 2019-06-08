@@ -82,6 +82,7 @@ structure Cst = struct
     
         and ('typ, 'bt, 'expr, 'be) expr = Fn of Pos.t * Name.t * 'bt * 'expr
                                          | Let of Pos.t * ('typ, 'bt, 'expr, 'be) stmt vector * 'expr
+                                         | If of Pos.t * 'expr * 'expr * 'expr
                                          | Record of Pos.t * 'expr row
                                          | App of Pos.t * {callee: 'expr, arg: 'expr}
                                          | Field of Pos.t * 'expr * Name.t
@@ -111,6 +112,7 @@ structure Cst = struct
     
         and ('typ, 'bt, 'expr, 'be) expr = Fn of Pos.t * Name.t * 'bt * 'expr
                                          | Let of Pos.t * ('typ, 'bt, 'expr, 'be) stmt vector * 'expr
+                                         | If of Pos.t * 'expr * 'expr * 'expr
                                          | Record of Pos.t * 'expr row
                                          | App of Pos.t * {callee: 'expr, arg: 'expr}
                                          | Field of Pos.t * 'expr * Name.t
@@ -124,6 +126,7 @@ structure Cst = struct
         val exprPos =
             fn Fn (pos, _, _, _) => pos
              | Let (pos, _, _) => pos
+             | If (pos, _, _, _) => pos
              | Record (pos, _) => pos
              | App (pos, _) => pos
              | Field (pos, _, _) => pos
@@ -147,6 +150,10 @@ structure Cst = struct
         fun exprToDoc typeToDoc btToDoc exprToDoc beToDoc expr =
             let val rec toDoc = fn Fn (_, param, ann, body) =>
                                        text "fn" <+> Name.toDoc param <> btToDoc ann <> text " => " <> exprToDoc body
+                                 | If (_, cond, conseq, alt) =>
+                                    text "if" <+> exprToDoc cond
+                                        <+> text "then" <+> exprToDoc conseq
+                                        <+> text "else" <+> exprToDoc alt
                                     | Record (_, row) => braces (rowToDoc exprToDoc row)
                                     | App (_, {callee, arg}) => parens (exprToDoc callee <+> exprToDoc arg)
                                     | Field (_, expr, label) => parens (exprToDoc expr <> text "." <> Name.toDoc label)

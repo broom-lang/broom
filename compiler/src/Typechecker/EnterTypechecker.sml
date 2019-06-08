@@ -54,6 +54,8 @@ end = struct
                            CTerm.Fn (pos, arg, ref (Option.map injectType odomain), injectExpr body)
                         | CTerm.Let (pos, stmts, body) =>
                            CTerm.Let (pos, Vector.map injectStmt stmts, injectExpr body)
+                        | CTerm.If (pos, cond, conseq, alt) =>
+                           CTerm.If (pos, injectExpr cond, injectExpr conseq, injectExpr alt)
                         | CTerm.Record (pos, row) => CTerm.Record (pos, injectRow row)
                         | CTerm.App (pos, {callee, arg}) =>
                            CTerm.App (pos, {callee = injectExpr callee, arg = injectExpr arg})

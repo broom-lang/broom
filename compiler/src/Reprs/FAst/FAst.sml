@@ -19,6 +19,7 @@ structure FAst = struct
                            | TApp of Pos.t * 'typ * {callee: 'typ expr, arg: 'typ}
                            | Field of Pos.t * 'typ * 'typ expr * Name.t
                            | Let of Pos.t * 'typ stmt vector * 'typ expr
+                           | If of Pos.t * 'typ expr * 'typ expr * 'typ expr
                            | Type of Pos.t * 'typ
                            | Use of Pos.t * 'typ def
                            | Const of Pos.t * Const.t
@@ -34,6 +35,7 @@ structure FAst = struct
              | TApp (pos, _, _) => pos
              | Field (pos, _, _, _) => pos
              | Let (pos, _, _) => pos
+             | If (pos, _, _, _) => pos
              | Type (pos, _) => pos
              | Use (pos, _) => pos
              | Const (pos, _) => pos
@@ -70,6 +72,10 @@ structure FAst = struct
                                                              (Vector.map (stmtToDoc typeToDoc) stmts))
                <++> text "in" <+> exprToDoc typeToDoc body
                <++> text "end"
+            | If (_, cond, conseq, alt) =>
+               text "if" <+> exprToDoc typeToDoc cond
+                   <+> text "then" <+> exprToDoc typeToDoc conseq
+                   <+> text "else" <+> exprToDoc typeToDoc alt
             | Type (_, t) => brackets (typeToDoc t)
             | Use (_, {var, ...}) => Name.toDoc var 
             | Const (_, c) => Const.toDoc c
