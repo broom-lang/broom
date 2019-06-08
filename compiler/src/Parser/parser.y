@@ -12,8 +12,8 @@ type typ = Type.ftyp
 
 %pos Pos.t
 
-%term INT of int | ID of string
-    | VAL | TYPE | FN | LET | IN | END
+%term INT of int | BOOL of bool | ID of string
+    | VAL | TYPE | FN | LET | IN | END | IF | THEN | ELSE
     | LPAREN | RPAREN | LBRACE | RBRACE
     | EQ | DARROW | COLON | ARROW | DDOT | DOT | COMMA
     | AMP
@@ -65,6 +65,7 @@ stmt : VAL ID EQ expr (Term.Val (VALleft, Name.fromString ID, NONE, expr))
 
 expr : FN ID DARROW expr (Term.Fix (Term.Fn (FNleft, Name.fromString ID, NONE, expr)))
      | FN ID COLON typ DARROW expr (Term.Fix (Term.Fn (FNleft, Name.fromString ID, SOME typ, expr)))
+     | IF expr THEN expr ELSE expr (Term.Fix (Term.If (IFleft, expr1, expr2, expr3)))
      | body (body)
 
 body : body COLON nestableTyp (Term.Fix (Term.Ann (bodyleft, body, nestableTyp)))
@@ -94,7 +95,8 @@ fieldExpr : ID ((Name.fromString ID, Term.Fix (Term.Use (IDleft, Name.fromString
 optSplat : (NONE)
          | DDOT expr (SOME expr)
 
-triv : ID  (Term.Fix (Term.Use (IDleft, Name.fromString ID)))
+triv : BOOL (Term.Fix (Term.Const (BOOLleft, Const.Bool BOOL)))
+     | ID (Term.Fix (Term.Use (IDleft, Name.fromString ID)))
      | INT (Term.Fix (Term.Const (INTleft, Const.Int INT)))
 
 (* Types *)

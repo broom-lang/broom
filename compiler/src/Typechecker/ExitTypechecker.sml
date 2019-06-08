@@ -45,6 +45,8 @@ end = struct
                    , Option.map (exprToF) record)
          | Let (pos, stmts, body) =>
             Let (pos, Vector.map (stmtToF) stmts, exprToF body)
+         | If (pos, cond, conseq, alt) =>
+            If (pos, exprToF cond, exprToF conseq, exprToF alt)
          | App (pos, typ, {callee, arg}) =>
             App (pos, typeToF typ, {callee = exprToF callee, arg = exprToF arg})
          | TApp (pos, typ, {callee, arg}) =>

@@ -78,6 +78,11 @@ ws = [\ \t];
 "let"    => (tok0 startPos Tokens.LET yytext);
 "in"     => (tok0 startPos Tokens.IN yytext);
 "end"    => (tok0 startPos Tokens.END yytext);
+"if"     => (tok0 startPos Tokens.IF yytext);
+"then"   => (tok0 startPos Tokens.THEN yytext);
+"else"   => (tok0 startPos Tokens.ELSE yytext);
+"True"   => (tok1 startPos Tokens.BOOL yytext true);
+"False"  => (tok1 startPos Tokens.BOOL yytext false);
 ({alpha}|_)+ => (tok1 startPos Tokens.ID yytext yytext);
 
 {digit}+ => (tok1 startPos Tokens.INT yytext (valOf (Int.fromString yytext)));

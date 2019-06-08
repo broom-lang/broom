@@ -2,6 +2,7 @@ structure FAstTypechecker :> sig
     val typecheck: FixedFAst.Term.expr -> ((* FIXME: *) unit, FixedFAst.Type.typ) Either.t
 end = struct
     structure FFType = FixedFAst.Type
+    structure Prim = FFType.Prim
     type typ = FFType.typ
     structure FFTerm = FixedFAst.Term
 
@@ -63,6 +64,7 @@ end = struct
          | App app => checkApp env app
          | Field access => checkField env access
          | Let lett => checkLet env lett
+         | If iff => checkIf env iff
          | Use use => checkUse env use
          | Type (pos, t) => Fix (FFType.Type (pos, t))
          | Const (pos, c) => Fix (Prim (pos, Const.typeOf c))
@@ -109,6 +111,13 @@ end = struct
         let val env = pushStmts env stmts
         in Vector.app (checkStmt env) stmts
          ; check env body
+        end
+
+    and checkIf env (pos, cond, conseq, alt) =
+        let do checkEq env (check env cond, Fix (Prim (pos, Prim.Bool)))
+            val ct = check env conseq
+            do checkEq env (ct, check env alt)
+        in ct
         end
 
     and checkUse env (pos, {var, typ}) =
