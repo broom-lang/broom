@@ -29,6 +29,7 @@ signature CPS_TERM = sig
     and primapp = IAdd of expr * expr
     withtype expr = {id: ExprId.t, oper: oper}
 
+    (* FIXME: Change destinations from `label` to `expr` (for e.g. returning from fn:s). *)
     datatype transfer = Goto of label * typ vector * expr vector
                       | If of expr * label * label
 
@@ -60,6 +61,7 @@ signature CPS_PROGRAM = sig
     val toDoc: program -> PPrint.t
     val findCont: program * Label.t -> cont option
 
+    (* TODO: new: unit -> t, build: t * Label.t * cont -> program *)
     structure Builder: sig
         type t
         
