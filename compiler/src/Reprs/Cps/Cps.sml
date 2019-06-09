@@ -11,6 +11,9 @@ signature CPS_TYPE = sig
                  | TParam of param
                  | Prim of Prim.t
 
+    val int: typ
+    val cont: typ -> typ
+
     val toDoc: typ -> PPrint.t
 end
 
@@ -28,6 +31,8 @@ signature CPS_TERM = sig
 
     datatype transfer = Goto of label * typ vector * expr vector
                       | If of expr * label * label
+
+    val newExpr: oper -> expr
 
     val foldChildren: (expr * 'a -> 'a) -> 'a -> expr -> 'a
     val foldTransferExprs: (expr * 'a -> 'a) -> 'a -> transfer -> 'a
@@ -48,16 +53,30 @@ signature CPS_CONT = sig
     val toDoc: ExprId.HashSet.set -> cont -> PPrint.t
 end
 
+signature CPS_PROGRAM = sig
+    type cont
+    type program
+
+    val toDoc: program -> PPrint.t
+    val findCont: program * Label.t -> cont option
+
+    structure Builder: sig
+        type t
+        
+        val new: Label.t -> t
+        val insertCont: t * Label.t * cont -> unit
+        val build: t -> program
+    end
+end
+
 structure Cps :> sig
     structure Type: CPS_TYPE
     structure Term: CPS_TERM where type typ = Type.typ
-    structure Cont: CPS_CONT
-
-    type program
-
-    val programToDoc: program -> PPrint.t
-    val insertCont: program * Label.t * Cont.cont -> program
-    val findCont: program * Label.t -> Cont.cont option
+    structure Cont: CPS_CONT where
+        type Type.typ = Type.typ
+        and type Term.typ = Type.typ
+        and type Term.transfer = Term.transfer
+    structure Program: CPS_PROGRAM where type cont = Cont.cont
 end = struct
     val text = PPrint.text
     val space = PPrint.space
@@ -75,6 +94,11 @@ end = struct
         datatype typ = FnT of {typeParams: param vector, paramTypes: typ vector}
                      | TParam of param
                      | Prim of Prim.t
+
+        val int = Prim Prim.I32
+        
+        fun cont paramTyp = FnT { typeParams = Vector.fromList []
+                                , paramTypes = Vector.fromList [paramTyp] }
 
         val paramToDoc = FType.defToDoc
 
@@ -108,6 +132,7 @@ end = struct
         datatype transfer = Goto of label * Type.typ vector * expr vector
                           | If of expr * label * label
 
+        fun newExpr oper = {id = ExprId.fresh (), oper}
         fun foldChildren f acc {oper, ...} =
             case oper
             of PrimApp (IAdd (l, r)) => f (r, f (l, acc))
@@ -184,16 +209,29 @@ end = struct
                 <++> PPrint.rBrace
     end
 
-    type program = Cont.cont Label.SortedMap.map
+    structure Program = struct
+        type cont = Cont.cont
+        type program = {conts: Cont.cont Label.SortedMap.map, start: Label.t}
 
-    fun programToDoc program =
-        let val visited = ExprId.HashSet.mkEmpty 0
-            val step = fn (cont, SOME acc) => SOME (acc <++> Cont.toDoc visited cont)
-                        | (cont, NONE) => SOME (Cont.toDoc visited cont)
-        in getOpt (Label.SortedMap.foldl step NONE program, PPrint.empty)
+        fun toDoc {conts, start} =
+            let val visited = ExprId.HashSet.mkEmpty 0
+                val step = fn (cont, SOME acc) => SOME (acc <++> Cont.toDoc visited cont)
+                            | (cont, NONE) => SOME (Cont.toDoc visited cont)
+            in getOpt (Label.SortedMap.foldl step NONE conts, PPrint.empty)
+            end
+
+        fun findCont ({conts, start = _}, label) = Label.SortedMap.find (conts, label)
+
+        structure Builder = struct
+            type t = {conts: cont Label.SortedMap.map ref, start: Label.t}
+
+            fun new start = {conts = ref Label.SortedMap.empty, start}
+
+            fun insertCont ({conts, start = _}, label, cont) =
+                conts := Label.SortedMap.insert (!conts, label, cont)
+            
+            fun build {conts, start} = {conts = !conts, start}
         end
-
-    val insertCont = Label.SortedMap.insert
-    val findCont = Label.SortedMap.find
+    end
 end
 

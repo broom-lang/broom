@@ -45,6 +45,7 @@ local
 
            src/Reprs/Cps/Id.sml
            src/Reprs/Cps/Cps.sml
+           src/Reprs/Cps/Convert.sml
            
            src/Parser/parser.sml
        end

@@ -1,6 +1,7 @@
 signature ID = sig
     type t
 
+    val fresh: unit -> t
     val toDoc: t -> PPrint.t
 
     structure HashKey: HASH_KEY where type hash_key = t
@@ -12,6 +13,13 @@ end
 
 structure Id :> ID = struct
     type t = word
+
+    local val counter = ref 0w0
+    in fun fresh () = let val res = !counter
+                      in counter := res + 0w1
+                       ; res
+                      end
+    end
 
     val toDoc = PPrint.word
 
