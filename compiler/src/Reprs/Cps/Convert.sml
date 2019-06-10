@@ -70,8 +70,26 @@ end = struct
                     end
                  | FFTerm.Let (_, stmts, body) =>
                     convertBlock cont env (VectorSlice.full stmts) body
+                 | FFTerm.If (_, cond, conseq, alt) =>
+                    let val join = TrivCont (trivializeCont cont)
+                        val conseq = CTerm.newExpr (CTerm.Label (exprLabel join env conseq))
+                        val alt = CTerm.newExpr (CTerm.Label (exprLabel join env alt))
+                        val split = ContFn ( Fresh (convertType (FFTerm.typeOf cond))
+                                           , fn cond => If (cond, conseq, alt) )
+                    in convertExpr split env cond
+                    end
                  | FFTerm.Use (_, {var, ...}) => continue cont (Env.lookup (env, var))
                  | FFTerm.Const (_, c) => continue cont (CTerm.newExpr (CTerm.Const c))
+
+            and exprLabel (cont: cont) (env: env) (expr: FFTerm.expr) =
+                let val label = Label.fresh ()
+                    val cont = { name = Name.fresh ()
+                               , typeParams = Vector.fromList []
+                               , valParams = Vector.fromList []
+                               , body = convertExpr cont env expr }
+                    do Builder.insertCont (builder, label, cont)
+                in label
+                end
 
             and convertBlock (cont: cont) (env: env) (stmts: FFType.typ FFTerm.stmt slice) (body: FFTerm.expr): transfer =
                 case VectorSlice.uncons stmts

@@ -84,6 +84,11 @@ end = struct
     val op<+> = PPrint.<+>
     val op<++> = PPrint.<++>
 
+    fun optionalArgs delims argDocs =
+        if Vector.length argDocs > 0
+        then delims (PPrint.punctuate (text "," <> space) argDocs)
+        else PPrint.empty
+
     structure Type = struct
         structure Prim = FType.Prim
 
@@ -106,8 +111,8 @@ end = struct
             fn FnT {typeParams, paramTypes} =>
                 let val tDocs = Vector.map paramToDoc typeParams
                     val vDocs = Vector.map toDoc paramTypes
-                in text "fn" <+> PPrint.brackets (PPrint.punctuate (text "," <> space) tDocs)
-                             <+> PPrint.parens (PPrint.punctuate (text "," <> space) vDocs)
+                in text "fn" <+> optionalArgs PPrint.brackets tDocs
+                             <+> optionalArgs PPrint.parens vDocs
                 end
              | TParam {var, kind = _} => Name.toDoc var
              | Prim p => Prim.toDoc p
@@ -182,8 +187,8 @@ end = struct
                            let val destDoc = exprToIdDoc dest
                                val tDocs = Vector.map Type.toDoc tArgs
                                val vDocs = Vector.map exprToIdDoc vArgs
-                           in destDoc <> PPrint.brackets (PPrint.punctuate (text "," <> space) tDocs)
-                                      <> PPrint.parens (PPrint.punctuate (text "," <> space) vDocs)
+                           in destDoc <> optionalArgs PPrint.brackets tDocs
+                                      <> optionalArgs PPrint.parens vDocs
                            end 
                         | If (cond, conseq, alt) =>
                            text "if" <+> exprToIdDoc cond
@@ -203,10 +208,8 @@ end = struct
 
         fun toDoc visited {name, typeParams, valParams, body} =
             text "fn" <+> Name.toDoc name
-                <> PPrint.brackets (PPrint.punctuate (text "," <> space)
-                                                     (Vector.map Type.paramToDoc typeParams))
-                <> PPrint.parens (PPrint.punctuate (text "," <> space)
-                                                   (Vector.map Term.paramToDoc valParams))
+                <> optionalArgs PPrint.brackets (Vector.map Type.paramToDoc typeParams)
+                <> optionalArgs PPrint.parens (Vector.map Term.paramToDoc valParams)
                 <+> PPrint.lBrace
                 <> PPrint.nest 4 (PPrint.newline <> Term.transferToDoc visited body)
                 <++> PPrint.rBrace

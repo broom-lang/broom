@@ -90,6 +90,7 @@ structure FAst = struct
              | Extend (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => typ
              | Field (_, typ, _, _) => typ
              | Let (_, _, body) => typeOf fixT body
+             | If (_, _, conseq, _) => typeOf fixT conseq
              | Type (pos, t) => fixT (Type.Type (pos, t))
              | Use (_, {typ, ...}) => typ
              | Const (pos, c) => fixT (Type.Prim (pos, Const.typeOf c))
