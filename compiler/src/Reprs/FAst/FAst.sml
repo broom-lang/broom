@@ -125,6 +125,7 @@ structure FixedFAst = struct
 
         val toDoc = FAst.Term.exprToDoc Type.toDoc
         val toString = FAst.Term.exprToString toDoc
+        val typeOf = FAst.Term.typeOf Type.Fix
     end
 end
 

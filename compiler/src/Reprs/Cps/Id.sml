@@ -21,7 +21,7 @@ structure Id :> ID = struct
                       end
     end
 
-    val toDoc = PPrint.word
+    val toDoc = PPrint.int o Word.toInt
 
     structure HashKey = struct
         type hash_key = t

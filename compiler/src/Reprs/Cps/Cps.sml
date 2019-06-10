@@ -70,7 +70,7 @@ signature CPS_PROGRAM = sig
 end
 
 structure Cps :> sig
-    structure Type: CPS_TYPE
+    structure Type: CPS_TYPE where type Prim.t = PrimType.t
     structure Term: CPS_TERM where type typ = Type.typ
     structure Cont: CPS_CONT where
         type Type.typ = Type.typ
@@ -177,18 +177,18 @@ end = struct
                                       NONE transfer
             in Option.mapOr (fn doc => doc <> PPrint.newline) PPrint.empty exprsDoc
                    <> (case transfer
-                       of Goto ({id, ...}, tArgs, vArgs) =>
+                       of Goto (dest, tArgs, vArgs) =>
                            (* FIXME: Get `name` from cont in program: *)
-                           let val destDoc = ExprId.toDoc id
+                           let val destDoc = exprToIdDoc dest
                                val tDocs = Vector.map Type.toDoc tArgs
-                               val vDocs = Vector.map (ExprId.toDoc o #id) vArgs
+                               val vDocs = Vector.map exprToIdDoc vArgs
                            in destDoc <> PPrint.brackets (PPrint.punctuate (text "," <> space) tDocs)
                                       <> PPrint.parens (PPrint.punctuate (text "," <> space) vDocs)
                            end 
-                        | If ({id = cond, ...}, {id = conseq, ...}, {id = alt, ...}) =>
-                           text "if" <+> ExprId.toDoc cond
-                               <+> text "then" <+> ExprId.toDoc conseq
-                               <+> text "else" <+> ExprId.toDoc alt)
+                        | If (cond, conseq, alt) =>
+                           text "if" <+> exprToIdDoc cond
+                               <+> text "then" <+> exprToIdDoc conseq
+                               <+> text "else" <+> exprToIdDoc alt)
             end
     end
 
@@ -218,9 +218,11 @@ end = struct
 
         fun toDoc {conts, start} =
             let val visited = ExprId.HashSet.mkEmpty 0
-                val step = fn (cont, SOME acc) => SOME (acc <++> Cont.toDoc visited cont)
-                            | (cont, NONE) => SOME (Cont.toDoc visited cont)
-            in getOpt (Label.SortedMap.foldl step NONE conts, PPrint.empty)
+                val step = fn (label, cont, SOME acc) => 
+                               SOME (acc <++> PPrint.newline <> Label.toDoc label <+> text "=" <+> Cont.toDoc visited cont)
+                            | (label, cont, NONE) =>
+                               SOME (Label.toDoc label <+> text "=" <+> Cont.toDoc visited cont)
+            in getOpt (Label.SortedMap.foldli step NONE conts, PPrint.empty)
             end
 
         fun findCont ({conts, start = _}, label) = Label.SortedMap.find (conts, label)
