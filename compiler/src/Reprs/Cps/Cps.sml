@@ -19,19 +19,17 @@ end
 
 signature CPS_TERM = sig
     type typ
-    type label
     type param = {var: Name.t, typ: typ}
 
     datatype oper = PrimApp of primapp
                   | Param of param
-                  | Label of label
+                  | Label of Label.t
                   | Const of Const.t
     and primapp = IAdd of expr * expr
     withtype expr = {id: ExprId.t, oper: oper}
 
-    (* FIXME: Change destinations from `label` to `expr` (for e.g. returning from fn:s). *)
-    datatype transfer = Goto of label * typ vector * expr vector
-                      | If of expr * label * label
+    datatype transfer = Goto of expr * typ vector * expr vector
+                      | If of expr * expr * expr 
 
     val newExpr: oper -> expr
 
@@ -111,12 +109,12 @@ end = struct
                 in text "fn" <+> PPrint.brackets (PPrint.punctuate (text "," <> space) tDocs)
                              <+> PPrint.parens (PPrint.punctuate (text "," <> space) vDocs)
                 end
+             | TParam {var, kind = _} => Name.toDoc var
+             | Prim p => Prim.toDoc p
     end
 
     structure Term = struct
         type typ = Type.typ
-
-        type label = word
 
         type id = word
 
@@ -124,15 +122,15 @@ end = struct
 
         datatype oper = PrimApp of primapp
                       | Param of param 
-                      | Label of label
+                      | Label of Label.t
                       | Const of Const.t
 
         and primapp = IAdd of expr * expr
 
         withtype expr = {id: ExprId.t, oper: oper}
 
-        datatype transfer = Goto of label * Type.typ vector * expr vector
-                          | If of expr * label * label
+        datatype transfer = Goto of expr * Type.typ vector * expr vector
+                          | If of expr * expr * expr
 
         fun newExpr oper = {id = ExprId.fresh (), oper}
         fun foldChildren f acc {oper, ...} =
@@ -141,23 +139,25 @@ end = struct
              | Param _ | Label _ | Const _ => acc
 
         fun foldTransferExprs f acc =
-            fn Goto (_, _, vArgs) => Vector.foldl f acc vArgs
-             | If (cond, _, _) => f (cond, acc)
+            fn Goto (dest, _, vArgs) => Vector.foldl f (f (dest, acc)) vArgs
+             | If (cond, conseq, alt) => f (alt, f (conseq, f (cond, acc)))
 
         fun paramToDoc {var, typ} = Name.toDoc var <> text ":" <+> Type.toDoc typ
 
+        fun exprToIdDoc {id, oper = _} = text "#" <> ExprId.toDoc id
+
+        val primappToDoc =
+            fn oper as IAdd (l, r) =>
+                text "iadd" <+> exprToIdDoc l <> text "," <+> exprToIdDoc r
+
+        val operToDoc =
+            fn PrimApp papp => PPrint.parens (primappToDoc papp)
+             | Param {var, ...} => Name.toDoc var
+             | Label label => text "$" <> Label.toDoc label
+             | Const c => Const.toDoc c
+
         fun exprToDoc visited (expr as {id, oper}) =
-            let val primappToDoc =
-                    fn oper as IAdd ({id = lid, ...}, {id = rid, ...}) =>
-                        text "iadd" <+> ExprId.toDoc lid <> text "," <+> ExprId.toDoc rid
-
-                val operToDoc =
-                    fn PrimApp papp => PPrint.parens (primappToDoc papp)
-                     | Param {var, ...} => Name.toDoc var
-                     | Label label => text "fn" <+> PPrint.word label
-                     | Const c => Const.toDoc c
-
-                val childrenDoc =
+            let val childrenDoc =
                     foldChildren (fn (child, SOME acc) =>
                                       SOME (acc <++> exprToDoc visited child)
                                    | (child, NONE) => SOME (exprToDoc visited child))
@@ -177,17 +177,18 @@ end = struct
                                       NONE transfer
             in Option.mapOr (fn doc => doc <> PPrint.newline) PPrint.empty exprsDoc
                    <> (case transfer
-                       of Goto (label, tArgs, vArgs) =>
+                       of Goto ({id, ...}, tArgs, vArgs) =>
                            (* FIXME: Get `name` from cont in program: *)
-                           let val name = Name.freshen (Name.fromString (Word.toString label))
+                           let val destDoc = ExprId.toDoc id
                                val tDocs = Vector.map Type.toDoc tArgs
                                val vDocs = Vector.map (ExprId.toDoc o #id) vArgs
-                           in Name.toDoc name <> PPrint.brackets (PPrint.punctuate (text "," <> space) tDocs)
-                                              <> PPrint.parens (PPrint.punctuate (text "," <> space) vDocs)
+                           in destDoc <> PPrint.brackets (PPrint.punctuate (text "," <> space) tDocs)
+                                      <> PPrint.parens (PPrint.punctuate (text "," <> space) vDocs)
                            end 
-                        | If ({id, ...}, conseq, alt) => text "if" <+> ExprId.toDoc id
-                                                             <+> text "then" <+> PPrint.word conseq 
-                                                             <+> text "else" <+> PPrint.word alt)
+                        | If ({id = cond, ...}, {id = conseq, ...}, {id = alt, ...}) =>
+                           text "if" <+> ExprId.toDoc cond
+                               <+> text "then" <+> ExprId.toDoc conseq
+                               <+> text "else" <+> ExprId.toDoc alt)
             end
     end
 
@@ -205,7 +206,7 @@ end = struct
                 <> PPrint.brackets (PPrint.punctuate (text "," <> space)
                                                      (Vector.map Type.paramToDoc typeParams))
                 <> PPrint.parens (PPrint.punctuate (text "," <> space)
-                                                   (Vector.map Type.paramToDoc typeParams))
+                                                   (Vector.map Term.paramToDoc valParams))
                 <+> PPrint.lBrace
                 <> PPrint.nest 4 (PPrint.newline <> Term.transferToDoc visited body)
                 <++> PPrint.rBrace

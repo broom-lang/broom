@@ -48,6 +48,8 @@ end = struct
                           then ignore (Either.unwrap (FAstTypechecker.typecheck program))
                           else ()
                   
+                  val _ = log "===\n"
+                  
                   val program = CpsConvert.cpsConvert program
                   val _ = log (PPrint.pretty 80 (Cps.Program.toDoc program) ^ "\n")
               in if BroomParser.sameToken(nextToken,dummyEOF)

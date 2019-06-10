@@ -8,7 +8,7 @@ end = struct
     structure CType = Cps.Type
     structure CTerm = Cps.Term
     structure Builder = Cps.Program.Builder
-    type transfer = CTerm.transfer
+    datatype transfer = datatype CTerm.transfer
 
     datatype cont = ContFn of CTerm.expr -> transfer
                   | TrivCont of CTerm.expr
@@ -48,6 +48,7 @@ end = struct
             and continue (cont: cont) (expr: CTerm.expr): transfer =
                 case cont
                 of ContFn kf => kf expr
+                 | TrivCont kexpr => Goto (kexpr, Vector.fromList [], Vector.fromList [expr])
 
             val retParam = {var = Name.fresh (), typ = CType.cont CType.int}
             val ret = TrivCont (CTerm.newExpr (CTerm.Param retParam))
