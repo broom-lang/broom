@@ -16,8 +16,6 @@ structure Cst = struct
 
         val toDoc: ('typ -> PPrint.t) -> ('expr -> PPrint.t) -> ('typ, 'expr) typ -> PPrint.t
         val pos: ('expr -> Pos.t) -> ('typ, 'expr) typ -> Pos.t
-        val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> ('typ, 'expr) typ -> 'a
-        val rowExtTail: ('typ, 'expr) typ -> ('typ, 'expr) typ
     end = struct
         structure Prim = PrimType
         val op<> = PPrint.<>
@@ -69,11 +67,6 @@ structure Cst = struct
              | Type pos => pos
              | Path expr => exprPos expr
              | Prim (pos, _) => pos
-
-        fun shallowFoldl f acc =
-            fn Arrow (_, {domain, codomain}) => f (codomain, f (domain, acc))
-
-        fun rowExtTail t = t
     end
 
     structure Term :> sig

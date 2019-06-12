@@ -47,12 +47,12 @@ structure FAst = struct
        fun stmtToDoc svarToDoc =
            fn Val (_, def, valExpr) =>
                text "val" <+> defToDoc svarToDoc def <+> text "="
-                   <+> PPrint.align (toDoc svarToDoc valExpr)
-            | Expr expr => toDoc svarToDoc expr
+                   <+> PPrint.align (exprToDoc svarToDoc valExpr)
+            | Expr expr => exprToDoc svarToDoc expr
 
-       and fieldToDoc svarToDoc (label, expr) = Name.toDoc label <+> text "=" <+> toDoc svarToDoc expr
+       and fieldToDoc svarToDoc (label, expr) = Name.toDoc label <+> text "=" <+> exprToDoc svarToDoc expr
 
-       and toDoc svarToDoc =
+       and exprToDoc svarToDoc =
            let val rec toDoc =
                    fn Fn (_, param, body) =>
                        text "\\" <> defToDoc svarToDoc param <+> text "=>" <+> toDoc body

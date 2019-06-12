@@ -58,11 +58,11 @@ structure FType = struct
         in absToDoc
         end
 
-    fun splitExistentials splitExistentials =
+    val rec splitExistentials =
         fn Exists (_, def, body) => let val (defs, body) = splitExistentials body
                                     in (def :: defs, body)
                                     end
-         | t => ([], t)
+         | Concr t => ([], t)
 
     fun mapConcrChildren f =
         fn ForAll (pos, param, body) => ForAll (pos, param, f body)
@@ -94,18 +94,18 @@ structure FType = struct
         fn Exists (pos, param, body) => exists (pos, param, absCata alg body)
          | Concr args => concr args
 
-    fun concrOccurs svarEq sv = concrCata { forAll = #3
-                                          , arrow = fn (_, {domain, codomain}) => domain orelse codomain
-                                          , record = #2
-                                          , rowExt = fn (_, {field = (_, fieldt), ext}) => fieldt orelse ext
-                                          , emptyRow = Fn.constantly false
-                                          , typ = fn (_, t) => absOccurs svarEq sv t
-                                          , svar = fn (_, sv') => svarEq (sv', sv)
-                                          , uset = Fn.constantly false
-                                          , prim = Fn.constantly false }
+    fun concrOccurs svarOcc sv = concrCata { forAll = #3
+                                           , arrow = fn (_, {domain, codomain}) => domain orelse codomain
+                                           , record = #2
+                                           , rowExt = fn (_, {field = (_, fieldt), ext}) => fieldt orelse ext
+                                           , emptyRow = Fn.constantly false
+                                           , typ = fn (_, t) => absOccurs svarOcc sv t
+                                           , svar = fn (_, sv') => svarOcc sv sv'
+                                           , uset = Fn.constantly false
+                                           , prim = Fn.constantly false }
 
-    and absOccurs svarEq sv = absCata { exists = #3
-                                      , concr = concrOccurs svarEq sv }
+    and absOccurs svarOcc sv = absCata { exists = #3
+                                       , concr = concrOccurs svarOcc sv }
 
     (* OPTIMIZE: Entire subtrees where the `name` does not occur could be reused. *)
     fun concrSubstitute svarSubst (kv as (name, t')) =
@@ -116,7 +116,7 @@ structure FType = struct
                     mapConcrChildren subst t
                  | Type (pos, t) => Type (pos, absSubstitute svarSubst kv t)
                  | t as UseT (pos, {var, ...}) => if var = name then t' else t
-                 | SVar (pos, sv) => svarSubst kv sv
+                 | t as SVar (pos, sv) => getOpt (svarSubst kv sv, t)
         in subst
         end
 
@@ -128,9 +128,9 @@ structure FType = struct
         in subst
         end
 
-    fun rowExtTail {tail, wrap} =
-        fn RowExt (_, {ext, ...}) => tail ext
-         | t => wrap t
+    val rec rowExtTail =
+        fn RowExt (_, {ext, ...}) => rowExtTail ext
+         | t => t
 
     fun unit pos = Prim (pos, Prim.Unit)
 
