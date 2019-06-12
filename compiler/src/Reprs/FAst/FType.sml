@@ -12,15 +12,20 @@ structure FType = struct
 
     type def = {var: Name.t, kind: kind}
 
-    datatype 'typ typ = ForAll of Pos.t * def * 'typ
-                      | Exists of Pos.t * def * 'typ
-                      | Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
-                      | Record of Pos.t * 'typ
-                      | RowExt of Pos.t * {field: Name.t * 'typ, ext: 'typ}
-                      | EmptyRow of Pos.t
-                      | Type of Pos.t * 'typ
-                      | UseT of Pos.t * def
-                      | Prim of Pos.t * Prim.t
+    datatype 'sv concr
+        = ForAll of Pos.t * def * 'sv concr
+        | Arrow of Pos.t * {domain: 'sv concr, codomain: 'sv concr}
+        | Record of Pos.t * 'sv concr
+        | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
+        | EmptyRow of Pos.t
+        | Type of Pos.t * 'sv abs
+        | UseT of Pos.t * def
+        | SVar of Pos.t * 'sv
+        | Prim of Pos.t * Prim.t
+    
+    and 'sv abs
+        = Exists of Pos.t * def * 'sv abs
+        | Concr of 'sv concr
 
     val rec kindToDoc =
         fn TypeK _ => text "Type"
@@ -29,43 +34,29 @@ structure FType = struct
 
     fun defToDoc {var, kind} = Name.toDoc var <> text ":" <+> kindToDoc kind
 
-    fun toDoc toDoc =
-        fn ForAll (_, param, t) =>
-            text "forall" <+> defToDoc param <+> text "." <+> toDoc t
-         | Exists (_, param, t) =>
-            text "exists" <+> defToDoc param <+> text "." <+> toDoc t
-         | Arrow (_, {domain, codomain}) =>
-            toDoc domain <+> text "->" <+> toDoc codomain
-         | Record (_, row) => braces (toDoc row)
-         | RowExt (_, {field = (label, fieldType), ext}) =>
-            Name.toDoc label <> text ":" <+> toDoc fieldType <+> text "|" <+> toDoc ext
-         | EmptyRow _ => text "(||)"
-         | Type (_, t) => brackets (text "=" <+> toDoc t)
-         | UseT (_, {var, kind = _}) => Name.toDoc var
-         | Prim (_, p) => Prim.toDoc p
+    fun concrToDoc svarToDoc =
+        let val rec concrToDoc =
+                fn ForAll (_, param, t) =>
+                    text "forall" <+> defToDoc param <+> text "." <+> concrToDoc t
+                 | Arrow (_, {domain, codomain}) =>
+                    concrToDoc domain <+> text "->" <+> concrToDoc codomain
+                 | Record (_, row) => braces (concrToDoc row)
+                 | RowExt (_, {field = (label, fieldType), ext}) =>
+                    Name.toDoc label <> text ":" <+> concrToDoc fieldType <+> text "|" <+> concrToDoc ext
+                 | EmptyRow _ => text "(||)"
+                 | Type (_, t) => brackets (text "=" <+> absToDoc svarToDoc t)
+                 | SVar (_, sv) => svarToDoc sv
+                 | UseT (_, {var, kind = _}) => Name.toDoc var
+                 | Prim (_, p) => Prim.toDoc p
+        in concrToDoc
+        end
 
-    fun toString toDoc = PPrint.pretty 80 o toDoc
-
-    val pos =
-        fn ForAll (pos, _, _) => pos
-         | Exists (pos, _, _) => pos
-         | Arrow (pos, _) => pos
-         | Record (pos, _) => pos
-         | RowExt (pos, _) => pos
-         | EmptyRow pos => pos
-         | Type (pos, _) => pos
-         | UseT (pos, _) => pos
-         | Prim (pos, _) => pos
-
-    fun shallowFoldl f acc =
-        fn ForAll (_, _, t) => f (t, acc)
-         | Exists (_, _, t) => f (t, acc)
-         | Arrow (_, {domain, codomain}) => f (codomain, f (domain, acc))
-         | Record (_, row) => f (row, acc)
-         | RowExt (_, {field = (_, fieldt), ext}) => f (ext, f (fieldt, acc))
-         | EmptyRow _ => acc
-         | Type (_, t) => f (t, acc)
-         | UseT _ | Prim _ => acc
+    and absToDoc svarToDoc =
+        let val rec absToDoc =
+                fn Exists (_, param, t) => text "exists" <+> defToDoc param <+> text "." <+> absToDoc t
+                 | Concr t => concrToDoc svarToDoc t
+        in absToDoc
+        end
 
     fun splitExistentials splitExistentials =
         fn Exists (_, def, body) => let val (defs, body) = splitExistentials body
@@ -73,23 +64,68 @@ structure FType = struct
                                     end
          | t => ([], t)
 
-    fun substitute (fix: 'typ typ -> 'typ) (substituteFixed: Name.t * 'typ -> 'typ -> 'typ)
-                   (kv as (name: Name.t, t': 'typ)) (t: 'typ typ): 'typ =
-        let val substFixed = substituteFixed kv
-            val rec subst =
-                fn t as ForAll (pos, param as {var, kind = _}, body) =>
-                    fix (if var = name then t else ForAll (pos, param, substFixed body))
-                 | t as Exists (pos, param as {var, kind = _}, body) =>
-                    fix (if var = name then t else Exists (pos, param, substFixed body))
-                 | Arrow (pos, {domain, codomain}) =>
-                    fix (Arrow (pos, {domain = substFixed domain, codomain = substFixed codomain}))
-                 | Record (pos, row) => fix (Record (pos, substFixed row))
-                 | RowExt (pos, {field = (label, fieldt), ext}) =>
-                    fix (RowExt (pos, {field = (label, substFixed fieldt), ext = substFixed ext}))
-                 | Type (pos, t) => fix (Type (pos, substFixed t))
-                 | t as UseT (pos, {var, kind}) => if var = name then t' else fix t
-                 | t as (EmptyRow _ | Prim _) => fix t
-        in subst t
+    fun mapConcrChildren f =
+        fn ForAll (pos, param, body) => ForAll (pos, param, f body)
+         | Arrow (pos, {domain, codomain}) =>
+            Arrow (pos, {domain = f domain, codomain = f codomain})
+         | Record (pos, row) => Record (pos, f row)
+         | RowExt (pos, {field = (label, fieldt), ext}) =>
+            RowExt (pos, {field = (label, f fieldt), ext = f ext})
+         | t as (EmptyRow _ | Type _ | SVar _ | UseT _ | Prim _) => t
+
+    fun mapAbsChildren f =
+        fn Exists (pos, param, t) => Exists (pos, param, f t)
+         | t as Concr _ => t
+
+    fun concrCata (alg as {forAll, arrow, record, rowExt, emptyRow, typ, svar, uset, prim}) =
+        fn ForAll (pos, param, body) => forAll (pos, param, concrCata alg body)
+         | Arrow (pos, {domain, codomain}) =>
+            arrow (pos, {domain = concrCata alg domain, codomain = concrCata alg codomain})
+         | Record (pos, row) => record (pos, concrCata alg row)
+         | RowExt (pos, {field = (label, fieldt), ext}) =>
+            rowExt (pos, {field = (label, concrCata alg fieldt), ext = concrCata alg ext})
+         | EmptyRow args => emptyRow args
+         | Type args => typ args
+         | SVar args => svar args
+         | UseT args => uset args
+         | Prim args => prim args
+
+    fun absCata (alg as {exists, concr}) =
+        fn Exists (pos, param, body) => exists (pos, param, absCata alg body)
+         | Concr args => concr args
+
+    fun concrOccurs svarEq sv = concrCata { forAll = #3
+                                          , arrow = fn (_, {domain, codomain}) => domain orelse codomain
+                                          , record = #2
+                                          , rowExt = fn (_, {field = (_, fieldt), ext}) => fieldt orelse ext
+                                          , emptyRow = Fn.constantly false
+                                          , typ = fn (_, t) => absOccurs svarEq sv t
+                                          , svar = fn (_, sv') => svarEq (sv', sv)
+                                          , uset = Fn.constantly false
+                                          , prim = Fn.constantly false }
+
+    and absOccurs svarEq sv = absCata { exists = #3
+                                      , concr = concrOccurs svarEq sv }
+
+    (* OPTIMIZE: Entire subtrees where the `name` does not occur could be reused. *)
+    fun concrSubstitute svarSubst (kv as (name, t')) =
+        let val rec subst =
+                fn t as ForAll (pos, param as {var, ...}, body) =>
+                    if var = name then t else mapConcrChildren subst t
+                 | t as (Arrow _ | Record _ | RowExt _ | EmptyRow _ | Prim _) =>
+                    mapConcrChildren subst t
+                 | Type (pos, t) => Type (pos, absSubstitute svarSubst kv t)
+                 | t as UseT (pos, {var, ...}) => if var = name then t' else t
+                 | SVar (pos, sv) => svarSubst kv sv
+        in subst
+        end
+
+    and absSubstitute svarSubst (kv as (name, _)) =
+        let val rec subst =
+                fn t as Exists (pos, param as {var, ...}, body) =>
+                    if var = name then t else mapAbsChildren subst body
+                 | Concr t => Concr (concrSubstitute svarSubst kv t)
+        in subst
         end
 
     fun rowExtTail {tail, wrap} =
@@ -97,5 +133,34 @@ structure FType = struct
          | t => wrap t
 
     fun unit pos = Prim (pos, Prim.Unit)
+
+    structure Concr = struct
+        val pos =
+            fn ForAll (pos, _, _) => pos
+             | Arrow (pos, _) => pos
+             | Record (pos, _) => pos
+             | RowExt (pos, _) => pos
+             | EmptyRow pos => pos
+             | Type (pos, _) => pos
+             | SVar (pos, _) => pos
+             | UseT (pos, _) => pos
+             | Prim (pos, _) => pos
+
+        val toDoc = concrToDoc
+        fun toString svarToDoc = PPrint.pretty 80 o toDoc svarToDoc
+        val occurs = concrOccurs
+        val substitute = concrSubstitute
+    end
+
+    structure Abs = struct
+        val pos =
+            fn Exists (pos, _, _) => pos
+             | Concr t => Concr.pos t
+
+        val toDoc = absToDoc
+        fun toString svarToDoc = PPrint.pretty 80 o toDoc svarToDoc
+        val occurs = absOccurs
+        val substitute = absSubstitute
+    end
 end
 

@@ -21,17 +21,27 @@ signature TYPECHECKER_OUTPUT = sig
     structure Type: sig
         type kind
         type def = {var: Name.t, kind: kind}
-        type 'typ typ
+        type 'sv concr
+        type 'sv abs
 
         val kindToDoc: kind -> PPrint.t
-
-        val pos: 'typ typ -> Pos.t
-        val toDoc: ('typ -> PPrint.t) -> 'typ typ -> PPrint.t
-        val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> 'typ typ -> 'a
+(*
         val splitExistentials: ('typ -> def list * 'typ typ) -> 'typ typ -> def list * 'typ typ
-        val substitute: ('typ typ -> 'typ) -> (Name.t * 'typ -> 'typ -> 'typ)
-                        -> Name.t * 'typ -> 'typ typ -> 'typ
         val rowExtTail: {tail: 'typ -> 'typ, wrap: 'typ typ -> 'typ} -> 'typ typ -> 'typ
+*)
+        structure Concr: sig
+            val pos: 'sv concr -> Pos.t
+            val toDoc: ('sv -> PPrint.t) -> 'sv concr -> PPrint.t
+            val substitute: (Name.t * 'sv concr -> 'sv -> 'sv concr) 
+                          -> Name.t * 'sv concr -> 'sv concr -> 'sv concr
+        end
+
+        structure Abs: sig
+            val pos: 'sv abs -> Pos.t
+            val toDoc: ('sv -> PPrint.t) -> 'sv abs -> PPrint.t
+            val substitute: (Name.t * 'sv concr -> 'sv -> 'sv concr) 
+                          -> Name.t * 'sv concr -> 'sv abs -> 'sv abs
+        end
     end
 
     structure Term: sig
@@ -60,10 +70,11 @@ signature TYPECHECKING = sig
     type scope_id
 
     datatype typ = InputType of (typ, expr) Input.Type.typ
-                 | OutputType of typ Output.Type.typ
+                 | OutputType of sv Output.Type.concr
                  | ScopeType of {scope: type_scope, typ: typ}
-                 | OVar of Pos.t * ov
-                 | UVar of Pos.t * uv
+    
+    and sv = OVar of Pos.t * ov
+           | UVar of Pos.t * uv
     
     and expr = InputExpr of (typ, typ option ref, expr, expr ref) Input.Term.expr
              | OutputExpr of typ Output.Term.expr
@@ -159,10 +170,11 @@ end) :> TYPECHECKING where
     type scope_id = int
 
     datatype typ = InputType of (typ, expr) Input.Type.typ
-                 | OutputType of typ Output.Type.typ
+                 | OutputType of sv Output.Type.concr
                  | ScopeType of {scope: type_scope, typ: typ}
-                 | OVar of Pos.t * ov
-                 | UVar of Pos.t * uv
+
+    and sv = OVar of Pos.t * ov
+           | UVar of Pos.t * uv
     
     and expr = InputExpr of (typ, typ option ref, expr, expr ref) Input.Term.expr
              | OutputExpr of typ Output.Term.expr
@@ -189,31 +201,21 @@ end) :> TYPECHECKING where
 
     val rec typeToDoc =
         fn InputType typ => Input.Type.toDoc typeToDoc exprToDoc typ
-         | OutputType typ => Output.Type.toDoc typeToDoc typ
+         | OutputType typ => Output.Type.Concr.toDoc svarToDoc typ
          | ScopeType {typ, ...} => typeToDoc typ
-         | OVar (_, ov) => Name.toDoc (TypeVars.ovName ov)
+ 
+    and svarToDoc =
+        fn OVar (_, ov) => Name.toDoc (TypeVars.ovName ov)
          | UVar (_, uv) => (case TypeVars.uvGet uv
                             of Either.Right t => typeToDoc t
                              | Either.Left uv => text "^" <> Name.toDoc (TypeVars.uvName uv))
-
+   
     and annToDoc = fn ann => Option.mapOr (fn t => text ":" <+> typeToDoc t) PPrint.empty (!ann)
 
     and exprToDoc =
         fn InputExpr expr => Input.Term.exprToDoc typeToDoc annToDoc exprToDoc (exprToDoc o op!) expr
          | OutputExpr expr => Output.Term.exprToDoc typeToDoc expr
          | ScopeExpr {expr, ...} => exprToDoc expr
-
-    fun occurs uv =
-        let fun occStep (t, acc) = acc orelse occ t
-            and occ typ =
-                case typ
-                of InputType t => raise Fail "unreachable"
-                 | OutputType t => Output.Type.shallowFoldl occStep false t
-                 | ScopeType {typ, ...} => occ typ
-                 | OVar _ => false
-                 | UVar (_, uv') => TypeVars.uvEq (uv, uv')
-        in occ
-        end
 
     structure Expr = struct
         val rec pos =
@@ -228,24 +230,18 @@ end) :> TYPECHECKING where
     structure Type = struct
         val rec pos = fn InputType typ => Input.Type.pos Expr.pos typ
                        | ScopeType {typ, ...} => pos typ
-                       | OutputType typ => Output.Type.pos typ
+                       | OutputType typ => Output.Type.Concr.pos typ
 
         val toDoc = typeToDoc
         val toString = PPrint.pretty 80 o toDoc
 
-        fun splitExistentials t =
-            let val rec split = 
-                    fn OutputType t => Output.Type.splitExistentials split t
-                     | InputType _ => raise Fail "encountered InputType"
-                     | ScopeType {typ, ...} => split typ
-            in Pair.second OutputType (split t)
-            end
-
-        fun substitute (kv as (name, t'): Name.t * typ) =
-            fn OutputType t => Output.Type.substitute OutputType substitute kv t
+        fun substitute kv =
+            fn OutputType t => OutputType (Output.Type.Concr.substitute svarSubstitute kv t)
              | InputType _ => raise Fail "encountered InputType"
              | ScopeType _ => raise Fail "encountered ScopeType"
-             | t as OVar (_, ov) => if TypeVars.ovName ov = name then t' else t (* HACK? *)
+
+        and svarSubstitute (kv as (name, t')) =
+            fn t as OVar (_, ov) => if TypeVars.ovName ov = name then t' else t (* HACK? *)
              | t as UVar (_, uv) => (case TypeVars.uvGet uv
                                      of Either.Left _ => t
                                       | Either.Right t => substitute kv t)

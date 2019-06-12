@@ -31,11 +31,11 @@ local
     ann "warnUnused true"
     in ann "allowSuccessorML true"
        in
+           src/Reprs/Util/SVar.sml
+           src/Typechecker/TypeVars.sml
            src/Reprs/FAst/FType.sml 
            src/Reprs/FAst/FAst.sml
-           src/Reprs/FAst/Typechecker.sml
            
-           src/Typechecker/TypeVars.sml
            src/Typechecker/Typechecking.sml
            src/Typechecker/TypeError.sml
            src/Typechecker/EnterTypechecker.sml
@@ -43,6 +43,8 @@ local
            src/Typechecker/Typechecker.sml
            src/Typechecker/ExitTypechecker.sml
            
+           src/Reprs/FAst/Typechecker.sml
+
            src/Parser/parser.sml
        end
     end
