@@ -42,7 +42,7 @@ end = struct
                   val (_, program) = Typechecker.elaborateExpr [TC.ExprScope rootScope] program
 
                   val program = ExitTypechecker.exprToF program
-                  val _ = log (PPrint.pretty 80 (FixedFAst.Term.toDoc program) ^ "\n")
+                  val _ = log (PPrint.pretty 80 (FixedFAst.Term.exprToDoc program) ^ "\n")
 
                   val _ = if lint
                           then ignore (Either.unwrap (FAstTypechecker.typecheck program))

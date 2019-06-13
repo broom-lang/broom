@@ -85,7 +85,7 @@ structure FAst = struct
             in toDoc
             end
 
-        fun exprToString toDoc = PPrint.pretty 80 o toDoc
+        fun exprToString svarToDoc = PPrint.pretty 80 o exprToDoc svarToDoc
 
         val rec typeOf =
             fn Fn (pos, {typ = domain, ...}, body) => Type.Arrow (pos, {domain, codomain = typeOf body})
@@ -120,12 +120,17 @@ structure FixedFAst = struct
         type ov = scope_id TypeVars.ov
         type concr = ov concr
         type abs = ov abs
+
+        val concrToString: concr -> string = FAst.Type.Concr.toString (Name.toDoc o TypeVars.ovName)
     end
 
     structure Term = struct
         open FAst.Term
 
         type expr = Type.ov expr
+
+        val exprToDoc = FAst.Term.exprToDoc (Name.toDoc o TypeVars.ovName)
+        val exprToString: expr -> string = FAst.Term.exprToString (Name.toDoc o TypeVars.ovName)
     end
 end
 
