@@ -58,6 +58,11 @@ structure FType = struct
         in absToDoc
         end
 
+    fun exist pos (params, body) =
+        case params
+        of param :: params => Exists (pos, param, exist pos (params, body))
+         | [] => Concr body
+
     val rec splitExistentials =
         fn Exists (_, def, body) => let val (defs, body) = splitExistentials body
                                     in (def :: defs, body)

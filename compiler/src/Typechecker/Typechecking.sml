@@ -24,12 +24,14 @@ signature TYPECHECKER_OUTPUT = sig
 
         val kindToDoc: kind -> PPrint.t
 
+        val exist: Pos.t -> def list * 'sv concr -> 'sv abs
         val splitExistentials: 'typ abs -> def list * 'typ concr 
         val rowExtTail: 'typ concr -> 'typ concr
 
         structure Concr: sig
             val pos: 'sv concr -> Pos.t
             val toDoc: ('sv -> PPrint.t) -> 'sv concr -> PPrint.t
+            val toString: ('sv -> PPrint.t) -> 'sv concr -> string
             val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv concr -> bool
             val substitute: (Name.t * 'sv concr -> 'sv -> 'sv concr option) 
                           -> Name.t * 'sv concr -> 'sv concr -> 'sv concr
@@ -78,7 +80,7 @@ signature TYPECHECKING = sig
            | UVar of uv
     
     and expr = InputExpr of (typ, typ option ref, expr, expr ref) Input.Term.expr
-             | OutputExpr of typ Output.Term.expr
+             | OutputExpr of sv Output.Term.expr
              | ScopeExpr of {scope: expr_scope, expr: expr}
 
     and scope = TypeScope of type_scope
@@ -103,9 +105,12 @@ signature TYPECHECKING = sig
 
     and env = scope list
 
+    val svarToDoc: sv -> PPrint.t
+
     structure Type: sig
         val pos: typ -> Pos.t
         val concrToDoc: concr -> PPrint.t
+        val concrToString: concr -> string
         val absToDoc: abs -> PPrint.t
         val absToString: abs -> string
         val toDoc: typ -> PPrint.t
@@ -184,7 +189,7 @@ end) :> TYPECHECKING where
            | UVar of uv
     
     and expr = InputExpr of (typ, typ option ref, expr, expr ref) Input.Term.expr
-             | OutputExpr of typ Output.Term.expr
+             | OutputExpr of sv Output.Term.expr
              | ScopeExpr of {scope: expr_scope, expr: expr}
 
     and scope = TypeScope of type_scope
@@ -224,7 +229,7 @@ end) :> TYPECHECKING where
 
     and exprToDoc =
         fn InputExpr expr => Input.Term.exprToDoc typeToDoc annToDoc exprToDoc (exprToDoc o op!) expr
-         | OutputExpr expr => Output.Term.exprToDoc typeToDoc expr
+         | OutputExpr expr => Output.Term.exprToDoc svarToDoc expr
          | ScopeExpr {expr, ...} => exprToDoc expr
 
     structure Expr = struct
@@ -243,6 +248,7 @@ end) :> TYPECHECKING where
                        | OutputType typ => Output.Type.Abs.pos typ
 
         val concrToDoc = Output.Type.Concr.toDoc svarToDoc
+        val concrToString = Output.Type.Concr.toString svarToDoc
         val absToDoc = Output.Type.Abs.toDoc svarToDoc
         val absToString = Output.Type.Abs.toString svarToDoc
         val toDoc = typeToDoc
