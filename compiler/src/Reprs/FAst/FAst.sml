@@ -112,12 +112,20 @@ structure FAst = struct
 end
 
 structure FixedFAst = struct
+    type scope_id = word
+
     structure Type = struct
         open FAst.Type
+
+        type ov = scope_id TypeVars.ov
+        type concr = ov concr
+        type abs = ov abs
     end
 
     structure Term = struct
         open FAst.Term
+
+        type expr = Type.ov expr
     end
 end
 
