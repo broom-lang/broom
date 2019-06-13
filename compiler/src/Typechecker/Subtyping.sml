@@ -93,7 +93,9 @@ end = struct
                  else raise TypeError (NonSubType (expr, typ, superTyp))
               | (FType.SVar (_, TC.UVar uv), FType.SVar (_, TC.UVar uv')) => subUvs env expr (uv, uv')
               | (FType.SVar (_, TC.UVar uv), _) => subUv env expr uv superTyp
-              | (_, FType.SVar (_, TC.UVar uv)) => superUv env expr uv typ)
+              | (_, FType.SVar (_, TC.UVar uv)) => superUv env expr uv typ
+              | _ => raise Fail ("unimplemented: " ^ TC.Type.absToString typ ^ " <: "
+                                 ^ TC.Type.absToString superTyp))
 
     and subArrows env expr ({domain, codomain}, {domain = domain', codomain = codomain'}) =
         let val coerceDomain = subType env expr (Concr domain', Concr domain)

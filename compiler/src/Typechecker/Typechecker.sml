@@ -98,6 +98,10 @@ end = struct
                  in (fieldDefs @ extDefs, List.foldl constructStep ext revFields)
                  end
               | CType.EmptyRow pos => ([], FType.EmptyRow pos)
+              | CType.WildRow pos => (* FIXME: Kind should be (Impredicative) row: *)
+                 let val def = {var = Id.fresh (), kind = FType.TypeK pos}
+                 in ([def], FType.UseT (pos, def))
+                 end
               | CType.Path typExpr =>
                  let val (typ, _) = elaborateExpr env typExpr
                  in case typ
