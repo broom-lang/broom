@@ -129,7 +129,7 @@ structure FixedFAst = struct
 
         type expr = Type.ov expr
 
-        val exprToDoc = FAst.Term.exprToDoc (Name.toDoc o TypeVars.ovName)
+        val exprToDoc: expr -> PPrint.t = FAst.Term.exprToDoc (Name.toDoc o TypeVars.ovName)
         val exprToString: expr -> string = FAst.Term.exprToString (Name.toDoc o TypeVars.ovName)
     end
 end

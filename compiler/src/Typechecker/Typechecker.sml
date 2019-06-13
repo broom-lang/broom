@@ -106,7 +106,7 @@ end = struct
                                         ^ "does not denote type at " ^ Pos.toString (TC.Expr.pos typExpr))
                  end
               | CType.Type pos =>
-                 let val def = {var = Name.fresh (), kind = FType.TypeK pos}
+                 let val def = {var = Id.fresh (), kind = FType.TypeK pos}
                  in ([def], FType.Type (pos, Concr (FType.UseT (pos, def))))
                  end
               | CType.Prim (pos, p) => ([], FType.Prim (pos, p)))
@@ -127,9 +127,7 @@ end = struct
                                        let val bindingRef = ref NONE
                                            val scope = TC.TypeScope (TC.Scope.forTFn (var, bindingRef))
                                            val env = scope :: env
-                                           val typ = FType.SVar (pos, TC.OVar (TypeVars.newOv env (Predicative, var)))
-                                       in bindingRef := SOME { binder = {kind, typ = ref (TC.OutputType (Concr typ))}
-                                                             , shade = ref TC.Black }
+                                       in bindingRef := SOME {binder = kind, shade = ref TC.Black}
                                         ; env
                                        end
                                in fnScope :: List.foldr pushDef env typeDefs
@@ -245,7 +243,7 @@ end = struct
         let fun coerce callee =
                 fn FType.ForAll (_, {var, kind}, t) =>
                     let val pos = FTerm.exprPos callee
-                        val uv = FType.SVar (pos, TC.UVar (TypeVars.newUv env (Predicative, var)))
+                        val uv = FType.SVar (pos, TC.UVar (TypeVars.newUv env (Predicative, Name.fromId var)))
                         val calleeType = TC.Type.substitute (var, uv) t
                     in coerce (FTerm.TApp (pos, calleeType, {callee, arg = Concr uv})) calleeType
                     end

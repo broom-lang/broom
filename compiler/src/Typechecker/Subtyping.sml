@@ -12,11 +12,7 @@ end = struct
     structure FTerm = FAst.Term
     open TypeError
 
-    fun findType env name =
-        case TC.Env.typeFind env name
-        of SOME binding => (case !(#typ (#binder binding))
-                            of TC.OutputType t => t)
-         | NONE => raise Fail ("Unbound type: " ^ Name.toString name)
+    fun idInScope env id = isSome (TC.Env.typeFind env id)
 
     type coercion = (TC.sv FTerm.expr -> TC.sv FTerm.expr) option
     type field_coercion = Name.t * (TC.sv FTerm.expr -> TC.sv FTerm.expr)
@@ -46,9 +42,11 @@ end = struct
             (case t
              of FType.Arrow (pos, domains) => doAssignArrow env y uv pos domains
               | FType.Prim _ => TypeVars.uvSet (uv, t)
-              | FType.UseT (_, {var, ...}) => doAssign env y (uv, findType env var)
-              | FType.SVar (_, TC.UVar uv') => doAssignUv env y (uv, uv')
-              | FType.SVar (_, TC.OVar _) => TypeVars.uvSet (uv, t))
+              | FType.UseT (_, {var, ...}) => 
+                 if idInScope env var
+                 then TypeVars.uvSet (uv, t)
+                 else raise Fail ("Opaque type out of scope: g__" ^ Id.toString var)
+              | FType.SVar (_, TC.UVar uv') => doAssignUv env y (uv, uv'))
 
     and doAssignArrow env y uv pos {domain, codomain} =
         let val domainUv = TypeVars.freshUv env Predicative
@@ -87,16 +85,12 @@ end = struct
                  ( subType env expr (t, t')
                  ; subType env expr (t', t)
                  ; SOME (fn _ => FTerm.Type (pos, t)))
-              | (FType.UseT (_, {var, ...}), _) => subType env expr (findType env var, superTyp)
-              | (_, FType.UseT (_, {var, ...})) => subType env expr (typ, findType env var)
-              | (FType.SVar (_, TC.OVar ov), FType.SVar (_, TC.OVar ov')) =>
-                 if TC.ovInScope (env, ov)
-                 then if TC.ovInScope (env, ov')
-                      then if TC.ovEq (ov, ov')
-                           then NONE
-                           else raise TypeError (NonSubType (expr, typ, superTyp))
+              | (FType.UseT (_, {var, ...}), FType.UseT (_, {var = var', ...})) =>
+                 if var = var'
+                 then if idInScope env var
+                      then NONE
                       else raise Fail ("Opaque type out of scope: " ^ TC.Type.absToString superTyp)
-                 else raise Fail ("Opaque type out of scope: " ^ TC.Type.absToString typ)
+                 else raise TypeError (NonSubType (expr, typ, superTyp))
               | (FType.SVar (_, TC.UVar uv), FType.SVar (_, TC.UVar uv')) => subUvs env expr (uv, uv')
               | (FType.SVar (_, TC.UVar uv), _) => subUv env expr uv superTyp
               | (_, FType.SVar (_, TC.UVar uv)) => superUv env expr uv typ)

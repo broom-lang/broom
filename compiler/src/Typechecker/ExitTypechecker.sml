@@ -25,7 +25,6 @@ end = struct
          | UseT (pos, def) => UseT (pos, def)
          | Prim (pos, p) => Prim (pos, p)
          (* HACK: *)
-         | SVar (pos, OVar ov) => UseT (pos, {var = TypeVars.ovName ov, kind = FFType.TypeK pos})
          | SVar (pos, UVar uv) => (case TypeVars.uvGet uv
                                    of Right t => concrToF t
                                     | Left _ => Prim (pos, FFType.Prim.Unit))

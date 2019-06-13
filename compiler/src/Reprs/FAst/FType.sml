@@ -10,7 +10,7 @@ structure FType = struct
     datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
                   | TypeK of Pos.t
 
-    type def = {var: Name.t, kind: kind}
+    type def = {var: Id.t, kind: kind}
 
     datatype 'sv concr
         = ForAll of Pos.t * def * 'sv concr
@@ -32,7 +32,9 @@ structure FType = struct
          | ArrowK (_, {domain, codomain}) =>
             kindToDoc domain <+> text "->" <+> kindToDoc codomain
 
-    fun defToDoc {var, kind} = Name.toDoc var <> text ":" <+> kindToDoc kind
+    fun idToDoc id = text ("g__" ^ Id.toString id)
+
+    fun defToDoc {var, kind} = idToDoc var <> text ":" <+> kindToDoc kind
 
     fun concrToDoc svarToDoc =
         let val rec concrToDoc =
@@ -46,7 +48,7 @@ structure FType = struct
                  | EmptyRow _ => text "(||)"
                  | Type (_, t) => brackets (text "=" <+> absToDoc svarToDoc t)
                  | SVar (_, sv) => svarToDoc sv
-                 | UseT (_, {var, kind = _}) => Name.toDoc var
+                 | UseT (_, {var, kind = _}) => idToDoc var
                  | Prim (_, p) => Prim.toDoc p
         in concrToDoc
         end
