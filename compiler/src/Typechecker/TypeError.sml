@@ -1,10 +1,10 @@
 signature TYPE_ERROR = sig
-    datatype t = NonSubType of TypecheckingCst.expr * TypecheckingCst.typ * TypecheckingCst.typ
+    datatype t = NonSubType of TypecheckingCst.expr * TypecheckingCst.abs * TypecheckingCst.abs
                | UnCallable of TypecheckingCst.typ FAst.Term.expr * TypecheckingCst.typ
                | UnDottable of TypecheckingCst.typ FAst.Term.expr * TypecheckingCst.typ
                | UnboundVal of Pos.t * Name.t
-               | MissingField of TypecheckingCst.expr * TypecheckingCst.typ * Name.t
-               | Occurs of TypecheckingCst.uv * TypecheckingCst.typ
+               | MissingField of TypecheckingCst.expr * TypecheckingCst.concr * Name.t
+               | Occurs of TypecheckingCst.uv * TypecheckingCst.abs
    
     exception TypeError of t
 
@@ -17,12 +17,12 @@ structure TypeError :> TYPE_ERROR = struct
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
 
-    datatype t = NonSubType of TypecheckingCst.expr * TypecheckingCst.typ * TypecheckingCst.typ
+    datatype t = NonSubType of TypecheckingCst.expr * TypecheckingCst.abs * TypecheckingCst.abs
                | UnCallable of TypecheckingCst.typ FAst.Term.expr * TypecheckingCst.typ
                | UnDottable of TypecheckingCst.typ FAst.Term.expr * TypecheckingCst.typ
                | UnboundVal of Pos.t * Name.t
-               | MissingField of TypecheckingCst.expr * TypecheckingCst.typ * Name.t
-               | Occurs of TypecheckingCst.uv * TypecheckingCst.typ
+               | MissingField of TypecheckingCst.expr * TypecheckingCst.concr * Name.t
+               | Occurs of TypecheckingCst.uv * TypecheckingCst.abs
     
     exception TypeError of t
 
@@ -31,8 +31,8 @@ structure TypeError :> TYPE_ERROR = struct
                                  of NonSubType (expr, typ, superTyp) =>
                                      ( TC.Expr.pos expr
                                      , text "Value" <+> TC.Expr.toDoc expr
-                                           <+> text "of type" <+> TC.Type.toDoc typ <+> text "is not subtype of"
-                                           <+> TC.Type.toDoc superTyp)
+                                           <+> text "of type" <+> TC.Type.absToDoc typ <+> text "is not subtype of"
+                                           <+> TC.Type.absToDoc superTyp)
                                   | UnCallable (expr, typ) =>
                                      ( FAst.Term.exprPos expr
                                      , text "Value" <+> FAst.Term.exprToDoc TC.Type.toDoc expr
@@ -45,12 +45,12 @@ structure TypeError :> TYPE_ERROR = struct
                                   | MissingField (expr, typ, label) =>
                                      ( TC.Expr.pos expr
                                      , text "Value" <+> TC.Expr.toDoc expr
-                                           <+> text "of type" <+> TC.Type.toDoc typ <+> text "does not have field"
+                                           <+> text "of type" <+> TC.Type.concrToDoc typ <+> text "does not have field"
                                            <+> Name.toDoc label)
                                   | Occurs (uv, t) =>
-                                     ( TC.Type.pos t
+                                     ( FAst.Type.Abs.pos t
                                      , text "Occurs check: unifying" <+> text "^" <> Name.toDoc (TypeVars.uvName uv)
-                                           <+> text "with" <+> TC.Type.toDoc t <+> text "would create infinite type." )
+                                           <+> text "with" <+> TC.Type.absToDoc t <+> text "would create infinite type." )
         in text "TypeError in" <+> Pos.toDoc pos <> text ":" <+> details
         end
 end

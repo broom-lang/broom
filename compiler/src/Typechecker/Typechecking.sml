@@ -38,6 +38,7 @@ signature TYPECHECKER_OUTPUT = sig
         structure Abs: sig
             val pos: 'sv abs -> Pos.t
             val toDoc: ('sv -> PPrint.t) -> 'sv abs -> PPrint.t
+            val toString: ('sv -> PPrint.t) -> 'sv abs -> string
             val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv abs -> bool
             val substitute: (Name.t * 'sv concr -> 'sv -> 'sv concr option) 
                           -> Name.t * 'sv concr -> 'sv abs -> 'sv abs
@@ -70,11 +71,11 @@ signature TYPECHECKING = sig
     type scope_id
 
     datatype typ = InputType of (typ, expr) Input.Type.typ
-                 | OutputType of sv Output.Type.concr
+                 | OutputType of abs
                  | ScopeType of {scope: type_scope, typ: typ}
     
-    and sv = OVar of Pos.t * ov
-           | UVar of Pos.t * uv
+    and sv = OVar of ov
+           | UVar of uv
     
     and expr = InputExpr of (typ, typ option ref, expr, expr ref) Input.Term.expr
              | OutputExpr of typ Output.Term.expr
@@ -89,7 +90,10 @@ signature TYPECHECKING = sig
     and expr_scope = FnScope of scope_id * Name.t * expr_binding
                    | BlockScope of scope_id * expr_bindings
 
-    withtype ov = scope list TypeVars.ov
+    withtype concr = sv Output.Type.concr
+    and abs = sv Output.Type.abs
+
+    and ov = scope list TypeVars.ov
     and uv = (scope list, sv Output.Type.concr) TypeVars.uv
 
     and type_binding = typ ref type_binder binding
@@ -101,9 +105,12 @@ signature TYPECHECKING = sig
 
     structure Type: sig
         val pos: typ -> Pos.t
+        val concrToDoc: concr -> PPrint.t
+        val absToDoc: abs -> PPrint.t
+        val absToString: abs -> string
         val toDoc: typ -> PPrint.t
         val toString: typ -> string
-        val substitute: Name.t * sv Output.Type.concr -> sv Output.Type.concr -> sv Output.Type.concr
+        val substitute: Name.t * concr -> concr -> concr
     end
 
     structure Expr: sig
@@ -130,7 +137,8 @@ signature TYPECHECKING = sig
         val typeFind: env -> Name.t -> type_binding option
     end
 
-    val concrOccurs: uv -> sv Output.Type.concr -> bool
+    val concrOccurs: uv -> concr -> bool
+    val absOccurs: uv -> abs -> bool
     val ovEq: ov * ov -> bool
     val ovInScope: env * ov -> bool
     val uvInScope: env * uv -> bool
@@ -145,6 +153,7 @@ end) :> TYPECHECKING where
     type ('typ, 'bt, 'expr, 'be) Input.Term.expr = ('typ, 'bt, 'expr, 'be) Puts.Input.Term.expr and
     type Output.Type.kind = Puts.Output.Type.kind and
     type 'typ Output.Type.concr = 'typ Puts.Output.Type.concr and
+    type 'typ Output.Type.abs = 'typ Puts.Output.Type.abs and
     type 'typ Output.Term.expr = 'typ Puts.Output.Term.expr
 = struct
     structure Input = Puts.Input
@@ -168,11 +177,11 @@ end) :> TYPECHECKING where
     type scope_id = int
 
     datatype typ = InputType of (typ, expr) Input.Type.typ
-                 | OutputType of sv Output.Type.concr
+                 | OutputType of abs
                  | ScopeType of {scope: type_scope, typ: typ}
 
-    and sv = OVar of Pos.t * ov
-           | UVar of Pos.t * uv
+    and sv = OVar of ov
+           | UVar of uv
     
     and expr = InputExpr of (typ, typ option ref, expr, expr ref) Input.Term.expr
              | OutputExpr of typ Output.Term.expr
@@ -187,7 +196,10 @@ end) :> TYPECHECKING where
     and expr_scope = FnScope of scope_id * Name.t * expr_binding
                    | BlockScope of scope_id * expr_bindings
 
-    withtype ov = scope list TypeVars.ov
+    withtype concr = sv Output.Type.concr
+    and abs = sv Output.Type.abs
+
+    and ov = scope list TypeVars.ov
     and uv = (scope list, sv Output.Type.concr) TypeVars.uv
 
     and type_binding = typ ref type_binder binding
@@ -199,14 +211,14 @@ end) :> TYPECHECKING where
 
     val rec typeToDoc =
         fn InputType typ => Input.Type.toDoc typeToDoc exprToDoc typ
-         | OutputType typ => Output.Type.Concr.toDoc svarToDoc typ
+         | OutputType typ => Output.Type.Abs.toDoc svarToDoc typ
          | ScopeType {typ, ...} => typeToDoc typ
  
     and svarToDoc =
-        fn OVar (_, ov) => Name.toDoc (TypeVars.ovName ov)
-         | UVar (_, uv) => (case TypeVars.uvGet uv
-                            of Either.Right t => Output.Type.Concr.toDoc svarToDoc t
-                             | Either.Left uv => text "^" <> Name.toDoc (TypeVars.uvName uv))
+        fn OVar ov => Name.toDoc (TypeVars.ovName ov)
+         | UVar uv => (case TypeVars.uvGet uv
+                       of Either.Right t => Output.Type.Concr.toDoc svarToDoc t
+                        | Either.Left uv => text "^" <> Name.toDoc (TypeVars.uvName uv))
    
     and annToDoc = fn ann => Option.mapOr (fn t => text ":" <+> typeToDoc t) PPrint.empty (!ann)
 
@@ -228,19 +240,22 @@ end) :> TYPECHECKING where
     structure Type = struct
         val rec pos = fn InputType typ => Input.Type.pos Expr.pos typ
                        | ScopeType {typ, ...} => pos typ
-                       | OutputType typ => Output.Type.Concr.pos typ
+                       | OutputType typ => Output.Type.Abs.pos typ
 
+        val concrToDoc = Output.Type.Concr.toDoc svarToDoc
+        val absToDoc = Output.Type.Abs.toDoc svarToDoc
+        val absToString = Output.Type.Abs.toString svarToDoc
         val toDoc = typeToDoc
         val toString = PPrint.pretty 80 o toDoc
 
         fun substitute kv = Output.Type.Concr.substitute svarSubstitute kv
 
         and svarSubstitute (kv as (name, t')) =
-            fn OVar (_, ov) => (* TODO: Check first whether `ov` is in scope and return NONE if it is: *)
+            fn OVar ov => (* TODO: Check first whether `ov` is in scope and return NONE if it is: *)
                 if TypeVars.ovName ov = name then SOME t' else NONE (* HACK? *)
-             | UVar (_, uv) => (case TypeVars.uvGet uv
-                                of Either.Left _ => NONE
-                                 | Either.Right t => SOME (substitute kv t))
+             | UVar uv => (case TypeVars.uvGet uv
+                           of Either.Left _ => NONE
+                            | Either.Right t => SOME (substitute kv t))
     end
 
     structure Scope = struct
@@ -360,11 +375,12 @@ end) :> TYPECHECKING where
     end
 
     fun concrOccurs uv = Output.Type.Concr.occurs svarOccurs uv
+    and absOccurs uv = Output.Type.Abs.occurs svarOccurs uv
     and svarOccurs uv =
         fn OVar _ => false
-         | UVar (_, uv) => (case TypeVars.uvGet uv
-                            of Either.Left uv' => TypeVars.uvEq (uv', uv)
-                             | Either.Right t => concrOccurs uv t)
+         | UVar uv => (case TypeVars.uvGet uv
+                       of Either.Left uv' => TypeVars.uvEq (uv', uv)
+                        | Either.Right t => concrOccurs uv t)
 
     val ovEq = TypeVars.ovEq Env.eq
     val ovInScope = TypeVars.ovInScope Env.compare
