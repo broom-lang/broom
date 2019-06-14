@@ -5,6 +5,7 @@ type expr = Term.fexpr
 type stmt = Term.stmt
 
 type typ = Type.ftyp
+type decl = Type.decl
 
 %%
 
@@ -14,6 +15,7 @@ type typ = Type.ftyp
 
 %term INT of int | BOOL of bool | ID of string
     | VAL | TYPE | FN | LET | IN | END | IF | THEN | ELSE
+    | MODULE | INTERFACE | FUN
     | LPAREN | RPAREN | LBRACE | RBRACE
     | EQ | DARROW | COLON | ARROW | DDOT | DOT | COMMA
     | AMP
@@ -33,6 +35,7 @@ type typ = Type.ftyp
        | optSplat of expr option
        | triv of expr
        | typ of typ
+       | arrowTyp of typ
        | nonArrowTyp of typ
        | nestableTyp of typ
        | purelyTyp of typ
@@ -40,6 +43,9 @@ type typ = Type.ftyp
        | rowFields of (Name.t * typ) vector
        | rowFieldList of (Name.t * typ) list
        | rowExt of typ
+       | decls of decl vector
+       | declList of decl list
+       | decl of decl
 
 %keyword VAL EQ
 %noshift EOF
@@ -76,6 +82,7 @@ app : app nestable (Term.Fix (Term.App (appleft, {callee = app, arg = nestable})
 
 nestable : LET stmts IN expr END (Term.Fix (Term.Let (exprleft, stmts, expr)))
          | record (record)
+         | MODULE stmts END (Term.Fix (Term.Module (MODULEleft, stmts)))
          | nestable DOT ID (Term.Fix (Term.Field (nestableleft, nestable, Name.fromString ID)))
          | LPAREN TYPE typ RPAREN (Term.Fix (Term.Type (typleft, typ)))
          | LPAREN expr RPAREN (expr)
@@ -101,9 +108,15 @@ triv : BOOL (Term.Fix (Term.Const (BOOLleft, Const.Bool BOOL)))
 
 (* Types *)
 
-typ : nonArrowTyp ARROW typ (Type.FixT (Type.Arrow (typleft, { domain = nonArrowTyp
-                                                             , codomain = typ })))
-    | nonArrowTyp (nonArrowTyp)
+typ : FUN ID COLON nestableTyp ARROW arrowTyp
+       (Type.FixT (Type.Pi (FUNleft, {var = Name.fromString ID, typ = nestableTyp}, arrowTyp)))
+    | FUN ID ARROW arrowTyp
+       (Type.FixT (Type.Pi (FUNleft, {var = Name.fromString ID, typ = Type.FixT (Type.Type IDleft)}, arrowTyp)))
+    | arrowTyp (arrowTyp)
+
+arrowTyp : nonArrowTyp ARROW typ
+            (Type.FixT (Type.Pi (typleft, {var = Name.fresh (), typ = nonArrowTyp}, typ)))
+         | nonArrowTyp (nonArrowTyp)
 
 nonArrowTyp : purelyTyp (purelyTyp)
             | LPAREN typ RPAREN (typ)
@@ -124,6 +137,7 @@ nestableTyp : purelyTyp (purelyTyp)
 purelyTyp : TYPE (Type.FixT (Type.Type TYPEleft))
           | LBRACE rowType RBRACE (Type.FixT (Type.Record (LBRACEleft, rowType)))
           | LPAREN EQ expr RPAREN (Type.FixT (Type.Singleton (LPARENleft, expr)))
+          | INTERFACE decls END (Type.FixT (Type.Interface (INTERFACEleft, decls)))
 
 rowType: COLON (Type.FixT (Type.EmptyRow COLONleft))
        | rowFields (Type.FixT (Type.RowExt (rowFieldsleft, { fields = rowFields
@@ -138,4 +152,13 @@ rowFieldList : ID COLON typ ([(Name.fromString ID, typ)])
 
 rowExt : AMP (Type.FixT (Type.WildRow AMPleft))
        | AMP typ (typ)
+
+decls : declList (Vector.fromList (List.rev declList))
+
+declList : ([])
+         | declList decl (decl :: declList)
+
+decl : VAL ID COLON typ ((Name.fromString ID, typ))
+     | TYPE ID ((Name.fromString ID, Type.FixT (Type.Type TYPEleft)))
+     | TYPE ID EQ typ ((Name.fromString ID, Type.FixT (Type.Singleton (TYPEleft, Term.Fix (Term.Type (TYPEleft, typ))))))
 

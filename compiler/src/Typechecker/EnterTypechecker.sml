@@ -31,9 +31,8 @@ end = struct
 
     fun injectType (CType.FixT typ): TC.typ =
         let val typ = case typ
-                      of CType.Arrow (pos, {domain, codomain}) =>
-                          CType.Arrow (pos, { domain = injectType domain
-                                            , codomain = injectType codomain })
+                      of CType.Pi (pos, {var, typ = domain}, codomain) =>
+                          CType.Pi (pos, {var, typ = injectType domain}, injectType codomain)
                        | CType.Record (pos, row) => CType.Record (pos, injectType row)
                        | CType.RowExt (pos, {fields, ext}) =>
                           CType.RowExt (pos, { fields = Vector.map (Pair.second injectType) fields

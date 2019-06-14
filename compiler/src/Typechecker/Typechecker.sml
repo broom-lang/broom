@@ -78,8 +78,10 @@ end = struct
     and elaborateType env: TC.typ -> FType.def list * TC.concr =
         fn TC.InputType typ =>
             (case typ
-             of CType.Arrow (pos, {domain, codomain}) =>
+             of CType.Pi (pos, {var, typ = domain}, codomain) =>
                  let val (ddefs as [], domain) = elaborateType env domain
+                     val env = TC.ExprScope (TC.Scope.forFn (var, { binder = raise Fail "unimplemented"
+                                                                  , shade = ref TC.Black })) :: env
                      val (cddefs as [], codomain) = elaborateType env codomain
                  in (cddefs @ cddefs, FType.Arrow (pos, {domain, codomain}))
                  end
