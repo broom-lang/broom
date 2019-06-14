@@ -41,6 +41,8 @@ end = struct
          | Concr t =>
             (case t
              of FType.Arrow (pos, domains) => doAssignArrow env y uv pos domains
+              | FType.RowExt _ => TypeVars.uvSet (uv, t) (* FIXME: row kind check, t smallness check *)
+              | FType.EmptyRow _ => TypeVars.uvSet (uv, t) (* FIXME: Check that uv is of row kind. *)
               | FType.Prim _ => TypeVars.uvSet (uv, t)
               | FType.UseT (_, {var, ...}) => 
                  if idInScope env var

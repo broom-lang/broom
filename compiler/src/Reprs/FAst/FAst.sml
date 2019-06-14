@@ -17,7 +17,7 @@ structure FAst = struct
             | TFn of Pos.t * Type.def * 'sv expr
             | Extend of Pos.t * 'sv Type.concr  * (Name.t * 'sv expr) vector * 'sv expr option
             | App of Pos.t * 'sv Type.concr * {callee: 'sv expr, arg: 'sv expr}
-            | TApp of Pos.t * 'sv Type.concr * {callee: 'sv expr, arg: 'sv Type.abs}
+            | TApp of Pos.t * 'sv Type.concr * {callee: 'sv expr, arg: 'sv Type.concr}
             | Field of Pos.t * 'sv Type.concr * 'sv expr * Name.t
             | Let of Pos.t * 'sv stmt vector * 'sv expr
             | If of Pos.t * 'sv expr * 'sv expr * 'sv expr
@@ -67,7 +67,7 @@ structure FAst = struct
                     | App (_, _, {callee, arg}) =>
                        parens (toDoc callee <+> toDoc arg)
                     | TApp (_, _, {callee, arg}) =>
-                       parens (toDoc callee <+> brackets (Type.Abs.toDoc svarToDoc arg))
+                       parens (toDoc callee <+> brackets (Type.Concr.toDoc svarToDoc arg))
                     | Field (_, _, expr, label) =>
                        parens (toDoc expr <> text "." <> Name.toDoc label)
                     | Let (_, stmts, body) =>
@@ -112,25 +112,38 @@ structure FAst = struct
 end
 
 structure FixedFAst = struct
-    type scope_id = word
-
     structure Type = struct
         open FAst.Type
 
-        type ov = scope_id TypeVars.ov
-        type concr = ov concr
-        type abs = ov abs
+        type sv = Nothing.t
+        type concr = sv concr
+        type abs = sv abs
 
-        val concrToString: concr -> string = FAst.Type.Concr.toString (Name.toDoc o TypeVars.ovName)
+        val svarToDoc = PPrint.text o Nothing.toString
+
+        val concrToString: concr -> string = FAst.Type.Concr.toString svarToDoc
+
+        structure Concr = struct
+            open Concr
+
+            val substitute: Id.t * concr -> concr -> concr = substitute (fn _ => fn _ => NONE)
+            val kindOf: concr -> kind = kindOf (fn _ => raise Fail "unreachable")
+        end
+
+        structure Abs = struct
+            open Abs
+
+            val substitute: Id.t * concr -> abs -> abs = substitute (fn _ => fn _ => NONE)
+        end
     end
 
     structure Term = struct
         open FAst.Term
 
-        type expr = Type.ov expr
+        type expr = Type.sv expr
 
-        val exprToDoc: expr -> PPrint.t = FAst.Term.exprToDoc (Name.toDoc o TypeVars.ovName)
-        val exprToString: expr -> string = FAst.Term.exprToString (Name.toDoc o TypeVars.ovName)
+        val exprToDoc: expr -> PPrint.t = FAst.Term.exprToDoc Type.svarToDoc
+        val exprToString: expr -> string = FAst.Term.exprToString Type.svarToDoc
     end
 end
 

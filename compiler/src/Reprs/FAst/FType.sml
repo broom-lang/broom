@@ -9,6 +9,7 @@ structure FType = struct
 
     datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
                   | TypeK of Pos.t
+                  | RowK of Pos.t
 
     type def = {var: Id.t, kind: kind}
 
@@ -29,8 +30,11 @@ structure FType = struct
 
     val rec kindToDoc =
         fn TypeK _ => text "Type"
+         | RowK _ => text "Row"
          | ArrowK (_, {domain, codomain}) =>
             kindToDoc domain <+> text "->" <+> kindToDoc codomain
+
+    val kindToString = PPrint.pretty 80 o kindToDoc
 
     fun idToDoc id = text ("g__" ^ Id.toString id)
 
@@ -157,6 +161,12 @@ structure FType = struct
         fun toString svarToDoc = PPrint.pretty 80 o toDoc svarToDoc
         val occurs = concrOccurs
         val substitute = concrSubstitute
+
+        fun kindOf svarKind =
+            fn t as (ForAll _ | Arrow _ | Record _ | Type _ | Prim _)  => TypeK (pos t)
+             | t as (RowExt _ | EmptyRow _) => RowK (pos t)
+             | UseT (_, {kind, ...}) => kind
+             | SVar args => svarKind args
     end
 
     structure Abs = struct
@@ -168,6 +178,10 @@ structure FType = struct
         fun toString svarToDoc = PPrint.pretty 80 o toDoc svarToDoc
         val occurs = absOccurs
         val substitute = absSubstitute
+
+        fun kindOf svarKind =
+            fn Exists (pos, _, _) => TypeK pos
+             | Concr t => Concr.kindOf svarKind t
     end
 end
 

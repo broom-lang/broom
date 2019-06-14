@@ -47,7 +47,7 @@ end = struct
          | App (pos, typ, {callee, arg}) =>
             App (pos, concrToF typ, {callee = exprToF callee, arg = exprToF arg})
          | TApp (pos, typ, {callee, arg}) =>
-            TApp (pos, concrToF typ, {callee = exprToF callee, arg = absToF arg})
+            TApp (pos, concrToF typ, {callee = exprToF callee, arg = concrToF arg})
          | Field (pos, typ, expr, label) =>
             Field (pos, concrToF typ, exprToF expr, label)
          | Type (pos, typ) => Type (pos, absToF typ)

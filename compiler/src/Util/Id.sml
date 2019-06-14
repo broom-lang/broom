@@ -10,6 +10,7 @@ signature ID = sig
     structure OrdKey: ORD_KEY where type ord_key = t
 
     structure HashTable: MONO_HASH_TABLE where type Key.hash_key = t
+    structure SortedMap: ORD_MAP where type Key.ord_key = t
 end
 
 structure Id :> ID = struct
@@ -42,5 +43,7 @@ structure Id :> ID = struct
     end
 
     structure HashTable = HashTableFn(HashKey)
+    
+    structure SortedMap = BinaryMapFn(OrdKey)
 end
 

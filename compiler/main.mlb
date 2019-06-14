@@ -7,6 +7,7 @@ local
     ann "warnUnused true"
     in ann "allowSuccessorML true"
        in
+           src/Util/Nothing.sml
            src/Util/ToString.sml
            src/Util/Fn.sml
            src/Util/Option.sml

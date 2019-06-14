@@ -98,8 +98,8 @@ end = struct
                  in (fieldDefs @ extDefs, List.foldl constructStep ext revFields)
                  end
               | CType.EmptyRow pos => ([], FType.EmptyRow pos)
-              | CType.WildRow pos => (* FIXME: Kind should be (Impredicative) row: *)
-                 let val def = {var = Id.fresh (), kind = FType.TypeK pos}
+              | CType.WildRow pos =>
+                 let val def = {var = Id.fresh (), kind = FType.RowK pos}
                  in ([def], FType.UseT (pos, def))
                  end
               | CType.Path typExpr =>
@@ -249,7 +249,7 @@ end = struct
                     let val pos = FTerm.exprPos callee
                         val uv = FType.SVar (pos, TC.UVar (TypeVars.newUv env (Predicative, Name.fromId var)))
                         val calleeType = TC.Type.substitute (var, uv) t
-                    in coerce (FTerm.TApp (pos, calleeType, {callee, arg = Concr uv})) calleeType
+                    in coerce (FTerm.TApp (pos, calleeType, {callee, arg = uv})) calleeType
                     end
                  | FType.Arrow (_, domains) => (callee, domains)
                  | FType.SVar (_, TC.UVar uv) =>
