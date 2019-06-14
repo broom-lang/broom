@@ -3,7 +3,5 @@ structure Option = struct
 
     fun mapOr f default = fn SOME v => f v
                            | NONE => default
-
-    fun toString contentToString = mapOr contentToString ""
 end
 
