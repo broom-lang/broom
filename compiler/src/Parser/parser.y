@@ -109,13 +109,13 @@ triv : BOOL (Term.Fix (Term.Const (BOOLleft, Const.Bool BOOL)))
 (* Types *)
 
 typ : FUN ID COLON nestableTyp ARROW arrowTyp
-       (Type.FixT (Type.Pi (FUNleft, {var = Name.fromString ID, typ = nestableTyp}, arrowTyp)))
+       (Type.FixT (Type.Pi (FUNleft, {var = Name.fromString ID, typ = SOME nestableTyp}, arrowTyp)))
     | FUN ID ARROW arrowTyp
-       (Type.FixT (Type.Pi (FUNleft, {var = Name.fromString ID, typ = Type.FixT (Type.Type IDleft)}, arrowTyp)))
+       (Type.FixT (Type.Pi (FUNleft, {var = Name.fromString ID, typ = NONE}, arrowTyp)))
     | arrowTyp (arrowTyp)
 
 arrowTyp : nonArrowTyp ARROW typ
-            (Type.FixT (Type.Pi (typleft, {var = Name.fresh (), typ = nonArrowTyp}, typ)))
+            (Type.FixT (Type.Pi (typleft, {var = Name.fresh (), typ = SOME nonArrowTyp}, typ)))
          | nonArrowTyp (nonArrowTyp)
 
 nonArrowTyp : purelyTyp (purelyTyp)
@@ -158,7 +158,8 @@ decls : declList (Vector.fromList (List.rev declList))
 declList : ([])
          | declList decl (decl :: declList)
 
-decl : VAL ID COLON typ ((Name.fromString ID, typ))
-     | TYPE ID ((Name.fromString ID, Type.FixT (Type.Type TYPEleft)))
-     | TYPE ID EQ typ ((Name.fromString ID, Type.FixT (Type.Singleton (TYPEleft, Term.Fix (Term.Type (TYPEleft, typ))))))
+decl : VAL ID COLON typ ((Name.fromString ID, SOME typ))
+     | TYPE ID ((Name.fromString ID, SOME (Type.FixT (Type.Type TYPEleft))))
+     | TYPE ID EQ typ
+        ((Name.fromString ID, SOME (Type.FixT (Type.Singleton (TYPEleft, Term.Fix (Term.Type (TYPEleft, typ)))))))
 

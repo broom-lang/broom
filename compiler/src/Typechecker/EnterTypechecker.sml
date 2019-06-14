@@ -5,8 +5,24 @@ end = struct
     structure CType = FixedCst.Type
     structure TC = TypecheckingCst
 
-    fun typeScope typ =
-        fn _ => NONE
+    fun declBind types (name, typ) =
+        let val binding = { shade = ref TC.White
+                          , binder = {value = NONE, typ} }
+        in NameHashTable.insert types (name, binding)
+        end
+
+    fun typeScope (typ: TC.typ): (TC.typ, TC.typ option ref, TC.expr) CType.typ -> {scope: TC.expr_scope, typ: TC.typ} option =
+        fn CType.Pi (_, {var, typ = domain}, _) =>
+            let val binding = { shade = ref TC.White
+                              , binder = {value = NONE, typ = domain} }
+            in SOME {scope = TC.Scope.forFn (var, binding), typ}
+            end
+         | CType.Interface (_, decls) =>
+            let val types = NameHashTable.mkTable (0, Subscript)
+                do Vector.app (declBind types) decls
+            in SOME {scope = TC.Scope.forBlock types, typ}
+            end
+         | _ => NONE
 
     fun stmtBind vals =
         fn CTerm.Val (_, name, typ, expr) =>
@@ -22,7 +38,7 @@ end = struct
                               , binder = {value = NONE, typ = domain} }
             in SOME {scope = TC.Scope.forFn (arg, binding), expr}
             end
-         | CTerm.Let (_, stmts, _) =>
+         | CTerm.Let (_, stmts, _) | CTerm.Module (_, stmts) =>
             let val vals = NameHashTable.mkTable (0, Subscript)
                 do Vector.app (stmtBind vals) stmts
             in SOME {scope = TC.Scope.forBlock vals, expr}
@@ -32,21 +48,23 @@ end = struct
     fun injectType (CType.FixT typ): TC.typ =
         let val typ = case typ
                       of CType.Pi (pos, {var, typ = domain}, codomain) =>
-                          CType.Pi (pos, {var, typ = injectType domain}, injectType codomain)
+                          CType.Pi (pos, {var, typ = ref (Option.map injectType domain)}, injectType codomain)
                        | CType.Record (pos, row) => CType.Record (pos, injectType row)
                        | CType.RowExt (pos, {fields, ext}) =>
                           CType.RowExt (pos, { fields = Vector.map (Pair.second injectType) fields
                                              , ext = injectType ext })
                        | CType.EmptyRow pos => CType.EmptyRow pos
                        | CType.WildRow pos => CType.WildRow pos
+                       | CType.Interface (pos, decls) =>
+                          CType.Interface (pos, Vector.map (Pair.second (ref o Option.map injectType)) decls)
                        | CType.Path expr => CType.Path (injectExpr expr)
                        | CType.Singleton (pos, expr) => CType.Singleton (pos, injectExpr expr)
                        | CType.Type pos => CType.Type pos
                        | CType.Prim (pos, p) => CType.Prim (pos, p)
-            val typ = TC.InputType typ
-        in case typeScope typ typ
+            val ityp = TC.InputType typ
+        in case typeScope ityp typ
            of SOME scope => TC.ScopeType scope
-            | NONE => typ
+            | NONE => ityp
         end
 
     and injectExpr (CTerm.Fix expr): TC.expr =
@@ -58,6 +76,8 @@ end = struct
                         | CTerm.If (pos, cond, conseq, alt) =>
                            CTerm.If (pos, injectExpr cond, injectExpr conseq, injectExpr alt)
                         | CTerm.Record (pos, row) => CTerm.Record (pos, injectRow row)
+                        | CTerm.Module (pos, stmts) =>
+                           CTerm.Module (pos, Vector.map injectStmt stmts)
                         | CTerm.App (pos, {callee, arg}) =>
                            CTerm.App (pos, {callee = injectExpr callee, arg = injectExpr arg})
                         | CTerm.Field (pos, expr, label) => CTerm.Field (pos, injectExpr expr, label)

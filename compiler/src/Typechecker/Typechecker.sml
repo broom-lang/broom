@@ -74,14 +74,18 @@ end = struct
 
 (* Elaborating subtrees *)
 
+    (* FIXME: Actually need a mutable 'exists' scope where we put the defs,
+              kind of like how sealing puts its generated types in the toplevel scope.
+              The current scheme does not even support non-cyclic forward references. *)
     (* Elaborate the type `typ` and return the elaborated version. *)
     and elaborateType env: TC.typ -> FType.def list * TC.concr =
         fn TC.InputType typ =>
             (case typ
-             of CType.Pi (pos, {var, typ = domain}, codomain) =>
-                 let val (ddefs as [], domain) = elaborateType env domain
-                     val env = TC.ExprScope (TC.Scope.forFn (var, { binder = raise Fail "unimplemented"
-                                                                  , shade = ref TC.Black })) :: env
+             of CType.Pi (pos, {var, typ = paramType}, codomain) =>
+                 let val (ddefs as [], domain) = case !paramType
+                                                 of SOME domain => elaborateType env domain
+                                                  | NONE => raise Fail "unimplemented"
+                     do paramType := SOME (TC.OutputType (Concr domain))
                      val (cddefs as [], codomain) = elaborateType env codomain
                  in (cddefs @ cddefs, FType.Arrow (pos, {domain, codomain}))
                  end
@@ -104,6 +108,18 @@ end = struct
                  let val def = {var = Id.fresh (), kind = FType.RowK pos}
                  in ([def], FType.UseT (pos, def))
                  end
+              | CType.Interface (pos, decls) =>
+                 let fun step ((name, t), (defs, fields)) =
+                         let val (defs', dt) = case !t
+                                               of SOME t => elaborateType env t
+                                                | NONE => raise Fail "unimplemented"
+                             do t := SOME (TC.OutputType (Concr dt))
+                         in (defs @ defs', (name, dt) :: fields)
+                         end
+                     val (defs, revFields) = Vector.foldl step ([], []) decls
+                     fun constructStep (field, ext) = FType.RowExt (pos, {field, ext})
+                 in (defs, FType.Record (pos, List.foldr constructStep (FType.EmptyRow pos) revFields))
+                 end
               | CType.Path typExpr =>
                  let val (typ, _) = elaborateExpr env typExpr
                  in case typ
@@ -117,6 +133,7 @@ end = struct
                  end
               | CType.Prim (pos, p) => ([], FType.Prim (pos, p)))
          | TC.OutputType t => FType.splitExistentials t (* assumes invariant: entire subtree has been elaborated already *)
+         | TC.ScopeType {scope, typ} => elaborateType (TC.ExprScope scope :: env) typ
 
     (* Elaborate the expression `exprRef` and return its computed type. *)
     and elaborateExpr env (exprRef: TC.expr): TC.concr * TC.sv FTerm.expr =

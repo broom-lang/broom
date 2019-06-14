@@ -1,9 +1,10 @@
 signature TYPECHECKER_INPUT = sig
     structure Type: sig
-        type ('typ, 'expr) typ
+        type ('typ, 'bt, 'expr) typ
 
-        val pos: ('expr -> Pos.t) -> ('typ, 'expr) typ -> Pos.t
-        val toDoc: ('typ -> PPrint.t) -> ('expr -> PPrint.t) -> ('typ, 'expr) typ -> PPrint.t
+        val pos: ('expr -> Pos.t) -> ('typ, 'bt, 'expr) typ -> Pos.t
+        val toDoc: ('typ -> PPrint.t) -> ('bt -> PPrint.t) -> ('expr -> PPrint.t)
+                 -> ('typ, 'bt, 'expr) typ -> PPrint.t
     end
 
     structure Term: sig
@@ -72,9 +73,9 @@ signature TYPECHECKING = sig
 
     type scope_id
 
-    datatype typ = InputType of (typ, expr) Input.Type.typ
+    datatype typ = InputType of (typ, typ option ref, expr) Input.Type.typ
                  | OutputType of abs
-                 | ScopeType of {scope: type_scope, typ: typ}
+                 | ScopeType of {scope: expr_scope, typ: typ}
     
     and sv = UVar of uv
     
@@ -153,7 +154,7 @@ functor Typechecking(Puts: sig
     structure Input: TYPECHECKER_INPUT
     structure Output: TYPECHECKER_OUTPUT
 end) :> TYPECHECKING where
-    type ('typ, 'expr) Input.Type.typ = ('typ, 'expr) Puts.Input.Type.typ and
+    type ('typ, 'bt, 'expr) Input.Type.typ = ('typ, 'bt, 'expr) Puts.Input.Type.typ and
     type ('typ, 'bt, 'expr, 'be) Input.Term.expr = ('typ, 'bt, 'expr, 'be) Puts.Input.Term.expr and
     type Output.Type.kind = Puts.Output.Type.kind and
     type 'typ Output.Type.concr = 'typ Puts.Output.Type.concr and
@@ -180,9 +181,9 @@ end) :> TYPECHECKING where
 
     type scope_id = int
 
-    datatype typ = InputType of (typ, expr) Input.Type.typ
+    datatype typ = InputType of (typ, typ option ref, expr) Input.Type.typ
                  | OutputType of abs
-                 | ScopeType of {scope: type_scope, typ: typ}
+                 | ScopeType of {scope: expr_scope, typ: typ}
 
     and sv = UVar of uv
     
@@ -213,7 +214,7 @@ end) :> TYPECHECKING where
     and env = scope list
 
     val rec typeToDoc =
-        fn InputType typ => Input.Type.toDoc typeToDoc exprToDoc typ
+        fn InputType typ => Input.Type.toDoc typeToDoc annToDoc exprToDoc typ
          | OutputType typ => Output.Type.Abs.toDoc svarToDoc typ
          | ScopeType {typ, ...} => typeToDoc typ
  

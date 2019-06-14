@@ -2,23 +2,25 @@ structure Cst = struct
     structure Type :> sig
         structure Prim: PRIM_TYPE where type t = PrimType.t
 
-        datatype ('typ, 'expr) typ = Pi of Pos.t * 'typ def * 'typ
-                                   | Record of Pos.t * 'typ
-                                   | RowExt of Pos.t * ('typ, 'expr) row_ext
-                                   | EmptyRow of Pos.t
-                                   | Interface of Pos.t * 'typ decl vector
-                                   | WildRow of Pos.t
-                                   | Singleton of Pos.t * 'expr
-                                   | Type of Pos.t
-                                   | Path of 'expr
-                                   | Prim of Pos.t * Prim.t
+        datatype ('typ, 'bt, 'expr) typ
+            = Pi of Pos.t * 'bt def * 'typ
+            | Record of Pos.t * 'typ
+            | RowExt of Pos.t * ('typ, 'expr) row_ext
+            | EmptyRow of Pos.t
+            | Interface of Pos.t * 'bt decl vector
+            | WildRow of Pos.t
+            | Singleton of Pos.t * 'expr
+            | Type of Pos.t
+            | Path of 'expr
+            | Prim of Pos.t * Prim.t
 
-        withtype 'typ def = {var: Name.t, typ: 'typ}
+        withtype 'bt def = {var: Name.t, typ: 'bt}
         and ('typ, 'expr) row_ext = {fields: (Name.t * 'typ) vector, ext: 'typ}
-        and 'typ decl = Name.t * 'typ
+        and 'bt decl = Name.t * 'bt
 
-        val toDoc: ('typ -> PPrint.t) -> ('expr -> PPrint.t) -> ('typ, 'expr) typ -> PPrint.t
-        val pos: ('expr -> Pos.t) -> ('typ, 'expr) typ -> Pos.t
+        val toDoc: ('typ -> PPrint.t) -> ('bt -> PPrint.t) -> ('expr -> PPrint.t)
+                 -> ('typ, 'bt, 'expr) typ -> PPrint.t
+        val pos: ('expr -> Pos.t) -> ('typ, 'bt, 'expr) typ -> Pos.t
     end = struct
         structure Prim = PrimType
         val op<> = PPrint.<>
@@ -29,24 +31,25 @@ structure Cst = struct
         val parens = PPrint.parens
         val braces = PPrint.braces
 
-        datatype ('typ, 'expr) typ = Pi of Pos.t * 'typ def * 'typ
-                                   | Record of Pos.t * 'typ
-                                   | RowExt of Pos.t * ('typ, 'expr) row_ext
-                                   | EmptyRow of Pos.t
-                                   | Interface of Pos.t * 'typ decl vector
-                                   | WildRow of Pos.t
-                                   | Singleton of Pos.t * 'expr
-                                   | Type of Pos.t
-                                   | Path of 'expr
-                                   | Prim of Pos.t * Prim.t
+        datatype ('typ, 'bt, 'expr) typ
+            = Pi of Pos.t * 'bt def * 'typ
+            | Record of Pos.t * 'typ
+            | RowExt of Pos.t * ('typ, 'expr) row_ext
+            | EmptyRow of Pos.t
+            | Interface of Pos.t * 'bt decl vector
+            | WildRow of Pos.t
+            | Singleton of Pos.t * 'expr
+            | Type of Pos.t
+            | Path of 'expr
+            | Prim of Pos.t * Prim.t
 
-        withtype 'typ def = {var: Name.t, typ: 'typ}
+        withtype 'bt def = {var: Name.t, typ: 'bt}
         and ('typ, 'expr) row_ext = {fields: (Name.t * 'typ) vector, ext: 'typ}
-        and 'typ decl = Name.t * 'typ
+        and 'bt decl = Name.t * 'bt
 
-        fun toDoc typeToDoc exprToDoc t =
+        fun toDoc typeToDoc btToDoc exprToDoc t =
             let val rec toDoc = fn Pi (_, {var, typ = domain}, codomain) =>
-                                    text "fun" <+> Name.toDoc var <+> text ":" <+> typeToDoc domain
+                                    text "fun" <+> Name.toDoc var <> btToDoc domain
                                         <+> text "->" <+> typeToDoc codomain
                                  | Record (_, row) => braces (typeToDoc row)
                                  | RowExt (_, {fields, ext}) =>
@@ -59,7 +62,7 @@ structure Cst = struct
                                     end
                                  | EmptyRow _ => text "(||)"
                                  | Interface (_, decls) =>
-                                    let fun declToDoc (label, t) = Name.toDoc label <+> text ":" <+> typeToDoc t
+                                    let fun declToDoc (label, t) = Name.toDoc label <+> text ":" <+> btToDoc t
                                     in text "interface"
                                            <> (PPrint.nest 4 (PPrint.punctuate newline
                                                                                (Vector.map declToDoc decls)))
@@ -188,21 +191,21 @@ structure Cst = struct
 end
 
 structure FixedCst = struct
-    datatype typ' = FixT of (typ', expr') Cst.Type.typ
+    datatype typ' = FixT of (typ', typ' option, expr') Cst.Type.typ
     and expr' = Fix of (typ', typ' option, expr', expr') Cst.Term.expr
 
-    fun typeToDoc' (FixT t) = Cst.Type.toDoc typeToDoc' exprToDoc' t
-    and exprToDoc' (Fix expr) =
-        let val op<+> = PPrint.<+>
-            val annToDoc = Option.mapOr (fn t => PPrint.text ":" <+> typeToDoc' t) PPrint.empty
-        in Cst.Term.exprToDoc typeToDoc' annToDoc exprToDoc' exprToDoc' expr 
-        end
+    local val op<+> = PPrint.<+>
+    in fun typeToDoc' (FixT t) = Cst.Type.toDoc typeToDoc' annToDoc exprToDoc' t
+       and exprToDoc' (Fix expr) =
+           Cst.Term.exprToDoc typeToDoc' annToDoc exprToDoc' exprToDoc' expr 
+       and annToDoc ann = Option.mapOr (fn t => PPrint.text ":" <+> typeToDoc' t) PPrint.empty ann
+    end
 
     structure Type = struct
         open Cst.Type
  
         datatype ftyp = datatype typ'
-        type decl = ftyp decl
+        type decl = ftyp option decl
         
         val toDoc = typeToDoc'
     end
