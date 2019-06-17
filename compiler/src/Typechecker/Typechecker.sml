@@ -11,6 +11,9 @@ end = struct
     datatype abs = datatype FType.abs
 
     open TypeError
+
+    structure Env = TypecheckingEnv
+    datatype expr_binding_state = datatype Env.Bindings.Expr.binding_state
  
     val subType = Subtyping.subType
     val applyCoercion = Subtyping.applyCoercion
@@ -22,7 +25,7 @@ end = struct
        - elaborating the expression bound to the variable (if available)
        - returning a fresh unification variable (if neither type annotation nor bound expression
          is available or if a cycle is encountered) *)
-    fun lookupValType expr name env: TC.concr option =
+    fun lookupValType expr name (env: Env.t): TC.concr option =
         let fun valBindingType env {typ = typRef, value} =
                 case !typRef
                 of SOME typ => (case elaborateType env typ
@@ -78,7 +81,7 @@ end = struct
               kind of like how sealing puts its generated types in the toplevel scope.
               The current scheme does not even support non-cyclic forward references. *)
     (* Elaborate the type `typ` and return the elaborated version. *)
-    and elaborateType env: TC.typ -> FType.def list * TC.concr =
+    and elaborateType (env: Env.t): TC.typ -> FType.def list * TC.concr =
         fn TC.InputType typ =>
             (case typ
              of CType.Pi (pos, {var, typ = paramType}, codomain) =>
@@ -133,7 +136,15 @@ end = struct
                  end
               | CType.Prim (pos, p) => ([], FType.Prim (pos, p)))
          | TC.OutputType t => FType.splitExistentials t (* assumes invariant: entire subtree has been elaborated already *)
-         | TC.ScopeType {scope, typ} => elaborateType (TC.ExprScope scope :: env) typ
+
+    and stmtsScope stmts =
+        let val builder = Env.Bindings.Expr.Builder.new ()
+            do Vector.app (fn CTerm.Val (_, name, ref t, expr) =>
+                               Env.Bindings.Expr.Builder.insert builder name (Unvisited (t, SOME expr))
+                            | CTerm.Expr _ => ())
+                          stmts
+        in Env.Bindings.Expr.Builder.build builder
+        end
 
     (* Elaborate the expression `exprRef` and return its computed type. *)
     and elaborateExpr env (exprRef: TC.expr): TC.concr * TC.sv FTerm.expr =
@@ -167,7 +178,8 @@ end = struct
                     , List.foldr (fn (def, f) => FTerm.TFn (pos, def, f)) f typeDefs)
                  end
               | CTerm.Let (pos, stmts, body) =>
-                 let val stmts = Vector.map (elaborateStmt env) stmts
+                 let val env = Env.pushScope env (stmtsScope stmts)
+                     val stmts = Vector.map (elaborateStmt env) stmts
                      val (typ, body) = elaborateExpr env body
                  in (typ, FTerm.Let (pos, stmts, body))
                  end

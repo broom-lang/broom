@@ -34,11 +34,13 @@ structure TypecheckingEnv :> sig
     end
 
     structure Scope: sig
-        datatype t = FnScope of Name.t * Bindings.Expr.binding_state
-                   | ForAllScope of TC.Output.Type.def
-                   | ExistsScope of Bindings.Type.bindings
-                   | BlockScope of Bindings.Expr.bindings
-                   | InterfaceScope of Bindings.Expr.bindings
+        structure Id: ID
+
+        datatype t = FnScope of Id.t * Name.t * Bindings.Expr.binding_state
+                   | ForAllScope of Id.t * TC.Output.Type.def
+                   | ExistsScope of Id.t * Bindings.Type.bindings
+                   | BlockScope of Id.t * Bindings.Expr.bindings
+                   | InterfaceScope of Id.t * Bindings.Expr.bindings
     end
 
     type t
@@ -99,23 +101,25 @@ end = struct
     end
 
     structure Scope = struct
-        datatype t = FnScope of Name.t * Bindings.Expr.binding_state
-                   | ForAllScope of TC.Output.Type.def
-                   | ExistsScope of Bindings.Type.bindings
-                   | BlockScope of Bindings.Expr.bindings
-                   | InterfaceScope of Bindings.Expr.bindings
+        structure Id :> ID = Id
+
+        datatype t = FnScope of Id.t * Name.t * Bindings.Expr.binding_state
+                   | ForAllScope of Id.t * TC.Output.Type.def
+                   | ExistsScope of Id.t * Bindings.Type.bindings
+                   | BlockScope of Id.t * Bindings.Expr.bindings
+                   | InterfaceScope of Id.t * Bindings.Expr.bindings
 
         fun findType scope id =
             case scope
-            of ForAllScope {var, kind} => if var = id then SOME kind else NONE
-             | ExistsScope bindings => Bindings.Type.find bindings id
+            of ForAllScope (_, {var, kind}) => if var = id then SOME kind else NONE
+             | ExistsScope (_, bindings) => Bindings.Type.find bindings id
              | FnScope _ | BlockScope _ | InterfaceScope _ => NONE
 
         fun findExpr scope name =
             case scope
-            of FnScope (var, bs) => if var = name then SOME bs else NONE
+            of FnScope (_, var, bs) => if var = name then SOME bs else NONE
              | ForAllScope _ | ExistsScope _ => NONE
-             | BlockScope bindings | InterfaceScope bindings => Bindings.Expr.find bindings name
+             | BlockScope (_, bindings) | InterfaceScope (_, bindings) => Bindings.Expr.find bindings name
     end
 
     type t = Scope.t list
@@ -134,7 +138,7 @@ end = struct
 
     fun freshAbstract env b =
         let val rec fresh =
-                fn Scope.ExistsScope bs :: _ => Bindings.Type.fresh bs b
+                fn Scope.ExistsScope (_, bs) :: _ => Bindings.Type.fresh bs b
                  | _ :: env => fresh env
                  | [] => raise Fail "unreachable"
         in fresh env
@@ -150,11 +154,11 @@ end = struct
 
     fun updateExpr pos env name f =
         let val rec update =
-                fn (Scope.BlockScope bs | Scope.InterfaceScope bs) :: env =>
+                fn (Scope.BlockScope (_, bs) | Scope.InterfaceScope (_, bs)) :: env =>
                     (case Bindings.Expr.find bs name
                      of SOME v => NameHashTable.insert bs (name, f v)
                       | NONE => update env)
-                 | Scope.FnScope (var, _) :: env =>
+                 | Scope.FnScope (_, var, _) :: env =>
                     if var = name
                     then raise Fail "unreachable"
                     else update env
