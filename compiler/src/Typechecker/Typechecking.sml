@@ -50,6 +50,7 @@ signature TYPECHECKER_OUTPUT = sig
 
     structure Term: sig
         type 'typ expr
+        type 'sv def = {var: Name.t, typ: 'sv Type.concr}
 
         val exprPos: 'typ expr -> Pos.t
         val exprToDoc: ('typ -> PPrint.t) -> 'typ expr -> PPrint.t
