@@ -34,12 +34,11 @@ end = struct
           fun loop lexer =
               let val (program,lexer) = invoke lexer
                   val (nextToken,lexer) = BroomParser.Stream.get lexer
-                  val _ = log (PPrint.pretty 80 (FixedCst.Term.exprToDoc program) ^ "\n")
+                  val _ = log (PPrint.pretty 80 (Cst.Term.exprToDoc program) ^ "\n")
                   
                   val _ = log "===\n"
 
-                  val (program, rootScope) = EnterTypechecker.toTypechecking program
-                  val (_, program) = Typechecker.elaborateExpr [TC.ExprScope rootScope] program
+                  val (_, program) = Typechecker.elaborateExpr TypecheckingEnv.empty program
 
                   val program = ExitTypechecker.exprToF program
                   val _ = log (PPrint.pretty 80 (FixedFAst.Term.exprToDoc program) ^ "\n")
