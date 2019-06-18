@@ -25,54 +25,47 @@ end = struct
        - elaborating the expression bound to the variable (if available)
        - returning a fresh unification variable (if neither type annotation nor bound expression
          is available or if a cycle is encountered) *)
-    fun lookupValType expr name (env: Env.t): TC.concr option =
-        let fun valBindingType env {typ = typRef, value} =
-                case !typRef
-                of SOME typ => (case elaborateType env typ
-                                of ([], t) => t)
-                 | NONE => (case value
-                            of SOME exprRef => let val (t, expr) = elaborateExpr env (!exprRef)
-                                               in exprRef := TC.OutputExpr expr
-                                                ; t
-                                               end
-                             | NONE => FType.SVar ( TC.Expr.pos expr
-                                                  , TC.UVar (TypeVars.freshUv env Predicative) ))
+    fun lookupValType expr name env: TC.concr option =
+        let val pos = TC.Expr.pos expr
 
-            fun elaborateValType env {shade, binder = binding as {typ = typRef, value = _}} =
-                let do shade := TC.Grey
-                    val typ = valBindingType env binding
-                in case !shade
-                   of TC.Grey => ( typRef := SOME (TC.OutputType (Concr typ))
-                                 ; shade := TC.Black )
-                    | TC.Black =>
-                       (* So, we went to `elaborateValTypeLoop` inside the `valBindingType` call.
-                          `typ` better be a subtype of the type inferred from usage sites: *)
-                       let val usageTyp = case !typRef
-                                          of SOME (TC.OutputType t) => t
-                       in ignore (subType env expr (Concr typ, usageTyp))
-                       end
-                    | TC.White => raise Fail "unreachable"
-                 ; typ
+            fun computeUnvisitedBindingType env =
+                fn (SOME t, oexpr) =>
+                    (case elaborateType env (TC.InputType t)
+                     of ([], t) => (t, Typed (t, oexpr)))
+                 | (NONE, SOME expr) =>
+                    let val (t, expr) = elaborateExpr env (TC.InputExpr expr)
+                    in (t, Visited (t, SOME expr))
+                    end
+                 | (NONE, oexpr as NONE) =>
+                    let val t = FType.SVar (pos, TC.UVar (Env.freshUv env Predicative))
+                    in (t, Typed (t, oexpr))
+                    end
+            
+            fun unvisitedBindingType env args =
+                let do Env.updateExpr pos env name (Fn.constantly (Visiting args))
+                    val (t, binding') = computeUnvisitedBindingType env args
+                in case valOf (Env.findExpr env name)
+                   of Unvisited _ => raise Fail "unreachable"
+                    | Visiting _ =>
+                       ( Env.updateExpr pos env name (Fn.constantly binding')
+                       ; t )
+                    | Typed (usageTyp, _) | Visited (usageTyp, _) =>
+                       ( ignore (subType env expr (Concr t, Concr usageTyp))
+                       ; usageTyp )
+                end
+            
+            fun cyclicBindingType env (_, oexpr) =
+                let val t = FType.SVar (pos, TC.UVar (Env.freshUv env Predicative))
+                in Env.updateExpr pos env name (Fn.constantly (Typed (t, oexpr)))
+                 ; t
                 end
 
-            fun elaborateValTypeLoop env {shade, binder = {typ = typRef, value = _}} =
-                let val typ = FType.SVar (TC.Expr.pos expr, TC.UVar (TypeVars.freshUv env Predicative))
-                in typRef := SOME (TC.OutputType (Concr typ))
-                 ; shade := TC.Black
-                 ; typ
-                end
-        in case env
-           of TC.ExprScope scope :: parent =>
-               (case TC.Scope.exprFind scope name
-                of SOME (binding as {shade, binder}) =>
-                    (case !shade
-                     of TC.Black => (case !(#typ binder)
-                                     of SOME (TC.OutputType (Concr t)) => SOME t
-                                      | NONE => NONE)
-                      | TC.White => SOME (elaborateValType env binding)
-                      | TC.Grey => SOME (elaborateValTypeLoop env binding))
-                 | NONE => lookupValType expr name parent)
-            | [] => NONE
+            fun bindingType (binding, env) =
+                case binding
+                of Unvisited args => unvisitedBindingType env args
+                 | Visiting args => cyclicBindingType env args
+                 | Typed (t, _) | Visited (t, _) => t
+        in Option.map bindingType (Env.findExprClosure env name)
         end
 
 (* Elaborating subtrees *)
@@ -168,9 +161,9 @@ end = struct
                                end
                      val domain = case domain
                                   of SOME domain => domain
-                                   | NONE => FType.SVar (pos, TC.UVar (TypeVars.freshUv env Predicative))
+                                   | NONE => FType.SVar (pos, TC.UVar (Env.freshUv env Predicative))
                      do paramType := SOME (TC.OutputType (Concr domain))
-                     val codomain = FType.SVar (pos, TC.UVar (TypeVars.freshUv env Predicative))
+                     val codomain = FType.SVar (pos, TC.UVar (Env.freshUv env Predicative))
                      val body = elaborateExprAs env (Concr codomain) body
                      val t = FType.Arrow (pos, {domain, codomain})
                      val f = FTerm.Fn (pos, {var = param, typ = domain}, body)
@@ -184,7 +177,7 @@ end = struct
                  in (typ, FTerm.Let (pos, stmts, body))
                  end
               | CTerm.If (pos, _, _, _) =>
-                 let val t = FType.SVar (pos, TC.UVar (TypeVars.freshUv env Predicative))
+                 let val t = FType.SVar (pos, TC.UVar (Env.freshUv env Predicative))
                  in (t, elaborateExprAs env (Concr t) exprRef)
                  end
               | CTerm.Record (pos, fields) => elaborateRecord env pos fields
@@ -299,8 +292,8 @@ end = struct
                  | FType.SVar (pos, TC.UVar uv) =>
                     (case TypeVars.uvGet uv
                      of Either.Right typ => coerce typ
-                      | Either.Left uv => let val fieldType = FType.SVar (pos, TC.UVar (TypeVars.freshUv env Predicative))
-                                              val ext = FType.SVar (pos, TC.UVar (TypeVars.freshUv env Predicative))
+                      | Either.Left uv => let val fieldType = FType.SVar (pos, TC.UVar (Env.freshUv env Predicative))
+                                              val ext = FType.SVar (pos, TC.UVar (Env.freshUv env Predicative))
                                               val pos = FTerm.exprPos expr
                                               val row = FType.RowExt (pos, {field = (label, fieldType), ext})
                                               val typ = FType.Record (pos, row)

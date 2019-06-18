@@ -2,10 +2,11 @@ structure TypecheckingEnv :> sig
     structure TC: TYPECHECKING where
         type ScopeId.t = TypecheckingCst.ScopeId.t and
         type 'sv Output.Type.concr = 'sv FType.concr and
+        type 'sv Output.Term.expr = 'sv FAst.Term.expr and
         type sv = TypecheckingCst.sv
 
-    type input_type = TC.Input.Type.typ
-    type input_expr = TC.Input.Term.expr
+    type input_type = Cst.Type.typ
+    type input_expr = Cst.Term.expr
     type output_type = TC.sv TC.Output.Type.concr
     type output_expr = TC.sv TC.Output.Term.expr
 
@@ -57,6 +58,7 @@ structure TypecheckingEnv :> sig
     val uvInScope: t * TC.uv -> bool
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
+    val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
     val updateExpr: Pos.t -> t -> Name.t
                   -> (Bindings.Expr.binding_state -> Bindings.Expr.binding_state) -> unit
 end = struct
@@ -165,13 +167,17 @@ end = struct
     fun uvInScope (env, uv) =
         List.exists (fn scope => TypeVars.uvInScope Scope.Id.compare (Scope.id scope, uv)) env
 
-    fun findExpr env name =
+    fun findExprClosure env name =
         let val rec find =
-                fn scope :: env =>
-                    Scope.findExpr scope name |> Option.orElse (fn () => find env)
+                fn env as scope :: env' =>
+                    (case Scope.findExpr scope name
+                     of SOME b => SOME (b, env)
+                      | NONE => find env')
                  | [] => NONE
         in find env
         end
+
+    fun findExpr env name = Option.map #1 (findExprClosure env name)
 
     fun updateExpr pos env name f =
         let val rec update =
