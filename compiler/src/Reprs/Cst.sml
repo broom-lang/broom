@@ -157,6 +157,7 @@ structure Cst = struct
 
         val exprPos: expr -> Pos.t
         val exprToDoc: expr -> PPrint.t
+        val exprToString: expr -> string
         val stmtToDoc: stmt -> PPrint.t
     end = struct
         datatype expr = datatype expr
@@ -165,6 +166,7 @@ structure Cst = struct
 
         val exprPos = exprPos
         val exprToDoc = exprToDoc
+        val exprToString = PPrint.pretty 80 o exprToDoc
         val stmtToDoc = stmtToDoc
     end
 end

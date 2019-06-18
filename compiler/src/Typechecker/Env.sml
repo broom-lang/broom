@@ -17,6 +17,7 @@ structure TypecheckingEnv :> sig
             type bindings
 
             val new: unit -> bindings
+            val fresh: bindings -> binding -> Id.t
             val defs: bindings -> TC.Output.Type.def list
         end
 

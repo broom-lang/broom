@@ -70,33 +70,6 @@ end = struct
     (*and elaborateType (env: Env.t): TC.typ -> FType.def list * TC.concr =
         fn TC.InputType typ =>
             (case typ
-             of CType.Pi (pos, {var, typ = paramType}, codomain) =>
-                 let val (ddefs as [], domain) = case !paramType
-                                                 of SOME domain => elaborateType env domain
-                                                  | NONE => raise Fail "unimplemented"
-                     do paramType := SOME (TC.OutputType (Concr domain))
-                     val (cddefs as [], codomain) = elaborateType env codomain
-                 in (cddefs @ cddefs, FType.Arrow (pos, {domain, codomain}))
-                 end
-              | CType.Record (pos, row) =>
-                 let val (defs, row) = elaborateType env row
-                 in (defs, FType.Record (pos, row))
-                 end
-              | CType.RowExt (pos, {fields, ext}) =>
-                 let fun elaborateField ((label, t), (defs, fields)) =
-                         let val (defs', t) = elaborateType env t
-                         in (defs @ defs', (label, t) :: fields)
-                         end
-                     fun constructStep (field, ext) = FType.RowExt (pos, {field, ext})
-                     val (fieldDefs, revFields) = Vector.foldl elaborateField ([], []) fields
-                     val (extDefs, ext) = elaborateType env ext
-                 in (fieldDefs @ extDefs, List.foldl constructStep ext revFields)
-                 end
-              | CType.EmptyRow pos => ([], FType.EmptyRow pos)
-              | CType.WildRow pos =>
-                 let val def = {var = Id.fresh (), kind = FType.RowK pos}
-                 in ([def], FType.UseT (pos, def))
-                 end
               | CType.Interface (pos, decls) =>
                  let fun step ((name, t), (defs, fields)) =
                          let val (defs', dt) = case !t
@@ -109,18 +82,6 @@ end = struct
                      fun constructStep (field, ext) = FType.RowExt (pos, {field, ext})
                  in (defs, FType.Record (pos, List.foldr constructStep (FType.EmptyRow pos) revFields))
                  end
-              | CType.Path typExpr =>
-                 let val (typ, _) = elaborateExpr env typExpr
-                 in case typ
-                    of FType.Type (_, typ) => FType.splitExistentials typ
-                     | _ => raise Fail ("Type path " ^ TC.Type.concrToString typ
-                                        ^ "does not denote type at " ^ Pos.toString (TC.Expr.pos typExpr))
-                 end
-              | CType.Type pos =>
-                 let val def = {var = Id.fresh (), kind = FType.TypeK pos}
-                 in ([def], FType.Type (pos, Concr (FType.UseT (pos, def))))
-                 end
-              | CType.Prim (pos, p) => ([], FType.Prim (pos, p)))
          | TC.OutputType t => FType.splitExistentials t (* assumes invariant: entire subtree has been elaborated already *)*)
 
     (* Elaborate the type `typ` and return the elaborated version. *)
@@ -128,9 +89,51 @@ end = struct
         let val absBindings = Env.Bindings.Type.new ()
             val absScope = Env.Scope.ExistsScope (Env.Scope.Id.fresh (), absBindings)
             val env = Env.pushScope env absScope
-            val rec elaborate =
-                fn CType.Prim (pos, p) => FType.Prim (pos, p)
-            val t = elaborate t
+
+            val rec reAbstract = (* OPTIMIZE: nested substitutions *)
+                fn Exists (pos, {var = id, kind}, body) =>
+                    let val id' = Env.Bindings.Type.fresh absBindings kind
+                    in TC.Type.substitute (id, FType.UseT (pos, {var = id', kind}))
+                                          (reAbstract body)
+                    end
+                 | Concr t => t
+
+            fun elaborate env =
+                fn CType.Pi (pos, {var, typ = domain}, codomain) =>
+                    let val (ddefs as [], domain) =
+                            case domain
+                            of SOME domain => elaborateType env domain
+                             | NONE => raise Fail "unimplemented"
+                        val fnScope = Env.Scope.FnScope (Env.Scope.Id.fresh (), var, Visited (domain, NONE))
+                        val env = Env.pushScope env fnScope
+                        val codomain = elaborate env codomain
+                    in FType.Arrow (pos, {domain, codomain})
+                    end
+                 | CType.RecordT (pos, row) => FType.Record (pos, elaborate env row)
+                 | CType.RowExt (pos, {fields, ext}) =>
+                    let fun step ((label, t), ext) =
+                            FType.RowExt (pos, {field = (label, elaborate env t), ext})
+                    in Vector.foldr step (elaborate env ext) fields
+                    end
+                 | CType.EmptyRow pos => FType.EmptyRow pos
+                 | CType.WildRow pos =>
+                    let val kind = FType.RowK pos
+                        val var = Env.Bindings.Type.fresh absBindings kind
+                    in FType.UseT (pos, {var, kind})
+                    end
+                 | CType.Path pathExpr =>
+                    (case #1 (elaborateExpr env pathExpr)
+                     of FType.Type (_, t) => reAbstract t
+                      | _ => raise Fail ("Type path " ^ CTerm.exprToString pathExpr
+                                         ^ "does not denote type at " ^ Pos.toString (CTerm.exprPos pathExpr)))
+                 | CType.TypeT pos =>
+                    let val kind = FType.TypeK pos
+                        val var = Env.Bindings.Type.fresh absBindings kind
+                    in FType.Type (pos, Concr (FType.UseT (pos, {var, kind})))
+                    end
+                 | CType.Singleton (pos, expr) => #1 (elaborateExpr env expr)
+                 | CType.Prim (pos, p) => FType.Prim (pos, p)
+            val t = elaborate env t
             val defs = Env.Bindings.Type.defs absBindings
         in (defs, t)
         end

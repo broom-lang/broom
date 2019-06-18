@@ -115,6 +115,7 @@ signature TYPECHECKING = sig
         val toDoc: typ -> PPrint.t
         val toString: typ -> string
         val substitute: Id.t * concr -> concr -> concr
+        val absSubstitute: Id.t * concr -> abs -> abs
     end
 
     structure Expr: sig
@@ -248,6 +249,8 @@ end) :> TYPECHECKING where
         val toString = PPrint.pretty 80 o toDoc
 
         fun substitute kv = Output.Type.Concr.substitute svarSubstitute kv
+
+        and absSubstitute kv = Output.Type.Abs.substitute svarSubstitute kv
 
         and svarSubstitute kv =
             fn UVar uv => (case TypeVars.uvGet uv
