@@ -1,8 +1,8 @@
 structure TypecheckingEnv :> sig
     structure TC: TYPECHECKING
 
-    type input_type = (TC.typ, TC.typ option ref, TC.expr) TC.Input.Type.typ
-    type input_expr = (TC.typ, TC.typ option ref, TC.expr, TC.expr ref) TC.Input.Term.expr
+    type input_type = TC.Input.Type.typ
+    type input_expr = TC.Input.Term.expr
     type output_type = TC.sv TC.Output.Type.concr
     type output_expr = TC.sv TC.Output.Term.expr
 
@@ -56,8 +56,8 @@ end = struct
     open TypeError
     structure TC = TypecheckingCst
 
-    type input_type = (TC.typ, TC.typ option ref, TC.expr) TC.Input.Type.typ
-    type input_expr = (TC.typ, TC.typ option ref, TC.expr, TC.expr ref) TC.Input.Term.expr
+    type input_type = TC.Input.Type.typ
+    type input_expr = TC.Input.Term.expr
     type output_type = TC.sv TC.Output.Type.concr
     type output_expr = TC.sv TC.Output.Term.expr
 

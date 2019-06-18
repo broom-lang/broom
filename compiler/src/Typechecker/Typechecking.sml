@@ -1,18 +1,16 @@
 signature TYPECHECKER_INPUT = sig
     structure Type: sig
-        type ('typ, 'bt, 'expr) typ
+        type typ
 
-        val pos: ('expr -> Pos.t) -> ('typ, 'bt, 'expr) typ -> Pos.t
-        val toDoc: ('typ -> PPrint.t) -> ('bt -> PPrint.t) -> ('expr -> PPrint.t)
-                 -> ('typ, 'bt, 'expr) typ -> PPrint.t
+        val pos: typ -> Pos.t
+        val toDoc: typ -> PPrint.t
     end
 
     structure Term: sig
-        type ('typ, 'bt, 'expr, 'be) expr
+        type expr
 
-        val exprPos: ('typ, 'bt, 'expr, 'be) expr -> Pos.t
-        val exprToDoc: ('typ -> PPrint.t) -> ('bt -> PPrint.t) -> ('expr -> PPrint.t) -> ('be -> PPrint.t)
-                        -> ('typ, 'bt, 'expr, 'be) expr -> PPrint.t
+        val exprPos: expr -> Pos.t
+        val exprToDoc: expr -> PPrint.t
     end
 end
 
@@ -74,13 +72,13 @@ signature TYPECHECKING = sig
 
     type scope_id
 
-    datatype typ = InputType of (typ, typ option ref, expr) Input.Type.typ
+    datatype typ = InputType of Input.Type.typ
                  | OutputType of abs
                  | ScopeType of {scope: expr_scope, typ: typ}
     
     and sv = UVar of uv
     
-    and expr = InputExpr of (typ, typ option ref, expr, expr ref) Input.Term.expr
+    and expr = InputExpr of Input.Term.expr
              | OutputExpr of sv Output.Term.expr
              | ScopeExpr of {scope: expr_scope, expr: expr}
 
@@ -155,8 +153,8 @@ functor Typechecking(Puts: sig
     structure Input: TYPECHECKER_INPUT
     structure Output: TYPECHECKER_OUTPUT
 end) :> TYPECHECKING where
-    type ('typ, 'bt, 'expr) Input.Type.typ = ('typ, 'bt, 'expr) Puts.Input.Type.typ and
-    type ('typ, 'bt, 'expr, 'be) Input.Term.expr = ('typ, 'bt, 'expr, 'be) Puts.Input.Term.expr and
+    type Input.Type.typ = Puts.Input.Type.typ and
+    type Input.Term.expr = Puts.Input.Term.expr and
     type Output.Type.kind = Puts.Output.Type.kind and
     type 'typ Output.Type.concr = 'typ Puts.Output.Type.concr and
     type 'typ Output.Type.abs = 'typ Puts.Output.Type.abs and
@@ -182,13 +180,13 @@ end) :> TYPECHECKING where
 
     type scope_id = int
 
-    datatype typ = InputType of (typ, typ option ref, expr) Input.Type.typ
+    datatype typ = InputType of Input.Type.typ
                  | OutputType of abs
                  | ScopeType of {scope: expr_scope, typ: typ}
 
     and sv = UVar of uv
     
-    and expr = InputExpr of (typ, typ option ref, expr, expr ref) Input.Term.expr
+    and expr = InputExpr of Input.Term.expr
              | OutputExpr of sv Output.Term.expr
              | ScopeExpr of {scope: expr_scope, expr: expr}
 
@@ -215,7 +213,7 @@ end) :> TYPECHECKING where
     and env = scope list
 
     val rec typeToDoc =
-        fn InputType typ => Input.Type.toDoc typeToDoc annToDoc exprToDoc typ
+        fn InputType typ => Input.Type.toDoc typ
          | OutputType typ => Output.Type.Abs.toDoc svarToDoc typ
          | ScopeType {typ, ...} => typeToDoc typ
  
@@ -227,7 +225,7 @@ end) :> TYPECHECKING where
     and annToDoc = fn ann => Option.mapOr (fn t => text ":" <+> typeToDoc t) PPrint.empty (!ann)
 
     and exprToDoc =
-        fn InputExpr expr => Input.Term.exprToDoc typeToDoc annToDoc exprToDoc (exprToDoc o op!) expr
+        fn InputExpr expr => Input.Term.exprToDoc expr
          | OutputExpr expr => Output.Term.exprToDoc svarToDoc expr
          | ScopeExpr {expr, ...} => exprToDoc expr
 
@@ -242,7 +240,7 @@ end) :> TYPECHECKING where
     end
 
     structure Type = struct
-        val rec pos = fn InputType typ => Input.Type.pos Expr.pos typ
+        val rec pos = fn InputType typ => Input.Type.pos typ
                        | ScopeType {typ, ...} => pos typ
                        | OutputType typ => Output.Type.Abs.pos typ
 
