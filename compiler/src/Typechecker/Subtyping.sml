@@ -2,7 +2,7 @@ structure Subtyping :> sig
     type coercion = (TypecheckingCst.sv FAst.Term.expr -> TypecheckingCst.sv FAst.Term.expr) option
    
     val applyCoercion: coercion -> TypecheckingCst.sv FAst.Term.expr -> TypecheckingCst.sv FAst.Term.expr
-    val subType: TypecheckingCst.env -> TypecheckingCst.expr
+    val subType: TypecheckingEnv.t -> TypecheckingCst.expr
                  -> TypecheckingCst.abs * TypecheckingCst.abs -> coercion
 end = struct
     datatype predicativity = datatype TypeVars.predicativity
@@ -10,9 +10,12 @@ end = struct
     structure FType = FAst.Type
     datatype abs = datatype FType.abs
     structure FTerm = FAst.Term
+    structure Env = TypecheckingEnv
     open TypeError
 
-    fun idInScope env id = isSome (TC.Env.typeFind env id)
+    fun idInScope env id = isSome (Env.findType env id)
+
+    val uvMerge = TypeVars.uvMerge Env.Scope.Id.compare
 
     type coercion = (TC.sv FTerm.expr -> TC.sv FTerm.expr) option
     type field_coercion = Name.t * (TC.sv FTerm.expr -> TC.sv FTerm.expr)
@@ -28,14 +31,14 @@ end = struct
                  | Super => Sub
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
-    fun assign env (y, uv: (TC.env, TC.concr) TypeVars.uv, t: TC.abs): unit =
-        if TC.uvInScope (env, uv)
+    fun assign (env: Env.t) (y, uv: (Env.Scope.Id.t, TC.concr) TypeVars.uv, t: TC.abs): unit =
+        if Env.uvInScope (env, uv)
         then if TC.absOccurs uv t
              then raise TypeError (Occurs (uv, t))
              else doAssign env y (uv, t)
         else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv))
 
-    and doAssign env y (uv, typ: TC.abs) =
+    and doAssign (env: Env.t) y (uv, typ: TC.abs) =
         case typ
         of Exists _ => raise Fail "unimplemented"
          | Concr t =>
@@ -50,9 +53,9 @@ end = struct
                  else raise Fail ("Opaque type out of scope: g__" ^ Id.toString var)
               | FType.SVar (_, TC.UVar uv') => doAssignUv env y (uv, uv'))
 
-    and doAssignArrow env y uv pos {domain, codomain} =
-        let val domainUv = TypeVars.freshUv env Predicative
-            val codomainUv = TypeVars.freshUv env Predicative
+    and doAssignArrow (env: Env.t) y uv pos {domain, codomain} =
+        let val domainUv = Env.freshUv env Predicative
+            val codomainUv = Env.freshUv env Predicative
             val t' = FType.Arrow (pos, { domain = FType.SVar (pos, TC.UVar domainUv)
                                        , codomain = FType.SVar (pos, TC.UVar codomainUv)})
         in TypeVars.uvSet (uv, t')
@@ -60,12 +63,13 @@ end = struct
          ; assign env (y, codomainUv, Concr codomain)
         end
 
-    and doAssignUv env y (uv, uv') = case TypeVars.uvGet uv'
-                                       of Either.Left uv' => TC.uvMerge (uv, uv')
-                                        | Either.Right t => doAssign env y (uv, Concr t)
+    and doAssignUv (env: Env.t) y (uv, uv') =
+        case TypeVars.uvGet uv'
+        of Either.Left uv' => uvMerge (uv, uv')
+         | Either.Right t => doAssign env y (uv, Concr t)
 
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
-    fun subType env expr (typ: TC.abs, superTyp: TC.abs): coercion =
+    fun subType (env: Env.t) expr (typ: TC.abs, superTyp: TC.abs): coercion =
         case (typ, superTyp)
         of (Concr t, Concr t') =>
             (case (t, t')
@@ -140,11 +144,11 @@ end = struct
     and subUvs env expr (uv: TC.uv, uv': TC.uv): coercion =
         case (TypeVars.uvGet uv, TypeVars.uvGet uv')
         of (Either.Left uv, Either.Left uv') =>
-            if TC.uvInScope (env, uv)
-            then if TC.uvInScope (env, uv')
+            if Env.uvInScope (env, uv)
+            then if Env.uvInScope (env, uv')
                  then if TypeVars.uvEq (uv, uv')
                       then NONE
-                      else ( TC.uvMerge (uv, uv'); NONE )
+                      else ( uvMerge (uv, uv'); NONE )
                  else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
             else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
          | (Either.Left uv, Either.Right t) => ( assign env (Sub, uv, Concr t); NONE )

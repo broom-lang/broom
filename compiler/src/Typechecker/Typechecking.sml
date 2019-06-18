@@ -143,8 +143,6 @@ signature TYPECHECKING = sig
 
     val concrOccurs: uv -> concr -> bool
     val absOccurs: uv -> abs -> bool
-    val uvInScope: ScopeId.t * uv -> bool
-    val uvMerge: uv * uv -> unit
 end
 
 functor Typechecking(Puts: sig
@@ -380,9 +378,6 @@ end) :> TYPECHECKING where
         fn UVar uv => (case TypeVars.uvGet uv
                        of Either.Left uv' => TypeVars.uvEq (uv', uv)
                         | Either.Right t => concrOccurs uv t)
-
-    val uvMerge: uv * uv -> unit = TypeVars.uvMerge ScopeId.compare
-    val uvInScope: ScopeId.t * uv -> bool = TypeVars.uvInScope ScopeId.compare
 end
 
 structure TypecheckingCst = Typechecking(struct

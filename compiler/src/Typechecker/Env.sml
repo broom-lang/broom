@@ -1,5 +1,8 @@
 structure TypecheckingEnv :> sig
-    structure TC: TYPECHECKING
+    structure TC: TYPECHECKING where
+        type ScopeId.t = TypecheckingCst.ScopeId.t and
+        type 'sv Output.Type.concr = 'sv FType.concr and
+        type sv = TypecheckingCst.sv
 
     type input_type = TC.Input.Type.typ
     type input_expr = TC.Input.Term.expr
@@ -34,7 +37,7 @@ structure TypecheckingEnv :> sig
     end
 
     structure Scope: sig
-        structure Id: ID
+        structure Id: ID where type t = TC.ScopeId.t
 
         datatype t = FnScope of Id.t * Name.t * Bindings.Expr.binding_state
                    | ForAllScope of Id.t * TC.Output.Type.def
@@ -47,8 +50,12 @@ structure TypecheckingEnv :> sig
 
     val empty: t
     val pushScope: t -> Scope.t -> t
+
     val findType: t -> Id.t -> Bindings.Type.binding option
     val freshAbstract: t -> Bindings.Type.binding -> Id.t
+    val freshUv: t -> TypeVars.predicativity -> TC.uv
+    val uvInScope: t * TC.uv -> bool
+   
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val updateExpr: Pos.t -> t -> Name.t
                   -> (Bindings.Expr.binding_state -> Bindings.Expr.binding_state) -> unit
@@ -101,13 +108,19 @@ end = struct
     end
 
     structure Scope = struct
-        structure Id :> ID = Id
+        structure Id = TC.ScopeId
 
         datatype t = FnScope of Id.t * Name.t * Bindings.Expr.binding_state
                    | ForAllScope of Id.t * TC.Output.Type.def
                    | ExistsScope of Id.t * Bindings.Type.bindings
                    | BlockScope of Id.t * Bindings.Expr.bindings
                    | InterfaceScope of Id.t * Bindings.Expr.bindings
+
+        val id = fn FnScope (id, _, _) => id
+                  | ForAllScope (id, _) => id
+                  | ExistsScope (id, _) => id
+                  | BlockScope (id, _) => id
+                  | InterfaceScope (id, _) => id
 
         fun findType scope id =
             case scope
@@ -143,6 +156,14 @@ end = struct
                  | [] => raise Fail "unreachable"
         in fresh env
         end
+
+    fun freshUv env predicativity =
+        case env
+        of scope :: _ => TypeVars.freshUv (Scope.id scope) predicativity
+         | [] => raise Fail "unreachable"
+
+    fun uvInScope (env, uv) =
+        List.exists (fn scope => TypeVars.uvInScope Scope.Id.compare (Scope.id scope, uv)) env
 
     fun findExpr env name =
         let val rec find =
