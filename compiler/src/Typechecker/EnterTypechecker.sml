@@ -1,8 +1,8 @@
 structure EnterTypechecker :> sig
     val toTypechecking: FixedCst.Term.fexpr -> TypecheckingCst.expr * TypecheckingCst.expr_scope
 end = struct
-    structure CTerm = FixedCst.Term
-    structure CType = FixedCst.Type
+    structure CTerm = Cst.Term
+    structure CType = Cst.Type
     structure TC = TypecheckingCst
 
     fun declBind types (name, typ) =

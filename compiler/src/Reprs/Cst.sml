@@ -26,7 +26,7 @@ structure Cst = struct
         = Fn of Pos.t * Name.t * typ option * expr
         | Let of Pos.t * stmt vector * expr
         | If of Pos.t * expr * expr * expr
-        | Record of Pos.t * {fields: (Name.t * expr) vector, ext: expr option}
+        | Record of Pos.t * row
         | Module of Pos.t * stmt vector
         | App of Pos.t * {callee: expr, arg: expr}
         | Field of Pos.t * expr * Name.t
@@ -40,6 +40,7 @@ structure Cst = struct
         | Expr of expr
 
     withtype def = {var: Name.t, typ: typ option}
+    and row = {fields: (Name.t * expr) vector, ext: expr option}
 
     val exprPos =
         fn Fn (pos, _, _, _) => pos
@@ -152,6 +153,7 @@ structure Cst = struct
     structure Term :> sig
         datatype expr = datatype expr
         datatype stmt = datatype stmt
+        type row = row
 
         val exprPos: expr -> Pos.t
         val exprToDoc: expr -> PPrint.t
@@ -159,6 +161,7 @@ structure Cst = struct
     end = struct
         datatype expr = datatype expr
         datatype stmt = datatype stmt
+        type row = row
 
         val exprPos = exprPos
         val exprToDoc = exprToDoc

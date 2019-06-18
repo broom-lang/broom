@@ -94,7 +94,6 @@ signature TYPECHECKING = sig
     withtype concr = sv Output.Type.concr
     and abs = sv Output.Type.abs
 
-    and ov = scope list TypeVars.ov
     and uv = (scope list, sv Output.Type.concr) TypeVars.uv
 
     and type_binding = typ ref type_binder binding
@@ -143,8 +142,6 @@ signature TYPECHECKING = sig
 
     val concrOccurs: uv -> concr -> bool
     val absOccurs: uv -> abs -> bool
-    val ovEq: ov * ov -> bool
-    val ovInScope: env * ov -> bool
     val uvInScope: env * uv -> bool
     val uvMerge: uv * uv -> unit
 end
@@ -202,7 +199,6 @@ end) :> TYPECHECKING where
     withtype concr = sv Output.Type.concr
     and abs = sv Output.Type.abs
 
-    and ov = scope list TypeVars.ov
     and uv = (scope list, sv Output.Type.concr) TypeVars.uv
 
     and type_binding = typ ref type_binder binding
@@ -383,8 +379,6 @@ end) :> TYPECHECKING where
                        of Either.Left uv' => TypeVars.uvEq (uv', uv)
                         | Either.Right t => concrOccurs uv t)
 
-    val ovEq = TypeVars.ovEq Env.eq
-    val ovInScope = TypeVars.ovInScope Env.compare
     val uvMerge: uv * uv -> unit = TypeVars.uvMerge Env.compare
     val uvInScope: env * uv -> bool = TypeVars.uvInScope Env.compare
 end

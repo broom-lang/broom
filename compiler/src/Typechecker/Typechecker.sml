@@ -3,8 +3,8 @@ structure Typechecker :> sig
                      -> TypecheckingCst.concr * TypecheckingCst.sv FAst.Term.expr
 end = struct
     datatype predicativity = datatype TypeVars.predicativity
-    structure CTerm = FixedCst.Term
-    structure CType = FixedCst.Type
+    structure CTerm = Cst.Term
+    structure CType = Cst.Type
     structure TC = TypecheckingCst
     structure FTerm = FAst.Term
     structure FType = FAst.Type
@@ -219,7 +219,7 @@ end = struct
          | TC.ScopeExpr {scope, expr} => elaborateExpr (TC.Env.pushExprScope env scope) expr
          | TC.OutputExpr expr => (FTerm.typeOf expr, expr)
 
-    and elaborateRecord env pos ({fields, ext}: TC.expr CTerm.row): TC.concr * TC.sv FTerm.expr =
+    and elaborateRecord env pos ({fields, ext}: CTerm.row): TC.concr * TC.sv FTerm.expr =
         let fun elaborateField (field as (label, expr), (rowType, fieldExprs)) =
                 let val pos = TC.Expr.pos expr
                     val (fieldt, expr) = elaborateExpr env expr
@@ -265,7 +265,7 @@ end = struct
         end
 
     (* Elaborate a statement and return the elaborated version. *)
-    and elaborateStmt env: (TC.typ, TC.typ option ref, TC.expr, TC.expr ref) Cst.Term.stmt -> TC.sv FTerm.stmt =
+    and elaborateStmt env: Cst.Term.stmt -> TC.sv FTerm.stmt =
         fn CTerm.Val (pos, name, _, exprRef) =>
             let val t = valOf (lookupValType (!exprRef) name env) (* `name` is in `env` by construction *)
                 val expr = elaborateExprAs env (Concr t) (!exprRef)

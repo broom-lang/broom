@@ -3,13 +3,6 @@ signature TYPE_VARS = sig
 
     datatype predicativity = Predicative | Impredicative
     
-    type 'scope ov
-    val newOv: 'scope -> predicativity * Name.t -> 'scope ov
-    val ovEq: ('scope * 'scope -> bool) -> 'scope ov * 'scope ov -> bool
-    val ovName: 'scope ov -> Name.t
-    val ovScope: 'scope ov -> 'scope
-    val ovInScope: ('scope * 'scope -> order) -> ('scope * 'scope ov) -> bool
-
     type ('scope, 't) uv
     val newUv: 'scope -> predicativity * Name.t -> ('scope, 't)  uv
     val freshUv: 'scope -> predicativity -> ('scope, 't) uv
@@ -29,23 +22,6 @@ structure TypeVars :> TYPE_VARS = struct
 
     type 'scope var_descr = {name: Name.t, scope: 'scope, predicativity: predicativity ref}
 
-    type 'scope ov = 'scope var_descr
-
-    fun newOv scope (predicativity, name) = {scope, name, predicativity = ref predicativity}
-   
-    fun ovEq scopeEq ( {name, scope, ...}: 'var var_descr
-                     , {name = name', scope = scope', ...}: 'var var_descr ) =
-        name = name' andalso scopeEq (scope, scope')
-    
-    val ovName: 'scope ov -> Name.t = #name
-
-    val ovScope: 'scope ov -> 'scope = #scope
-
-    fun ovInScope scopeCmp (scope, ov: 'scope ov) =
-        case scopeCmp (#scope ov, scope)
-        of GREATER | EQUAL => true
-         | LESS => false
-    
     datatype ('scope, 't) uv_link = Root of { descr: 'scope var_descr, typ: 't option ref }
                                   | Link of ('scope, 't) uv
     withtype ('scope, 't) uv = ('scope, 't) uv_link ref

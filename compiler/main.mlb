@@ -41,7 +41,7 @@ local
            src/Typechecker/Typechecking.sml
            src/Typechecker/TypeError.sml
            src/Typechecker/Env.sml
-           src/Typechecker/EnterTypechecker.sml
+           (* src/Typechecker/EnterTypechecker.sml *)
            src/Typechecker/Subtyping.sml
            src/Typechecker/Typechecker.sml
            src/Typechecker/ExitTypechecker.sml
