@@ -58,6 +58,7 @@ end
 signature TYPECHECKING = sig
     structure Input: TYPECHECKER_INPUT
     structure Output: TYPECHECKER_OUTPUT
+    structure ScopeId: ID
 
     datatype shade = White | Grey | Black
     
@@ -94,7 +95,7 @@ signature TYPECHECKING = sig
     withtype concr = sv Output.Type.concr
     and abs = sv Output.Type.abs
 
-    and uv = (scope list, sv Output.Type.concr) TypeVars.uv
+    and uv = (ScopeId.t, sv Output.Type.concr) TypeVars.uv
 
     and type_binding = typ ref type_binder binding
     and type_bindings = typ ref type_binder binding Id.HashTable.hash_table (* HACK: should be opaque *)
@@ -142,7 +143,7 @@ signature TYPECHECKING = sig
 
     val concrOccurs: uv -> concr -> bool
     val absOccurs: uv -> abs -> bool
-    val uvInScope: env * uv -> bool
+    val uvInScope: ScopeId.t * uv -> bool
     val uvMerge: uv * uv -> unit
 end
 
@@ -159,6 +160,7 @@ end) :> TYPECHECKING where
 = struct
     structure Input = Puts.Input
     structure Output = Puts.Output
+    structure ScopeId :> ID = Id
 
     val text = PPrint.text
     val op<> = PPrint.<>
@@ -199,7 +201,7 @@ end) :> TYPECHECKING where
     withtype concr = sv Output.Type.concr
     and abs = sv Output.Type.abs
 
-    and uv = (scope list, sv Output.Type.concr) TypeVars.uv
+    and uv = (ScopeId.t, sv Output.Type.concr) TypeVars.uv
 
     and type_binding = typ ref type_binder binding
     and type_bindings = typ ref type_binder binding Id.HashTable.hash_table
@@ -379,8 +381,8 @@ end) :> TYPECHECKING where
                        of Either.Left uv' => TypeVars.uvEq (uv', uv)
                         | Either.Right t => concrOccurs uv t)
 
-    val uvMerge: uv * uv -> unit = TypeVars.uvMerge Env.compare
-    val uvInScope: env * uv -> bool = TypeVars.uvInScope Env.compare
+    val uvMerge: uv * uv -> unit = TypeVars.uvMerge ScopeId.compare
+    val uvInScope: ScopeId.t * uv -> bool = TypeVars.uvInScope ScopeId.compare
 end
 
 structure TypecheckingCst = Typechecking(struct
