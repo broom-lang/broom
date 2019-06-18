@@ -1,9 +1,9 @@
 signature TYPE_ERROR = sig
-    datatype t = NonSubType of TypecheckingCst.expr * TypecheckingCst.abs * TypecheckingCst.abs
+    datatype t = NonSubType of Cst.Term.expr * TypecheckingCst.abs * TypecheckingCst.abs
                | UnCallable of TypecheckingCst.sv FAst.Term.expr * TypecheckingCst.concr
                | UnDottable of TypecheckingCst.sv FAst.Term.expr * TypecheckingCst.concr
                | UnboundVal of Pos.t * Name.t
-               | MissingField of TypecheckingCst.expr * TypecheckingCst.concr * Name.t
+               | MissingField of Cst.Term.expr * TypecheckingCst.concr * Name.t
                | Occurs of TypecheckingCst.uv * TypecheckingCst.abs
    
     exception TypeError of t
@@ -17,11 +17,11 @@ structure TypeError :> TYPE_ERROR = struct
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
 
-    datatype t = NonSubType of TypecheckingCst.expr * TypecheckingCst.abs * TypecheckingCst.abs
+    datatype t = NonSubType of Cst.Term.expr * TypecheckingCst.abs * TypecheckingCst.abs
                | UnCallable of TypecheckingCst.sv FAst.Term.expr * TypecheckingCst.concr
                | UnDottable of TypecheckingCst.sv FAst.Term.expr * TypecheckingCst.concr
                | UnboundVal of Pos.t * Name.t
-               | MissingField of TypecheckingCst.expr * TypecheckingCst.concr * Name.t
+               | MissingField of Cst.Term.expr * TypecheckingCst.concr * Name.t
                | Occurs of TypecheckingCst.uv * TypecheckingCst.abs
     
     exception TypeError of t
@@ -29,8 +29,8 @@ structure TypeError :> TYPE_ERROR = struct
     fun toDoc err =
         let val (pos, details) = case err
                                  of NonSubType (expr, typ, superTyp) =>
-                                     ( TC.Expr.pos expr
-                                     , text "Value" <+> TC.Expr.toDoc expr
+                                     ( Cst.Term.exprPos expr
+                                     , text "Value" <+> Cst.Term.exprToDoc expr
                                            <+> text "of type" <+> TC.Type.absToDoc typ <+> text "is not subtype of"
                                            <+> TC.Type.absToDoc superTyp)
                                   | UnCallable (expr, typ) =>
@@ -43,8 +43,8 @@ structure TypeError :> TYPE_ERROR = struct
                                            <+> text "of type" <+> TC.Type.concrToDoc typ <+> text "is not a record or module." )
                                   | UnboundVal (pos, name) => (pos, text "Unbound variable" <+> Name.toDoc name <> text ".")
                                   | MissingField (expr, typ, label) =>
-                                     ( TC.Expr.pos expr
-                                     , text "Value" <+> TC.Expr.toDoc expr
+                                     ( Cst.Term.exprPos expr
+                                     , text "Value" <+> Cst.Term.exprToDoc expr
                                            <+> text "of type" <+> TC.Type.concrToDoc typ <+> text "does not have field"
                                            <+> Name.toDoc label)
                                   | Occurs (uv, t) =>

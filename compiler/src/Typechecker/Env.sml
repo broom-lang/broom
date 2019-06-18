@@ -1,6 +1,7 @@
 structure TypecheckingEnv :> sig
     structure TC: TYPECHECKING where
         type ScopeId.t = TypecheckingCst.ScopeId.t and
+        type Output.Type.kind = FType.kind and
         type 'sv Output.Type.concr = 'sv FType.concr and
         type 'sv Output.Term.expr = 'sv FAst.Term.expr and
         type sv = TypecheckingCst.sv
@@ -16,6 +17,7 @@ structure TypecheckingEnv :> sig
             type bindings
 
             val new: unit -> bindings
+            val defs: bindings -> TC.Output.Type.def list
         end
 
         structure Expr: sig
@@ -54,6 +56,7 @@ structure TypecheckingEnv :> sig
 
     val findType: t -> Id.t -> Bindings.Type.binding option
     val freshAbstract: t -> Bindings.Type.binding -> Id.t
+    val newUv: t -> TypeVars.predicativity * Name.t -> TC.uv
     val freshUv: t -> TypeVars.predicativity -> TC.uv
     val uvInScope: t * TC.uv -> bool
    
@@ -86,6 +89,8 @@ end = struct
                 end
 
             fun new () = Id.HashTable.mkTable (0, Subscript)
+
+            fun defs bs = Id.HashTable.listItemsi bs |> List.map (fn (var, kind) => {var, kind})
         end
 
         structure Expr = struct
@@ -158,6 +163,11 @@ end = struct
                  | [] => raise Fail "unreachable"
         in fresh env
         end
+
+    fun newUv env pn =
+        case env
+        of scope :: _ => TypeVars.newUv (Scope.id scope) pn
+         | [] => raise Fail "unreachable"
 
     fun freshUv env predicativity =
         case env

@@ -2,7 +2,7 @@ structure Subtyping :> sig
     type coercion = (TypecheckingCst.sv FAst.Term.expr -> TypecheckingCst.sv FAst.Term.expr) option
    
     val applyCoercion: coercion -> TypecheckingCst.sv FAst.Term.expr -> TypecheckingCst.sv FAst.Term.expr
-    val subType: TypecheckingEnv.t -> TypecheckingCst.expr
+    val subType: TypecheckingEnv.t -> Cst.Term.expr
                  -> TypecheckingCst.abs * TypecheckingCst.abs -> coercion
 end = struct
     datatype predicativity = datatype TypeVars.predicativity
