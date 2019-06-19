@@ -33,7 +33,6 @@ local
     ann "warnUnused true"
     in ann "allowSuccessorML true"
        in
-           src/Reprs/Util/SVar.sml
            src/Typechecker/TypeVars.sml
            src/Reprs/FAst/FType.sml 
            src/Reprs/FAst/FAst.sml
