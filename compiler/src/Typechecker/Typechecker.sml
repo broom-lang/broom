@@ -149,7 +149,19 @@ end = struct
     (* Elaborate the expression `exprRef` and return its computed type. *)
     and elaborateExpr (env: Env.t) (expr: CTerm.expr): FlexFAst.Type.concr * FlexFAst.Type.sv FTerm.expr =
         case expr
-        of CTerm.Fn (pos, param, paramType, body) =>
+        of CTerm.Fn (pos, var, domain, body) =>
+            let val (typeDefs as [], domain) =
+                    case domain
+                    of SOME domain => elaborateType env domain
+                     | NONE => raise Fail "unimplemented"
+                val codomain = FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative))
+                val fnScope = Env.Scope.FnScope (Env.Scope.Id.fresh (), var, Visited (domain, NONE))
+                val env = Env.pushScope env fnScope
+                val body = elaborateExprAs env (Concr codomain) body
+            in ( FType.Arrow (pos, {domain, codomain})
+               , FTerm.Fn (pos, {var, typ = domain}, body) )
+            end
+
             (*let val (typeDefs, domain) =
                     case !paramType
                     of SOME domain => Pair.second SOME (elaborateType env domain)
@@ -175,7 +187,6 @@ end = struct
             in ( List.foldr (fn (def, t) => FType.ForAll (pos, def, t)) t typeDefs
                , List.foldr (fn (def, f) => FTerm.TFn (pos, def, f)) f typeDefs)
             end*)
-            raise Fail "unimplemented"
          | CTerm.Let (pos, stmts, body) =>
             let val env = Env.pushScope env (stmtsScope stmts)
                 val stmts = Vector.map (elaborateStmt env) stmts
