@@ -284,6 +284,7 @@ end = struct
                     of Unvisited _ | Visiting _ => raise Fail "unreachable" (* Not possible after `lookupValType`. *)
                      | Typed (_, SOME expr) => elaborateExprAs env (Concr t) expr
                      | Visited (_, SOME expr) => expr
+                     | Typed (_, NONE) | Visited (_, NONE) => raise Fail "unreachable"
             in FTerm.Val (pos, {var = name, typ = t}, expr)
             end
          | CTerm.Expr expr => FTerm.Expr (elaborateExprAs env (Concr (FType.unit (CTerm.exprPos expr))) expr)

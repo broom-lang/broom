@@ -27,7 +27,8 @@ end = struct
                                     | Left _ => Prim (pos, FFType.Prim.Unit))
 
     and absToF: FlexFAst.Type.abs -> FFType.abs =
-        fn Concr t => Concr (concrToF t)
+        fn Exists (pos, param, body) => Exists (pos, param, absToF body)
+         | Concr t => Concr (concrToF t)
 
     val rec exprToF: FlexFAst.Term.expr -> FFTerm.expr =
         fn Fn (pos, {var, typ}, body) =>

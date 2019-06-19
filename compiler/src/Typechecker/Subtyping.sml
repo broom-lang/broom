@@ -69,7 +69,8 @@ end = struct
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
     fun subType (env: Env.t) currPos (typ: FlexFAst.Type.abs, superTyp: FlexFAst.Type.abs): coercion =
         case (typ, superTyp)
-        of (Concr t, Concr t') =>
+        of (Exists _, Exists _) => raise Fail "unimplemented"
+         | (Concr t, Concr t') =>
             (case (t, t')
              of (FType.ForAll _, _) => raise Fail ("unimplemented, currPos = " ^ Pos.toString currPos)
               | (_, FType.ForAll _) => raise Fail ("unimplemented, currPos = " ^ Pos.toString currPos)
@@ -100,6 +101,7 @@ end = struct
               | (_, FType.SVar (_, FlexFAst.Type.UVar uv)) => superUv env currPos uv typ
               | _ => raise Fail ("unimplemented: " ^ FlexFAst.Type.Abs.toString typ ^ " <: "
                                  ^ FlexFAst.Type.Abs.toString superTyp))
+         | _ => raise TypeError (NonSubType (currPos, typ, superTyp))
 
     and subArrows env currPos ({domain, codomain}, {domain = domain', codomain = codomain'}) =
         let val coerceDomain = subType env currPos (Concr domain', Concr domain)

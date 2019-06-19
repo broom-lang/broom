@@ -131,6 +131,7 @@ structure FAst :> FAST = struct
              | Extend (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => typ
              | Field (_, typ, _, _) => typ
              | Let (_, _, body) => typeOf body
+             | If (_, _, conseq, _) => typeOf conseq
              | Type (pos, t) => Type.Type (pos, t)
              | Use (_, {typ, ...}) => typ
              | Const (pos, c) => Type.Prim (pos, Const.typeOf c)

@@ -117,6 +117,7 @@ structure Cst :> CST = struct
          | RowExt (pos, _) => pos
          | EmptyRow pos => pos
          | WildRow pos => pos
+         | Interface (pos, _) => pos
          | Singleton (pos, _) => pos
          | TypeT pos => pos
          | Path expr => exprPos expr
