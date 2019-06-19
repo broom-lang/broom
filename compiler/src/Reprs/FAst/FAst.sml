@@ -19,9 +19,22 @@ signature FAST_TERM = sig
     and 'sv stmt
         = Val of Pos.t * 'sv def * 'sv expr
         | Expr of 'sv expr
+
+    val exprPos: 'sv expr -> Pos.t
+    val exprToDoc: ('sv -> PPrint.t) -> 'sv expr -> PPrint.t
+    val exprToString: ('sv -> PPrint.t) -> 'sv expr -> string
 end
 
-structure FAst = struct
+signature FAST = sig
+    structure Type: FAST_TYPE
+
+    structure Term: FAST_TERM
+        where type Type.kind = Type.kind
+        and type 'sv Type.concr = 'sv Type.concr
+        and type 'sv Type.abs = 'sv Type.abs
+end
+
+structure FAst :> FAST = struct
     structure Type = FType
 
     structure Term = struct
@@ -32,6 +45,8 @@ structure FAst = struct
         val parens = PPrint.parens
         val brackets = PPrint.brackets
         val braces = PPrint.braces
+
+        structure Type = Type
 
         type 'sv def = {var: Name.t, typ: 'sv Type.concr}
 
@@ -119,18 +134,6 @@ structure FAst = struct
              | Type (pos, t) => Type.Type (pos, t)
              | Use (_, {typ, ...}) => typ
              | Const (pos, c) => Type.Prim (pos, Const.typeOf c)
-
-        datatype 'sv binder = ValueBinder of 'sv def * 'sv expr option
-                            | TypeBinder of Type.def * 'sv Type.concr option
-
-        fun foldBinders f acc =
-            fn Fn (_, def, _) => f (ValueBinder (def, NONE), acc)
-             | TFn (_, def, _) => f (TypeBinder (def, NONE), acc)
-             | Let (_, stmts, _) =>
-                Vector.foldl (fn (Val (_, def, expr), acc) => f (ValueBinder (def, SOME expr), acc)
-                               | (Expr _, acc) => acc)
-                             acc stmts
-             | Extend _ | App _ | TApp _ | Field _ | Type _ | Use _ | Const _ => acc
     end
 end
 
@@ -195,8 +198,8 @@ structure FlexFAst :> FLEX_FAST = struct
             fun occurs uv = FAst.Type.Concr.occurs svarOccurs uv
             and svarOccurs uv =
                 fn UVar uv' => (case TypeVars.uvGet uv'
-                               of Either.Left uv' => TypeVars.uvEq (uv', uv)
-                                | Either.Right t => occurs uv t)
+                                of Either.Left uv' => TypeVars.uvEq (uv', uv)
+                                 | Either.Right t => occurs uv t)
 
             fun substitute kv = FAst.Type.Concr.substitute svarSubstitute kv
             and svarSubstitute kv =
@@ -217,7 +220,9 @@ structure FlexFAst :> FLEX_FAST = struct
     end
 
     structure Term = struct
+        structure Typ = Type
         open FAst.Term
+        structure Type = Typ
 
         type expr = Type.sv expr
 
@@ -253,7 +258,9 @@ structure FixedFAst = struct
     end
 
     structure Term = struct
+        structure Typ = Type
         open FAst.Term
+        structure Type = Typ
 
         type expr = Type.sv expr
 

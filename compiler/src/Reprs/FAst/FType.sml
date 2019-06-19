@@ -23,17 +23,34 @@ signature FAST_TYPE = sig
         | Concr of 'sv concr
 
     val kindToDoc: kind -> PPrint.t
+    val kindToString: kind -> string
+    val defToDoc: def -> PPrint.t
+    val rowExtTail: 'sv concr -> 'sv concr
+    val unit: Pos.t -> 'sv concr
+    val exist: Pos.t -> def list * 'sv concr -> 'sv abs
     
     structure Concr: sig
-        val concrToDoc: ('sv -> PPrint.t) -> 'sv concr -> PPrint.t
+        val pos: 'sv concr -> Pos.t
+        val toDoc: ('sv -> PPrint.t) -> 'sv concr -> PPrint.t
+        val toString: ('sv -> PPrint.t) -> 'sv concr -> string
+        val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv concr -> bool
+        val substitute: (Id.t * 'sv concr -> 'sv -> 'sv concr option)
+                        -> Id.t * 'sv concr -> 'sv concr -> 'sv concr
+        val kindOf: (Pos.t * 'sv -> kind) -> 'sv concr -> kind
     end
 
     structure Abs: sig
-        val absToDoc: ('sv -> PPrint.t) -> 'sv abs -> PPrint.t
+        val pos: 'sv abs -> Pos.t
+        val toDoc: ('sv -> PPrint.t) -> 'sv abs -> PPrint.t
+        val toString: ('sv -> PPrint.t) -> 'sv abs -> string
+        val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv abs -> bool
+        val substitute: (Id.t * 'sv concr -> 'sv -> 'sv concr option)
+                        -> Id.t * 'sv concr -> 'sv abs -> 'sv abs
+        val kindOf: (Pos.t * 'sv -> kind) -> 'sv abs -> kind
     end
 end
 
-structure FType = struct
+structure FType :> FAST_TYPE = struct
     val text = PPrint.text
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>

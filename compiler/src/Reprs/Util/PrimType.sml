@@ -11,8 +11,7 @@ structure PrimType :> PRIM_TYPE = struct
     val toString = fn Unit => "()"
                     | Bool => "Bool"
                     | I32 => "I32"
-    
-    structure ToDoc = ToDocFromToString(struct type t = t val toString = toString end)
-    val toDoc = ToDoc.toDoc
+
+    val toDoc = PPrint.text o toString
 end
 

@@ -23,6 +23,5 @@ end = struct
     fun toString {file, index = _, line, col} =
         file ^ " at " ^ Int.toString line ^ ":" ^ Int.toString col
 
-    structure ToDoc = ToDocFromToString(struct type t = t val toString = toString end)
-    val toDoc = ToDoc.toDoc
+    val toDoc = PPrint.text o toString
 end

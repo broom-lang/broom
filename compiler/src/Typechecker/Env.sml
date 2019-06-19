@@ -49,7 +49,6 @@ structure TypecheckingEnv :> sig
     val pushScope: t -> Scope.t -> t
 
     val findType: t -> Id.t -> Bindings.Type.binding option
-    val freshAbstract: t -> Bindings.Type.binding -> Id.t
     val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
     val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
     val uvInScope: t * FlexFAst.Type.uv -> bool
@@ -148,14 +147,6 @@ end = struct
                     Scope.findType scope id |> Option.orElse (fn () => find env)
                  | [] => NONE
         in find env
-        end
-
-    fun freshAbstract env b =
-        let val rec fresh =
-                fn Scope.ExistsScope (_, bs) :: _ => Bindings.Type.fresh bs b
-                 | _ :: env => fresh env
-                 | [] => raise Fail "unreachable"
-        in fresh env
         end
 
     fun newUv env pn =

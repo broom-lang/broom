@@ -1,5 +1,61 @@
-structure Cst = struct
-    structure Prim = PrimType
+signature CST = sig
+    structure Prim: PRIM_TYPE where type t = PrimType.t
+
+    datatype typ
+        = Pi of Pos.t * def * typ
+        | RecordT of Pos.t * typ
+        | RowExt of Pos.t * {fields: (Name.t * typ) vector, ext: typ}
+        | EmptyRow of Pos.t
+        | Interface of Pos.t * (Name.t * typ) vector
+        | WildRow of Pos.t
+        | Singleton of Pos.t * expr
+        | TypeT of Pos.t
+        | Path of expr
+        | Prim of Pos.t * Prim.t
+
+    and expr
+        = Fn of Pos.t * Name.t * typ option * expr
+        | Let of Pos.t * stmt vector * expr
+        | If of Pos.t * expr * expr * expr
+        | Record of Pos.t * row
+        | Module of Pos.t * stmt vector
+        | App of Pos.t * {callee: expr, arg: expr}
+        | Field of Pos.t * expr * Name.t
+        | Ann of Pos.t * expr * typ
+        | Type of Pos.t * typ
+        | Use of Pos.t * Name.t
+        | Const of Pos.t * Const.t
+
+    and stmt
+        = Val of Pos.t * Name.t * typ option * expr
+        | Expr of expr
+
+    withtype def = {var: Name.t, typ: typ option}
+    and row = {fields: (Name.t * expr) vector, ext: expr option}
+
+    structure Type: sig
+        structure Prim: PRIM_TYPE where type t = PrimType.t
+
+        datatype typ = datatype typ
+
+        val pos: typ -> Pos.t
+        val toDoc: typ -> PPrint.t
+        val toString: typ -> string
+    end
+
+    structure Term: sig
+        datatype expr = datatype expr
+        datatype stmt = datatype stmt
+        type def = def
+        type row = row
+
+        val exprPos: expr -> Pos.t
+        val exprToDoc: expr -> PPrint.t
+        val exprToString: expr -> string
+    end
+end
+
+structure Cst :> CST = struct
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
     val op<++> = PPrint.<++>
@@ -132,15 +188,7 @@ structure Cst = struct
             text "val " <> Name.toDoc name <> annToDoc ann <> text " = " <> exprToDoc valExpr
          | Expr expr => exprToDoc expr
 
-    structure Type :> sig
-        structure Prim: PRIM_TYPE where type t = PrimType.t
-
-        datatype typ = datatype typ
-        type def = def
-
-        val pos: typ -> Pos.t
-        val toDoc: typ -> PPrint.t
-    end = struct
+    structure Type = struct
         structure Prim = PrimType
 
         datatype typ = datatype typ
@@ -148,26 +196,18 @@ structure Cst = struct
 
         val pos = typePos
         val toDoc = typeToDoc
+        val toString = PPrint.pretty 80 o toDoc
     end
 
-    structure Term :> sig
+    structure Term = struct
         datatype expr = datatype expr
         datatype stmt = datatype stmt
-        type row = row
-
-        val exprPos: expr -> Pos.t
-        val exprToDoc: expr -> PPrint.t
-        val exprToString: expr -> string
-        val stmtToDoc: stmt -> PPrint.t
-    end = struct
-        datatype expr = datatype expr
-        datatype stmt = datatype stmt
+        type def = def
         type row = row
 
         val exprPos = exprPos
         val exprToDoc = exprToDoc
         val exprToString = PPrint.pretty 80 o exprToDoc
-        val stmtToDoc = stmtToDoc
     end
 end
 
