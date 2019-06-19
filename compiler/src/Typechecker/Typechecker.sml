@@ -19,9 +19,8 @@ end = struct
     val applyCoercion = Subtyping.applyCoercion
 
 (* Looking up `val` types *)
-    fun unvisitedBindingType expr env name args =
-        let val pos = CTerm.exprPos expr
-            do Env.updateExpr pos env name (Fn.constantly (Visiting args))
+    fun unvisitedBindingType pos env name args =
+        let do Env.updateExpr pos env name (Fn.constantly (Visiting args))
             val (t, binding') =
                 case args
                 of (SOME t, oexpr) =>
@@ -41,7 +40,7 @@ end = struct
                ( Env.updateExpr pos env name (Fn.constantly binding')
                 ; t )
             | Typed (usageTyp, _) | Visited (usageTyp, _) =>
-               ( ignore (subType env expr (Concr t, Concr usageTyp))
+               ( ignore (subType env pos (Concr t, Concr usageTyp))
                ; usageTyp )
         end
        
@@ -57,32 +56,12 @@ end = struct
        - returning a fresh unification variable (if neither type annotation nor bound expression
          is available or if a cycle is encountered) *)
     and lookupValType expr name env: TC.concr option =
-        Option.map (fn (Unvisited args, env) => unvisitedBindingType expr env name args
+        Option.map (fn (Unvisited args, env) => unvisitedBindingType (CTerm.exprPos expr) env name args
                      | (Visiting args, env) => cyclicBindingType (CTerm.exprPos expr) env name args
                      | (Typed (t, _) | Visited (t, _), _) => t)
                    (Env.findExprClosure env name)
 
 (* Elaborating subtrees *)
-
-    (* FIXME: Actually need a mutable 'exists' scope where we put the defs,
-              kind of like how sealing puts its generated types in the toplevel scope.
-              The current scheme does not even support non-cyclic forward references. *)
-    (*and elaborateType (env: Env.t): TC.typ -> FType.def list * TC.concr =
-        fn TC.InputType typ =>
-            (case typ
-              | CType.Interface (pos, decls) =>
-                 let fun step ((name, t), (defs, fields)) =
-                         let val (defs', dt) = case !t
-                                               of SOME t => elaborateType env t
-                                                | NONE => raise Fail "unimplemented"
-                             do t := SOME (TC.OutputType (Concr dt))
-                         in (defs @ defs', (name, dt) :: fields)
-                         end
-                     val (defs, revFields) = Vector.foldl step ([], []) decls
-                     fun constructStep (field, ext) = FType.RowExt (pos, {field, ext})
-                 in (defs, FType.Record (pos, List.foldr constructStep (FType.EmptyRow pos) revFields))
-                 end
-         | TC.OutputType t => FType.splitExistentials t (* assumes invariant: entire subtree has been elaborated already *)*)
 
     (* Elaborate the type `typ` and return the elaborated version. *)
     and elaborateType (env: Env.t) (t: CType.typ): FType.def list * TC.concr =
@@ -121,6 +100,12 @@ end = struct
                         val var = Env.Bindings.Type.fresh absBindings kind
                     in FType.UseT (pos, {var, kind})
                     end
+                 | CType.Interface (pos, decls) =>
+                    let val env = Env.pushScope env (declsScope decls)
+                        val fields = Vector.map (elaborateDecl env) decls
+                        fun constructStep (field, ext) = FType.RowExt (pos, {field, ext})
+                    in FType.Record (pos, Vector.foldr constructStep (FType.EmptyRow pos) fields)
+                    end
                  | CType.Path pathExpr =>
                     (case #1 (elaborateExpr env pathExpr)
                      of FType.Type (_, t) => reAbstract t
@@ -133,9 +118,25 @@ end = struct
                     end
                  | CType.Singleton (pos, expr) => #1 (elaborateExpr env expr)
                  | CType.Prim (pos, p) => FType.Prim (pos, p)
+
+            and elaborateDecl env (name, t) =
+                ( name
+                , case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
+                  of Unvisited args => unvisitedBindingType (CType.pos t) env name args
+                   | Visiting args => cyclicBindingType (CType.pos t) env name args
+                   | Typed (t, _) | Visited (t, _) => t )
+
             val t = elaborate env t
             val defs = Env.Bindings.Type.defs absBindings
         in (defs, t)
+        end
+
+    and declsScope decls =
+        let val builder = Env.Bindings.Expr.Builder.new ()
+            do Vector.app (fn (name, t) =>
+                                Env.Bindings.Expr.Builder.insert builder name (Unvisited (SOME t, NONE)))
+                          decls
+        in Env.Scope.BlockScope (Env.Scope.Id.fresh (), Env.Bindings.Expr.Builder.build builder)
         end
 
     and stmtsScope stmts =
@@ -254,7 +255,7 @@ end = struct
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)
     and coerceExprTo (env: Env.t) (typ: TC.abs) (expr: CTerm.expr): TC.sv FTerm.expr =
         let val (t', fexpr) = elaborateExpr env expr
-            val coercion = subType env expr (Concr t', typ)
+            val coercion = subType env (CTerm.exprPos expr) (Concr t', typ)
         in applyCoercion coercion fexpr
         end
 
@@ -264,7 +265,7 @@ end = struct
             let val (t, expr) =
                     case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
                     of Unvisited (args as (_, SOME expr)) =>
-                        let val t = unvisitedBindingType expr env name args
+                        let val t = unvisitedBindingType pos env name args
                         in (t, elaborateExprAs env (Concr t) expr)
                         end
                      | Visiting (args as (_, SOME expr)) =>

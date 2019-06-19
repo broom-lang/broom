@@ -2,8 +2,7 @@ structure Subtyping :> sig
     type coercion = (TypecheckingCst.sv FAst.Term.expr -> TypecheckingCst.sv FAst.Term.expr) option
    
     val applyCoercion: coercion -> TypecheckingCst.sv FAst.Term.expr -> TypecheckingCst.sv FAst.Term.expr
-    val subType: TypecheckingEnv.t -> Cst.Term.expr
-                 -> TypecheckingCst.abs * TypecheckingCst.abs -> coercion
+    val subType: TypecheckingEnv.t -> Pos.t -> TypecheckingCst.abs * TypecheckingCst.abs -> coercion
 end = struct
     datatype predicativity = datatype TypeVars.predicativity
     structure TC = TypecheckingCst
@@ -69,18 +68,18 @@ end = struct
          | Either.Right t => doAssign env y (uv, Concr t)
 
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
-    fun subType (env: Env.t) expr (typ: TC.abs, superTyp: TC.abs): coercion =
+    fun subType (env: Env.t) currPos (typ: TC.abs, superTyp: TC.abs): coercion =
         case (typ, superTyp)
         of (Concr t, Concr t') =>
             (case (t, t')
              of (FType.ForAll _, _) => raise Fail "unimplemented"
               | (_, FType.ForAll _) => raise Fail "unimplemented"
-              | (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows env expr (arr, arr')
+              | (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows env currPos (arr, arr')
               | (FType.Record (_, row), FType.Record (_, row')) => 
-                 (case subRows env expr (row, row')
+                 (case subRows env currPos (row, row')
                   of [] => NONE)
               | (FType.RowExt _, FType.RowExt _) =>
-                ( subRows env expr (t, t')
+                ( subRows env currPos (t, t')
                 ; NONE ) (* No values of row type exist => coercion unnecessary *)
               | (FType.EmptyRow _, FType.EmptyRow _) => NONE
               | (FType.Prim (_, pl), FType.Prim (_, pr)) =>
@@ -88,24 +87,24 @@ end = struct
                  then NONE
                  else raise Fail "<:"
               | (FType.Type (pos, t), FType.Type (_, t')) =>
-                 ( subType env expr (t, t')
-                 ; subType env expr (t', t)
+                 ( subType env currPos (t, t')
+                 ; subType env currPos (t', t)
                  ; SOME (fn _ => FTerm.Type (pos, t)))
               | (FType.UseT (_, {var, ...}), FType.UseT (_, {var = var', ...})) =>
                  if var = var'
                  then if idInScope env var
                       then NONE
                       else raise Fail ("Opaque type out of scope: " ^ TC.Type.absToString superTyp)
-                 else raise TypeError (NonSubType (expr, typ, superTyp))
-              | (FType.SVar (_, TC.UVar uv), FType.SVar (_, TC.UVar uv')) => subUvs env expr (uv, uv')
-              | (FType.SVar (_, TC.UVar uv), _) => subUv env expr uv superTyp
-              | (_, FType.SVar (_, TC.UVar uv)) => superUv env expr uv typ
+                 else raise TypeError (NonSubType (currPos, typ, superTyp))
+              | (FType.SVar (_, TC.UVar uv), FType.SVar (_, TC.UVar uv')) => subUvs env currPos (uv, uv')
+              | (FType.SVar (_, TC.UVar uv), _) => subUv env currPos uv superTyp
+              | (_, FType.SVar (_, TC.UVar uv)) => superUv env currPos uv typ
               | _ => raise Fail ("unimplemented: " ^ TC.Type.absToString typ ^ " <: "
                                  ^ TC.Type.absToString superTyp))
 
-    and subArrows env expr ({domain, codomain}, {domain = domain', codomain = codomain'}) =
-        let val coerceDomain = subType env expr (Concr domain', Concr domain)
-            val coerceCodomain = subType env expr (Concr codomain, Concr codomain')
+    and subArrows env currPos ({domain, codomain}, {domain = domain', codomain = codomain'}) =
+        let val coerceDomain = subType env currPos (Concr domain', Concr domain)
+            val coerceCodomain = subType env currPos (Concr codomain, Concr codomain')
         in if isSome coerceDomain orelse isSome coerceCodomain
            then SOME (fn callee =>
                           let val pos = FTerm.exprPos callee
@@ -117,31 +116,31 @@ end = struct
            else NONE
         end
 
-    and subRows env expr (rows: TC.concr * TC.concr): field_coercion list =
+    and subRows env currPos (rows: TC.concr * TC.concr): field_coercion list =
         let val rec subExts =
                 fn (row, FType.RowExt (_, {field = (label, fieldt'), ext = ext'})) =>
-                    let val (fieldt, ext) = reorderRow expr label (FType.rowExtTail ext') row
-                        val coerceField = subType env expr (Concr fieldt, Concr fieldt')
+                    let val (fieldt, ext) = reorderRow currPos label (FType.rowExtTail ext') row
+                        val coerceField = subType env currPos (Concr fieldt, Concr fieldt')
                         val coerceExt = subExts (ext, ext')
                     in case coerceField
                        of SOME coerceField => (label, coerceField) :: coerceExt
                         | NONE => coerceExt
                     end
-                 | rows => (subType env expr (Pair.bimap Concr Concr rows); [])
+                 | rows => (subType env currPos (Pair.bimap Concr Concr rows); [])
         in subExts rows
         end
 
-    and reorderRow expr label (tail: TC.concr): TC.concr -> TC.concr * TC.concr =
+    and reorderRow currPos label (tail: TC.concr): TC.concr -> TC.concr * TC.concr =
         fn FType.RowExt (pos, {field = (label', fieldt'), ext = ext}) =>
             if label = label'
             then (fieldt', ext)
-            else let val (fieldt, ext) = reorderRow expr label tail ext
+            else let val (fieldt, ext) = reorderRow currPos label tail ext
                  in (fieldt, FType.RowExt (pos, {field = (label', fieldt'), ext = ext}))
                  end
          (* FIXME: `t` is actually row tail, not the type of `expr`. *)
-         | t => raise TypeError (MissingField (expr, t, label))
+         | t => raise TypeError (MissingField (currPos, t, label))
 
-    and subUvs env expr (uv: TC.uv, uv': TC.uv): coercion =
+    and subUvs env currPos (uv: TC.uv, uv': TC.uv): coercion =
         case (TypeVars.uvGet uv, TypeVars.uvGet uv')
         of (Either.Left uv, Either.Left uv') =>
             if Env.uvInScope (env, uv)
@@ -153,14 +152,14 @@ end = struct
             else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
          | (Either.Left uv, Either.Right t) => ( assign env (Sub, uv, Concr t); NONE )
          | (Either.Right t, Either.Left uv) => ( assign env (Super, uv, Concr t); NONE )
-         | (Either.Right t, Either.Right t') => subType env expr (Concr t, Concr t')
+         | (Either.Right t, Either.Right t') => subType env currPos (Concr t, Concr t')
 
-    and subUv env expr uv superTyp = case TypeVars.uvGet uv
+    and subUv env currPos uv superTyp = case TypeVars.uvGet uv
                                        of Either.Left uv => (assign env (Sub, uv, superTyp); NONE)
-                                        | Either.Right t => subType env expr (Concr t, superTyp)
+                                        | Either.Right t => subType env currPos (Concr t, superTyp)
 
-    and superUv env expr uv subTyp = case TypeVars.uvGet uv
+    and superUv env currPos uv subTyp = case TypeVars.uvGet uv
                                        of Either.Left uv => (assign env (Super, uv, subTyp); NONE)
-                                        | Either.Right t => subType env expr (subTyp, Concr t)
+                                        | Either.Right t => subType env currPos (subTyp, Concr t)
 end
 
