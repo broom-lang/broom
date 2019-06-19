@@ -1,6 +1,7 @@
 structure Typechecker :> sig
     val elaborateExpr: TypecheckingEnv.t -> Cst.Term.expr -> FlexFAst.Type.concr * FlexFAst.Term.expr
 end = struct
+    val op|> = Fn.|>
     datatype predicativity = datatype TypeVars.predicativity
     structure CTerm = Cst.Term
     structure CType = Cst.Type
@@ -189,6 +190,21 @@ end = struct
             in (t, elaborateExprAs env (Concr t) expr)
             end
          | CTerm.Record (pos, fields) => elaborateRecord env pos fields
+         | CTerm.Module (pos, stmts) =>
+            let val env = Env.pushScope env (stmtsScope stmts)
+                val stmts = Vector.map (elaborateStmt env) stmts
+                val defs = Vector.foldr (fn (FTerm.Val (_, def, _), defs) => def :: defs
+                                          | (FTerm.Expr _, defs) => defs)
+                                        [] stmts
+                val row = List.foldl (fn ({var, typ}, ext) => FType.RowExt (pos, {field = (var, typ), ext}))
+                                     (FType.EmptyRow pos) defs
+                val typ = FType.Record (pos, row)
+                val body = FTerm.Extend ( pos, typ
+                                        , Vector.fromList defs
+                                              |> Vector.map (fn def as {var, ...} => (var, FTerm.Use (pos, def)))
+                                        , NONE )
+            in (typ, FTerm.Let (pos, stmts, body))
+            end
          | CTerm.App (pos, {callee, arg}) =>
             let val ct as (_, callee) = elaborateExpr env callee
                 val (callee, {domain, codomain}) = coerceCallee env ct 

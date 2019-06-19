@@ -106,7 +106,7 @@ structure Cst = struct
          | Record (_, row) => braces (rowToDoc row)
          | Module (_, stmts) =>
             text "module"
-                <> (PPrint.nest 4 (PPrint.punctuate newline (Vector.map stmtToDoc stmts)))
+                <> (PPrint.nest 4 (newline <> PPrint.punctuate newline (Vector.map stmtToDoc stmts)))
                 <++> text "end"
          | App (_, {callee, arg}) => parens (exprToDoc callee <+> exprToDoc arg)
          | Field (_, expr, label) => parens (exprToDoc expr <> text "." <> Name.toDoc label)
