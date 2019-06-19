@@ -1,11 +1,10 @@
 structure Subtyping :> sig
-    type coercion = (TypecheckingCst.sv FAst.Term.expr -> TypecheckingCst.sv FAst.Term.expr) option
+    type coercion = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
    
-    val applyCoercion: coercion -> TypecheckingCst.sv FAst.Term.expr -> TypecheckingCst.sv FAst.Term.expr
-    val subType: TypecheckingEnv.t -> Pos.t -> TypecheckingCst.abs * TypecheckingCst.abs -> coercion
+    val applyCoercion: coercion -> FlexFAst.Type.sv FAst.Term.expr -> FlexFAst.Type.sv FAst.Term.expr
+    val subType: TypecheckingEnv.t -> Pos.t -> FlexFAst.Type.abs * FlexFAst.Type.abs -> coercion
 end = struct
     datatype predicativity = datatype TypeVars.predicativity
-    structure TC = TypecheckingCst
     structure FType = FAst.Type
     datatype abs = datatype FType.abs
     structure FTerm = FAst.Term
@@ -16,8 +15,8 @@ end = struct
 
     val uvMerge = TypeVars.uvMerge Env.Scope.Id.compare
 
-    type coercion = (TC.sv FTerm.expr -> TC.sv FTerm.expr) option
-    type field_coercion = Name.t * (TC.sv FTerm.expr -> TC.sv FTerm.expr)
+    type coercion = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
+    type field_coercion = Name.t * (FlexFAst.Type.sv FTerm.expr -> FlexFAst.Type.sv FTerm.expr)
 
     fun applyCoercion (coerce: coercion) expr =
         case coerce
@@ -30,14 +29,14 @@ end = struct
                  | Super => Sub
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
-    fun assign (env: Env.t) (y, uv: (Env.Scope.Id.t, TC.concr) TypeVars.uv, t: TC.abs): unit =
+    fun assign (env: Env.t) (y, uv: (Env.Scope.Id.t, FlexFAst.Type.concr) TypeVars.uv, t: FlexFAst.Type.abs): unit =
         if Env.uvInScope (env, uv)
-        then if TC.absOccurs uv t
+        then if FlexFAst.Type.Abs.occurs uv t
              then raise TypeError (Occurs (uv, t))
              else doAssign env y (uv, t)
         else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv))
 
-    and doAssign (env: Env.t) y (uv, typ: TC.abs) =
+    and doAssign (env: Env.t) y (uv, typ: FlexFAst.Type.abs) =
         case typ
         of Exists _ => raise Fail "unimplemented"
          | Concr t =>
@@ -50,13 +49,13 @@ end = struct
                  if idInScope env var
                  then TypeVars.uvSet (uv, t)
                  else raise Fail ("Opaque type out of scope: g__" ^ Id.toString var)
-              | FType.SVar (_, TC.UVar uv') => doAssignUv env y (uv, uv'))
+              | FType.SVar (_, FlexFAst.Type.UVar uv') => doAssignUv env y (uv, uv'))
 
     and doAssignArrow (env: Env.t) y uv pos {domain, codomain} =
         let val domainUv = Env.freshUv env Predicative
             val codomainUv = Env.freshUv env Predicative
-            val t' = FType.Arrow (pos, { domain = FType.SVar (pos, TC.UVar domainUv)
-                                       , codomain = FType.SVar (pos, TC.UVar codomainUv)})
+            val t' = FType.Arrow (pos, { domain = FType.SVar (pos, FlexFAst.Type.UVar domainUv)
+                                       , codomain = FType.SVar (pos, FlexFAst.Type.UVar codomainUv)})
         in TypeVars.uvSet (uv, t')
          ; assign env (flipY y, domainUv, Concr domain) (* contravariance *)
          ; assign env (y, codomainUv, Concr codomain)
@@ -68,7 +67,7 @@ end = struct
          | Either.Right t => doAssign env y (uv, Concr t)
 
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
-    fun subType (env: Env.t) currPos (typ: TC.abs, superTyp: TC.abs): coercion =
+    fun subType (env: Env.t) currPos (typ: FlexFAst.Type.abs, superTyp: FlexFAst.Type.abs): coercion =
         case (typ, superTyp)
         of (Concr t, Concr t') =>
             (case (t, t')
@@ -94,13 +93,13 @@ end = struct
                  if var = var'
                  then if idInScope env var
                       then NONE
-                      else raise Fail ("Opaque type out of scope: " ^ TC.Type.absToString superTyp)
+                      else raise Fail ("Opaque type out of scope: " ^ FlexFAst.Type.Abs.toString superTyp)
                  else raise TypeError (NonSubType (currPos, typ, superTyp))
-              | (FType.SVar (_, TC.UVar uv), FType.SVar (_, TC.UVar uv')) => subUvs env currPos (uv, uv')
-              | (FType.SVar (_, TC.UVar uv), _) => subUv env currPos uv superTyp
-              | (_, FType.SVar (_, TC.UVar uv)) => superUv env currPos uv typ
-              | _ => raise Fail ("unimplemented: " ^ TC.Type.absToString typ ^ " <: "
-                                 ^ TC.Type.absToString superTyp))
+              | (FType.SVar (_, FlexFAst.Type.UVar uv), FType.SVar (_, FlexFAst.Type.UVar uv')) => subUvs env currPos (uv, uv')
+              | (FType.SVar (_, FlexFAst.Type.UVar uv), _) => subUv env currPos uv superTyp
+              | (_, FType.SVar (_, FlexFAst.Type.UVar uv)) => superUv env currPos uv typ
+              | _ => raise Fail ("unimplemented: " ^ FlexFAst.Type.Abs.toString typ ^ " <: "
+                                 ^ FlexFAst.Type.Abs.toString superTyp))
 
     and subArrows env currPos ({domain, codomain}, {domain = domain', codomain = codomain'}) =
         let val coerceDomain = subType env currPos (Concr domain', Concr domain)
@@ -116,7 +115,7 @@ end = struct
            else NONE
         end
 
-    and subRows env currPos (rows: TC.concr * TC.concr): field_coercion list =
+    and subRows env currPos (rows: FlexFAst.Type.concr * FlexFAst.Type.concr): field_coercion list =
         let val rec subExts =
                 fn (row, FType.RowExt (_, {field = (label, fieldt'), ext = ext'})) =>
                     let val (fieldt, ext) = reorderRow currPos label (FType.rowExtTail ext') row
@@ -130,7 +129,7 @@ end = struct
         in subExts rows
         end
 
-    and reorderRow currPos label (tail: TC.concr): TC.concr -> TC.concr * TC.concr =
+    and reorderRow currPos label (tail: FlexFAst.Type.concr): FlexFAst.Type.concr -> FlexFAst.Type.concr * FlexFAst.Type.concr =
         fn FType.RowExt (pos, {field = (label', fieldt'), ext = ext}) =>
             if label = label'
             then (fieldt', ext)
@@ -140,7 +139,7 @@ end = struct
          (* FIXME: `t` is actually row tail, not the type of `expr`. *)
          | t => raise TypeError (MissingField (currPos, t, label))
 
-    and subUvs env currPos (uv: TC.uv, uv': TC.uv): coercion =
+    and subUvs env currPos (uv: FlexFAst.Type.uv, uv': FlexFAst.Type.uv): coercion =
         case (TypeVars.uvGet uv, TypeVars.uvGet uv')
         of (Either.Left uv, Either.Left uv') =>
             if Env.uvInScope (env, uv)

@@ -1,3 +1,26 @@
+signature FAST_TERM = sig
+    structure Type: FAST_TYPE
+
+    type 'sv def = {var: Name.t, typ: 'sv Type.concr}
+
+    datatype 'sv expr
+        = Fn of Pos.t * 'sv def * 'sv expr
+        | TFn of Pos.t * Type.def * 'sv expr
+        | Extend of Pos.t * 'sv Type.concr  * (Name.t * 'sv expr) vector * 'sv expr option
+        | App of Pos.t * 'sv Type.concr * {callee: 'sv expr, arg: 'sv expr}
+        | TApp of Pos.t * 'sv Type.concr * {callee: 'sv expr, arg: 'sv Type.concr}
+        | Field of Pos.t * 'sv Type.concr * 'sv expr * Name.t
+        | Let of Pos.t * 'sv stmt vector * 'sv expr
+        | If of Pos.t * 'sv expr * 'sv expr * 'sv expr
+        | Type of Pos.t * 'sv Type.abs
+        | Use of Pos.t * 'sv def
+        | Const of Pos.t * Const.t
+
+    and 'sv stmt
+        = Val of Pos.t * 'sv def * 'sv expr
+        | Expr of 'sv expr
+end
+
 structure FAst = struct
     structure Type = FType
 
@@ -108,6 +131,98 @@ structure FAst = struct
                                | (Expr _, acc) => acc)
                              acc stmts
              | Extend _ | App _ | TApp _ | Field _ | Type _ | Use _ | Const _ => acc
+    end
+end
+
+signature FLEX_FAST = sig
+    structure ScopeId: ID
+
+    structure Type: sig
+        datatype kind = datatype FAst.Type.kind
+
+        datatype sv = UVar of uv
+        withtype concr = sv FAst.Type.concr
+        and abs = sv FAst.Type.abs
+        and uv = (ScopeId.t, sv FAst.Type.concr) TypeVars.uv
+
+        val kindToDoc: kind -> PPrint.t
+
+        val svarToDoc: sv -> PPrint.t
+
+        structure Concr: sig
+            val toDoc: concr -> PPrint.t
+            val substitute: Id.t * concr -> concr -> concr
+        end
+
+        structure Abs: sig
+            val toDoc: abs -> PPrint.t
+            val toString: abs -> string
+            val occurs: uv -> abs -> bool
+        end
+    end
+
+    structure Term: sig
+        type expr = Type.sv FAst.Term.expr
+    end
+end
+
+structure FlexFAst :> FLEX_FAST = struct
+    structure ScopeId :> ID = Id
+
+    val text = PPrint.text
+    val op<> = PPrint.<>
+
+    structure Type = struct
+        open FAst.Type
+
+        datatype sv = UVar of uv
+        withtype concr = sv FAst.Type.concr
+        and abs = sv FAst.Type.abs
+        and uv = (ScopeId.t, sv FAst.Type.concr) TypeVars.uv
+
+        fun concrToDoc t = FAst.Type.Concr.toDoc svarToDoc t
+        and svarToDoc (UVar uv) =
+            case TypeVars.uvGet uv
+            of Either.Right t => concrToDoc t
+             | Either.Left uv => text "^" <> Name.toDoc (TypeVars.uvName uv)
+
+        structure Concr = struct
+            open Concr
+
+            val toDoc = concrToDoc
+            val toString = toString svarToDoc
+
+            fun occurs uv = FAst.Type.Concr.occurs svarOccurs uv
+            and svarOccurs uv =
+                fn UVar uv' => (case TypeVars.uvGet uv'
+                               of Either.Left uv' => TypeVars.uvEq (uv', uv)
+                                | Either.Right t => occurs uv t)
+
+            fun substitute kv = FAst.Type.Concr.substitute svarSubstitute kv
+            and svarSubstitute kv =
+                fn UVar uv => (case TypeVars.uvGet uv
+                               of Either.Left _ => NONE
+                                | Either.Right t => SOME (substitute kv t))
+        end
+
+        structure Abs = struct
+            open Abs
+
+            val toDoc = toDoc svarToDoc
+            val toString = toString svarToDoc
+
+            val occurs = occurs Concr.svarOccurs
+            val substitute = substitute Concr.svarSubstitute
+        end
+    end
+
+    structure Term = struct
+        open FAst.Term
+
+        type expr = Type.sv expr
+
+        val exprToDoc: expr -> PPrint.t = exprToDoc Type.svarToDoc
+        val exprToString: expr -> string = exprToString Type.svarToDoc
     end
 end
 

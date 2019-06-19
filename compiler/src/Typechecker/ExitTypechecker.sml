@@ -1,8 +1,7 @@
 structure ExitTypechecker :> sig
-    val exprToF: TypecheckingCst.sv FAst.Term.expr -> FixedFAst.Term.expr
+    val exprToF: FlexFAst.Term.expr -> FixedFAst.Term.expr
 end = struct
-    structure TC = TypecheckingCst
-    datatype sv = datatype TC.sv
+    datatype sv = datatype FlexFAst.Type.sv
     structure FFType = FixedFAst.Type
     structure FFTerm = FixedFAst.Term
     datatype concr = datatype FAst.Type.concr
@@ -11,7 +10,7 @@ end = struct
     datatype stmt = datatype FAst.Term.stmt
     datatype either = datatype Either.t
 
-    val rec concrToF: TC.concr -> FFType.concr =
+    val rec concrToF: FlexFAst.Type.concr -> FFType.concr =
         fn ForAll (pos, param, body) => ForAll (pos, param, concrToF body)
          | Arrow (pos, {domain, codomain}) =>
             Arrow (pos, {domain = concrToF domain, codomain = concrToF codomain})
@@ -27,10 +26,10 @@ end = struct
                                    of Right t => concrToF t
                                     | Left _ => Prim (pos, FFType.Prim.Unit))
 
-    and absToF: TC.abs -> FFType.abs =
+    and absToF: FlexFAst.Type.abs -> FFType.abs =
         fn Concr t => Concr (concrToF t)
 
-    val rec exprToF: TC.sv FAst.Term.expr -> FFTerm.expr =
+    val rec exprToF: FlexFAst.Term.expr -> FFTerm.expr =
         fn Fn (pos, {var, typ}, body) =>
             Fn (pos, {var, typ = concrToF typ}, exprToF body)
          | TFn (pos, param, body) => TFn (pos, param, exprToF body)

@@ -1,3 +1,38 @@
+signature FAST_TYPE = sig
+    structure Prim: PRIM_TYPE where type t = PrimType.t
+
+    datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
+                  | TypeK of Pos.t
+                  | RowK of Pos.t
+
+    type def = {var: Id.t, kind: kind}
+
+    datatype 'sv concr
+        = ForAll of Pos.t * def * 'sv concr
+        | Arrow of Pos.t * {domain: 'sv concr, codomain: 'sv concr}
+        | Record of Pos.t * 'sv concr
+        | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
+        | EmptyRow of Pos.t
+        | Type of Pos.t * 'sv abs
+        | UseT of Pos.t * def
+        | SVar of Pos.t * 'sv
+        | Prim of Pos.t * Prim.t
+    
+    and 'sv abs
+        = Exists of Pos.t * def * 'sv abs
+        | Concr of 'sv concr
+
+    val kindToDoc: kind -> PPrint.t
+    
+    structure Concr: sig
+        val concrToDoc: ('sv -> PPrint.t) -> 'sv concr -> PPrint.t
+    end
+
+    structure Abs: sig
+        val absToDoc: ('sv -> PPrint.t) -> 'sv abs -> PPrint.t
+    end
+end
+
 structure FType = struct
     val text = PPrint.text
     val op<> = PPrint.<>

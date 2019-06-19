@@ -1,12 +1,8 @@
 structure TypecheckingEnv :> sig
-    structure TC: TYPECHECKING where
-        type ScopeId.t = TypecheckingCst.ScopeId.t and
-        type sv = TypecheckingCst.sv
-
     type input_type = Cst.Type.typ
     type input_expr = Cst.Term.expr
-    type output_type = TC.sv FAst.Type.concr
-    type output_expr = TC.sv FAst.Term.expr
+    type output_type = FlexFAst.Type.concr
+    type output_expr = FlexFAst.Term.expr
 
     structure Bindings: sig
         structure Type: sig
@@ -38,7 +34,7 @@ structure TypecheckingEnv :> sig
     end
 
     structure Scope: sig
-        structure Id: ID where type t = TC.ScopeId.t
+        structure Id: ID where type t = FlexFAst.ScopeId.t
 
         datatype t = FnScope of Id.t * Name.t * Bindings.Expr.binding_state
                    | ForAllScope of Id.t * FAst.Type.def
@@ -54,9 +50,9 @@ structure TypecheckingEnv :> sig
 
     val findType: t -> Id.t -> Bindings.Type.binding option
     val freshAbstract: t -> Bindings.Type.binding -> Id.t
-    val newUv: t -> TypeVars.predicativity * Name.t -> TC.uv
-    val freshUv: t -> TypeVars.predicativity -> TC.uv
-    val uvInScope: t * TC.uv -> bool
+    val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
+    val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
+    val uvInScope: t * FlexFAst.Type.uv -> bool
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
@@ -64,12 +60,12 @@ structure TypecheckingEnv :> sig
                   -> (Bindings.Expr.binding_state -> Bindings.Expr.binding_state) -> unit
 end = struct
     open TypeError
-    structure TC = TypecheckingCst
+    structure FlexFAst = FlexFAst
 
     type input_type = Cst.Type.typ
     type input_expr = Cst.Term.expr
-    type output_type = TC.sv FAst.Type.concr
-    type output_expr = TC.sv FAst.Term.expr
+    type output_type = FlexFAst.Type.concr
+    type output_expr = FlexFAst.Term.expr
 
     val op|> = Fn.|>
 
@@ -113,7 +109,7 @@ end = struct
     end
 
     structure Scope = struct
-        structure Id = TC.ScopeId
+        structure Id = FlexFAst.ScopeId
 
         datatype t = FnScope of Id.t * Name.t * Bindings.Expr.binding_state
                    | ForAllScope of Id.t * FAst.Type.def

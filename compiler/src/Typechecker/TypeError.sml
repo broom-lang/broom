@@ -1,10 +1,10 @@
 signature TYPE_ERROR = sig
-    datatype t = NonSubType of Pos.t * TypecheckingCst.abs * TypecheckingCst.abs
-               | UnCallable of TypecheckingCst.sv FAst.Term.expr * TypecheckingCst.concr
-               | UnDottable of TypecheckingCst.sv FAst.Term.expr * TypecheckingCst.concr
+    datatype t = NonSubType of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs
+               | UnCallable of FlexFAst.Type.sv FAst.Term.expr * FlexFAst.Type.concr
+               | UnDottable of FlexFAst.Type.sv FAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.t * Name.t
-               | MissingField of Pos.t * TypecheckingCst.concr * Name.t
-               | Occurs of TypecheckingCst.uv * TypecheckingCst.abs
+               | MissingField of Pos.t * FlexFAst.Type.concr * Name.t
+               | Occurs of FlexFAst.Type.uv * FlexFAst.Type.abs
    
     exception TypeError of t
 
@@ -12,17 +12,16 @@ signature TYPE_ERROR = sig
 end
 
 structure TypeError :> TYPE_ERROR = struct
-    structure TC = TypecheckingCst
     val text = PPrint.text
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
 
-    datatype t = NonSubType of Pos.t * TypecheckingCst.abs * TypecheckingCst.abs
-               | UnCallable of TypecheckingCst.sv FAst.Term.expr * TypecheckingCst.concr
-               | UnDottable of TypecheckingCst.sv FAst.Term.expr * TypecheckingCst.concr
+    datatype t = NonSubType of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs
+               | UnCallable of FlexFAst.Type.sv FAst.Term.expr * FlexFAst.Type.concr
+               | UnDottable of FlexFAst.Type.sv FAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.t * Name.t
-               | MissingField of Pos.t * TypecheckingCst.concr * Name.t
-               | Occurs of TypecheckingCst.uv * TypecheckingCst.abs
+               | MissingField of Pos.t * FlexFAst.Type.concr * Name.t
+               | Occurs of FlexFAst.Type.uv * FlexFAst.Type.abs
     
     exception TypeError of t
 
@@ -30,24 +29,24 @@ structure TypeError :> TYPE_ERROR = struct
         let val (pos, details) = case err
                                  of NonSubType (pos, typ, superTyp) =>
                                      ( pos
-                                     ,  TC.Type.absToDoc typ <+> text "is not a subtype of" <+> TC.Type.absToDoc superTyp)
+                                     ,  FlexFAst.Type.Abs.toDoc typ <+> text "is not a subtype of" <+> FlexFAst.Type.Abs.toDoc superTyp)
                                   | UnCallable (expr, typ) =>
                                      ( FAst.Term.exprPos expr
-                                     , text "Value" <+> FAst.Term.exprToDoc TC.svarToDoc expr
-                                           <+> text "of type" <+> TC.Type.concrToDoc typ <+> text "can not be called." )
+                                     , text "Value" <+> FAst.Term.exprToDoc FlexFAst.Type.svarToDoc expr
+                                           <+> text "of type" <+> FlexFAst.Type.Concr.toDoc typ <+> text "can not be called." )
                                   | UnDottable (expr, typ) =>
                                      ( FAst.Term.exprPos expr
-                                     , text "Value" <+> FAst.Term.exprToDoc TC.svarToDoc expr
-                                           <+> text "of type" <+> TC.Type.concrToDoc typ <+> text "is not a record or module." )
+                                     , text "Value" <+> FAst.Term.exprToDoc FlexFAst.Type.svarToDoc expr
+                                           <+> text "of type" <+> FlexFAst.Type.Concr.toDoc typ <+> text "is not a record or module." )
                                   | UnboundVal (pos, name) => (pos, text "Unbound variable" <+> Name.toDoc name <> text ".")
                                   | MissingField (pos, typ, label) =>
                                      ( pos
-                                     , TC.Type.concrToDoc typ <+> text "does not have field"
+                                     , FlexFAst.Type.Concr.toDoc typ <+> text "does not have field"
                                            <+> Name.toDoc label)
                                   | Occurs (uv, t) =>
                                      ( FAst.Type.Abs.pos t
                                      , text "Occurs check: unifying" <+> text "^" <> Name.toDoc (TypeVars.uvName uv)
-                                           <+> text "with" <+> TC.Type.absToDoc t <+> text "would create infinite type." )
+                                           <+> text "with" <+> FlexFAst.Type.Abs.toDoc t <+> text "would create infinite type." )
         in text "TypeError in" <+> Pos.toDoc pos <> text ":" <+> details
         end
 end

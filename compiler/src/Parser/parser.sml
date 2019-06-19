@@ -10,7 +10,6 @@ end = struct
                                       structure ParserData = BroomLrVals.ParserData
                                       structure Lex = BroomLex)
 
-  structure TC = TypecheckingCst
   exception TypeError = TypeError.TypeError
 
   fun logger debug str = if debug then TextIO.output(TextIO.stdOut, str) else ()
