@@ -17,8 +17,9 @@ end = struct
     val applyCoercion = Subtyping.applyCoercion
 
 (* Looking up `val` types *)
+
     fun unvisitedBindingType pos env name args =
-        let do Env.updateExpr pos env name (Fn.constantly (Visiting args))
+        let do Env.updateExpr pos env name (Fn.constantly (Visiting args)) (* Mark binding 'grey'. *)
             val (t, binding') =
                 case args
                 of (SOME t, oexpr) =>
@@ -33,15 +34,18 @@ end = struct
                     in (t, Typed (t, oexpr))
                     end
         in case valOf (Env.findExpr env name)
-           of Unvisited _ => raise Fail "unreachable"
+           of Unvisited _ => raise Fail "unreachable" (* State is at 'least' `Visiting`. *)
             | Visiting _ =>
                ( Env.updateExpr pos env name (Fn.constantly binding')
                 ; t )
             | Typed (usageTyp, _) | Visited (usageTyp, _) =>
+               (* We must have found a cycle and used `cyclicBindingType`. *)
                ( ignore (subType env pos (Concr t, Concr usageTyp))
                ; usageTyp )
         end
-       
+      
+    (* In case we encounter a recursive reference to `name` not broken by type annotations we call
+       this to insert a unification variable, inferring a monomorphic type. *)
     and cyclicBindingType pos env name (_, oexpr) =
         let val t = FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative))
         in Env.updateExpr pos env name (Fn.constantly (Typed (t, oexpr)))
@@ -258,18 +262,12 @@ end = struct
     (* Elaborate a statement and return the elaborated version. *)
     and elaborateStmt env: Cst.Term.stmt -> FlexFAst.Type.sv FTerm.stmt =
         fn CTerm.Val (pos, name, _, expr) =>
-            let val (t, expr) =
+            let val t = valOf (lookupValType expr name env) (* `name` is in `env` by construction *)
+                val expr =
                     case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
-                    of Unvisited (args as (_, SOME expr)) =>
-                        let val t = unvisitedBindingType pos env name args
-                        in (t, elaborateExprAs env (Concr t) expr)
-                        end
-                     | Visiting (args as (_, SOME expr)) =>
-                        let val t = cyclicBindingType pos env name args
-                        in (t, elaborateExprAs env (Concr t) expr)
-                        end
-                     | Typed (t, SOME expr) => (t, elaborateExprAs env (Concr t) expr)
-                     | Visited (t, SOME expr) => (t, expr)
+                    of Unvisited _ | Visiting _ => raise Fail "unreachable" (* Not possible after `lookupValType`. *)
+                     | Typed (_, SOME expr) => elaborateExprAs env (Concr t) expr
+                     | Visited (_, SOME expr) => expr
             in FTerm.Val (pos, {var = name, typ = t}, expr)
             end
          | CTerm.Expr expr => FTerm.Expr (elaborateExprAs env (Concr (FType.unit (CTerm.exprPos expr))) expr)

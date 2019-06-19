@@ -71,8 +71,8 @@ end = struct
         case (typ, superTyp)
         of (Concr t, Concr t') =>
             (case (t, t')
-             of (FType.ForAll _, _) => raise Fail "unimplemented"
-              | (_, FType.ForAll _) => raise Fail "unimplemented"
+             of (FType.ForAll _, _) => raise Fail ("unimplemented, currPos = " ^ Pos.toString currPos)
+              | (_, FType.ForAll _) => raise Fail ("unimplemented, currPos = " ^ Pos.toString currPos)
               | (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows env currPos (arr, arr')
               | (FType.Record (_, row), FType.Record (_, row')) => 
                  (case subRows env currPos (row, row')
