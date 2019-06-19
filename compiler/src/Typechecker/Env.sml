@@ -1,24 +1,21 @@
 structure TypecheckingEnv :> sig
     structure TC: TYPECHECKING where
         type ScopeId.t = TypecheckingCst.ScopeId.t and
-        type Output.Type.kind = FType.kind and
-        type 'sv Output.Type.concr = 'sv FType.concr and
-        type 'sv Output.Term.expr = 'sv FAst.Term.expr and
         type sv = TypecheckingCst.sv
 
     type input_type = Cst.Type.typ
     type input_expr = Cst.Term.expr
-    type output_type = TC.sv TC.Output.Type.concr
-    type output_expr = TC.sv TC.Output.Term.expr
+    type output_type = TC.sv FAst.Type.concr
+    type output_expr = TC.sv FAst.Term.expr
 
     structure Bindings: sig
         structure Type: sig
-            type binding = TC.Output.Type.kind
+            type binding = FAst.Type.kind
             type bindings
 
             val new: unit -> bindings
             val fresh: bindings -> binding -> Id.t
-            val defs: bindings -> TC.Output.Type.def list
+            val defs: bindings -> FAst.Type.def list
         end
 
         structure Expr: sig
@@ -44,7 +41,7 @@ structure TypecheckingEnv :> sig
         structure Id: ID where type t = TC.ScopeId.t
 
         datatype t = FnScope of Id.t * Name.t * Bindings.Expr.binding_state
-                   | ForAllScope of Id.t * TC.Output.Type.def
+                   | ForAllScope of Id.t * FAst.Type.def
                    | ExistsScope of Id.t * Bindings.Type.bindings
                    | BlockScope of Id.t * Bindings.Expr.bindings
                    | InterfaceScope of Id.t * Bindings.Expr.bindings
@@ -69,16 +66,16 @@ end = struct
     open TypeError
     structure TC = TypecheckingCst
 
-    type input_type = TC.Input.Type.typ
-    type input_expr = TC.Input.Term.expr
-    type output_type = TC.sv TC.Output.Type.concr
-    type output_expr = TC.sv TC.Output.Term.expr
+    type input_type = Cst.Type.typ
+    type input_expr = Cst.Term.expr
+    type output_type = TC.sv FAst.Type.concr
+    type output_expr = TC.sv FAst.Term.expr
 
     val op|> = Fn.|>
 
     structure Bindings = struct
         structure Type = struct
-            type binding = TC.Output.Type.kind
+            type binding = FAst.Type.kind
             type bindings = binding Id.HashTable.hash_table
             
             val find = Id.HashTable.find
@@ -119,7 +116,7 @@ end = struct
         structure Id = TC.ScopeId
 
         datatype t = FnScope of Id.t * Name.t * Bindings.Expr.binding_state
-                   | ForAllScope of Id.t * TC.Output.Type.def
+                   | ForAllScope of Id.t * FAst.Type.def
                    | ExistsScope of Id.t * Bindings.Type.bindings
                    | BlockScope of Id.t * Bindings.Expr.bindings
                    | InterfaceScope of Id.t * Bindings.Expr.bindings

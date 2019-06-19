@@ -2,8 +2,6 @@ structure ExitTypechecker :> sig
     val exprToF: TypecheckingCst.sv FAst.Term.expr -> FixedFAst.Term.expr
 end = struct
     structure TC = TypecheckingCst
-    datatype tc_typ = datatype TC.typ
-    datatype tc_expr = datatype TC.expr
     datatype sv = datatype TC.sv
     structure FFType = FixedFAst.Type
     structure FFTerm = FixedFAst.Term
