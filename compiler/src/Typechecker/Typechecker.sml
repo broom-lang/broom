@@ -77,14 +77,20 @@ end = struct
 
             fun elaborate env =
                 fn CType.Pi (pos, {var, typ = domain}, codomain) =>
-                    let val (ddefs as [], domain) =
+                    let val (typeDefs, domain) =
                             case domain
                             of SOME domain => elaborateType env domain
-                             | NONE => raise Fail "unimplemented"
+                             | NONE => ([], FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative)))
+
+                        val env = List.foldl (fn (def, env) =>
+                                                  Env.pushScope env (Env.Scope.ForAllScope (Env.Scope.Id.fresh (), def)))
+                                             env typeDefs
                         val fnScope = Env.Scope.FnScope (Env.Scope.Id.fresh (), var, Visited (domain, NONE))
                         val env = Env.pushScope env fnScope
+
                         val codomain = elaborate env codomain
-                    in FType.Arrow (pos, {domain, codomain})
+                    in List.foldr (fn (def, t) => FType.ForAll (pos, def, t))
+                                  (FType.Arrow (pos, {domain, codomain})) typeDefs
                     end
                  | CType.RecordT (pos, row) => FType.Record (pos, elaborate env row)
                  | CType.RowExt (pos, {fields, ext}) =>
@@ -150,43 +156,24 @@ end = struct
     and elaborateExpr (env: Env.t) (expr: CTerm.expr): FlexFAst.Type.concr * FlexFAst.Type.sv FTerm.expr =
         case expr
         of CTerm.Fn (pos, var, domain, body) =>
-            let val (typeDefs as [], domain) =
+            let val (typeDefs, domain) =
                     case domain
                     of SOME domain => elaborateType env domain
-                     | NONE => raise Fail "unimplemented"
+                     | NONE => ([], FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative)))
                 val codomain = FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative))
+
+                val env = List.foldl (fn (def, env) =>
+                                          Env.pushScope env (Env.Scope.ForAllScope (Env.Scope.Id.fresh (), def)))
+                                     env typeDefs
                 val fnScope = Env.Scope.FnScope (Env.Scope.Id.fresh (), var, Visited (domain, NONE))
                 val env = Env.pushScope env fnScope
-                val body = elaborateExprAs env (Concr codomain) body
-            in ( FType.Arrow (pos, {domain, codomain})
-               , FTerm.Fn (pos, {var, typ = domain}, body) )
-            end
 
-            (*let val (typeDefs, domain) =
-                    case !paramType
-                    of SOME domain => Pair.second SOME (elaborateType env domain)
-                     | NONE => ([], NONE)
-                val env = let val fnScope :: env = env
-                              fun pushDef ({var, kind}, env) =
-                                  let val bindingRef = ref NONE
-                                      val scope = FlexFAst.TypeScope (FlexFAst.Scope.forTFn (var, bindingRef))
-                                      val env = scope :: env
-                                  in bindingRef := SOME {binder = kind, shade = ref FlexFAst.Black}
-                                   ; env
-                                  end
-                          in fnScope :: List.foldr pushDef env typeDefs
-                          end
-                val domain = case domain
-                             of SOME domain => domain
-                              | NONE => FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative))
-                do paramType := SOME (FlexFAst.OutputType (Concr domain))
-                val codomain = FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative))
                 val body = elaborateExprAs env (Concr codomain) body
-                val t = FType.Arrow (pos, {domain, codomain})
-                val f = FTerm.Fn (pos, {var = param, typ = domain}, body)
-            in ( List.foldr (fn (def, t) => FType.ForAll (pos, def, t)) t typeDefs
-               , List.foldr (fn (def, f) => FTerm.TFn (pos, def, f)) f typeDefs)
-            end*)
+            in ( List.foldr (fn (def, t) => FType.ForAll (pos, def, t))
+                            (FType.Arrow (pos, {domain, codomain})) typeDefs
+               , List.foldr (fn (def, f) => FTerm.TFn (pos, def, f))
+                            (FTerm.Fn (pos, {var, typ = domain}, body)) typeDefs)
+            end
          | CTerm.Let (pos, stmts, body) =>
             let val env = Env.pushScope env (stmtsScope stmts)
                 val stmts = Vector.map (elaborateStmt env) stmts
