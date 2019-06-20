@@ -137,10 +137,9 @@ structure Cst :> CST = struct
             end
          | EmptyRow _ => text "(||)"
          | Interface (_, decls) =>
-            let fun declToDoc (label, t) = Name.toDoc label <+> text ":" <+> typeToDoc t
+            let fun declToDoc (label, t) = text "val" <+> Name.toDoc label <+> text ":" <+> typeToDoc t
             in text "interface"
-                   <> (PPrint.nest 4 (PPrint.punctuate newline
-                                                       (Vector.map declToDoc decls)))
+                   <> (PPrint.nest 4 (newline <> PPrint.punctuate newline (Vector.map declToDoc decls)))
                    <++> text "end"
             end
          | WildRow _ => text ".."
