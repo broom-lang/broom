@@ -72,8 +72,33 @@ end = struct
         case (typ, superTyp)
         of (Exists (_, #[], t), Exists (_, #[], t')) =>
             (case (t, t')
-             of (FType.ForAll _, _) => raise Fail ("unimplemented, currPos = " ^ Pos.toString currPos)
-              | (_, FType.ForAll _) => raise Fail ("unimplemented, currPos = " ^ Pos.toString currPos)
+             of (_, FType.ForAll (_, params, body)) =>
+                 let val params' = Vector.map (fn {kind, ...} => {var = Id.fresh (), kind}) params
+                     val env =
+                         Vector.foldl (fn (def, env) =>
+                                           Env.pushScope env (Env.Scope.ForAllScope (Env.Scope.Id.fresh (), def)))
+                                      env params'
+                     val mapping =
+                         Vector.foldl (fn (({var, ...}, def'), mapping) =>
+                                           Id.SortedMap.insert (mapping, var, FType.UseT (currPos, def')))
+                                      Id.SortedMap.empty
+                                      (Vector.zip (params, params'))
+                     val body = FlexFAst.Type.Concr.substitute mapping body
+                 in Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params', coerce expr))
+                               (subType env currPos (typ, concr body))
+                 end
+              | (FType.ForAll (_, params, body), _) =>
+                let val env = Env.pushScope env (Env.Scope.Marker (Env.Scope.Id.fresh ()))
+                    val args = Vector.map (fn _ => FType.SVar (currPos, FlexFAst.Type.UVar (Env.freshUv env Predicative)))
+                                          params
+                    val mapping =
+                        Vector.foldl (fn (({var, ...}, arg), mapping) => Id.SortedMap.insert (mapping, var, arg))
+                                     Id.SortedMap.empty
+                                     (Vector.zip (params, args))
+                    val body = FlexFAst.Type.Concr.substitute mapping body
+                in Option.map (fn coerce => fn expr => coerce (FTerm.TApp (currPos, body, {callee = expr, args})))
+                              (subType env currPos (concr body, superTyp))
+                end
               | (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows env currPos (arr, arr')
               | (FType.Record (_, row), FType.Record (_, row')) => 
                  (case subRows env currPos (row, row')

@@ -41,6 +41,7 @@ structure TypecheckingEnv :> sig
                    | ExistsScope of Id.t * Bindings.Type.bindings
                    | BlockScope of Id.t * Bindings.Expr.bindings
                    | InterfaceScope of Id.t * Bindings.Expr.bindings
+                   | Marker of Id.t
     end
 
     type t
@@ -115,23 +116,25 @@ end = struct
                    | ExistsScope of Id.t * Bindings.Type.bindings
                    | BlockScope of Id.t * Bindings.Expr.bindings
                    | InterfaceScope of Id.t * Bindings.Expr.bindings
+                   | Marker of Id.t
 
         val id = fn FnScope (id, _, _) => id
                   | ForAllScope (id, _) => id
                   | ExistsScope (id, _) => id
                   | BlockScope (id, _) => id
                   | InterfaceScope (id, _) => id
+                  | Marker id => id
 
         fun findType scope id =
             case scope
             of ForAllScope (_, {var, kind}) => if var = id then SOME kind else NONE
              | ExistsScope (_, bindings) => Bindings.Type.find bindings id
-             | FnScope _ | BlockScope _ | InterfaceScope _ => NONE
+             | FnScope _ | BlockScope _ | InterfaceScope _ | Marker _ => NONE
 
         fun findExpr scope name =
             case scope
             of FnScope (_, var, bs) => if var = name then SOME bs else NONE
-             | ForAllScope _ | ExistsScope _ => NONE
+             | ForAllScope _ | ExistsScope _ | Marker _ => NONE
              | BlockScope (_, bindings) | InterfaceScope (_, bindings) => Bindings.Expr.find bindings name
     end
 
