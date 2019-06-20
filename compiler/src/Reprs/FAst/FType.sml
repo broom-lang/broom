@@ -8,7 +8,7 @@ signature FAST_TYPE = sig
     type def = {var: Id.t, kind: kind}
 
     datatype 'sv concr
-        = ForAll of Pos.t * def * 'sv concr
+        = ForAll of Pos.t * def vector * 'sv concr
         | Arrow of Pos.t * {domain: 'sv concr, codomain: 'sv concr}
         | Record of Pos.t * 'sv concr
         | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
@@ -19,23 +19,21 @@ signature FAST_TYPE = sig
         | Prim of Pos.t * Prim.t
     
     and 'sv abs
-        = Exists of Pos.t * def * 'sv abs
-        | Concr of 'sv concr
+        = Exists of Pos.t * def vector * 'sv concr
 
     val kindToDoc: kind -> PPrint.t
     val kindToString: kind -> string
     val defToDoc: def -> PPrint.t
     val rowExtTail: 'sv concr -> 'sv concr
     val unit: Pos.t -> 'sv concr
-    val exist: Pos.t -> def list * 'sv concr -> 'sv abs
     
     structure Concr: sig
         val pos: 'sv concr -> Pos.t
         val toDoc: ('sv -> PPrint.t) -> 'sv concr -> PPrint.t
         val toString: ('sv -> PPrint.t) -> 'sv concr -> string
         val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv concr -> bool
-        val substitute: (Id.t * 'sv concr -> 'sv -> 'sv concr option)
-                        -> Id.t * 'sv concr -> 'sv concr -> 'sv concr
+        val substitute: ('sv concr Id.SortedMap.map -> 'sv -> 'sv concr option)
+                        -> 'sv concr Id.SortedMap.map -> 'sv concr -> 'sv concr
         val kindOf: (Pos.t * 'sv -> kind) -> 'sv concr -> kind
     end
 
@@ -44,8 +42,9 @@ signature FAST_TYPE = sig
         val toDoc: ('sv -> PPrint.t) -> 'sv abs -> PPrint.t
         val toString: ('sv -> PPrint.t) -> 'sv abs -> string
         val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv abs -> bool
-        val substitute: (Id.t * 'sv concr -> 'sv -> 'sv concr option)
-                        -> Id.t * 'sv concr -> 'sv abs -> 'sv abs
+        val concr: 'sv concr -> 'sv abs
+        val substitute: ('sv concr Id.SortedMap.map -> 'sv -> 'sv concr option)
+                        -> 'sv concr Id.SortedMap.map -> 'sv abs -> 'sv abs
         val kindOf: (Pos.t * 'sv -> kind) -> 'sv abs -> kind
     end
 end
@@ -54,6 +53,7 @@ structure FType :> FAST_TYPE = struct
     val text = PPrint.text
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
+    val space = PPrint.space
     val brackets = PPrint.brackets
     val braces = PPrint.braces
 
@@ -66,7 +66,7 @@ structure FType :> FAST_TYPE = struct
     type def = {var: Id.t, kind: kind}
 
     datatype 'sv concr
-        = ForAll of Pos.t * def * 'sv concr
+        = ForAll of Pos.t * def vector * 'sv concr
         | Arrow of Pos.t * {domain: 'sv concr, codomain: 'sv concr}
         | Record of Pos.t * 'sv concr
         | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
@@ -77,8 +77,7 @@ structure FType :> FAST_TYPE = struct
         | Prim of Pos.t * Prim.t
     
     and 'sv abs
-        = Exists of Pos.t * def * 'sv abs
-        | Concr of 'sv concr
+        = Exists of Pos.t * def vector * 'sv concr
 
     val rec kindToDoc =
         fn TypeK _ => text "Type"
@@ -94,8 +93,9 @@ structure FType :> FAST_TYPE = struct
 
     fun concrToDoc svarToDoc =
         let val rec concrToDoc =
-                fn ForAll (_, param, t) =>
-                    text "forall" <+> defToDoc param <+> text "." <+> concrToDoc t
+                fn ForAll (_, params, t) =>
+                    text "forall" <+> PPrint.punctuate space (Vector.map defToDoc params)
+                        <+> text "." <+> concrToDoc t
                  | Arrow (_, {domain, codomain}) =>
                     concrToDoc domain <+> text "->" <+> concrToDoc codomain
                  | Record (_, row) => braces (concrToDoc row)
@@ -110,22 +110,10 @@ structure FType :> FAST_TYPE = struct
         end
 
     and absToDoc svarToDoc =
-        let val rec absToDoc =
-                fn Exists (_, param, t) => text "exists" <+> defToDoc param <+> text "." <+> absToDoc t
-                 | Concr t => concrToDoc svarToDoc t
-        in absToDoc
-        end
-
-    fun exist pos (params, body) =
-        case params
-        of param :: params => Exists (pos, param, exist pos (params, body))
-         | [] => Concr body
-
-    val rec splitExistentials =
-        fn Exists (_, def, body) => let val (defs, body) = splitExistentials body
-                                    in (def :: defs, body)
-                                    end
-         | Concr t => ([], t)
+        fn Exists (_, #[], t) => concrToDoc svarToDoc t
+         | Exists (_, params, t) =>
+            text "exists" <+> PPrint.punctuate space (Vector.map defToDoc params)
+                <+> text "." <+> concrToDoc svarToDoc t
 
     fun mapConcrChildren f =
         fn ForAll (pos, param, body) => ForAll (pos, param, f body)
@@ -137,8 +125,7 @@ structure FType :> FAST_TYPE = struct
          | t as (EmptyRow _ | Type _ | SVar _ | UseT _ | Prim _) => t
 
     fun mapAbsChildren f =
-        fn Exists (pos, param, t) => Exists (pos, param, f t)
-         | t as Concr _ => t
+        fn Exists (pos, params, t) => Exists (pos, params, f t)
 
     fun concrCata (alg as {forAll, arrow, record, rowExt, emptyRow, typ, svar, uset, prim}) =
         fn ForAll (pos, param, body) => forAll (pos, param, concrCata alg body)
@@ -153,9 +140,8 @@ structure FType :> FAST_TYPE = struct
          | UseT args => uset args
          | Prim args => prim args
 
-    fun absCata (alg as {exists, concr}) =
-        fn Exists (pos, param, body) => exists (pos, param, absCata alg body)
-         | Concr args => concr args
+    fun absCata {exists, concr} =
+        fn Exists (pos, params, body) => exists (pos, params, concr body)
 
     fun concrOccurs svarOcc sv = concrCata { forAll = #3
                                            , arrow = fn (_, {domain, codomain}) => domain orelse codomain
@@ -171,25 +157,29 @@ structure FType :> FAST_TYPE = struct
                                        , concr = concrOccurs svarOcc sv }
 
     (* OPTIMIZE: Entire subtrees where the `name` does not occur could be reused. *)
-    fun concrSubstitute svarSubst (kv as (name, t')) =
+    fun concrSubstitute svarSubst mapping =
         let val rec subst =
-                fn t as ForAll (pos, param as {var, ...}, body) =>
-                    if var = name then t else mapConcrChildren subst t
+                fn t as ForAll (pos, params, body) =>
+                    let val mapping = Vector.foldl (fn ({var, ...}, mapping) =>
+                                                        #1 (Id.SortedMap.remove (mapping, var)))
+                                                   mapping params
+                    in mapConcrChildren subst t
+                    end
                  | t as (Arrow _ | Record _ | RowExt _ | EmptyRow _ | Prim _) =>
                     mapConcrChildren subst t
-                 | Type (pos, t) => Type (pos, absSubstitute svarSubst kv t)
-                 | t as UseT (pos, {var, ...}) => if var = name then t' else t
-                 | t as SVar (pos, sv) => getOpt (svarSubst kv sv, t)
+                 | Type (pos, t) => Type (pos, absSubstitute svarSubst mapping t)
+                 | t as UseT (pos, {var, ...}) => getOpt (Id.SortedMap.find (mapping, var), t)
+                 | t as SVar (pos, sv) => getOpt (svarSubst mapping sv, t)
         in subst
         end
 
-    and absSubstitute svarSubst (kv as (name, _)) =
-        let val rec subst =
-                fn t as Exists (pos, param as {var, ...}, body) =>
-                    if var = name then t else mapAbsChildren subst body
-                 | Concr t => Concr (concrSubstitute svarSubst kv t)
-        in subst
-        end
+    and absSubstitute svarSubst mapping =
+        fn t as Exists (pos, params, body) =>
+            let val mapping = Vector.foldl (fn ({var, ...}, mapping) =>
+                                                #1 (Id.SortedMap.remove (mapping, var)))
+                                           mapping params
+            in mapAbsChildren (concrSubstitute svarSubst mapping) t
+            end
 
     val rec rowExtTail =
         fn RowExt (_, {ext, ...}) => rowExtTail ext
@@ -224,16 +214,17 @@ structure FType :> FAST_TYPE = struct
     structure Abs = struct
         val pos =
             fn Exists (pos, _, _) => pos
-             | Concr t => Concr.pos t
 
         val toDoc = absToDoc
         fun toString svarToDoc = PPrint.pretty 80 o toDoc svarToDoc
         val occurs = absOccurs
         val substitute = absSubstitute
 
+        fun concr t = Exists (Concr.pos t, #[], t)
+
         fun kindOf svarKind =
-            fn Exists (pos, _, _) => TypeK pos
-             | Concr t => Concr.kindOf svarKind t
+            fn Exists (_, #[], t) => Concr.kindOf svarKind t
+             | Exists (pos, _, _) => TypeK pos
     end
 end
 

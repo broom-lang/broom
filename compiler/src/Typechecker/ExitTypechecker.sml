@@ -27,8 +27,7 @@ end = struct
                                     | Left _ => Prim (pos, FFType.Prim.Unit))
 
     and absToF: FlexFAst.Type.abs -> FFType.abs =
-        fn Exists (pos, param, body) => Exists (pos, param, absToF body)
-         | Concr t => Concr (concrToF t)
+        fn Exists (pos, params, body) => Exists (pos, params, concrToF body)
 
     val rec exprToF: FlexFAst.Term.expr -> FFTerm.expr =
         fn Fn (pos, {var, typ}, body) =>
@@ -44,8 +43,8 @@ end = struct
             If (pos, exprToF cond, exprToF conseq, exprToF alt)
          | App (pos, typ, {callee, arg}) =>
             App (pos, concrToF typ, {callee = exprToF callee, arg = exprToF arg})
-         | TApp (pos, typ, {callee, arg}) =>
-            TApp (pos, concrToF typ, {callee = exprToF callee, arg = concrToF arg})
+         | TApp (pos, typ, {callee, args}) =>
+            TApp (pos, concrToF typ, {callee = exprToF callee, args = Vector.map concrToF args})
          | Field (pos, typ, expr, label) =>
             Field (pos, concrToF typ, exprToF expr, label)
          | Type (pos, typ) => Type (pos, absToF typ)

@@ -5,10 +5,10 @@ signature FAST_TERM = sig
 
     datatype 'sv expr
         = Fn of Pos.t * 'sv def * 'sv expr
-        | TFn of Pos.t * Type.def * 'sv expr
+        | TFn of Pos.t * Type.def vector * 'sv expr
         | Extend of Pos.t * 'sv Type.concr  * (Name.t * 'sv expr) vector * 'sv expr option
         | App of Pos.t * 'sv Type.concr * {callee: 'sv expr, arg: 'sv expr}
-        | TApp of Pos.t * 'sv Type.concr * {callee: 'sv expr, arg: 'sv Type.concr}
+        | TApp of Pos.t * 'sv Type.concr * {callee: 'sv expr, args: 'sv Type.concr vector}
         | Field of Pos.t * 'sv Type.concr * 'sv expr * Name.t
         | Let of Pos.t * 'sv stmt vector * 'sv expr
         | If of Pos.t * 'sv expr * 'sv expr * 'sv expr
@@ -38,10 +38,12 @@ structure FAst :> FAST = struct
     structure Type = FType
 
     structure Term = struct
+        val op|> = Fn.|>
         val text = PPrint.text
         val op<> = PPrint.<>
         val op<+> = PPrint.<+>
         val op<++> = PPrint.<++>
+        val space = PPrint.space
         val parens = PPrint.parens
         val brackets = PPrint.brackets
         val braces = PPrint.braces
@@ -52,10 +54,10 @@ structure FAst :> FAST = struct
 
         datatype 'sv expr
             = Fn of Pos.t * 'sv def * 'sv expr
-            | TFn of Pos.t * Type.def * 'sv expr
+            | TFn of Pos.t * Type.def vector * 'sv expr
             | Extend of Pos.t * 'sv Type.concr  * (Name.t * 'sv expr) vector * 'sv expr option
             | App of Pos.t * 'sv Type.concr * {callee: 'sv expr, arg: 'sv expr}
-            | TApp of Pos.t * 'sv Type.concr * {callee: 'sv expr, arg: 'sv Type.concr}
+            | TApp of Pos.t * 'sv Type.concr * {callee: 'sv expr, args: 'sv Type.concr vector}
             | Field of Pos.t * 'sv Type.concr * 'sv expr * Name.t
             | Let of Pos.t * 'sv stmt vector * 'sv expr
             | If of Pos.t * 'sv expr * 'sv expr * 'sv expr
@@ -94,8 +96,9 @@ structure FAst :> FAST = struct
            let val rec toDoc =
                    fn Fn (_, param, body) =>
                        text "\\" <> defToDoc svarToDoc param <+> text "=>" <+> toDoc body
-                    | TFn (_, param, body) =>
-                       text "/\\" <> Type.defToDoc param <+> text "=>" <+> toDoc body
+                    | TFn (_, params, body) =>
+                       text "/\\" <> PPrint.punctuate space (Vector.map Type.defToDoc params)
+                           <+> text "=>" <+> toDoc body
                     | Extend (_, _, fields, record) =>
                        braces (PPrint.align (PPrint.punctuate PPrint.newline
                                                               (Vector.map (fieldToDoc svarToDoc) fields)
@@ -104,8 +107,10 @@ structure FAst :> FAST = struct
                                                   | NONE => PPrint.empty)))
                     | App (_, _, {callee, arg}) =>
                        parens (toDoc callee <+> toDoc arg)
-                    | TApp (_, _, {callee, arg}) =>
-                       parens (toDoc callee <+> brackets (Type.Concr.toDoc svarToDoc arg))
+                    | TApp (_, _, {callee, args}) =>
+                       parens (toDoc callee <+> (args |> Vector.map (Type.Concr.toDoc svarToDoc)
+                                                      |> PPrint.punctuate space
+                                                      |> brackets))
                     | Field (_, _, expr, label) =>
                        parens (toDoc expr <> text "." <> Name.toDoc label)
                     | Let (_, stmts, body) =>
@@ -127,7 +132,7 @@ structure FAst :> FAST = struct
 
         val rec typeOf =
             fn Fn (pos, {typ = domain, ...}, body) => Type.Arrow (pos, {domain, codomain = typeOf body})
-             | TFn (pos, param, body) => Type.ForAll (pos, param, typeOf body)
+             | TFn (pos, params, body) => Type.ForAll (pos, params, typeOf body)
              | Extend (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => typ
              | Field (_, typ, _, _) => typ
              | Let (_, _, body) => typeOf body
@@ -155,7 +160,7 @@ signature FLEX_FAST = sig
 
         structure Concr: sig
             val toDoc: concr -> PPrint.t
-            val substitute: Id.t * concr -> concr -> concr
+            val substitute: concr Id.SortedMap.map -> concr -> concr
         end
 
         structure Abs: sig
@@ -247,14 +252,14 @@ structure FixedFAst = struct
         structure Concr = struct
             open Concr
 
-            val substitute: Id.t * concr -> concr -> concr = substitute (fn _ => fn _ => NONE)
+            val substitute: concr Id.SortedMap.map -> concr -> concr = substitute (fn _ => fn _ => NONE)
             val kindOf: concr -> kind = kindOf (fn _ => raise Fail "unreachable")
         end
 
         structure Abs = struct
             open Abs
 
-            val substitute: Id.t * concr -> abs -> abs = substitute (fn _ => fn _ => NONE)
+            val substitute: concr Id.SortedMap.map -> abs -> abs = substitute (fn _ => fn _ => NONE)
         end
     end
 

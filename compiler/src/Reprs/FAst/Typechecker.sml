@@ -71,9 +71,11 @@ end = struct
 
     fun eq env (t, t') =
         case (t, t')
-        of (ForAll (_, {var, kind}, body), ForAll (_, {var = var', kind = kind'}, body')) =>
-            let val env = Env.insertType (env, var, (var, kind))
-                val env = Env.insertType (env, var', (var, kind))
+        of (ForAll (_, params, body), ForAll (_, params', body')) =>
+            let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
+                                       env params
+                val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
+                                       env params'
             in eq env (body, body)
             end
          | (Arrow (_, {domain, codomain}), Arrow (_, {domain = domain', codomain = codomain'})) =>
@@ -95,9 +97,11 @@ end = struct
          | (Prim (_, p), Prim (_, p')) => p = p' (* HACK? *)
     
     and absEq env =
-        fn (Concr t, Concr t') => eq env (t, t')
-         | (Exists _, Exists _) => raise Fail "unimplemented"
-         | (Concr _, Exists _) | (Exists _, Concr _) => false
+        fn (Exists (_, #[], t), Exists (_, #[], t')) => eq env (t, t')
+         | (Exists (pos, params, body), Exists (pos', params', body')) => 
+            if Vector.length params = Vector.length params'
+            then raise Fail "unimplemented"
+            else false
 
     fun checkEq env ts = if eq env ts
                          then ()
@@ -121,9 +125,10 @@ end = struct
         in Arrow (pos, {domain, codomain = check env body})
         end
 
-    and checkTFn env (pos, param as {var, kind = domain}, body) =
-        let val env = Env.insertType (env, var, (var, domain))
-        in ForAll (pos, param, check env body)
+    and checkTFn env (pos, params, body) =
+        let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
+                                   env params
+        in ForAll (pos, params, check env body)
         end
 
     and checkExtend env (pos, typ, fields, orec) =
@@ -150,12 +155,19 @@ end = struct
             end
          | t => raise Fail ("Uncallable: " ^ FFTerm.exprToString callee ^ ": " ^ FFType.concrToString t)
 
-    and checkTApp env (_, typ, {callee, arg}) =
+    and checkTApp env (_, typ, {callee, args}) =
         case check env callee
-        of ForAll (_, {var, kind}, body) =>
-            let val argKind = FFType.Concr.kindOf arg
-                do checkKindEq (argKind, kind)
-                val typ' = FFType.Concr.substitute (var, arg) body
+        of ForAll (_, params, body) =>
+            let do if Vector.length args = Vector.length params then () else raise Fail "argument count"
+                val pargs = Vector.zip (params, args)
+                
+                fun checkArg ({var, kind}, arg) = checkKindEq (FFType.Concr.kindOf arg, kind)
+                do Vector.app checkArg pargs
+
+                val mapping = Vector.foldl (fn (({var, ...}, arg), mapping) =>
+                                                Id.SortedMap.insert (mapping, var, arg))
+                                           Id.SortedMap.empty pargs
+                val typ' = FFType.Concr.substitute mapping body
             in checkEq env (typ', typ)
              ; typ
             end

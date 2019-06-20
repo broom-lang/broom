@@ -7,6 +7,7 @@ end = struct
     datatype predicativity = datatype TypeVars.predicativity
     structure FType = FAst.Type
     datatype abs = datatype FType.abs
+    val concr = FType.Abs.concr
     structure FTerm = FAst.Term
     structure Env = TypecheckingEnv
     open TypeError
@@ -38,8 +39,7 @@ end = struct
 
     and doAssign (env: Env.t) y (uv, typ: FlexFAst.Type.abs) =
         case typ
-        of Exists _ => raise Fail "unimplemented"
-         | Concr t =>
+        of Exists (_, #[], t) =>
             (case t
              of FType.Arrow (pos, domains) => doAssignArrow env y uv pos domains
               | FType.RowExt _ => TypeVars.uvSet (uv, t) (* FIXME: row kind check, t smallness check *)
@@ -50,6 +50,7 @@ end = struct
                  then TypeVars.uvSet (uv, t)
                  else raise Fail ("Opaque type out of scope: g__" ^ Id.toString var)
               | FType.SVar (_, FlexFAst.Type.UVar uv') => doAssignUv env y (uv, uv'))
+         | Exists _ => raise Fail "unimplemented"
 
     and doAssignArrow (env: Env.t) y uv pos {domain, codomain} =
         let val domainUv = Env.freshUv env Predicative
@@ -57,20 +58,19 @@ end = struct
             val t' = FType.Arrow (pos, { domain = FType.SVar (pos, FlexFAst.Type.UVar domainUv)
                                        , codomain = FType.SVar (pos, FlexFAst.Type.UVar codomainUv)})
         in TypeVars.uvSet (uv, t')
-         ; assign env (flipY y, domainUv, Concr domain) (* contravariance *)
-         ; assign env (y, codomainUv, Concr codomain)
+         ; assign env (flipY y, domainUv, concr domain) (* contravariance *)
+         ; assign env (y, codomainUv, concr codomain)
         end
 
     and doAssignUv (env: Env.t) y (uv, uv') =
         case TypeVars.uvGet uv'
         of Either.Left uv' => uvMerge (uv, uv')
-         | Either.Right t => doAssign env y (uv, Concr t)
+         | Either.Right t => doAssign env y (uv, concr t)
 
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
     fun subType (env: Env.t) currPos (typ: FlexFAst.Type.abs, superTyp: FlexFAst.Type.abs): coercion =
         case (typ, superTyp)
-        of (Exists _, Exists _) => raise Fail "unimplemented"
-         | (Concr t, Concr t') =>
+        of (Exists (_, #[], t), Exists (_, #[], t')) =>
             (case (t, t')
              of (FType.ForAll _, _) => raise Fail ("unimplemented, currPos = " ^ Pos.toString currPos)
               | (_, FType.ForAll _) => raise Fail ("unimplemented, currPos = " ^ Pos.toString currPos)
@@ -101,11 +101,12 @@ end = struct
               | (_, FType.SVar (_, FlexFAst.Type.UVar uv)) => superUv env currPos uv typ
               | _ => raise Fail ("unimplemented: " ^ FlexFAst.Type.Abs.toString typ ^ " <: "
                                  ^ FlexFAst.Type.Abs.toString superTyp))
+         | (Exists _, Exists _) => raise Fail "unimplemented"
          | _ => raise TypeError (NonSubType (currPos, typ, superTyp))
 
     and subArrows env currPos ({domain, codomain}, {domain = domain', codomain = codomain'}) =
-        let val coerceDomain = subType env currPos (Concr domain', Concr domain)
-            val coerceCodomain = subType env currPos (Concr codomain, Concr codomain')
+        let val coerceDomain = subType env currPos (concr domain', concr domain)
+            val coerceCodomain = subType env currPos (concr codomain, concr codomain')
         in if isSome coerceDomain orelse isSome coerceCodomain
            then SOME (fn callee =>
                           let val pos = FTerm.exprPos callee
@@ -121,13 +122,13 @@ end = struct
         let val rec subExts =
                 fn (row, FType.RowExt (_, {field = (label, fieldt'), ext = ext'})) =>
                     let val (fieldt, ext) = reorderRow currPos label (FType.rowExtTail ext') row
-                        val coerceField = subType env currPos (Concr fieldt, Concr fieldt')
+                        val coerceField = subType env currPos (concr fieldt, concr fieldt')
                         val coerceExt = subExts (ext, ext')
                     in case coerceField
                        of SOME coerceField => (label, coerceField) :: coerceExt
                         | NONE => coerceExt
                     end
-                 | rows => (subType env currPos (Pair.bimap Concr Concr rows); [])
+                 | rows => (subType env currPos (Pair.bimap concr concr rows); [])
         in subExts rows
         end
 
@@ -151,16 +152,16 @@ end = struct
                       else ( uvMerge (uv, uv'); NONE )
                  else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
             else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
-         | (Either.Left uv, Either.Right t) => ( assign env (Sub, uv, Concr t); NONE )
-         | (Either.Right t, Either.Left uv) => ( assign env (Super, uv, Concr t); NONE )
-         | (Either.Right t, Either.Right t') => subType env currPos (Concr t, Concr t')
+         | (Either.Left uv, Either.Right t) => ( assign env (Sub, uv, concr t); NONE )
+         | (Either.Right t, Either.Left uv) => ( assign env (Super, uv, concr t); NONE )
+         | (Either.Right t, Either.Right t') => subType env currPos (concr t, concr t')
 
     and subUv env currPos uv superTyp = case TypeVars.uvGet uv
                                        of Either.Left uv => (assign env (Sub, uv, superTyp); NONE)
-                                        | Either.Right t => subType env currPos (Concr t, superTyp)
+                                        | Either.Right t => subType env currPos (concr t, superTyp)
 
     and superUv env currPos uv subTyp = case TypeVars.uvGet uv
                                        of Either.Left uv => (assign env (Super, uv, subTyp); NONE)
-                                        | Either.Right t => subType env currPos (subTyp, Concr t)
+                                        | Either.Right t => subType env currPos (subTyp, concr t)
 end
 
