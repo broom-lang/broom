@@ -271,15 +271,18 @@ end = struct
         of CTerm.Fn (_, param, paramType, body) =>
             (case typ
              of Exists (_, #[], FType.Arrow (_, {domain, codomain})) => raise Fail "unimplemented"
-              | _ => coerceExprTo env typ expr)
+              | Exists (_, #[], FType.ForAll _) => raise Fail "unimplemented"
+              | Exists (_, #[], _) => coerceExprTo env typ expr
+              | Exists (_, params, body) => raise Fail "unimplemented")
          | CTerm.If (pos, cond, conseq, alt) =>
             FTerm.If (pos, elaborateExprAs env (concr (FType.Prim (pos, FType.Prim.Bool))) cond
                          , elaborateExprAs env typ conseq
                          , elaborateExprAs env typ alt )
          | _ =>
-           (case typ
-            of Exists (_, #[], FType.ForAll _) => raise Fail "unimplemented"
-             | _ => coerceExprTo env typ expr)
+            (case typ
+             of Exists (_, #[], FType.ForAll _) => raise Fail "unimplemented"
+              | Exists (_, #[], _) => coerceExprTo env typ expr
+              | Exists (_, params, body) => raise Fail "unimplemented")
 
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)
     and coerceExprTo (env: Env.t) (typ: FlexFAst.Type.abs) (expr: CTerm.expr): FlexFAst.Type.sv FTerm.expr =
