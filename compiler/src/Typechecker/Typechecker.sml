@@ -268,10 +268,17 @@ end = struct
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
     and elaborateExprAs (env: Env.t) (typ: FlexFAst.Type.abs) (expr: CTerm.expr): FlexFAst.Type.sv FTerm.expr =
         case expr
-        of CTerm.Fn (_, param, paramType, body) =>
+        of CTerm.Fn (pos, param, paramType, body) =>
             (case typ
              of Exists (_, #[], FType.ForAll args) => elaborateAsForAll env args expr
-              | Exists (_, #[], FType.Arrow (_, {domain, codomain})) => raise Fail "unimplemented"
+              | Exists (_, #[], FType.Arrow (_, {domain, codomain})) =>
+                 (case paramType
+                  of NONE =>
+                      let val env =
+                              Env.pushScope env (Env.Scope.FnScope (Env.Scope.Id.fresh (), param, Visited (domain, NONE)))
+                          val body = elaborateExprAs env (concr codomain) body
+                      in FTerm.Fn (pos, {var = param, typ = domain}, body)
+                      end)
               | Exists (_, #[], _) => coerceExprTo env typ expr
               | Exists (_, params, body) => raise Fail "unimplemented")
          | CTerm.If (pos, cond, conseq, alt) =>
@@ -289,7 +296,7 @@ end = struct
                 Vector.foldl (fn (def, env) =>
                                   Env.pushScope env (Env.Scope.ForAllScope (Env.Scope.Id.fresh (), def)))
                              env params
-        in elaborateExprAs env (Exists (pos, #[], body)) expr
+        in FTerm.TFn (pos, params, elaborateExprAs env (concr body) expr)
         end
 
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)
