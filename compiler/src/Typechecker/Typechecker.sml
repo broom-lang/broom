@@ -299,7 +299,7 @@ end = struct
         in FTerm.TFn (pos, params, elaborateExprAs env (concr body) expr)
         end
 
-    and elaborateAsExists env (pos, params: FType.def vector, body) expr =
+    (*and elaborateAsExists env (pos, params: FType.def vector, body) expr =
         let val typeFnArgs = Env.polyParams env
             val typeFns = Vector.map (hoistAbsType (Vector.length typeFnArgs)) params
             val abstracts = Vector.map (fn typeFn => FType.AppT (pos, typeFn, typeFnArgs))
@@ -314,7 +314,7 @@ end = struct
                                        (Vector.zip (params, impls))
             val implType = concr (FlexFAst.Type.Concr.substitute mapping body)
         in (elaborateExprAs env implType expr, abstracts)
-        end
+        end*)
 
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)
     and coerceExprTo (env: Env.t) (typ: FlexFAst.Type.abs) (expr: CTerm.expr): FlexFAst.Type.sv FTerm.expr =
