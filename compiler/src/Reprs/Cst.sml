@@ -52,6 +52,8 @@ signature CST = sig
         val exprPos: expr -> Pos.t
         val exprToDoc: expr -> PPrint.t
         val exprToString: expr -> string
+        val stmtToDoc: stmt -> PPrint.t
+        val stmtsToDoc: stmt vector -> PPrint.t
     end
 end
 
@@ -162,12 +164,12 @@ structure Cst :> CST = struct
          | Record (_, row) => braces (rowToDoc row)
          | Module (_, stmts) =>
             text "module"
-                <> (PPrint.nest 4 (newline <> PPrint.punctuate newline (Vector.map stmtToDoc stmts)))
+                <> (PPrint.nest 4 (newline <> stmtsToDoc stmts))
                 <++> text "end"
          | App (_, {callee, arg}) => parens (exprToDoc callee <+> exprToDoc arg)
          | Field (_, expr, label) => parens (exprToDoc expr <> text "." <> Name.toDoc label)
          | Let (_, stmts, body) =>
-            text "let" <+> PPrint.align (PPrint.punctuate newline (Vector.map stmtToDoc stmts))
+            text "let" <+> PPrint.align (stmtsToDoc stmts)
                 <++> text "in" <+> exprToDoc body
                 <++> text "end"
          | Ann (_, expr, t) => exprToDoc expr <> text ":" <+> typeToDoc t
@@ -187,6 +189,9 @@ structure Cst :> CST = struct
         fn Val (_, name, ann, valExpr) =>
             text "val " <> Name.toDoc name <> annToDoc ann <> text " = " <> exprToDoc valExpr
          | Expr expr => exprToDoc expr
+
+    and stmtsToDoc =
+        fn stmts => PPrint.punctuate newline (Vector.map stmtToDoc stmts)
 
     structure Type = struct
         structure Prim = PrimType
@@ -208,6 +213,8 @@ structure Cst :> CST = struct
         val exprPos = exprPos
         val exprToDoc = exprToDoc
         val exprToString = PPrint.pretty 80 o exprToDoc
+        val stmtToDoc = stmtToDoc
+        val stmtsToDoc = stmtsToDoc
     end
 end
 

@@ -1,5 +1,6 @@
 structure ExitTypechecker :> sig
     val exprToF: FlexFAst.Term.expr -> FixedFAst.Term.expr
+    val stmtToF: FlexFAst.Term.stmt -> FixedFAst.Term.stmt
 end = struct
     datatype sv = datatype FlexFAst.Type.sv
     structure FFType = FixedFAst.Type

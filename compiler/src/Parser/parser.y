@@ -20,8 +20,7 @@ type decl = Name.t * Type.typ
     | EQ | DARROW | COLON | ARROW | DDOT | DOT | COMMA
     | AMP
     | EOF
-%nonterm program of expr
-       | stmts of stmt vector
+%nonterm stmts of stmt vector
        | stmtList of stmt list
        | stmt of stmt
        | expr of expr
@@ -52,8 +51,6 @@ type decl = Name.t * Type.typ
 %eop EOF
 
 %%
-
-program : stmts (Term.Let (stmtsleft, stmts, Term.Const (stmtsright, Const.Int 0)))
 
 (* Statements *)
 

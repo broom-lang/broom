@@ -23,6 +23,7 @@ signature FAST_TERM = sig
     val exprPos: 'sv expr -> Pos.t
     val exprToDoc: ('sv -> PPrint.t) -> 'sv expr -> PPrint.t
     val exprToString: ('sv -> PPrint.t) -> 'sv expr -> string
+    val stmtsToDoc: ('sv -> PPrint.t) -> 'sv stmt vector -> PPrint.t
 end
 
 signature FAST = sig
@@ -90,6 +91,8 @@ structure FAst :> FAST = struct
                    <+> PPrint.align (exprToDoc svarToDoc valExpr)
             | Expr expr => exprToDoc svarToDoc expr
 
+       and stmtsToDoc svarToDoc stmts = PPrint.punctuate PPrint.newline (Vector.map (stmtToDoc svarToDoc) stmts)
+
        and fieldToDoc svarToDoc (label, expr) = Name.toDoc label <+> text "=" <+> exprToDoc svarToDoc expr
 
        and exprToDoc svarToDoc =
@@ -114,8 +117,7 @@ structure FAst :> FAST = struct
                     | Field (_, _, expr, label) =>
                        parens (toDoc expr <> text "." <> Name.toDoc label)
                     | Let (_, stmts, body) =>
-                       text "let" <+> PPrint.align (PPrint.punctuate PPrint.newline
-                                                                     (Vector.map (stmtToDoc svarToDoc) stmts))
+                       text "let" <+> PPrint.align (stmtsToDoc svarToDoc stmts)
                        <++> text "in" <+> toDoc body
                        <++> text "end"
                     | If (_, cond, conseq, alt) =>
@@ -172,6 +174,7 @@ signature FLEX_FAST = sig
 
     structure Term: sig
         type expr = Type.sv FAst.Term.expr
+        type stmt = Type.sv FAst.Term.stmt
     end
 end
 
@@ -231,6 +234,7 @@ structure FlexFAst :> FLEX_FAST = struct
         structure Type = Typ
 
         type expr = Type.sv expr
+        type stmt = Type.sv stmt
 
         val exprToDoc: expr -> PPrint.t = exprToDoc Type.svarToDoc
         val exprToString: expr -> string = exprToString Type.svarToDoc
@@ -254,6 +258,7 @@ structure FixedFAst = struct
 
             val substitute: concr Id.SortedMap.map -> concr -> concr = substitute (fn _ => fn _ => NONE)
             val kindOf: concr -> kind = kindOf (fn _ => raise Fail "unreachable")
+            val toString = concrToString
         end
 
         structure Abs = struct
@@ -273,6 +278,7 @@ structure FixedFAst = struct
 
         val exprToDoc: expr -> PPrint.t = FAst.Term.exprToDoc Type.svarToDoc
         val exprToString: expr -> string = FAst.Term.exprToString Type.svarToDoc
+        val stmtsToDoc = FAst.Term.stmtsToDoc Type.svarToDoc
     end
 end
 

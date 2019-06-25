@@ -1,5 +1,5 @@
 structure Typechecker :> sig
-    val elaborateExpr: TypecheckingEnv.t -> Cst.Term.expr -> FlexFAst.Type.concr * FlexFAst.Term.expr
+    val elaborateProgram: TypecheckingEnv.t -> Cst.Term.stmt vector -> FlexFAst.Term.stmt vector * TypecheckingEnv.t
 end = struct
     val op|> = Fn.|>
     datatype predicativity = datatype TypeVars.predicativity
@@ -385,6 +385,14 @@ end = struct
                     then fieldt
                     else coerceRow ext
         in coerce typ
+        end
+
+    (* TODO: Prevent boundless deepening of REPL env
+             and enable forward decl:s for stmts to be input on later lines. *)
+    fun elaborateProgram env stmts =
+        let val env = Env.pushScope env (stmtsScope stmts)
+            val stmts = Vector.map (elaborateStmt env) stmts
+        in (stmts, env)
         end
 end
 

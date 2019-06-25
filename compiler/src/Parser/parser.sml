@@ -3,7 +3,9 @@ structure Parser : sig
         = File of TextIO.instream * string
         | Console of TextIO.instream
 
-    val parse: input -> Cst.Term.expr
+    exception ParseError
+
+    val parse: input -> Cst.Term.stmt vector
 end = struct
     structure BroomLrVals = BroomLrValsFun(structure Token = LrParser.Token)
 
@@ -12,6 +14,8 @@ end = struct
     structure BroomParser = JoinWithArg(structure LrParser = LrParser
                                       structure ParserData = BroomLrVals.ParserData
                                       structure Lex = BroomLex)
+
+    exception ParseError = BroomParser.ParseError
 
     fun lexstreamFromInStream instream n =
         if TextIO.endOfStream instream
