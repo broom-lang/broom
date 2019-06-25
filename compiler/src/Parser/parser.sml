@@ -1,56 +1,37 @@
 structure Parser : sig
-    type config = {debug: bool, lint: bool, instream: TextIO.instream, name: string}
-    val parse : config -> unit
+    datatype input
+        = File of TextIO.instream * string
+        | Console of TextIO.instream
+
+    val parse: input -> Cst.Term.expr
 end = struct
-  structure BroomLrVals = BroomLrValsFun(structure Token = LrParser.Token)
+    structure BroomLrVals = BroomLrValsFun(structure Token = LrParser.Token)
 
-  structure BroomLex = BroomLexFun(structure Tokens = BroomLrVals.Tokens)
+    structure BroomLex = BroomLexFun(structure Tokens = BroomLrVals.Tokens)
 
-  structure BroomParser = JoinWithArg(structure LrParser = LrParser
+    structure BroomParser = JoinWithArg(structure LrParser = LrParser
                                       structure ParserData = BroomLrVals.ParserData
                                       structure Lex = BroomLex)
 
-  exception TypeError = TypeError.TypeError
+    fun lexstreamFromInStream instream n =
+        if TextIO.endOfStream instream
+        then ""
+        else TextIO.inputN (instream, n)
 
-  fun logger debug str = if debug then TextIO.output(TextIO.stdOut, str) else ()
+    datatype input
+        = File of TextIO.instream * string
+        | Console of TextIO.instream
 
-  fun invoke lexstream =
-      let fun print_error (s, i, _) =
-              TextIO.output(TextIO.stdOut,
-                            "Error, line " ^ (Pos.toString i) ^ ", " ^ s ^ "\n")
-      in  BroomParser.parse(0, lexstream, print_error, ())
-      end
+    fun printError (msg, pos, _) =
+        TextIO.output(TextIO.stdOut, "Error, line " ^ (Pos.toString pos) ^ ", " ^ msg ^ "\n")
 
-  type config = {debug: bool, lint: bool, instream: TextIO.instream, name: string}
-
-  fun parse ({debug, lint, instream, name}: config): unit =
-      let val log = logger debug
-          val lexer = BroomParser.makeLexer (fn _ => (case TextIO.inputLine instream
-                                                      of SOME s => s
-                                                       | _ => ""))
-                                            (Pos.default name)
-          val dummyEOF = BroomLrVals.Tokens.EOF(Pos.default name, Pos.default name)
-          fun loop lexer =
-              let val (program,lexer) = invoke lexer
-                  val (nextToken,lexer) = BroomParser.Stream.get lexer
-                  val _ = log (PPrint.pretty 80 (Cst.Term.exprToDoc program) ^ "\n")
-                  
-                  val _ = log "===\n"
-
-                  val (_, program) = Typechecker.elaborateExpr TypecheckingEnv.empty program
-
-                  val program = ExitTypechecker.exprToF program
-                  val _ = log (PPrint.pretty 80 (FixedFAst.Term.exprToDoc program) ^ "\n")
-
-                  val _ = if lint
-                          then ignore (Either.unwrap (FAstTypechecker.typecheck program))
-                          else ()
-              in if BroomParser.sameToken(nextToken,dummyEOF)
-                 then ()
-                 else loop lexer
-              end
-              handle TypeError err =>
-                      TextIO.output (TextIO.stdErr, PPrint.pretty 80 (TypeError.toDoc err))
-       in loop lexer
-      end
+    val parse =
+        fn File (instream, filename) =>
+            let val lexer = BroomParser.makeLexer (lexstreamFromInStream instream) (Pos.default filename)
+            in #1 (BroomParser.parse (15, lexer, printError, ()))
+            end
+         | Console instream =>
+            let val lexer = BroomParser.makeLexer (lexstreamFromInStream instream) (Pos.default "<stdin>")
+            in #1 (BroomParser.parse (0, lexer, printError, ()))
+            end
 end
