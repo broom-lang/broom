@@ -3,10 +3,13 @@ structure CLIParser :> sig
     structure Flaggeds: ORD_MAP where type Key.ord_key = string
     datatype flag_arity = Nullary | Unary
     type flag_specs = flag_arity FlagSpecs.map
+    type subcommand_specs = flag_specs FlagSpecs.map
     type flaggeds = string option Flaggeds.map
     type positionals = string list
 
     val parser: flag_specs -> string list -> (string list, flaggeds * positionals) Either.t
+    val subcommandsParser: subcommand_specs -> string list
+                         -> (string list, string * flaggeds * positionals) Either.t
 end = struct
     structure FlagSpecs = String.SortedMap
     structure Flaggeds = String.SortedMap
@@ -14,6 +17,7 @@ end = struct
 
     datatype flag_arity = Nullary | Unary
     type flag_specs = flag_arity FlagSpecs.map
+    type subcommand_specs = flag_specs FlagSpecs.map
     type flaggeds = string option Flaggeds.map
     type positionals = string list
 
@@ -87,5 +91,20 @@ end = struct
            of [] => Either.Right (!flaggeds, buildPositionals ())
             | errors as (_ :: _) => Either.Left errors
         end
+
+    fun subcommandsParser cmdSpecs argv =
+        case argv
+        of command :: argv =>
+            (case FlagSpecs.find (cmdSpecs, command)
+             of SOME flagSpecs =>
+                 Either.map (fn (flaggeds, positionals) => (command, flaggeds, positionals))
+                            (parser flagSpecs argv)
+              | NONE =>
+                 Either.Left [if String.size command > 1
+                              then case String.sub (command, 0)
+                                   of #"-" => "Missing subcommand"
+                                    | _ => "Unknown subcommand " ^ command
+                              else "Unknown subcommand " ^ command])
+         | [] => Either.Left ["No subcommand given"]
 end
 

@@ -269,6 +269,7 @@ structure FixedFAst = struct
         structure Type = Typ
 
         type expr = Type.sv expr
+        type stmt = Type.sv stmt
 
         val exprToDoc: expr -> PPrint.t = FAst.Term.exprToDoc Type.svarToDoc
         val exprToString: expr -> string = FAst.Term.exprToString Type.svarToDoc

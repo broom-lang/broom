@@ -3,14 +3,15 @@ structure Main :> sig
 end = struct
     datatype flag_arity = datatype CLIParser.flag_arity
 
-    val argSpecs =
+    val cmdSpecs =
         List.foldl CLIParser.FlagSpecs.insert' CLIParser.FlagSpecs.empty
-                   [ ("debug", Nullary)
-                   , ("lint", Nullary) ]
-    val parser = CLIParser.parser argSpecs
+                   [ ("build", List.foldl CLIParser.FlagSpecs.insert' CLIParser.FlagSpecs.empty
+                                          [ ("debug", Nullary)
+                                          , ("lint", Nullary) ]) ]
+    val parser = CLIParser.subcommandsParser cmdSpecs
 
     fun parseArgs argv =
-        Either.map (fn (flaggeds, positionals) =>
+        Either.map (fn ("build", flaggeds, positionals) =>
                         let val (instream, name) = case positionals
                                                    of [] => (TextIO.stdIn, "<stdin>")
                                                     | [filename] => (TextIO.openIn filename, filename)

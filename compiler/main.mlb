@@ -40,6 +40,7 @@ local
            src/Typechecker/TypeVars.sml
            src/Reprs/FAst/FType.sml 
            src/Reprs/FAst/FAst.sml
+           src/Reprs/FAst/Eval.sml
            
            src/Typechecker/TypeError.sml
            src/Typechecker/Env.sml
