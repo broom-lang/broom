@@ -22,7 +22,6 @@ end = struct
          | FFType.Type (pos, typ) => FFType.Type (pos, absToF typ)
          | UseT (pos, def) => UseT (pos, def)
          | Prim (pos, p) => Prim (pos, p)
-         (* HACK: *)
          | SVar (pos, UVar uv) => (case TypeVars.Uv.get uv
                                    of Right t => concrToF t
                                     | Left _ => Prim (pos, FFType.Prim.Unit))

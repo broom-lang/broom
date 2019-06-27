@@ -5,7 +5,7 @@ structure TypeVars :> sig
     exception Reset
 
     type ('scope, 'kind) ov
-    eqtype ('scope, 't) uv
+    type ('scope, 't) uv
     type ('co, 't) path
 
     structure Ov: sig
@@ -20,6 +20,7 @@ structure TypeVars :> sig
                  -> ('scope * 'scope -> order) (* scope ordering to preserve scoping invariants *)
                  -> ('scope -> bool) (* Is the required scope available? *)
                  -> ('scope, 't) uv * 't -> unit
+        val eq: ('scope, 't) uv * ('scope, 't) uv -> bool
         val name: ('scope, 't) uv -> Name.t
     end
 
@@ -130,6 +131,8 @@ end = struct
             case uvFromT t
             of SOME uv' => merge scopeCmp inScope (uv, uv')
              | NONE => assign inScope (uv, t)
+
+        val eq = op=
 
         fun name uv = #name (#meta (root uv))
     end

@@ -151,9 +151,10 @@ signature FLEX_FAST = sig
     structure Type: sig
         datatype kind = datatype FAst.Type.kind
 
-        datatype sv = UVar of uv
+        datatype sv = OVar of ov | UVar of uv
         withtype concr = sv FAst.Type.concr
         and abs = sv FAst.Type.abs
+        and ov = (ScopeId.t, kind) TypeVars.ov
         and uv = (ScopeId.t, sv FAst.Type.concr) TypeVars.uv
 
         val kindToDoc: kind -> PPrint.t
@@ -188,9 +189,10 @@ structure FlexFAst :> FLEX_FAST = struct
     structure Type = struct
         open FAst.Type
 
-        datatype sv = UVar of uv
+        datatype sv = OVar of ov | UVar of uv
         withtype concr = sv FAst.Type.concr
         and abs = sv FAst.Type.abs
+        and ov = (ScopeId.t, kind) TypeVars.ov
         and uv = (ScopeId.t, sv FAst.Type.concr) TypeVars.uv
 
         fun concrToDoc t = FAst.Type.Concr.toDoc svarToDoc t
@@ -208,7 +210,7 @@ structure FlexFAst :> FLEX_FAST = struct
             fun occurs uv = FAst.Type.Concr.occurs svarOccurs uv
             and svarOccurs uv =
                 fn UVar uv' => (case TypeVars.Uv.get uv'
-                                of Either.Left uv' => uv = uv'
+                                of Either.Left uv' => TypeVars.Uv.eq (uv, uv')
                                  | Either.Right t => occurs uv t)
 
             fun substitute kv = FAst.Type.Concr.substitute svarSubstitute kv
