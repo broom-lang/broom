@@ -14,7 +14,8 @@ end = struct
 
     fun idInScope env id = isSome (Env.findType env id)
 
-    val uvMerge = TypeVars.uvMerge Env.Scope.Id.compare
+    fun uvSet env =
+        TypeVars.Uv.set FlexFAst.Type.Concr.tryToUv Env.Scope.Id.compare (Env.hasScope env)
 
     type coercion = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
     type field_coercion = Name.t * (FlexFAst.Type.sv FTerm.expr -> FlexFAst.Type.sv FTerm.expr)
@@ -31,25 +32,26 @@ end = struct
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
     fun assign (env: Env.t) (y, uv: (Env.Scope.Id.t, FlexFAst.Type.concr) TypeVars.uv, t: FlexFAst.Type.abs): unit =
-        if Env.uvInScope (env, uv)
-        then if FlexFAst.Type.Abs.occurs uv t
-             then raise TypeError (Occurs (uv, t))
-             else doAssign env y (uv, t)
-        else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv))
+        if FlexFAst.Type.Abs.occurs uv t
+        then raise TypeError (Occurs (uv, t))
+        else doAssign env y (uv, t)
 
     and doAssign (env: Env.t) y (uv, typ: FlexFAst.Type.abs) =
         case typ
         of Exists (_, #[], t) =>
             (case t
              of FType.Arrow (pos, domains) => doAssignArrow env y uv pos domains
-              | FType.RowExt _ => TypeVars.uvSet (uv, t) (* FIXME: row kind check, t smallness check *)
-              | FType.EmptyRow _ => TypeVars.uvSet (uv, t) (* FIXME: Check that uv is of row kind. *)
-              | FType.Prim _ => TypeVars.uvSet (uv, t)
+              | FType.RowExt _ => uvSet env (uv, t) (* FIXME: row kind check, t smallness check *)
+              | FType.EmptyRow _ => uvSet env (uv, t) (* FIXME: Check that uv is of row kind. *)
+              | FType.Prim _ => uvSet env (uv, t)
               | FType.UseT (_, {var, ...}) => 
                  if idInScope env var
-                 then TypeVars.uvSet (uv, t)
+                 then uvSet env (uv, t)
                  else raise Fail ("Opaque type out of scope: g__" ^ Id.toString var)
-              | FType.SVar (_, FlexFAst.Type.UVar uv') => doAssignUv env y (uv, uv'))
+              | FType.SVar (_, FlexFAst.Type.UVar uv') =>
+                 (case TypeVars.Uv.get uv'
+                  of Either.Left uv' => uvSet env (uv, t)
+                   | Either.Right t => uvSet env (uv, t)))
          | Exists _ => raise Fail "unimplemented"
 
     and doAssignArrow (env: Env.t) y uv pos {domain, codomain} =
@@ -57,15 +59,10 @@ end = struct
             val codomainUv = Env.freshUv env Predicative
             val t' = FType.Arrow (pos, { domain = FType.SVar (pos, FlexFAst.Type.UVar domainUv)
                                        , codomain = FType.SVar (pos, FlexFAst.Type.UVar codomainUv)})
-        in TypeVars.uvSet (uv, t')
+        in uvSet env (uv, t')
          ; assign env (flipY y, domainUv, concr domain) (* contravariance *)
          ; assign env (y, codomainUv, concr codomain)
         end
-
-    and doAssignUv (env: Env.t) y (uv, uv') =
-        case TypeVars.uvGet uv'
-        of Either.Left uv' => uvMerge (uv, uv')
-         | Either.Right t => doAssign env y (uv, concr t)
 
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
     fun subType (env: Env.t) currPos (typ: FlexFAst.Type.abs, superTyp: FlexFAst.Type.abs): coercion =
@@ -121,7 +118,13 @@ end = struct
                       then NONE
                       else raise Fail ("Opaque type out of scope: " ^ FlexFAst.Type.Abs.toString superTyp)
                  else raise TypeError (NonSubType (currPos, typ, superTyp))
-              | (FType.SVar (_, FlexFAst.Type.UVar uv), FType.SVar (_, FlexFAst.Type.UVar uv')) => subUvs env currPos (uv, uv')
+              | (FType.SVar (_, FlexFAst.Type.UVar uv), superTyp as FType.SVar (_, FlexFAst.Type.UVar uv')) =>
+                 (case (TypeVars.Uv.get uv, TypeVars.Uv.get uv')
+                  of (Either.Left uv, Either.Left _) =>
+                      (uvSet env (uv, superTyp); NONE) (* Call `uvSet` directly to skip occurs check. *)
+                   | (Either.Left uv, Either.Right t) => (assign env (Sub, uv, concr t); NONE)
+                   | (Either.Right t, Either.Left uv) => (assign env (Super, uv, concr t); NONE)
+                   | (Either.Right t, Either.Right t') => subType env currPos (concr t, concr t'))
               | (FType.SVar (_, FlexFAst.Type.UVar uv), _) => subUv env currPos uv superTyp
               | (_, FType.SVar (_, FlexFAst.Type.UVar uv)) => superUv env currPos uv typ
               | _ => raise Fail ("unimplemented: " ^ FlexFAst.Type.Abs.toString typ ^ " <: "
@@ -167,25 +170,11 @@ end = struct
          (* FIXME: `t` is actually row tail, not the type of `expr`. *)
          | t => raise TypeError (MissingField (currPos, t, label))
 
-    and subUvs env currPos (uv: FlexFAst.Type.uv, uv': FlexFAst.Type.uv): coercion =
-        case (TypeVars.uvGet uv, TypeVars.uvGet uv')
-        of (Either.Left uv, Either.Left uv') =>
-            if Env.uvInScope (env, uv)
-            then if Env.uvInScope (env, uv')
-                 then if TypeVars.uvEq (uv, uv')
-                      then NONE
-                      else ( uvMerge (uv, uv'); NONE )
-                 else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
-            else raise Fail ("Unification var out of scope: " ^ Name.toString (TypeVars.uvName uv'))
-         | (Either.Left uv, Either.Right t) => ( assign env (Sub, uv, concr t); NONE )
-         | (Either.Right t, Either.Left uv) => ( assign env (Super, uv, concr t); NONE )
-         | (Either.Right t, Either.Right t') => subType env currPos (concr t, concr t')
-
-    and subUv env currPos uv superTyp = case TypeVars.uvGet uv
+    and subUv env currPos uv superTyp = case TypeVars.Uv.get uv
                                        of Either.Left uv => (assign env (Sub, uv, superTyp); NONE)
                                         | Either.Right t => subType env currPos (concr t, superTyp)
 
-    and superUv env currPos uv subTyp = case TypeVars.uvGet uv
+    and superUv env currPos uv subTyp = case TypeVars.Uv.get uv
                                        of Either.Left uv => (assign env (Super, uv, subTyp); NONE)
                                         | Either.Right t => subType env currPos (subTyp, concr t)
 end

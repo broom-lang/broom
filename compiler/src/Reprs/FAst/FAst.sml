@@ -162,6 +162,7 @@ signature FLEX_FAST = sig
 
         structure Concr: sig
             val toDoc: concr -> PPrint.t
+            val tryToUv: concr -> uv option
             val substitute: concr Id.SortedMap.map -> concr -> concr
         end
 
@@ -194,9 +195,9 @@ structure FlexFAst :> FLEX_FAST = struct
 
         fun concrToDoc t = FAst.Type.Concr.toDoc svarToDoc t
         and svarToDoc (UVar uv) =
-            case TypeVars.uvGet uv
+            case TypeVars.Uv.get uv
             of Either.Right t => concrToDoc t
-             | Either.Left uv => text "^" <> Name.toDoc (TypeVars.uvName uv)
+             | Either.Left uv => text "^" <> Name.toDoc (TypeVars.Uv.name uv)
 
         structure Concr = struct
             open Concr
@@ -206,15 +207,19 @@ structure FlexFAst :> FLEX_FAST = struct
 
             fun occurs uv = FAst.Type.Concr.occurs svarOccurs uv
             and svarOccurs uv =
-                fn UVar uv' => (case TypeVars.uvGet uv'
-                                of Either.Left uv' => TypeVars.uvEq (uv', uv)
+                fn UVar uv' => (case TypeVars.Uv.get uv'
+                                of Either.Left uv' => uv = uv'
                                  | Either.Right t => occurs uv t)
 
             fun substitute kv = FAst.Type.Concr.substitute svarSubstitute kv
             and svarSubstitute kv =
-                fn UVar uv => (case TypeVars.uvGet uv
+                fn UVar uv => (case TypeVars.Uv.get uv
                                of Either.Left _ => NONE
                                 | Either.Right t => SOME (substitute kv t))
+
+            val tryToUv =
+                fn SVar (_, UVar uv) => SOME uv
+                 | _ => NONE
         end
 
         structure Abs = struct

@@ -48,11 +48,12 @@ structure TypecheckingEnv :> sig
 
     val empty: t
     val pushScope: t -> Scope.t -> t
+    val scopeIds: t -> Scope.Id.t list
+    val hasScope: t -> Scope.Id.t -> bool
 
     val findType: t -> Id.t -> Bindings.Type.binding option
     val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
     val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
-    val uvInScope: t * FlexFAst.Type.uv -> bool
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
@@ -138,46 +139,49 @@ end = struct
              | BlockScope (_, bindings) | InterfaceScope (_, bindings) => Bindings.Expr.find bindings name
     end
 
-    type t = Scope.t list
+    type t = {scopeIds: Scope.Id.t list, scopes: Scope.t list}
 
-    val empty = []
+    val empty = {scopeIds = [], scopes = []}
 
-    fun pushScope env scope = scope :: env
+    fun pushScope {scopeIds, scopes} scope =
+        {scopes = scope :: scopes, scopeIds = Scope.id scope :: scopeIds}
 
-    fun findType env id =
+    fun scopeIds {scopeIds, scopes = _} = scopeIds
+
+    fun hasScope (env: t) id =
+        List.exists (fn id' => id' = id) (#scopeIds env)
+
+    fun findType (env: t) id =
         let val rec find =
                 fn scope :: env =>
                     Scope.findType scope id |> Option.orElse (fn () => find env)
                  | [] => NONE
-        in find env
+        in find (#scopes env)
         end
 
-    fun newUv env pn =
-        case env
-        of scope :: _ => TypeVars.newUv (Scope.id scope) pn
+    fun newUv (env: t) (predicativity, name) =
+        case #scopes env
+        of scope :: _ => TypeVars.Uv.new (Scope.id scope, predicativity, name)
          | [] => raise Fail "unreachable"
 
-    fun freshUv env predicativity =
-        case env
-        of scope :: _ => TypeVars.freshUv (Scope.id scope) predicativity
+    fun freshUv (env: t) predicativity =
+        case #scopes env
+        of scope :: _ => TypeVars.Uv.fresh (Scope.id scope, predicativity)
          | [] => raise Fail "unreachable"
 
-    fun uvInScope (env, uv) =
-        List.exists (fn scope => TypeVars.uvInScope Scope.Id.compare (Scope.id scope, uv)) env
-
-    fun findExprClosure env name =
+    fun findExprClosure (env: t) name =
         let val rec find =
-                fn env as scope :: env' =>
+                fn env as {scopes = scope :: scopes, scopeIds = _ :: scopeIds} =>
                     (case Scope.findExpr scope name
                      of SOME b => SOME (b, env)
-                      | NONE => find env')
-                 | [] => NONE
+                      | NONE => find {scopes, scopeIds})
+                 | {scopes = [], scopeIds = []} => NONE
         in find env
         end
 
     fun findExpr env name = Option.map #1 (findExprClosure env name)
 
-    fun updateExpr pos env name f =
+    fun updateExpr pos (env: t) name f =
         let val rec update =
                 fn (Scope.BlockScope (_, bs) | Scope.InterfaceScope (_, bs)) :: env =>
                     (case Bindings.Expr.find bs name
@@ -189,7 +193,7 @@ end = struct
                     else update env
                  | (Scope.ForAllScope _ | Scope.ExistsScope _) :: env => update env
                  | [] =>  raise TypeError (UnboundVal (pos, name))
-        in update env
+        in update (#scopes env)
         end
 end
 

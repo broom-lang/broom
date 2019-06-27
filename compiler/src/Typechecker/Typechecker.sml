@@ -18,6 +18,9 @@ end = struct
     val subType = Subtyping.subType
     val applyCoercion = Subtyping.applyCoercion
 
+    fun uvSet env =
+        TypeVars.Uv.set FlexFAst.Type.Concr.tryToUv Env.Scope.Id.compare (Env.hasScope env)
+
 (* Looking up `val` types *)
 
     fun unvisitedBindingType pos env name args =
@@ -355,7 +358,7 @@ end = struct
                     end
                  | FType.Arrow (_, domains) => (callee, domains)
                  | FType.SVar (_, FlexFAst.Type.UVar uv) =>
-                    (case TypeVars.uvGet uv
+                    (case TypeVars.Uv.get uv
                      of Either.Left uv => raise Fail "unimplemented"
                       | Either.Right typ => coerce callee typ)
                  | _ => raise TypeError (UnCallable (callee, typ))
@@ -368,14 +371,14 @@ end = struct
                 fn FType.ForAll _ => raise Fail "unimplemented"
                  | FType.Record (_, row) => coerceRow row
                  | FType.SVar (pos, FlexFAst.Type.UVar uv) =>
-                    (case TypeVars.uvGet uv
+                    (case TypeVars.Uv.get uv
                      of Either.Right typ => coerce typ
                       | Either.Left uv => let val fieldType = FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative))
                                               val ext = FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative))
                                               val pos = FTerm.exprPos expr
                                               val row = FType.RowExt (pos, {field = (label, fieldType), ext})
                                               val typ = FType.Record (pos, row)
-                                          in TypeVars.uvSet (uv, typ)
+                                          in uvSet env (uv, typ)
                                            ; fieldType
                                           end)
                  | _ => raise TypeError (UnDottable (expr, typ))

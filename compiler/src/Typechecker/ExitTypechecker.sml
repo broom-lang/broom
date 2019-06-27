@@ -23,7 +23,7 @@ end = struct
          | UseT (pos, def) => UseT (pos, def)
          | Prim (pos, p) => Prim (pos, p)
          (* HACK: *)
-         | SVar (pos, UVar uv) => (case TypeVars.uvGet uv
+         | SVar (pos, UVar uv) => (case TypeVars.Uv.get uv
                                    of Right t => concrToF t
                                     | Left _ => Prim (pos, FFType.Prim.Unit))
 
