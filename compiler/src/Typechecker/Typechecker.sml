@@ -304,19 +304,25 @@ end = struct
 
     (*and elaborateAsExists env (pos, params: FType.def vector, body) expr =
         let val typeFnArgs = Env.polyParams env
-            val typeFns = Vector.map (hoistAbsType (Vector.length typeFnArgs)) params
-            val abstracts = Vector.map (fn typeFn => FType.AppT (pos, typeFn, typeFnArgs))
-                                       typeFns
+            val typeFns = Vector.map (hoistAbsType env (Vector.length typeFnArgs)) params
+            val axioms = raise Fail "unimplemented"
+            val axiomNames = raise Fail "unimplemented"
+            val paths = Vector.map (fn (typeFn, coName) =>
+                                        let val path = TypeVars.Path.new (FType.CallTFn (pos, typeFn, typeFnArgs), coName)
+                                        in FAst.Type.SVar (pos, FlexFAst.Type.Path path)
+                                        end)
+                                   (Vector.zip (typeFns, axiomNames))
             
-            val env = Env.pushScope env (Env.Scope.Marker (Env.Scope.Id.fresh ()))
-            val impls = Vector.map (fn _ => FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative)))
-                                   params
-            val mapping = Vector.foldl (fn (({var, ...}, impl), mapping) =>
-                                            Id.SortedMap.insert (mapping, var, impl))
+            val env = Env.pushScope env (Env.Scope.Axioms (Env.Scope.Id.fresh (), axioms))
+            val mapping = Vector.foldl (fn (({var, ...}, path), mapping) =>
+                                            Id.SortedMap.insert (mapping, var, path))
                                        Id.SortedMap.empty
-                                       (Vector.zip (params, impls))
+                                       (Vector.zip (params, paths))
             val implType = concr (FlexFAst.Type.Concr.substitute mapping body)
-        in (elaborateExprAs env implType expr, abstracts)
+        in ( FTerm.Let ( FTerm.exprPos expr
+                       , raise Fail "unimplemented" (* axiom decls *)
+                       , elaborateExprAs env implType expr )
+           , implType)
         end*)
 
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)

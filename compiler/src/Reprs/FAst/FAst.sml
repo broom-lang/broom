@@ -151,11 +151,12 @@ signature FLEX_FAST = sig
     structure Type: sig
         datatype kind = datatype FAst.Type.kind
 
-        datatype sv = OVar of ov | UVar of uv
+        datatype sv = OVar of ov | UVar of uv | Path of path
         withtype concr = sv FAst.Type.concr
         and abs = sv FAst.Type.abs
         and ov = (ScopeId.t, kind) TypeVars.ov
         and uv = (ScopeId.t, sv FAst.Type.concr) TypeVars.uv
+        and path = (Name.t, sv FAst.Type.concr) TypeVars.path
 
         val kindToDoc: kind -> PPrint.t
 
@@ -189,11 +190,12 @@ structure FlexFAst :> FLEX_FAST = struct
     structure Type = struct
         open FAst.Type
 
-        datatype sv = OVar of ov | UVar of uv
+        datatype sv = OVar of ov | UVar of uv | Path of path
         withtype concr = sv FAst.Type.concr
         and abs = sv FAst.Type.abs
         and ov = (ScopeId.t, kind) TypeVars.ov
         and uv = (ScopeId.t, sv FAst.Type.concr) TypeVars.uv
+        and path = (Name.t, sv FAst.Type.concr) TypeVars.path
 
         fun concrToDoc t = FAst.Type.Concr.toDoc svarToDoc t
         and svarToDoc (UVar uv) =

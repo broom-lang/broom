@@ -14,6 +14,7 @@ signature FAST_TYPE = sig
         | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
         | EmptyRow of Pos.t
         | Type of Pos.t * 'sv abs
+        | CallTFn of Pos.t * Name.t * 'sv concr vector
         | UseT of Pos.t * def
         | SVar of Pos.t * 'sv
         | Prim of Pos.t * Prim.t
@@ -72,6 +73,7 @@ structure FType :> FAST_TYPE = struct
         | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
         | EmptyRow of Pos.t
         | Type of Pos.t * 'sv abs
+        | CallTFn of Pos.t * Name.t * 'sv concr vector
         | UseT of Pos.t * def
         | SVar of Pos.t * 'sv
         | Prim of Pos.t * Prim.t
