@@ -27,10 +27,11 @@ structure TypeVars :> sig
     structure Path: sig
         val new: 't * 'scope * 'co -> ('scope, 't, 'co) path
         val get: ('scope -> bool) (* Is the required coercion available? *)
-                 -> ('scope, 't, 'co) path -> ('t, 't * 'co) Either.t
+                 -> ('scope, 't, 'co) path -> ('t * 'co option, 't * 'co) Either.t
         val set: ('t -> Name.t)
                  -> ('scope -> bool) (* Is the required coercion available? *)
                  -> ('scope, 't, 'co) path * 't -> unit
+        val eq: ('scope, 't, 'co) path * ('scope, 't, 'co) path -> bool
     end
 end = struct
     datatype predicativity = Predicative | Impredicative
@@ -144,8 +145,8 @@ end = struct
             if inScope scope
             then case !impl
                  of SOME t => Either.Right (t, coercion)
-                  | NONE => Either.Left face
-            else Either.Left face
+                  | NONE => Either.Left (face, SOME coercion)
+            else Either.Left (face, NONE)
 
         fun set faceName inScope ({face, scope, coercion, impl}, t) =
             if inScope scope
@@ -153,6 +154,9 @@ end = struct
                  of SOME _ => raise Reset
                   | NONE => impl := SOME t
             else raise SetPrivate (faceName face)
+
+        fun eq ({impl, ...}: ('scope, 't, 'co) path, {impl = impl', ...}: ('scope, 't, 'co) path) =
+            impl = impl'
    end
 end
 

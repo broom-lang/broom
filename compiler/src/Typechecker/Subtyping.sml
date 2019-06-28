@@ -6,7 +6,6 @@ structure Subtyping :> sig
 end = struct
     datatype predicativity = datatype TypeVars.predicativity
     structure FType = FAst.Type
-    (*structure FCo = FAst.Coercion*)
     datatype abs = datatype FType.abs
     val concr = FType.Abs.concr
     structure FTerm = FAst.Term
@@ -17,6 +16,10 @@ end = struct
 
     fun uvSet env =
         TypeVars.Uv.set FlexFAst.Type.Concr.tryToUv Env.Scope.Id.compare (Env.hasScope env)
+
+    fun pathSet env =
+        TypeVars.Path.set (Name.fromString o FlexFAst.Type.Concr.toString) (* HACK *)
+                          (Env.hasScope env)
 
     type coercion = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
     type field_coercion = Name.t * (FlexFAst.Type.sv FTerm.expr -> FlexFAst.Type.sv FTerm.expr)
@@ -34,7 +37,7 @@ end = struct
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
     fun assign (env: Env.t) (y, uv: (Env.Scope.Id.t, FlexFAst.Type.concr) TypeVars.uv, t: FlexFAst.Type.concr): unit =
         if FlexFAst.Type.Concr.occurs uv t
-        then raise TypeError (Occurs (uv, concr t))
+        then raise TypeError (Occurs (FType.SVar (FType.Concr.pos t, FlexFAst.Type.UVar uv), concr t))
         else doAssign env y (uv, t)
 
     and doAssign (env: Env.t) y (uv, t: FlexFAst.Type.concr) =
@@ -125,15 +128,8 @@ end = struct
               | (Either.Right t, Either.Right t') => subType env currPos (t, t'))
          | (FType.SVar (_, FlexFAst.Type.UVar uv), _) => subUv env currPos uv superTyp
          | (_, FType.SVar (_, FlexFAst.Type.UVar uv)) => superUv env currPos uv typ
-         (*| (_, FType.SVar (_, FlexFAst.Type.Path path)) =>
-            (case TypeVars.Path.get () path
-             of Either.Left superTyp => subType env currPos (typ, superTyp)
-              | Either.Right (superTyp, coercion) =>
-                 SOME (fn expr =>
-                           FTerm.Cast ( FTerm.exprPos expr, expr
-                                      , FCo.Symm (FCo.Refl (FType.UseT (currPos, coercion)))) ))
-         | (FType.SVar (_, FlexFAst.Type.Path path), _) =>
-            raise Fail "unimplemented"*)
+         | (_, FType.SVar (_, FlexFAst.Type.Path path)) => suberPath env currPos Super path typ
+         | (FType.SVar (_, FlexFAst.Type.Path path), _) => suberPath env currPos Sub path superTyp
          | _ => raise Fail ("unimplemented: " ^ FlexFAst.Type.Concr.toString typ ^ " <: "
                             ^ FlexFAst.Type.Concr.toString superTyp)
 
@@ -182,5 +178,22 @@ end = struct
     and superUv env currPos uv subTyp = case TypeVars.Uv.get uv
                                         of Either.Left uv => (assign env (Super, uv, subTyp); NONE)
                                          | Either.Right t => subType env currPos (subTyp, t)
+
+    and suberPath env currPos y path t =
+        case TypeVars.Path.get (Env.hasScope env) path
+        of Either.Left (face, NONE) => subType env currPos (case y
+                                                            of Sub => (face, t)
+                                                             | Super => (t, face))
+         | Either.Left (face, SOME coercionDef) => (* FIXME: enforce predicativity: *)
+            if FlexFAst.Type.Concr.pathOccurs path t
+            then raise TypeError (Occurs (face, concr t))
+            else ( pathSet env (path, t)
+                 ; SOME (pathCoercion y coercionDef) )
+         | Either.Right (typ, coercionDef) => SOME (pathCoercion y coercionDef)
+
+    and pathCoercion y coercionDef =
+        case y
+        of Sub => (fn expr => FTerm.Cast (FTerm.exprPos expr, expr, FType.UseCo coercionDef))
+         | Super => (fn expr => FTerm.Cast (FTerm.exprPos expr, expr, FType.Symm (FType.UseCo coercionDef)))
 end
 

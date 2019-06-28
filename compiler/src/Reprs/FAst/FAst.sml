@@ -12,6 +12,7 @@ signature FAST_TERM = sig
         | Field of Pos.t * 'sv Type.concr * 'sv expr * Name.t
         | Let of Pos.t * 'sv stmt vector * 'sv expr
         | If of Pos.t * 'sv expr * 'sv expr * 'sv expr
+        | Cast of Pos.t * 'sv expr * 'sv Type.co
         | Type of Pos.t * 'sv Type.abs
         | Use of Pos.t * 'sv def
         | Const of Pos.t * Const.t
@@ -34,6 +35,7 @@ signature FAST = sig
         where type Type.kind = Type.kind
         and type 'sv Type.concr = 'sv Type.concr
         and type 'sv Type.abs = 'sv Type.abs
+        and type 'sv Type.co = 'sv Type.co
 end
 
 structure FAst :> FAST = struct
@@ -63,6 +65,7 @@ structure FAst :> FAST = struct
             | Field of Pos.t * 'sv Type.concr * 'sv expr * Name.t
             | Let of Pos.t * 'sv stmt vector * 'sv expr
             | If of Pos.t * 'sv expr * 'sv expr * 'sv expr
+            | Cast of Pos.t * 'sv expr * 'sv Type.co
             | Type of Pos.t * 'sv Type.abs
             | Use of Pos.t * 'sv def
             | Const of Pos.t * Const.t
@@ -91,6 +94,8 @@ structure FAst :> FAST = struct
            fn Val (_, def, valExpr) =>
                text "val" <+> defToDoc svarToDoc def <+> text "="
                    <+> PPrint.align (exprToDoc svarToDoc valExpr)
+            | Axiom (_, name, typ) =>
+               text "axiom" <+> Name.toDoc name <> text ":" <+> Type.Concr.toDoc svarToDoc typ
             | Expr expr => exprToDoc svarToDoc expr
 
        and stmtsToDoc svarToDoc stmts = PPrint.punctuate PPrint.newline (Vector.map (stmtToDoc svarToDoc) stmts)
@@ -169,6 +174,7 @@ signature FLEX_FAST = sig
             val toString: concr -> string
             val tryToUv: concr -> uv option
             val occurs: uv -> concr -> bool
+            val pathOccurs: path -> concr -> bool
             val substitute: concr Id.SortedMap.map -> concr -> concr
         end
 
@@ -206,7 +212,7 @@ structure FlexFAst :> FLEX_FAST = struct
             fn Path path =>
                 (case TypeVars.Path.get (Fn.constantly false) path
                  of Either.Right (t, _) => concrToDoc t
-                  | Either.Left t => concrToDoc t)
+                  | Either.Left (t, _) => concrToDoc t)
              | UVar uv =>
                 (case TypeVars.Uv.get uv
                  of Either.Right t => concrToDoc t
@@ -223,6 +229,10 @@ structure FlexFAst :> FLEX_FAST = struct
                 fn UVar uv' => (case TypeVars.Uv.get uv'
                                 of Either.Left uv' => TypeVars.Uv.eq (uv, uv')
                                  | Either.Right t => occurs uv t)
+
+            fun pathOccurs path = FAst.Type.Concr.occurs pathSvarOccurs path
+            and pathSvarOccurs path =
+                fn Path path' => TypeVars.Path.eq (path', path)
 
             fun substitute kv = FAst.Type.Concr.substitute svarSubstitute kv
             and svarSubstitute kv =

@@ -19,12 +19,17 @@ end = struct
          | RowExt (pos, {field = (label, fieldt), ext}) =>
             RowExt (pos, {field = (label, concrToF fieldt), ext = concrToF ext})
          | EmptyRow pos => EmptyRow pos
+         | CallTFn (pos, f, args) =>
+            CallTFn (pos, f, Vector.map concrToF args)
          | FFType.Type (pos, typ) => FFType.Type (pos, absToF typ)
          | UseT (pos, def) => UseT (pos, def)
          | Prim (pos, p) => Prim (pos, p)
          | SVar (pos, UVar uv) => (case TypeVars.Uv.get uv
                                    of Right t => concrToF t
                                     | Left _ => Prim (pos, FFType.Prim.Unit))
+         | SVar (pos, Path path) => (case TypeVars.Path.get (Fn.constantly false) path (* FIXME *)
+                                     of Right (t, _) => concrToF t
+                                      | Left (t, _) => concrToF t)
 
     and absToF: FlexFAst.Type.abs -> FFType.abs =
         fn Exists (pos, params, body) => Exists (pos, params, concrToF body)
@@ -53,6 +58,7 @@ end = struct
 
     and stmtToF =
         fn Val (pos, {var, typ}, expr) => Val (pos, {var, typ = concrToF typ}, exprToF expr)
+         | Axiom (pos, name, typ) => Axiom (pos, name, concrToF typ) (* FIXME *)
          | Expr expr => Expr (exprToF expr)
 end
 

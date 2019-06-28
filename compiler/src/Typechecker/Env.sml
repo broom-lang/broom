@@ -175,7 +175,7 @@ end = struct
 
     fun freshAbstract env arity {var, kind} =
         (* FIXME: Put into toplevel so that we can emit it. *)
-        var |> Id.toString |> Name.fromString |> Name.freshen
+        ("g__" ^ Id.toString var) |> Name.fromString |> Name.freshen
 
     fun findExprClosure (env: t) name =
         let val rec find =

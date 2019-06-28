@@ -22,6 +22,11 @@ signature FAST_TYPE = sig
     and 'sv abs
         = Exists of Pos.t * def vector * 'sv concr
 
+    and 'sv co
+        = Refl of 'sv concr
+        | Symm of 'sv co
+        | UseCo of Name.t (* HACK *)
+
     val kindToDoc: kind -> PPrint.t
     val kindToString: kind -> string
     val defToDoc: def -> PPrint.t
@@ -80,6 +85,11 @@ structure FType :> FAST_TYPE = struct
     
     and 'sv abs
         = Exists of Pos.t * def vector * 'sv concr
+
+    and 'sv co
+        = Refl of 'sv concr
+        | Symm of 'sv co
+        | UseCo of Name.t
 
     val rec kindToDoc =
         fn TypeK _ => text "Type"
