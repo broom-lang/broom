@@ -105,6 +105,8 @@ structure FType :> FAST_TYPE = struct
                     Name.toDoc label <> text ":" <+> concrToDoc fieldType <+> text "|" <+> concrToDoc ext
                  | EmptyRow _ => text "(||)"
                  | Type (_, t) => brackets (text "=" <+> absToDoc svarToDoc t)
+                 | CallTFn (_, f, args) =>
+                    Name.toDoc f <+> PPrint.punctuate space (Vector.map concrToDoc args)
                  | SVar (_, sv) => svarToDoc sv
                  | UseT (_, {var, kind = _}) => idToDoc var
                  | Prim (_, p) => Prim.toDoc p

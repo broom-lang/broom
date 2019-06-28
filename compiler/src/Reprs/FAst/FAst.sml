@@ -18,6 +18,7 @@ signature FAST_TERM = sig
 
     and 'sv stmt
         = Val of Pos.t * 'sv def * 'sv expr
+        | Axiom of Pos.t * Name.t * 'sv Type.concr
         | Expr of 'sv expr
 
     val exprPos: 'sv expr -> Pos.t
@@ -68,6 +69,7 @@ structure FAst :> FAST = struct
 
         and 'sv stmt
             = Val of Pos.t * 'sv def * 'sv expr
+            | Axiom of Pos.t * Name.t * 'sv Type.concr
             | Expr of 'sv expr
 
         val exprPos =
@@ -156,7 +158,7 @@ signature FLEX_FAST = sig
         and abs = sv FAst.Type.abs
         and ov = (ScopeId.t, kind) TypeVars.ov
         and uv = (ScopeId.t, sv FAst.Type.concr) TypeVars.uv
-        and path = (Name.t, sv FAst.Type.concr) TypeVars.path
+        and path = (ScopeId.t, sv FAst.Type.concr, Name.t) TypeVars.path
 
         val kindToDoc: kind -> PPrint.t
 
@@ -164,7 +166,9 @@ signature FLEX_FAST = sig
 
         structure Concr: sig
             val toDoc: concr -> PPrint.t
+            val toString: concr -> string
             val tryToUv: concr -> uv option
+            val occurs: uv -> concr -> bool
             val substitute: concr Id.SortedMap.map -> concr -> concr
         end
 
@@ -195,13 +199,18 @@ structure FlexFAst :> FLEX_FAST = struct
         and abs = sv FAst.Type.abs
         and ov = (ScopeId.t, kind) TypeVars.ov
         and uv = (ScopeId.t, sv FAst.Type.concr) TypeVars.uv
-        and path = (Name.t, sv FAst.Type.concr) TypeVars.path
+        and path = (ScopeId.t, sv FAst.Type.concr, Name.t) TypeVars.path
 
-        fun concrToDoc t = FAst.Type.Concr.toDoc svarToDoc t
-        and svarToDoc (UVar uv) =
-            case TypeVars.Uv.get uv
-            of Either.Right t => concrToDoc t
-             | Either.Left uv => text "^" <> Name.toDoc (TypeVars.Uv.name uv)
+        val rec concrToDoc = fn t => FAst.Type.Concr.toDoc svarToDoc t
+        and svarToDoc =
+            fn Path path =>
+                (case TypeVars.Path.get (Fn.constantly false) path
+                 of Either.Right (t, _) => concrToDoc t
+                  | Either.Left t => concrToDoc t)
+             | UVar uv =>
+                (case TypeVars.Uv.get uv
+                 of Either.Right t => concrToDoc t
+                  | Either.Left uv => text "^" <> Name.toDoc (TypeVars.Uv.name uv))
 
         structure Concr = struct
             open Concr

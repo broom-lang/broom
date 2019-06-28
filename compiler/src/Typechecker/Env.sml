@@ -30,7 +30,7 @@ structure TypecheckingEnv :> sig
                 val insert: t -> Name.t -> binding_state -> unit
                 val build: t -> bindings
             end
-       end
+        end
     end
 
     structure Scope: sig
@@ -52,8 +52,10 @@ structure TypecheckingEnv :> sig
     val hasScope: t -> Scope.Id.t -> bool
 
     val findType: t -> Id.t -> Bindings.Type.binding option
+    val bigLambdaParams: t -> FAst.Type.def vector
     val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
     val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
+    val freshAbstract: t -> int -> FAst.Type.def -> Name.t
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
@@ -159,6 +161,8 @@ end = struct
         in find (#scopes env)
         end
 
+    fun bigLambdaParams env = #[] (* FIXME *)
+
     fun newUv (env: t) (predicativity, name) =
         case #scopes env
         of scope :: _ => TypeVars.Uv.new (Scope.id scope, predicativity, name)
@@ -168,6 +172,10 @@ end = struct
         case #scopes env
         of scope :: _ => TypeVars.Uv.fresh (Scope.id scope, predicativity)
          | [] => raise Fail "unreachable"
+
+    fun freshAbstract env arity {var, kind} =
+        (* FIXME: Put into toplevel so that we can emit it. *)
+        var |> Id.toString |> Name.fromString |> Name.freshen
 
     fun findExprClosure (env: t) name =
         let val rec find =
