@@ -13,7 +13,7 @@ signature ID = sig
     structure SortedMap: ORD_MAP where type Key.ord_key = t
 end
 
-structure Id :> ID = struct
+functor Id(UnitStruct: sig end) :> ID = struct
     type t = word
 
     local val counter = ref 0w0

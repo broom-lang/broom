@@ -10,6 +10,7 @@ end = struct
     structure FAst = FlexFAst
     structure FTerm = FAst.Term
     structure FType = FAst.Type
+    structure Id = FType.Id
     structure Concr = FType.Concr
     datatype abs' = datatype FAst.Type.abs'
     type concr = FType.concr
@@ -27,6 +28,8 @@ end = struct
 
     fun uvSet env =
         Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env)
+
+    val nameFromId = Name.fromString o Id.toString
 
 (* Looking up `val` types *)
 
@@ -366,7 +369,7 @@ end = struct
                     let val pos = FTerm.exprPos callee
                         val mapping =
                             Vector.foldl (fn ({var, kind}, mapping) =>
-                                              let val uv = FType.SVar (pos, FType.UVar (Env.newUv env (Predicative, Name.fromId var)))
+                                              let val uv = FType.SVar (pos, FType.UVar (Env.newUv env (Predicative, nameFromId var)))
                                               in Id.SortedMap.insert (mapping, var, uv)
                                               end)
                                          Id.SortedMap.empty params

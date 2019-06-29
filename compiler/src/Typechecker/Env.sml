@@ -10,7 +10,7 @@ structure TypecheckingEnv :> sig
             type bindings
 
             val new: unit -> bindings
-            val fresh: bindings -> binding -> Id.t
+            val fresh: bindings -> binding -> FType.Id.t
             val defs: bindings -> FlexFAst.Type.def list
         end
 
@@ -51,7 +51,7 @@ structure TypecheckingEnv :> sig
     val scopeIds: t -> Scope.Id.t list
     val hasScope: t -> Scope.Id.t -> bool
 
-    val findType: t -> Id.t -> Bindings.Type.binding option
+    val findType: t -> FType.Id.t -> Bindings.Type.binding option
     val bigLambdaParams: t -> FlexFAst.Type.def vector
     val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
     val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
@@ -74,6 +74,8 @@ end = struct
 
     structure Bindings = struct
         structure Type = struct
+            structure Id = FType.Id
+
             type binding = FAst.Type.kind
             type bindings = binding Id.HashTable.hash_table
             
@@ -175,7 +177,7 @@ end = struct
 
     fun freshAbstract env arity {var, kind} =
         (* FIXME: Put into toplevel so that we can emit it. *)
-        ("g__" ^ Id.toString var) |> Name.fromString |> Name.freshen
+        ("g__" ^ FType.Id.toString var) |> Name.fromString |> Name.freshen
 
     fun findExprClosure (env: t) name =
         let val rec find =

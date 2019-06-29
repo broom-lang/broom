@@ -1,5 +1,5 @@
 structure FlexFAst = struct
-    structure ScopeId :> ID = Id
+    structure ScopeId = Id(struct end)
 
     val text = PPrint.text
     val op<> = PPrint.<>

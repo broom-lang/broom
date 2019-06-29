@@ -1,4 +1,5 @@
 signature FAST_TYPE = sig
+    structure Id: ID
     structure Prim: PRIM_TYPE where type t = PrimType.t
 
     datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
@@ -62,6 +63,8 @@ structure FType :> FAST_TYPE = struct
     val space = PPrint.space
     val brackets = PPrint.brackets
     val braces = PPrint.braces
+
+    structure Id = Id(struct end)
 
     structure Prim = PrimType
 
@@ -243,6 +246,7 @@ structure FType :> FAST_TYPE = struct
 end
 
 signature CLOSED_FAST_TYPE = sig
+    structure Id: ID where type t = FType.Id.t
     structure Prim: PRIM_TYPE where type t = PrimType.t
     structure ScopeId: ID
 

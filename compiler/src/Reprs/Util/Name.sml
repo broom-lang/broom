@@ -5,7 +5,6 @@ structure Name :> sig
     val compare: t * t -> order
 
     val fromString: string -> t
-    val fromId: Id.t -> t
     val toString: t -> string
     val toDoc: t -> PPrint.t
     val fresh: unit -> t
@@ -33,8 +32,6 @@ end = struct
                    | (_, FreshString _) => LESS
 
     val fromString = String
-
-    val fromId = fromString o Id.toString
 
     val toString = fn String s => s
                     | Fresh i => "g__" ^ Int.toString i

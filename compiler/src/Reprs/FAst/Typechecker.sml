@@ -4,6 +4,7 @@ structure FAstTypechecker :> sig
 end = struct
     structure FAst = FixedFAst
     structure FType = FAst.Type
+    structure Id = FType.Id
     structure FFType = FAst.Type
     structure Prim = FFType.Prim
     structure FFTerm = FAst.Term

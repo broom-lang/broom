@@ -10,6 +10,7 @@ end = struct
     datatype predicativity = datatype TypeVars.predicativity
     structure FAst = FlexFAst
     structure FType = FAst.Type
+    structure Id = FType.Id
     structure Concr = FType.Concr
     datatype abs' = datatype FAst.Type.abs'
     datatype concr' = datatype FAst.Type.concr'
