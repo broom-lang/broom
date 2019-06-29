@@ -156,7 +156,10 @@ signature FLEX_FAST = sig
     structure ScopeId: ID
 
     structure Type: sig
+        structure Prim: PRIM_TYPE where type t = PrimType.t
+
         datatype kind = datatype FAst.Type.kind
+        type def = FAst.Type.def
 
         datatype concr' = datatype FAst.Type.concr
         datatype abs' = datatype FAst.Type.abs
@@ -172,6 +175,7 @@ signature FLEX_FAST = sig
         val kindToDoc: kind -> PPrint.t
         val svarToDoc: sv -> PPrint.t
         val rowExtTail: concr -> concr
+        val unit: Pos.t -> concr
 
         structure Concr: sig
             val pos: concr -> Pos.t

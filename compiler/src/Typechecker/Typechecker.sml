@@ -2,24 +2,30 @@ structure Typechecker :> sig
     val elaborateProgram: TypecheckingEnv.t -> Cst.Term.stmt vector -> FlexFAst.Term.stmt vector * TypecheckingEnv.t
 end = struct
     val op|> = Fn.|>
+    datatype either = datatype Either.t
+    structure Uv = TypeVars.Uv
     datatype predicativity = datatype TypeVars.predicativity
     structure CTerm = Cst.Term
     structure CType = Cst.Type
-    structure FTerm = FAst.Term
-    structure FType = FAst.Type
-    datatype abs = datatype FType.abs
+    structure FTerm = FlexFAst.Term
+    structure FType = FlexFAst.Type
+    structure Concr = FType.Concr
+    datatype abs' = datatype FAst.Type.abs
+    type concr = FType.concr
     val concr = FType.Abs.concr
 
     open TypeError
 
     structure Env = TypecheckingEnv
-    datatype expr_binding_state = datatype Env.Bindings.Expr.binding_state
+    structure Bindings = Env.Bindings
+    structure Scope = Env.Scope
+    datatype expr_binding_state = datatype Bindings.Expr.binding_state
  
     val subType = Subtyping.subType
     val applyCoercion = Subtyping.applyCoercion
 
     fun uvSet env =
-        TypeVars.Uv.set FlexFAst.Type.Concr.tryToUv Env.Scope.Id.compare (Env.hasScope env)
+        Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env)
 
 (* Looking up `val` types *)
 
@@ -35,7 +41,7 @@ end = struct
                     in (t, Visited (t, SOME expr))
                     end
                  | (NONE, oexpr as NONE) =>
-                    let val t = FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative))
+                    let val t = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
                     in (t, Typed (t, oexpr))
                     end
         in case valOf (Env.findExpr env name)
@@ -52,7 +58,7 @@ end = struct
     (* In case we encounter a recursive reference to `name` not broken by type annotations we call
        this to insert a unification variable, inferring a monomorphic type. *)
     and cyclicBindingType pos env name (_, oexpr) =
-        let val t = FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative))
+        let val t = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
         in Env.updateExpr pos env name (Fn.constantly (Typed (t, oexpr)))
          ; t
         end
@@ -62,7 +68,7 @@ end = struct
        - elaborating the expression bound to the variable (if available)
        - returning a fresh unification variable (if neither type annotation nor bound expression
          is available or if a cycle is encountered) *)
-    and lookupValType expr name env: FlexFAst.Type.concr option =
+    and lookupValType expr name env: concr option =
         Option.map (fn (Unvisited args, env) => unvisitedBindingType (CTerm.exprPos expr) env name args
                      | (Visiting args, env) => cyclicBindingType (CTerm.exprPos expr) env name args
                      | (Typed (t, _) | Visited (t, _), _) => t)
@@ -71,9 +77,9 @@ end = struct
 (* Elaborating subtrees *)
 
     (* Elaborate the type `typ` and return the elaborated version. *)
-    and elaborateType (env: Env.t) (t: CType.typ): FType.def list * FlexFAst.Type.concr =
-        let val absBindings = Env.Bindings.Type.new ()
-            val absScope = Env.Scope.ExistsScope (Env.Scope.Id.fresh (), absBindings)
+    and elaborateType (env: Env.t) (t: CType.typ): FType.def list * concr =
+        let val absBindings = Bindings.Type.new ()
+            val absScope = Scope.ExistsScope (Scope.Id.fresh (), absBindings)
             val env = Env.pushScope env absScope
 
             val rec reAbstract =
@@ -81,11 +87,11 @@ end = struct
                  | Exists (pos, params, body) =>
                     let val mapping =
                             Vector.foldl (fn ({var, kind}, mapping) =>
-                                              let val id' = Env.Bindings.Type.fresh absBindings kind
+                                              let val id' = Bindings.Type.fresh absBindings kind
                                               in Id.SortedMap.insert (mapping, var, FType.UseT (pos, {var = id', kind}))
                                               end)
                                          Id.SortedMap.empty params
-                    in FlexFAst.Type.Concr.substitute mapping body
+                    in Concr.substitute mapping body
                     end
 
             fun elaborate env =
@@ -93,12 +99,12 @@ end = struct
                     let val (typeDefs, domain) =
                             case domain
                             of SOME domain => elaborateType env domain
-                             | NONE => ([], FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative)))
+                             | NONE => ([], FType.SVar (pos, FType.UVar (Env.freshUv env Predicative)))
 
                         val env = List.foldl (fn (def, env) =>
-                                                  Env.pushScope env (Env.Scope.ForAllScope (Env.Scope.Id.fresh (), def)))
+                                                  Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), def)))
                                              env typeDefs
-                        val fnScope = Env.Scope.FnScope (Env.Scope.Id.fresh (), var, Visited (domain, NONE))
+                        val fnScope = Scope.FnScope (Scope.Id.fresh (), var, Visited (domain, NONE))
                         val env = Env.pushScope env fnScope
 
                         val codomain = elaborate env codomain
@@ -114,7 +120,7 @@ end = struct
                  | CType.EmptyRow pos => FType.EmptyRow pos
                  | CType.WildRow pos =>
                     let val kind = FType.RowK pos
-                        val var = Env.Bindings.Type.fresh absBindings kind
+                        val var = Bindings.Type.fresh absBindings kind
                     in FType.UseT (pos, {var, kind})
                     end
                  | CType.Interface (pos, decls) =>
@@ -130,7 +136,7 @@ end = struct
                                          ^ "does not denote type at " ^ Pos.toString (CTerm.exprPos pathExpr)))
                  | CType.TypeT pos =>
                     let val kind = FType.TypeK pos
-                        val var = Env.Bindings.Type.fresh absBindings kind
+                        val var = Bindings.Type.fresh absBindings kind
                     in FType.Type (pos, concr (FType.UseT (pos, {var, kind})))
                     end
                  | CType.Singleton (pos, expr) => #1 (elaborateExpr env expr)
@@ -144,41 +150,41 @@ end = struct
                    | Typed (t, _) | Visited (t, _) => t )
 
             val t = elaborate env t
-            val defs = Env.Bindings.Type.defs absBindings
+            val defs = Bindings.Type.defs absBindings
         in (defs, t)
         end
 
     and declsScope decls =
-        let val builder = Env.Bindings.Expr.Builder.new ()
+        let val builder = Bindings.Expr.Builder.new ()
             do Vector.app (fn (name, t) =>
-                                Env.Bindings.Expr.Builder.insert builder name (Unvisited (SOME t, NONE)))
+                                Bindings.Expr.Builder.insert builder name (Unvisited (SOME t, NONE)))
                           decls
-        in Env.Scope.BlockScope (Env.Scope.Id.fresh (), Env.Bindings.Expr.Builder.build builder)
+        in Scope.BlockScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
         end
 
     and stmtsScope stmts =
-        let val builder = Env.Bindings.Expr.Builder.new ()
+        let val builder = Bindings.Expr.Builder.new ()
             do Vector.app (fn CTerm.Val (_, name, t, expr) =>
-                               Env.Bindings.Expr.Builder.insert builder name (Unvisited (t, SOME expr))
+                               Bindings.Expr.Builder.insert builder name (Unvisited (t, SOME expr))
                             | CTerm.Expr _ => ())
                           stmts
-        in Env.Scope.BlockScope (Env.Scope.Id.fresh (), Env.Bindings.Expr.Builder.build builder)
+        in Scope.BlockScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
         end
 
     (* Elaborate the expression `exprRef` and return its computed type. *)
-    and elaborateExpr (env: Env.t) (expr: CTerm.expr): FlexFAst.Type.concr * FlexFAst.Type.sv FTerm.expr =
+    and elaborateExpr (env: Env.t) (expr: CTerm.expr): concr * FTerm.expr =
         case expr
         of CTerm.Fn (pos, var, domain, body) =>
             let val (typeDefs, domain) =
                     case domain
                     of SOME domain => elaborateType env domain
-                     | NONE => ([], FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative)))
-                val codomain = FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative))
+                     | NONE => ([], FType.SVar (pos, FType.UVar (Env.freshUv env Predicative)))
+                val codomain = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
 
                 val env = List.foldl (fn (def, env) =>
-                                          Env.pushScope env (Env.Scope.ForAllScope (Env.Scope.Id.fresh (), def)))
+                                          Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), def)))
                                      env typeDefs
-                val fnScope = Env.Scope.FnScope (Env.Scope.Id.fresh (), var, Visited (domain, NONE))
+                val fnScope = Scope.FnScope (Scope.Id.fresh (), var, Visited (domain, NONE))
                 val env = Env.pushScope env fnScope
 
                 val params = Vector.fromList typeDefs
@@ -201,7 +207,7 @@ end = struct
             in (typ, FTerm.Let (pos, stmts, body))
             end
          | CTerm.If (pos, _, _, _) =>
-            let val t = FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative))
+            let val t = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
             in (t, elaborateExprAs env t expr)
             end
          | CTerm.Record (pos, fields) => elaborateRecord env pos fields
@@ -250,7 +256,7 @@ end = struct
          | CTerm.Const (pos, c) =>
             (FType.Prim (pos, Const.typeOf c), FTerm.Const (pos, c))
 
-    and elaborateRecord env pos ({fields, ext}: CTerm.row): FlexFAst.Type.concr * FlexFAst.Type.sv FTerm.expr =
+    and elaborateRecord env pos ({fields, ext}: CTerm.row): concr * FTerm.expr =
         let fun elaborateField (field as (label, expr), (rowType, fieldExprs)) =
                 let val pos = CTerm.exprPos expr
                     val (fieldt, expr) = elaborateExpr env expr
@@ -269,7 +275,7 @@ end = struct
         end
 
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
-    and elaborateExprAs (env: Env.t) (typ: FlexFAst.Type.concr) (expr: CTerm.expr): FlexFAst.Type.sv FTerm.expr =
+    and elaborateExprAs (env: Env.t) (typ: concr) (expr: CTerm.expr): FTerm.expr =
         case expr
         of CTerm.Fn (pos, param, paramType, body) =>
             (case typ
@@ -278,7 +284,7 @@ end = struct
                  (case paramType
                   of NONE =>
                       let val env =
-                              Env.pushScope env (Env.Scope.FnScope (Env.Scope.Id.fresh (), param, Visited (domain, NONE)))
+                              Env.pushScope env (Scope.FnScope (Scope.Id.fresh (), param, Visited (domain, NONE)))
                           val body = elaborateExprAs env codomain body
                       in FTerm.Fn (pos, {var = param, typ = domain}, body)
                       end)
@@ -295,14 +301,14 @@ end = struct
     and elaborateAsForAll env (pos, params, body) expr =
         let val env =
                 Vector.foldl (fn (def, env) =>
-                                  Env.pushScope env (Env.Scope.ForAllScope (Env.Scope.Id.fresh (), def)))
+                                  Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), def)))
                              env params
         in FTerm.TFn (pos, params, elaborateExprAs env body expr)
         end
 
     and elaborateAsExists env (pos, params: FType.def vector, body) expr =
-        let val coScopeId = Env.Scope.Id.fresh ()
-            val coScope = Env.Scope.Marker coScopeId
+        let val coScopeId = Scope.Id.fresh ()
+            val coScope = Scope.Marker coScopeId
 
             val typeFnArgs = Vector.map (fn def => FType.UseT (pos, def)) (Env.bigLambdaParams env)
             val typeFns = Vector.map (Env.freshAbstract env (Vector.length typeFnArgs)) params
@@ -314,7 +320,7 @@ end = struct
             val paths = Vector.map (fn (typeFn, coName) =>
                                         let val path = TypeVars.Path.new ( FType.CallTFn (pos, typeFn, typeFnArgs)
                                                                          , coScopeId, coName )
-                                        in FAst.Type.SVar (pos, FlexFAst.Type.Path path)
+                                        in FAst.Type.SVar (pos, FType.Path path)
                                         end)
                                    (Vector.zip (typeFns, axiomNames))
             val namedPaths = Vector.zip (axiomNames, paths)
@@ -323,7 +329,7 @@ end = struct
                                             Id.SortedMap.insert (mapping, var, path))
                                        Id.SortedMap.empty
                                        (Vector.zip (params, paths))
-            val implType = FlexFAst.Type.Concr.substitute mapping body
+            val implType = Concr.substitute mapping body
             val pos = CTerm.exprPos expr
         in ( implType
            , FTerm.Let ( pos
@@ -332,14 +338,14 @@ end = struct
         end
 
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)
-    and coerceExprTo (env: Env.t) (typ: FlexFAst.Type.concr) (expr: CTerm.expr): FlexFAst.Type.sv FTerm.expr =
+    and coerceExprTo (env: Env.t) (typ: concr) (expr: CTerm.expr): FTerm.expr =
         let val (t', fexpr) = elaborateExpr env expr
             val coercion = subType env (CTerm.exprPos expr) (t', typ)
         in applyCoercion coercion fexpr
         end
 
     (* Elaborate a statement and return the elaborated version. *)
-    and elaborateStmt env: Cst.Term.stmt -> FlexFAst.Type.sv FTerm.stmt =
+    and elaborateStmt env: Cst.Term.stmt -> FTerm.stmt =
         fn CTerm.Val (pos, name, _, expr) =>
             let val t = valOf (lookupValType expr name env) (* `name` is in `env` by construction *)
                 val expr =
@@ -353,47 +359,46 @@ end = struct
          | CTerm.Expr expr => FTerm.Expr (elaborateExprAs env (FType.unit (CTerm.exprPos expr)) expr)
 
     (* Coerce `callee` into a function and return t coerced and its `domain` and `codomain`. *)
-    and coerceCallee (env: Env.t) (typ: FlexFAst.Type.concr, callee: FlexFAst.Term.expr)
-      : FlexFAst.Term.expr * {domain: FlexFAst.Type.concr, codomain: FlexFAst.Type.concr} =
+    and coerceCallee (env: Env.t) (typ: concr, callee: FTerm.expr) : FTerm.expr * {domain: concr, codomain: concr} =
         let fun coerce callee =
                 fn FType.ForAll (_, params, t) =>
                     let val pos = FTerm.exprPos callee
                         val mapping =
                             Vector.foldl (fn ({var, kind}, mapping) =>
-                                              let val uv = FType.SVar (pos, FlexFAst.Type.UVar (Env.newUv env (Predicative, Name.fromId var)))
+                                              let val uv = FType.SVar (pos, FType.UVar (Env.newUv env (Predicative, Name.fromId var)))
                                               in Id.SortedMap.insert (mapping, var, uv)
                                               end)
                                          Id.SortedMap.empty params
                         val args = Id.SortedMap.listItems mapping |> Vector.fromList
-                        val calleeType = FlexFAst.Type.Concr.substitute mapping t
+                        val calleeType = Concr.substitute mapping t
                     in coerce (FTerm.TApp (pos, calleeType, {callee, args})) calleeType
                     end
                  | FType.Arrow (_, domains) => (callee, domains)
-                 | FType.SVar (_, FlexFAst.Type.UVar uv) =>
-                    (case TypeVars.Uv.get uv
-                     of Either.Left uv => raise Fail "unimplemented"
-                      | Either.Right typ => coerce callee typ)
+                 | FType.SVar (_, FType.UVar uv) =>
+                    (case Uv.get uv
+                     of Left uv => raise Fail "unimplemented"
+                      | Right typ => coerce callee typ)
                  | _ => raise TypeError (UnCallable (callee, typ))
         in coerce callee typ
         end
    
     (* Coerce `expr` (in place) into a record with at least `label` and return the `label`:ed type. *)
-    and coerceRecord env (typ: FlexFAst.Type.concr, expr: FlexFAst.Type.sv FTerm.expr) label: FlexFAst.Type.concr =
+    and coerceRecord env (typ: concr, expr: FTerm.expr) label: concr =
         let val rec coerce =
                 fn FType.ForAll _ => raise Fail "unimplemented"
                  | FType.Record (_, row) => coerceRow row
-                 | FType.SVar (pos, FlexFAst.Type.UVar uv) =>
-                    (case TypeVars.Uv.get uv
-                     of Either.Right typ => coerce typ
-                      | Either.Left uv => let val fieldType = FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative))
-                                              val ext = FType.SVar (pos, FlexFAst.Type.UVar (Env.freshUv env Predicative))
-                                              val pos = FTerm.exprPos expr
-                                              val row = FType.RowExt (pos, {field = (label, fieldType), ext})
-                                              val typ = FType.Record (pos, row)
-                                          in uvSet env (uv, typ)
-                                           ; fieldType
-                                          end)
-                 | _ => raise TypeError (UnDottable (expr, typ))
+                 | FType.SVar (pos, FType.UVar uv) =>
+                    (case Uv.get uv
+                     of Right typ => coerce typ
+                      | Left uv => let val fieldType = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
+                                       val ext = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
+                                       val pos = FTerm.exprPos expr
+                                       val row = FType.RowExt (pos, {field = (label, fieldType), ext})
+                                       val typ = FType.Record (pos, row)
+                                   in uvSet env (uv, typ)
+                                    ; fieldType
+                                   end)
+         | _ => raise TypeError (UnDottable (expr, typ))
             and coerceRow =
                 fn FType.RowExt (_, {field = (label', fieldt), ext}) =>
                     if label' = label
