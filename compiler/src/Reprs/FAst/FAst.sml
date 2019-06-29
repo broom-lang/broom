@@ -158,6 +158,10 @@ signature FLEX_FAST = sig
     structure Type: sig
         datatype kind = datatype FAst.Type.kind
 
+        datatype concr' = datatype FAst.Type.concr
+        datatype abs' = datatype FAst.Type.abs
+        datatype co' = datatype FAst.Type.co
+
         datatype sv = OVar of ov | UVar of uv | Path of path
         withtype concr = sv FAst.Type.concr
         and abs = sv FAst.Type.abs
@@ -166,10 +170,11 @@ signature FLEX_FAST = sig
         and path = (ScopeId.t, sv FAst.Type.concr, Name.t) TypeVars.path
 
         val kindToDoc: kind -> PPrint.t
-
         val svarToDoc: sv -> PPrint.t
+        val rowExtTail: concr -> concr
 
         structure Concr: sig
+            val pos: concr -> Pos.t
             val toDoc: concr -> PPrint.t
             val toString: concr -> string
             val tryToUv: concr -> uv option
@@ -181,13 +186,19 @@ signature FLEX_FAST = sig
         structure Abs: sig
             val toDoc: abs -> PPrint.t
             val toString: abs -> string
+            val concr: concr -> abs
             val occurs: uv -> abs -> bool
         end
     end
 
     structure Term: sig
+        datatype expr' = datatype FAst.Term.expr
+        datatype stmt' = datatype FAst.Term.stmt
+
         type expr = Type.sv FAst.Term.expr
         type stmt = Type.sv FAst.Term.stmt
+
+        val exprPos: expr -> Pos.t
     end
 end
 
@@ -199,6 +210,10 @@ structure FlexFAst :> FLEX_FAST = struct
 
     structure Type = struct
         open FAst.Type
+
+        datatype concr' = datatype FAst.Type.concr
+        datatype abs' = datatype FAst.Type.abs
+        datatype co' = datatype FAst.Type.co
 
         datatype sv = OVar of ov | UVar of uv | Path of path
         withtype concr = sv FAst.Type.concr
@@ -260,6 +275,9 @@ structure FlexFAst :> FLEX_FAST = struct
         structure Typ = Type
         open FAst.Term
         structure Type = Typ
+
+        datatype expr' = datatype FAst.Term.expr
+        datatype stmt' = datatype FAst.Term.stmt
 
         type expr = Type.sv expr
         type stmt = Type.sv stmt

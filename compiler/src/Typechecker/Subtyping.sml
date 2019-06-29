@@ -1,28 +1,37 @@
 structure Subtyping :> sig
     type coercion = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
    
-    val applyCoercion: coercion -> FlexFAst.Type.sv FAst.Term.expr -> FlexFAst.Type.sv FAst.Term.expr
+    val applyCoercion: coercion -> FlexFAst.Type.sv FAst.Term.expr -> FlexFAst.Term.expr
     val subType: TypecheckingEnv.t -> Pos.t -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
 end = struct
+    datatype either = datatype Either.t
+    structure Uv = TypeVars.Uv
+    structure Path = TypeVars.Path
     datatype predicativity = datatype TypeVars.predicativity
-    structure FType = FAst.Type
-    datatype abs = datatype FType.abs
+    structure FType = FlexFAst.Type
+    structure Concr = FType.Concr
+    datatype abs' = datatype FAst.Type.abs
+    datatype concr' = datatype FAst.Type.concr
+    type concr = FType.concr
+    datatype sv = datatype FType.sv
+    datatype co' = datatype FAst.Type.co
     val concr = FType.Abs.concr
-    structure FTerm = FAst.Term
+    structure FTerm = FlexFAst.Term
     structure Env = TypecheckingEnv
+    structure Scope = Env.Scope
     open TypeError
 
     fun idInScope env id = isSome (Env.findType env id)
 
     fun uvSet env =
-        TypeVars.Uv.set FlexFAst.Type.Concr.tryToUv Env.Scope.Id.compare (Env.hasScope env)
+        Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env)
 
     fun pathSet env =
-        TypeVars.Path.set (Name.fromString o FlexFAst.Type.Concr.toString) (* HACK *)
-                          (Env.hasScope env)
+        Path.set (Name.fromString o Concr.toString) (* HACK *)
+                 (Env.hasScope env)
 
-    type coercion = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
-    type field_coercion = Name.t * (FlexFAst.Type.sv FTerm.expr -> FlexFAst.Type.sv FTerm.expr)
+    type coercion = (FTerm.expr -> FTerm.expr) option
+    type field_coercion = Name.t * (FTerm.expr -> FTerm.expr)
 
     fun applyCoercion (coerce: coercion) expr =
         case coerce
@@ -35,103 +44,103 @@ end = struct
                  | Super => Sub
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
-    fun assign (env: Env.t) (y, uv: (Env.Scope.Id.t, FlexFAst.Type.concr) TypeVars.uv, t: FlexFAst.Type.concr): unit =
-        if FlexFAst.Type.Concr.occurs uv t
-        then raise TypeError (Occurs (FType.SVar (FType.Concr.pos t, FlexFAst.Type.UVar uv), concr t))
+    fun assign (env: Env.t) (y, uv: (Scope.Id.t, concr) TypeVars.uv, t: concr): unit =
+        if Concr.occurs uv t
+        then raise TypeError (Occurs (SVar (Concr.pos t, UVar uv), concr t))
         else doAssign env y (uv, t)
 
-    and doAssign (env: Env.t) y (uv, t: FlexFAst.Type.concr) =
+    and doAssign (env: Env.t) y (uv, t: concr) =
         case t
-        of FType.Arrow (pos, domains) => doAssignArrow env y uv pos domains
-         | FType.RowExt _ => uvSet env (uv, t) (* FIXME: row kind check, t smallness check *)
-         | FType.EmptyRow _ => uvSet env (uv, t) (* FIXME: Check that uv is of row kind. *)
-         | FType.Prim _ => uvSet env (uv, t)
-         | FType.UseT (_, {var, ...}) => 
+        of Arrow (pos, domains) => doAssignArrow env y uv pos domains
+         | RowExt _ => uvSet env (uv, t) (* FIXME: row kind check, t smallness check *)
+         | EmptyRow _ => uvSet env (uv, t) (* FIXME: Check that uv is of row kind. *)
+         | Prim _ => uvSet env (uv, t)
+         | UseT (_, {var, ...}) => 
             if idInScope env var
             then uvSet env (uv, t)
             else raise Fail ("Opaque type out of scope: g__" ^ Id.toString var)
-         | FType.SVar (_, FlexFAst.Type.UVar uv') =>
-            (case TypeVars.Uv.get uv'
-             of Either.Left uv' => uvSet env (uv, t)
-              | Either.Right t => uvSet env (uv, t))
+         | SVar (_, UVar uv') =>
+            (case Uv.get uv'
+             of Left uv' => uvSet env (uv, t)
+              | Right t => uvSet env (uv, t))
 
     and doAssignArrow (env: Env.t) y uv pos {domain, codomain} =
         let val domainUv = Env.freshUv env Predicative
             val codomainUv = Env.freshUv env Predicative
-            val t' = FType.Arrow (pos, { domain = FType.SVar (pos, FlexFAst.Type.UVar domainUv)
-                                       , codomain = FType.SVar (pos, FlexFAst.Type.UVar codomainUv)})
+            val t' = Arrow (pos, { domain = SVar (pos, UVar domainUv)
+                                       , codomain = SVar (pos, UVar codomainUv)})
         in uvSet env (uv, t')
          ; assign env (flipY y, domainUv, domain) (* contravariance *)
          ; assign env (y, codomainUv, codomain)
         end
 
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
-    fun subType (env: Env.t) currPos (typ: FlexFAst.Type.concr, superTyp: FlexFAst.Type.concr): coercion =
+    fun subType (env: Env.t) currPos (typ: concr, superTyp: concr): coercion =
         case (typ, superTyp)
-        of (_, FType.ForAll (_, params, body)) =>
+        of (_, ForAll (_, params, body)) =>
             let val params' = Vector.map (fn {kind, ...} => {var = Id.fresh (), kind}) params
                 val env =
                     Vector.foldl (fn (def, env) =>
-                                      Env.pushScope env (Env.Scope.ForAllScope (Env.Scope.Id.fresh (), def)))
+                                      Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), def)))
                                  env params'
                 val mapping =
                     Vector.foldl (fn (({var, ...}, def'), mapping) =>
-                                      Id.SortedMap.insert (mapping, var, FType.UseT (currPos, def')))
+                                      Id.SortedMap.insert (mapping, var, UseT (currPos, def')))
                                  Id.SortedMap.empty
                                  (Vector.zip (params, params'))
-                val body = FlexFAst.Type.Concr.substitute mapping body
+                val body = Concr.substitute mapping body
             in Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params', coerce expr))
                           (subType env currPos (typ, body))
             end
-         | (FType.ForAll (_, params, body), _) =>
-           let val env = Env.pushScope env (Env.Scope.Marker (Env.Scope.Id.fresh ()))
-               val args = Vector.map (fn _ => FType.SVar (currPos, FlexFAst.Type.UVar (Env.freshUv env Predicative)))
+         | (ForAll (_, params, body), _) =>
+           let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
+               val args = Vector.map (fn _ => SVar (currPos, UVar (Env.freshUv env Predicative)))
                                      params
                val mapping =
                    Vector.foldl (fn (({var, ...}, arg), mapping) => Id.SortedMap.insert (mapping, var, arg))
                                 Id.SortedMap.empty
                                 (Vector.zip (params, args))
-               val body = FlexFAst.Type.Concr.substitute mapping body
+               val body = Concr.substitute mapping body
            in Option.map (fn coerce => fn expr => coerce (FTerm.TApp (currPos, body, {callee = expr, args})))
                          (subType env currPos (body, superTyp))
            end
-         | (FType.Arrow (_, arr), FType.Arrow (_, arr')) => subArrows env currPos (arr, arr')
-         | (FType.Record (_, row), FType.Record (_, row')) => 
+         | (Arrow (_, arr), Arrow (_, arr')) => subArrows env currPos (arr, arr')
+         | (Record (_, row), Record (_, row')) => 
             (case subRows env currPos (row, row')
              of [] => NONE)
-         | (FType.RowExt _, FType.RowExt _) =>
+         | (RowExt _, RowExt _) =>
            ( subRows env currPos (typ, superTyp)
            ; NONE ) (* No values of row type exist => coercion unnecessary *)
-         | (FType.EmptyRow _, FType.EmptyRow _) => NONE
-         | (FType.Prim (_, pl), FType.Prim (_, pr)) =>
+         | (EmptyRow _, EmptyRow _) => NONE
+         | (Prim (_, pl), Prim (_, pr)) =>
             if pl = pr
             then NONE
             else raise Fail "<:"
-         | (FType.Type (pos, FType.Exists (_, #[], t)), FType.Type (_, sup as FType.Exists (_, #[], t'))) =>
+         | (Type (pos, Exists (_, #[], t)), Type (_, sup as Exists (_, #[], t'))) =>
             (* TODO: Actual existentials (with params). *)
             (* TODO: Replace <: + :> with plain unification: *)
             ( subType env currPos (t, t')
             ; subType env currPos (t', t)
             ; SOME (fn _ => FTerm.Type (pos, sup)))
-         | (FType.UseT (_, {var, ...}), FType.UseT (_, {var = var', ...})) =>
+         | (UseT (_, {var, ...}), UseT (_, {var = var', ...})) =>
             if var = var'
             then if idInScope env var
                  then NONE
-                 else raise Fail ("Opaque type out of scope: " ^ FlexFAst.Type.Concr.toString superTyp)
+                 else raise Fail ("Opaque type out of scope: " ^ Concr.toString superTyp)
             else raise TypeError (NonSubType (currPos, concr typ, concr superTyp))
-         | (FType.SVar (_, FlexFAst.Type.UVar uv), FType.SVar (_, FlexFAst.Type.UVar uv')) =>
-            (case (TypeVars.Uv.get uv, TypeVars.Uv.get uv')
-             of (Either.Left uv, Either.Left _) =>
+         | (SVar (_, UVar uv), SVar (_, UVar uv')) =>
+            (case (Uv.get uv, Uv.get uv')
+             of (Left uv, Left _) =>
                  (uvSet env (uv, superTyp); NONE) (* Call `uvSet` directly to skip occurs check. *)
-              | (Either.Left uv, Either.Right t) => (assign env (Sub, uv, t); NONE)
-              | (Either.Right t, Either.Left uv) => (assign env (Super, uv, t); NONE)
-              | (Either.Right t, Either.Right t') => subType env currPos (t, t'))
-         | (FType.SVar (_, FlexFAst.Type.UVar uv), _) => subUv env currPos uv superTyp
-         | (_, FType.SVar (_, FlexFAst.Type.UVar uv)) => superUv env currPos uv typ
-         | (_, FType.SVar (_, FlexFAst.Type.Path path)) => suberPath env currPos Super path typ
-         | (FType.SVar (_, FlexFAst.Type.Path path), _) => suberPath env currPos Sub path superTyp
-         | _ => raise Fail ("unimplemented: " ^ FlexFAst.Type.Concr.toString typ ^ " <: "
-                            ^ FlexFAst.Type.Concr.toString superTyp)
+              | (Left uv, Right t) => (assign env (Sub, uv, t); NONE)
+              | (Right t, Left uv) => (assign env (Super, uv, t); NONE)
+              | (Right t, Right t') => subType env currPos (t, t'))
+         | (SVar (_, UVar uv), _) => subUv env currPos uv superTyp
+         | (_, SVar (_, UVar uv)) => superUv env currPos uv typ
+         | (_, SVar (_, Path path)) => suberPath env currPos Super path typ
+         | (SVar (_, Path path), _) => suberPath env currPos Sub path superTyp
+         | _ => raise Fail ("unimplemented: " ^ Concr.toString typ ^ " <: "
+                            ^ Concr.toString superTyp)
 
     and subArrows env currPos ({domain, codomain}, {domain = domain', codomain = codomain'}) =
         let val coerceDomain = subType env currPos (domain', domain)
@@ -147,9 +156,9 @@ end = struct
            else NONE
         end
 
-    and subRows env currPos (rows: FlexFAst.Type.concr * FlexFAst.Type.concr): field_coercion list =
+    and subRows env currPos (rows: concr * concr): field_coercion list =
         let val rec subExts =
-                fn (row, FType.RowExt (_, {field = (label, fieldt'), ext = ext'})) =>
+                fn (row, RowExt (_, {field = (label, fieldt'), ext = ext'})) =>
                     let val (fieldt, ext) = reorderRow currPos label (FType.rowExtTail ext') row
                         val coerceField = subType env currPos (fieldt, fieldt')
                         val coerceExt = subExts (ext, ext')
@@ -161,39 +170,39 @@ end = struct
         in subExts rows
         end
 
-    and reorderRow currPos label (tail: FlexFAst.Type.concr): FlexFAst.Type.concr -> FlexFAst.Type.concr * FlexFAst.Type.concr =
-        fn FType.RowExt (pos, {field = (label', fieldt'), ext = ext}) =>
+    and reorderRow currPos label (tail: concr): concr -> concr * concr =
+        fn RowExt (pos, {field = (label', fieldt'), ext = ext}) =>
             if label = label'
             then (fieldt', ext)
             else let val (fieldt, ext) = reorderRow currPos label tail ext
-                 in (fieldt, FType.RowExt (pos, {field = (label', fieldt'), ext = ext}))
+                 in (fieldt, RowExt (pos, {field = (label', fieldt'), ext = ext}))
                  end
          (* FIXME: `t` is actually row tail, not the type of `expr`. *)
          | t => raise TypeError (MissingField (currPos, t, label))
 
-    and subUv env currPos uv superTyp = case TypeVars.Uv.get uv
-                                        of Either.Left uv => (assign env (Sub, uv, superTyp); NONE)
-                                         | Either.Right t => subType env currPos (t, superTyp)
+    and subUv env currPos uv superTyp = case Uv.get uv
+                                        of Left uv => (assign env (Sub, uv, superTyp); NONE)
+                                         | Right t => subType env currPos (t, superTyp)
 
-    and superUv env currPos uv subTyp = case TypeVars.Uv.get uv
-                                        of Either.Left uv => (assign env (Super, uv, subTyp); NONE)
-                                         | Either.Right t => subType env currPos (subTyp, t)
+    and superUv env currPos uv subTyp = case Uv.get uv
+                                        of Left uv => (assign env (Super, uv, subTyp); NONE)
+                                         | Right t => subType env currPos (subTyp, t)
 
     and suberPath env currPos y path t =
-        case TypeVars.Path.get (Env.hasScope env) path
-        of Either.Left (face, NONE) => subType env currPos (case y
+        case Path.get (Env.hasScope env) path
+        of Left (face, NONE) => subType env currPos (case y
                                                             of Sub => (face, t)
                                                              | Super => (t, face))
-         | Either.Left (face, SOME coercionDef) => (* FIXME: enforce predicativity: *)
-            if FlexFAst.Type.Concr.pathOccurs path t
+         | Left (face, SOME coercionDef) => (* FIXME: enforce predicativity: *)
+            if Concr.pathOccurs path t
             then raise TypeError (Occurs (face, concr t))
             else ( pathSet env (path, t)
                  ; SOME (pathCoercion y coercionDef) )
-         | Either.Right (typ, coercionDef) => SOME (pathCoercion y coercionDef)
+         | Right (typ, coercionDef) => SOME (pathCoercion y coercionDef)
 
     and pathCoercion y coercionDef =
         case y
-        of Sub => (fn expr => FTerm.Cast (FTerm.exprPos expr, expr, FType.UseCo coercionDef))
-         | Super => (fn expr => FTerm.Cast (FTerm.exprPos expr, expr, FType.Symm (FType.UseCo coercionDef)))
+        of Sub => (fn expr => FTerm.Cast (FTerm.exprPos expr, expr, UseCo coercionDef))
+         | Super => (fn expr => FTerm.Cast (FTerm.exprPos expr, expr, Symm (UseCo coercionDef)))
 end
 
