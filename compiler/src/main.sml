@@ -3,7 +3,7 @@ structure Main :> sig
 end = struct
     datatype flag_arity = datatype CLIParser.flag_arity
     datatype input = datatype Parser.input
-    datatype stmt = datatype FAst.Term.stmt
+    datatype stmt = datatype FixedFAst.Term.stmt
     exception TypeError = TypeError.TypeError
 
     fun lexstreamFromInStream instream n =

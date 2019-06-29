@@ -6,12 +6,12 @@ structure TypecheckingEnv :> sig
 
     structure Bindings: sig
         structure Type: sig
-            type binding = FAst.Type.kind
+            type binding = FlexFAst.Type.kind
             type bindings
 
             val new: unit -> bindings
             val fresh: bindings -> binding -> Id.t
-            val defs: bindings -> FAst.Type.def list
+            val defs: bindings -> FlexFAst.Type.def list
         end
 
         structure Expr: sig
@@ -37,7 +37,7 @@ structure TypecheckingEnv :> sig
         structure Id: ID where type t = FlexFAst.ScopeId.t
 
         datatype t = FnScope of Id.t * Name.t * Bindings.Expr.binding_state
-                   | ForAllScope of Id.t * FAst.Type.def
+                   | ForAllScope of Id.t * FlexFAst.Type.def
                    | ExistsScope of Id.t * Bindings.Type.bindings
                    | BlockScope of Id.t * Bindings.Expr.bindings
                    | InterfaceScope of Id.t * Bindings.Expr.bindings
@@ -52,10 +52,10 @@ structure TypecheckingEnv :> sig
     val hasScope: t -> Scope.Id.t -> bool
 
     val findType: t -> Id.t -> Bindings.Type.binding option
-    val bigLambdaParams: t -> FAst.Type.def vector
+    val bigLambdaParams: t -> FlexFAst.Type.def vector
     val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
     val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
-    val freshAbstract: t -> int -> FAst.Type.def -> Name.t
+    val freshAbstract: t -> int -> FlexFAst.Type.def -> Name.t
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
@@ -63,12 +63,12 @@ structure TypecheckingEnv :> sig
                   -> (Bindings.Expr.binding_state -> Bindings.Expr.binding_state) -> unit
 end = struct
     open TypeError
-    structure FlexFAst = FlexFAst
+    structure FAst = FlexFAst
 
     type input_type = Cst.Type.typ
     type input_expr = Cst.Term.expr
-    type output_type = FlexFAst.Type.concr
-    type output_expr = FlexFAst.Term.expr
+    type output_type = FAst.Type.concr
+    type output_expr = FAst.Term.expr
 
     val op|> = Fn.|>
 
@@ -112,7 +112,7 @@ end = struct
     end
 
     structure Scope = struct
-        structure Id = FlexFAst.ScopeId
+        structure Id = FAst.ScopeId
 
         datatype t = FnScope of Id.t * Name.t * Bindings.Expr.binding_state
                    | ForAllScope of Id.t * FAst.Type.def

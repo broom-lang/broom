@@ -7,10 +7,11 @@ end = struct
     datatype predicativity = datatype TypeVars.predicativity
     structure CTerm = Cst.Term
     structure CType = Cst.Type
-    structure FTerm = FlexFAst.Term
-    structure FType = FlexFAst.Type
+    structure FAst = FlexFAst
+    structure FTerm = FAst.Term
+    structure FType = FAst.Type
     structure Concr = FType.Concr
-    datatype abs' = datatype FAst.Type.abs
+    datatype abs' = datatype FAst.Type.abs'
     type concr = FType.concr
     val concr = FType.Abs.concr
 

@@ -1,7 +1,7 @@
 signature TYPE_ERROR = sig
     datatype t = NonSubType of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs
-               | UnCallable of FlexFAst.Type.sv FAst.Term.expr * FlexFAst.Type.concr
-               | UnDottable of FlexFAst.Type.sv FAst.Term.expr * FlexFAst.Type.concr
+               | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
+               | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.t * Name.t
                | MissingField of Pos.t * FlexFAst.Type.concr * Name.t
                | Occurs of FlexFAst.Type.concr * FlexFAst.Type.abs
@@ -12,13 +12,17 @@ signature TYPE_ERROR = sig
 end
 
 structure TypeError :> TYPE_ERROR = struct
+    structure FAst = FlexFAst
+    structure Concr = FAst.Type.Concr
+    structure Abs = FAst.Type.Abs
+    structure FTerm = FAst.Term
     val text = PPrint.text
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
 
     datatype t = NonSubType of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs
-               | UnCallable of FlexFAst.Type.sv FAst.Term.expr * FlexFAst.Type.concr
-               | UnDottable of FlexFAst.Type.sv FAst.Term.expr * FlexFAst.Type.concr
+               | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
+               | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.t * Name.t
                | MissingField of Pos.t * FlexFAst.Type.concr * Name.t
                | Occurs of FlexFAst.Type.concr * FlexFAst.Type.abs
@@ -29,24 +33,24 @@ structure TypeError :> TYPE_ERROR = struct
         let val (pos, details) = case err
                                  of NonSubType (pos, typ, superTyp) =>
                                      ( pos
-                                     ,  FlexFAst.Type.Abs.toDoc typ <+> text "is not a subtype of" <+> FlexFAst.Type.Abs.toDoc superTyp)
+                                     ,  Abs.toDoc typ <+> text "is not a subtype of" <+> Abs.toDoc superTyp)
                                   | UnCallable (expr, typ) =>
-                                     ( FAst.Term.exprPos expr
-                                     , text "Value" <+> FAst.Term.exprToDoc FlexFAst.Type.svarToDoc expr
-                                           <+> text "of type" <+> FlexFAst.Type.Concr.toDoc typ <+> text "can not be called." )
+                                     ( FTerm.exprPos expr
+                                     , text "Value" <+> FTerm.exprToDoc expr
+                                           <+> text "of type" <+> Concr.toDoc typ <+> text "can not be called." )
                                   | UnDottable (expr, typ) =>
-                                     ( FAst.Term.exprPos expr
-                                     , text "Value" <+> FAst.Term.exprToDoc FlexFAst.Type.svarToDoc expr
-                                           <+> text "of type" <+> FlexFAst.Type.Concr.toDoc typ <+> text "is not a record or module." )
+                                     ( FTerm.exprPos expr
+                                     , text "Value" <+> FTerm.exprToDoc expr
+                                           <+> text "of type" <+> Concr.toDoc typ <+> text "is not a record or module." )
                                   | UnboundVal (pos, name) => (pos, text "Unbound variable" <+> Name.toDoc name <> text ".")
                                   | MissingField (pos, typ, label) =>
                                      ( pos
-                                     , FlexFAst.Type.Concr.toDoc typ <+> text "does not have field"
+                                     , Concr.toDoc typ <+> text "does not have field"
                                            <+> Name.toDoc label)
                                   | Occurs (v, t) =>
-                                     ( FAst.Type.Abs.pos t
-                                     , text "Occurs check: unifying" <+> text "^" <> FlexFAst.Type.Concr.toDoc v
-                                           <+> text "with" <+> FlexFAst.Type.Abs.toDoc t <+> text "would create infinite type." )
+                                     ( Abs.pos t
+                                     , text "Occurs check: unifying" <+> text "^" <> Concr.toDoc v
+                                           <+> text "with" <+> Abs.toDoc t <+> text "would create infinite type." )
         in text "TypeError in" <+> Pos.toDoc pos <> text ":" <+> details
         end
 end

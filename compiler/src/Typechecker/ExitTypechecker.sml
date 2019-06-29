@@ -5,10 +5,10 @@ end = struct
     datatype sv = datatype FlexFAst.Type.sv
     structure FFType = FixedFAst.Type
     structure FFTerm = FixedFAst.Term
-    datatype concr = datatype FAst.Type.concr
-    datatype abs = datatype FAst.Type.abs
-    datatype expr = datatype FAst.Term.expr
-    datatype stmt = datatype FAst.Term.stmt
+    datatype concr = datatype FlexFAst.Type.concr'
+    datatype abs = datatype FlexFAst.Type.abs'
+    datatype expr = datatype FlexFAst.Term.expr
+    datatype stmt = datatype FlexFAst.Term.stmt
     datatype either = datatype Either.t
 
     val rec concrToF: FlexFAst.Type.concr -> FFType.concr =
@@ -36,29 +36,29 @@ end = struct
 
     val rec exprToF: FlexFAst.Term.expr -> FFTerm.expr =
         fn Fn (pos, {var, typ}, body) =>
-            Fn (pos, {var, typ = concrToF typ}, exprToF body)
-         | TFn (pos, param, body) => TFn (pos, param, exprToF body)
+            FFTerm.Fn (pos, {var, typ = concrToF typ}, exprToF body)
+         | TFn (pos, param, body) => FFTerm.TFn (pos, param, exprToF body)
          | Extend (pos, typ, fields, record) =>
-            Extend ( pos, concrToF typ
-                   , Vector.map (Pair.second (exprToF)) fields
-                   , Option.map (exprToF) record)
+            FFTerm.Extend ( pos, concrToF typ
+                          , Vector.map (Pair.second (exprToF)) fields
+                          , Option.map (exprToF) record)
          | Let (pos, stmts, body) =>
-            Let (pos, Vector.map (stmtToF) stmts, exprToF body)
+            FFTerm.Let (pos, Vector.map (stmtToF) stmts, exprToF body)
          | If (pos, cond, conseq, alt) =>
-            If (pos, exprToF cond, exprToF conseq, exprToF alt)
+            FFTerm.If (pos, exprToF cond, exprToF conseq, exprToF alt)
          | App (pos, typ, {callee, arg}) =>
-            App (pos, concrToF typ, {callee = exprToF callee, arg = exprToF arg})
+            FFTerm.App (pos, concrToF typ, {callee = exprToF callee, arg = exprToF arg})
          | TApp (pos, typ, {callee, args}) =>
-            TApp (pos, concrToF typ, {callee = exprToF callee, args = Vector.map concrToF args})
+            FFTerm.TApp (pos, concrToF typ, {callee = exprToF callee, args = Vector.map concrToF args})
          | Field (pos, typ, expr, label) =>
-            Field (pos, concrToF typ, exprToF expr, label)
-         | Type (pos, typ) => Type (pos, absToF typ)
-         | Use (pos, {var, typ}) => Use (pos, {var, typ = concrToF typ})
-         | Const (pos, c) => Const (pos, c)
+            FFTerm.Field (pos, concrToF typ, exprToF expr, label)
+         | Type (pos, typ) => FFTerm.Type (pos, absToF typ)
+         | Use (pos, {var, typ}) => FFTerm.Use (pos, {var, typ = concrToF typ})
+         | Const (pos, c) => FFTerm.Const (pos, c)
 
     and stmtToF =
-        fn Val (pos, {var, typ}, expr) => Val (pos, {var, typ = concrToF typ}, exprToF expr)
-         | Axiom (pos, name, typ) => Axiom (pos, name, concrToF typ) (* FIXME *)
-         | Expr expr => Expr (exprToF expr)
+        fn Val (pos, {var, typ}, expr) => FFTerm.Val (pos, {var, typ = concrToF typ}, exprToF expr)
+         | Axiom (pos, name, typ) => FFTerm.Axiom (pos, name, concrToF typ) (* FIXME *)
+         | Expr expr => FFTerm.Expr (exprToF expr)
 end
 

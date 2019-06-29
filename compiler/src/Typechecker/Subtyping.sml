@@ -1,22 +1,23 @@
 structure Subtyping :> sig
     type coercion = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
    
-    val applyCoercion: coercion -> FlexFAst.Type.sv FAst.Term.expr -> FlexFAst.Term.expr
+    val applyCoercion: coercion -> FlexFAst.Term.expr -> FlexFAst.Term.expr
     val subType: TypecheckingEnv.t -> Pos.t -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
 end = struct
     datatype either = datatype Either.t
     structure Uv = TypeVars.Uv
     structure Path = TypeVars.Path
     datatype predicativity = datatype TypeVars.predicativity
-    structure FType = FlexFAst.Type
+    structure FAst = FlexFAst
+    structure FType = FAst.Type
     structure Concr = FType.Concr
-    datatype abs' = datatype FAst.Type.abs
-    datatype concr' = datatype FAst.Type.concr
+    datatype abs' = datatype FAst.Type.abs'
+    datatype concr' = datatype FAst.Type.concr'
     type concr = FType.concr
     datatype sv = datatype FType.sv
-    datatype co' = datatype FAst.Type.co
+    datatype co' = datatype FAst.Type.co'
     val concr = FType.Abs.concr
-    structure FTerm = FlexFAst.Term
+    structure FTerm = FAst.Term
     structure Env = TypecheckingEnv
     structure Scope = Env.Scope
     open TypeError

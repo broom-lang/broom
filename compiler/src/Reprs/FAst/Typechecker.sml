@@ -2,10 +2,11 @@ structure FAstTypechecker :> sig
     val typecheck: FixedFAst.Term.expr -> ((* FIXME: *) unit, FixedFAst.Type.concr) Either.t
     val typecheckProgram: FixedFAst.Term.stmt vector -> (* FIXME: *) unit option
 end = struct
+    structure FAst = FixedFAst
     structure FType = FAst.Type
-    structure FFType = FixedFAst.Type
+    structure FFType = FAst.Type
     structure Prim = FFType.Prim
-    structure FFTerm = FixedFAst.Term
+    structure FFTerm = FAst.Term
 
     structure Env :> sig
         type t
@@ -27,8 +28,8 @@ end = struct
     end
 
     datatype kind = datatype FAst.Type.kind
-    datatype concr = datatype FAst.Type.concr
-    datatype abs = datatype FAst.Type.abs
+    datatype concr = datatype FAst.Type.concr'
+    datatype abs = datatype FAst.Type.abs'
     datatype expr = datatype FAst.Term.expr
     datatype stmt = datatype FAst.Term.stmt
 

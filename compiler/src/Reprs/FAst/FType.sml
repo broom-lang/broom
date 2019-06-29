@@ -242,3 +242,40 @@ structure FType :> FAST_TYPE = struct
     end
 end
 
+signature CLOSED_FAST_TYPE = sig
+    structure Prim: PRIM_TYPE where type t = PrimType.t
+    structure ScopeId: ID
+
+    datatype kind = datatype FType.kind
+    type def = FType.def
+
+    datatype concr' = datatype FType.concr
+    datatype abs' = datatype FType.abs
+    datatype co' = datatype FType.co
+
+    type sv
+    type concr = sv FType.concr
+    type abs = sv FType.abs
+    type co = sv FType.co
+
+    val kindToDoc: kind -> PPrint.t
+    val defToDoc: def -> PPrint.t
+    val svarToDoc: sv -> PPrint.t
+    val rowExtTail: concr -> concr
+    val unit: Pos.t -> concr
+
+    structure Concr: sig
+        val pos: concr -> Pos.t
+        val toDoc: concr -> PPrint.t
+        val toString: concr -> string
+        val substitute: concr Id.SortedMap.map -> concr -> concr
+    end
+
+    structure Abs: sig
+        val pos: abs -> Pos.t
+        val toDoc: abs -> PPrint.t
+        val toString: abs -> string
+        val concr: concr -> abs
+    end
+end
+

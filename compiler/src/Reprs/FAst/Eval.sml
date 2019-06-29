@@ -11,8 +11,9 @@ structure FAstEval :> sig
     val newToplevel: unit -> toplevel
     val interpret: toplevel -> FixedFAst.Term.stmt -> (runtime_error, Value.t) Either.t
 end = struct
-    datatype expr = datatype FAst.Term.expr
-    datatype stmt = datatype FAst.Term.stmt
+    structure FTerm = FixedFAst.Term
+    datatype expr = datatype FTerm.expr
+    datatype stmt = datatype FTerm.stmt
 
     structure Value = struct
         datatype t = Int of int
