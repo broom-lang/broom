@@ -14,6 +14,7 @@ end = struct
     structure Concr = FType.Concr
     datatype abs' = datatype FAst.Type.abs'
     type concr = FType.concr
+    type abs = FType.abs
     val concr = FType.Abs.concr
 
     open TypeError
@@ -243,7 +244,7 @@ end = struct
             end
          | CTerm.Ann (pos, expr, t) =>
             let val (defs, t) = elaborateType env t
-            in elaborateAsExists env (pos, Vector.fromList defs, t) expr
+            in elaborateAsExists env (Exists (pos, Vector.fromList defs, t)) expr
             end
          | CTerm.Type (pos, t) =>
             let val (defs, body) = elaborateType env t
@@ -310,7 +311,17 @@ end = struct
         in FTerm.TFn (pos, params, elaborateExprAs env body expr)
         end
 
-    and elaborateAsExists env (pos, params: FType.def vector, body) expr =
+    and elaborateAsExists env (t: abs) expr =
+        let val (implType, coScope, namedPaths) = instantiateExistential env t
+            val pos = CTerm.exprPos expr
+        in ( implType
+           , FTerm.Let ( pos
+                       , Vector.map (fn (name, co) => FTerm.Axiom (pos, name, co)) namedPaths
+                       , elaborateExprAs (Env.pushScope env coScope) implType expr ) )
+        end
+
+    and instantiateExistential env (Exists (pos, params: FType.def vector, body))
+            : concr * Scope.t * (Name.t * concr) vector = 
         let val coScopeId = Scope.Id.fresh ()
             val coScope = Scope.Marker coScopeId
 
@@ -334,11 +345,7 @@ end = struct
                                        Id.SortedMap.empty
                                        (Vector.zip (params, paths))
             val implType = Concr.substitute mapping body
-            val pos = CTerm.exprPos expr
-        in ( implType
-           , FTerm.Let ( pos
-                       , Vector.map (fn (name, co) => FTerm.Axiom (pos, name, co)) namedPaths
-                       , elaborateExprAs (Env.pushScope env coScope) implType expr ) )
+        in (implType, coScope, namedPaths)
         end
 
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)
