@@ -2,6 +2,7 @@ structure TypecheckingEnv :> sig
     type input_type = Cst.Type.typ
     type input_expr = Cst.Term.expr
     type output_type = FlexFAst.Type.concr
+    type abs_ctx = FlexFAst.ScopeId.t * (Name.t * output_type) vector 
     type output_expr = FlexFAst.Term.expr
 
     structure Bindings: sig
@@ -18,7 +19,7 @@ structure TypecheckingEnv :> sig
             datatype binding_state
                 = Unvisited of input_type option * input_expr option
                 | Visiting of input_type option * input_expr option
-                | Typed of output_type * input_expr option
+                | Typed of output_type * abs_ctx option * input_expr option
                 | Visited of output_type * output_expr option
 
             type bindings
@@ -68,6 +69,7 @@ end = struct
     type input_type = Cst.Type.typ
     type input_expr = Cst.Term.expr
     type output_type = FAst.Type.concr
+    type abs_ctx = FlexFAst.ScopeId.t * (Name.t * output_type) vector 
     type output_expr = FAst.Term.expr
 
     val op|> = Fn.|>
@@ -96,7 +98,7 @@ end = struct
             datatype binding_state
                 = Unvisited of input_type option * input_expr option
                 | Visiting of input_type option * input_expr option
-                | Typed of output_type * input_expr option
+                | Typed of output_type * abs_ctx option * input_expr option
                 | Visited of output_type * output_expr option
 
             type bindings = binding_state NameHashTable.hash_table

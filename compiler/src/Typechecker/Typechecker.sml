@@ -40,31 +40,37 @@ end = struct
                 case args
                 of (SOME t, oexpr) =>
                     (case elaborateType env t
-                     of ([], t) => (t, Typed (t, oexpr)))
+                     of ([], t) => (t, Typed (t, NONE, oexpr))
+                      | (defs, t) =>
+                         let val (t, scopeId, namedPaths) =
+                                 instantiateExistential env (Exists (pos, Vector.fromList defs, t))
+                         in (t, Typed (t, SOME (scopeId, namedPaths), oexpr))
+                         end)
                  | (NONE, SOME expr) =>
                     let val (t, expr) = elaborateExpr env expr
                     in (t, Visited (t, SOME expr))
                     end
                  | (NONE, oexpr as NONE) =>
                     let val t = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
-                    in (t, Typed (t, oexpr))
+                    in (t, Typed (t, NONE, oexpr))
                     end
         in case valOf (Env.findExpr env name)
            of Unvisited _ => raise Fail "unreachable" (* State is at 'least' `Visiting`. *)
             | Visiting _ =>
                ( Env.updateExpr pos env name (Fn.constantly binding')
                 ; t )
-            | Typed (usageTyp, _) | Visited (usageTyp, _) =>
+            | Typed (usageTyp, NONE, _) | Visited (usageTyp, _) =>
                (* We must have found a cycle and used `cyclicBindingType`. *)
                ( ignore (subType env pos (t, usageTyp))
                ; usageTyp )
+            | Typed (_, SOME _, _) => raise Fail "unreachable"
         end
       
     (* In case we encounter a recursive reference to `name` not broken by type annotations we call
        this to insert a unification variable, inferring a monomorphic type. *)
     and cyclicBindingType pos env name (_, oexpr) =
         let val t = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
-        in Env.updateExpr pos env name (Fn.constantly (Typed (t, oexpr)))
+        in Env.updateExpr pos env name (Fn.constantly (Typed (t, NONE, oexpr)))
          ; t
         end
 
@@ -76,7 +82,7 @@ end = struct
     and lookupValType expr name env: concr option =
         Option.map (fn (Unvisited args, env) => unvisitedBindingType (CTerm.exprPos expr) env name args
                      | (Visiting args, env) => cyclicBindingType (CTerm.exprPos expr) env name args
-                     | (Typed (t, _) | Visited (t, _), _) => t)
+                     | (Typed (t, _, _) | Visited (t, _), _) => t)
                    (Env.findExprClosure env name)
 
 (* Elaborating subtrees *)
@@ -152,7 +158,8 @@ end = struct
                 , case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
                   of Unvisited args => unvisitedBindingType (CType.pos t) env name args
                    | Visiting args => cyclicBindingType (CType.pos t) env name args
-                   | Typed (t, _) | Visited (t, _) => t )
+                   | Typed (t, NONE, _) | Visited (t, _) => t
+                   | Typed (_, SOME _, _) => raise Fail "unreachable" )
 
             val t = elaborate env t
             val defs = Bindings.Type.defs absBindings
@@ -311,19 +318,14 @@ end = struct
         in FTerm.TFn (pos, params, elaborateExprAs env body expr)
         end
 
-    and elaborateAsExists env (t: abs) expr =
-        let val (implType, coScope, namedPaths) = instantiateExistential env t
-            val pos = CTerm.exprPos expr
-        in ( implType
-           , FTerm.Let ( pos
-                       , Vector.map (fn (name, co) => FTerm.Axiom (pos, name, co)) namedPaths
-                       , elaborateExprAs (Env.pushScope env coScope) implType expr ) )
+    and elaborateAsExists env t expr: concr * FTerm.expr =
+        let val tWithCtx as (t, _, _) = instantiateExistential env t
+        in (t, elaborateAsExistsInst env tWithCtx expr)
         end
 
     and instantiateExistential env (Exists (pos, params: FType.def vector, body))
-            : concr * Scope.t * (Name.t * concr) vector = 
+            : concr * Scope.Id.t * (Name.t * concr) vector = 
         let val coScopeId = Scope.Id.fresh ()
-            val coScope = Scope.Marker coScopeId
 
             val typeFnArgs = Vector.map (fn def => FType.UseT (pos, def)) (Env.bigLambdaParams env)
             val typeFns = Vector.map (Env.freshAbstract env (Vector.length typeFnArgs)) params
@@ -345,7 +347,14 @@ end = struct
                                        Id.SortedMap.empty
                                        (Vector.zip (params, paths))
             val implType = Concr.substitute mapping body
-        in (implType, coScope, namedPaths)
+        in (implType, coScopeId, namedPaths)
+        end
+
+    and elaborateAsExistsInst env (implType, scopeId, namedPaths) expr =
+        let val pos = CTerm.exprPos expr
+        in FTerm.Let ( pos
+                     , Vector.map (fn (name, co) => FTerm.Axiom (pos, name, co)) namedPaths
+                     , elaborateExprAs (Env.pushScope env (Scope.Marker scopeId)) implType expr )
         end
 
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)
@@ -362,9 +371,13 @@ end = struct
                 val expr =
                     case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
                     of Unvisited _ | Visiting _ => raise Fail "unreachable" (* Not possible after `lookupValType`. *)
-                     | Typed (_, SOME expr) => elaborateExprAs env t expr
+                     | Typed (_, ctx, SOME expr) =>
+                        (case ctx
+                         of SOME (scopeId, namedPaths) =>
+                             elaborateAsExistsInst env (t, scopeId, namedPaths) expr
+                          | NONE => elaborateExprAs env t expr)
                      | Visited (_, SOME expr) => expr
-                     | Typed (_, NONE) | Visited (_, NONE) => raise Fail "unreachable"
+                     | Typed (_, _, NONE) | Visited (_, NONE) => raise Fail "unreachable"
             in FTerm.Val (pos, {var = name, typ = t}, expr)
             end
          | CTerm.Expr expr => FTerm.Expr (elaborateExprAs env (FType.unit (CTerm.exprPos expr)) expr)
