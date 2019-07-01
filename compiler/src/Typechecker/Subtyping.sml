@@ -124,6 +124,7 @@ end = struct
             ( subType env currPos (t, t')
             ; subType env currPos (t', t)
             ; SOME (fn _ => FTerm.Type (pos, sup)))
+         | (CallTFn _, CallTFn _) => raise Fail "unimplemented"
          | (UseT (_, {var, ...}), UseT (_, {var = var', ...})) =>
             if var = var'
             then if idInScope env var
@@ -141,8 +142,7 @@ end = struct
          | (_, SVar (_, UVar uv)) => superUv env currPos uv typ
          | (_, SVar (_, Path path)) => suberPath env currPos Super path typ
          | (SVar (_, Path path), _) => suberPath env currPos Sub path superTyp
-         | _ => raise Fail ("unimplemented: " ^ Concr.toString typ ^ " <: "
-                            ^ Concr.toString superTyp)
+         | _ => raise TypeError (NonSubType (currPos, concr typ, concr superTyp))
 
     and subArrows env currPos ({domain, codomain}, {domain = domain', codomain = codomain'}) =
         let val coerceDomain = subType env currPos (domain', domain)
@@ -193,8 +193,8 @@ end = struct
     and suberPath env currPos y path t =
         case Path.get (Env.hasScope env) path
         of Left (face, NONE) => subType env currPos (case y
-                                                            of Sub => (face, t)
-                                                             | Super => (t, face))
+                                                     of Sub => (face, t)
+                                                      | Super => (t, face))
          | Left (face, SOME coercionDef) => (* FIXME: enforce predicativity: *)
             if Concr.pathOccurs path t
             then raise TypeError (Occurs (face, concr t))

@@ -8,7 +8,7 @@ end
 structure PrimType :> PRIM_TYPE = struct
     datatype t = Unit | Bool | I32
     
-    val toString = fn Unit => "()"
+    val toString = fn Unit => "Unit"
                     | Bool => "Bool"
                     | I32 => "I32"
 

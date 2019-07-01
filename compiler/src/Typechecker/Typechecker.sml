@@ -32,37 +32,61 @@ end = struct
 
     val nameFromId = Name.fromString o Id.toString
 
-(* Looking up `val` types *)
+(* Looking up statement/declaration types *)
 
-    fun unvisitedBindingType pos env name args =
+    (* TODO: Clean this callbacks stuff up, it wasn't necessary after all: *)
+
+    type lookup_callbacks =
+         { onCycle: Pos.t -> Env.t -> Name.t -> CType.typ option * CTerm.expr option -> abs
+         , onAnnotation: Pos.t -> Env.t -> CType.typ -> CTerm.expr option -> abs * Bindings.Expr.binding_state }
+
+    fun lookupCallbacksInExpr () =
+        { onCycle = cyclicBindingType
+        , onAnnotation = fn pos => fn env => fn t => fn oexpr =>
+                             (case elaborateType env t
+                              of ([], t) => (concr t, Typed (t, NONE, oexpr))
+                               | (defs, t) =>
+                                  let val (t, scopeId, namedPaths) =
+                                         instantiateExistential env (Exists (pos, Vector.fromList defs, t))
+                                  in (concr t, Typed (t, SOME (scopeId, namedPaths), oexpr))
+                                  end) }
+
+    and lookupCallbacksInType () =
+        { onCycle = fn pos => fn _ => fn _ => fn _ => raise Fail ("Type cycle at " ^ Pos.toString pos)
+        , onAnnotation = fn pos => fn env => fn t => fn oexpr =>
+                             (case elaborateType env t
+                              of ([], t) => (concr t, Typed (t, NONE, oexpr))
+                               | (defs, t) => 
+                                  (Exists (pos, Vector.fromList defs, t), Typed (t, NONE, oexpr))) }
+
+    and unvisitedBindingType pos env name args =
         let do Env.updateExpr pos env name (Fn.constantly (Visiting args)) (* Mark binding 'grey'. *)
-            val (t, binding') =
+            val (t as Exists (_, _, body), binding') =
                 case args
                 of (SOME t, oexpr) =>
-                    (case elaborateType env t
-                     of ([], t) => (t, Typed (t, NONE, oexpr))
-                      | (defs, t) =>
-                         let val (t, scopeId, namedPaths) =
-                                 instantiateExistential env (Exists (pos, Vector.fromList defs, t))
-                         in (t, Typed (t, SOME (scopeId, namedPaths), oexpr))
-                         end)
+                    let val {onAnnotation, ...} =
+                            case valOf (Env.topScope env)
+                            of Scope.InterfaceScope _ => lookupCallbacksInType ()
+                             | _ => lookupCallbacksInExpr ()
+                    in onAnnotation pos env t oexpr
+                    end
                  | (NONE, SOME expr) =>
                     let val (t, expr) = elaborateExpr env expr
-                    in (t, Visited (t, SOME expr))
+                    in (concr t, Visited (t, SOME expr))
                     end
                  | (NONE, oexpr as NONE) =>
                     let val t = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
-                    in (t, Typed (t, NONE, oexpr))
+                    in (concr t, Typed (t, NONE, oexpr))
                     end
         in case valOf (Env.findExpr env name)
            of Unvisited _ => raise Fail "unreachable" (* State is at 'least' `Visiting`. *)
             | Visiting _ =>
                ( Env.updateExpr pos env name (Fn.constantly binding')
-                ; t )
+               ; t )
             | Typed (usageTyp, NONE, _) | Visited (usageTyp, _) =>
                (* We must have found a cycle and used `cyclicBindingType`. *)
-               ( ignore (subType env pos (t, usageTyp))
-               ; usageTyp )
+               ( ignore (subType env pos (body, usageTyp))
+               ; concr usageTyp )
             | Typed (_, SOME _, _) => raise Fail "unreachable"
         end
       
@@ -71,7 +95,7 @@ end = struct
     and cyclicBindingType pos env name (_, oexpr) =
         let val t = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
         in Env.updateExpr pos env name (Fn.constantly (Typed (t, NONE, oexpr)))
-         ; t
+         ; concr t
         end
 
     (* Get the type of the variable `name`, referenced at `pos`, from `env` by either
@@ -79,11 +103,23 @@ end = struct
        - elaborating the expression bound to the variable (if available)
        - returning a fresh unification variable (if neither type annotation nor bound expression
          is available or if a cycle is encountered) *)
-    and lookupValType expr name env: concr option =
-        Option.map (fn (Unvisited args, env) => unvisitedBindingType (CTerm.exprPos expr) env name args
-                     | (Visiting args, env) => cyclicBindingType (CTerm.exprPos expr) env name args
-                     | (Typed (t, _, _) | Visited (t, _), _) => t)
+    and lookupType ({onCycle, onAnnotation}: lookup_callbacks) expr name env =
+        Option.map (fn (Unvisited args, env) =>
+                        unvisitedBindingType (CTerm.exprPos expr) env name args
+                     | (Visiting args, env) => 
+                        let val {onCycle, ...} =
+                                case valOf (Env.topScope env)
+                                of Scope.InterfaceScope _ => lookupCallbacksInType ()
+                                 | _ => lookupCallbacksInExpr ()
+                        in onCycle (CTerm.exprPos expr) env name args
+                        end
+                     | (Typed (t, _, _) | Visited (t, _), _) => concr t)
                    (Env.findExprClosure env name)
+
+    and lookupValType expr name env: concr option =
+        lookupType (lookupCallbacksInExpr ()) expr name env
+            (* FIXME: If `elaborateType` called us transitively, it won't `reAbstract` the `defs` we toss here: *)
+            |> Option.map (fn Exists (_, defs, t) => t)
 
 (* Elaborating subtrees *)
 
@@ -156,9 +192,10 @@ end = struct
             and elaborateDecl env (name, t) =
                 ( name
                 , case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
-                  of Unvisited args => unvisitedBindingType (CType.pos t) env name args
-                   | Visiting args => cyclicBindingType (CType.pos t) env name args
-                   | Typed (t, NONE, _) | Visited (t, _) => t
+                  of Unvisited args => reAbstract (unvisitedBindingType (CType.pos t) env name args)
+                   | Visiting args => 
+                      reAbstract ((lookupCallbacksInType () |> #onCycle) (CType.pos t) env name args)
+                   | Typed (t, _, _) | Visited (t, _) => t
                    | Typed (_, SOME _, _) => raise Fail "unreachable" )
 
             val t = elaborate env t
@@ -171,7 +208,7 @@ end = struct
             do Vector.app (fn (name, t) =>
                                 Bindings.Expr.Builder.insert builder name (Unvisited (SOME t, NONE)))
                           decls
-        in Scope.BlockScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
+        in Scope.InterfaceScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
         end
 
     and stmtsScope stmts =
@@ -222,6 +259,9 @@ end = struct
             let val t = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
             in (t, elaborateExprAs env t expr)
             end
+         (* TODO: Descend into subcomponents of records and modules so that e.g.
+                  `module val id = fn _ => fn x => x end : interface val id: fun a: type => a -> a end`
+                  will work. It would also avoid an intermediate record in the elaborated code. *)
          | CTerm.Record (pos, fields) => elaborateRecord env pos fields
          | CTerm.Module (pos, stmts) =>
             let val env = Env.pushScope env (stmtsScope stmts)

@@ -119,6 +119,7 @@ nonArrowTyp : purelyTyp (purelyTyp)
             | expr (case expr
                     of Term.Use (_, name) => (case Name.toString name
                                               of "Int" => Type.Prim (exprleft, Type.Prim.I32)
+                                               | "Unit" => Type.Prim (exprleft, Type.Prim.Unit)
                                                | _ => Type.Path expr)
                     | _ => Type.Path expr)
 
@@ -127,6 +128,7 @@ nestableTyp : purelyTyp (purelyTyp)
             | nestable (case nestable
                         of Term.Use (_, name) => (case Name.toString name
                                                   of "Int" => Type.Prim (nestableleft, Type.Prim.I32)
+                                                   | "Unit" => Type.Prim (nestableleft, Type.Prim.Unit)
                                                    | _ => Type.Path nestable)
                         | _ => Type.Path nestable)
 

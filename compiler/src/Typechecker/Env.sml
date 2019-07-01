@@ -48,6 +48,7 @@ structure TypecheckingEnv :> sig
     type t
 
     val empty: t
+    val topScope: t -> Scope.t option
     val pushScope: t -> Scope.t -> t
     val scopeIds: t -> Scope.Id.t list
     val hasScope: t -> Scope.Id.t -> bool
@@ -148,6 +149,11 @@ end = struct
     type t = {scopeIds: Scope.Id.t list, scopes: Scope.t list}
 
     val empty = {scopeIds = [], scopes = []}
+
+    fun topScope {scopes, scopeIds = _} =
+        case scopes
+        of scope :: _ => SOME scope
+         | [] => NONE
 
     fun pushScope {scopeIds, scopes} scope =
         {scopes = scope :: scopes, scopeIds = Scope.id scope :: scopeIds}

@@ -178,7 +178,8 @@ structure FType :> FAST_TYPE = struct
         let val rec subst =
                 fn t as ForAll (pos, params, body) =>
                     let val mapping = Vector.foldl (fn ({var, ...}, mapping) =>
-                                                        #1 (Id.SortedMap.remove (mapping, var)))
+                                                        (#1 (Id.SortedMap.remove (mapping, var)))
+                                                        handle _ => mapping)
                                                    mapping params
                     in mapConcrChildren subst t
                     end
@@ -193,7 +194,8 @@ structure FType :> FAST_TYPE = struct
     and absSubstitute svarSubst mapping =
         fn t as Exists (pos, params, body) =>
             let val mapping = Vector.foldl (fn ({var, ...}, mapping) =>
-                                                #1 (Id.SortedMap.remove (mapping, var)))
+                                                (#1 (Id.SortedMap.remove (mapping, var)))
+                                                handle _ => mapping)
                                            mapping params
             in mapAbsChildren (concrSubstitute svarSubst mapping) t
             end
@@ -212,6 +214,7 @@ structure FType :> FAST_TYPE = struct
              | RowExt (pos, _) => pos
              | EmptyRow pos => pos
              | Type (pos, _) => pos
+             | CallTFn (pos, _, _) => pos
              | SVar (pos, _) => pos
              | UseT (pos, _) => pos
              | Prim (pos, _) => pos
