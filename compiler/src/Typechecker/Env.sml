@@ -55,6 +55,7 @@ structure TypecheckingEnv :> sig
 
     val findType: t -> FType.Id.t -> Bindings.Type.binding option
     val bigLambdaParams: t -> FlexFAst.Type.def vector
+    val nearestExists: t -> Scope.t option
     val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
     val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
     val freshAbstract: t -> int -> FlexFAst.Type.def -> Name.t
@@ -172,6 +173,9 @@ end = struct
         end
 
     fun bigLambdaParams env = #[] (* FIXME *)
+
+    fun nearestExists {scopes, scopeIds = _} =
+        List.find (fn Scope.ExistsScope _ => true | _ => false) scopes
 
     fun newUv (env: t) (predicativity, name) =
         case #scopes env

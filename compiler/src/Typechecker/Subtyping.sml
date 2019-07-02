@@ -33,7 +33,7 @@ end = struct
                  (Env.hasScope env)
 
     type coercion = (FTerm.expr -> FTerm.expr) option
-    type field_coercion = Name.t * (FTerm.expr -> FTerm.expr)
+    type field_coercion = Name.t * concr * (FTerm.expr -> FTerm.expr)
 
     fun applyCoercion (coerce: coercion) expr =
         case coerce
@@ -109,7 +109,20 @@ end = struct
          | (Arrow (_, arr), Arrow (_, arr')) => subArrows env currPos (arr, arr')
          | (Record (_, row), Record (_, row')) => 
             (case subRows env currPos (row, row')
-             of [] => NONE)
+             of [] => NONE
+              | fieldCoercions =>
+                 SOME (fn expr =>
+                           let val tmpName = Name.fresh ()
+                               val tmpDef = {var = tmpName, typ}
+                               val tmpUse = FTerm.Use (currPos, tmpDef)
+                               fun emitField (label, fieldt, coerceField) =
+                                   (label, coerceField (FTerm.Field (currPos, fieldt, tmpUse, label)))
+                           in FTerm.Let ( currPos, #[FTerm.Val (currPos, tmpDef, expr)]
+                                        , FTerm.Extend ( currPos
+                                                       , superTyp
+                                                       , Vector.map emitField (Vector.fromList fieldCoercions)
+                                                       , SOME tmpUse ) )
+                           end))
          | (RowExt _, RowExt _) =>
            ( subRows env currPos (typ, superTyp)
            ; NONE ) (* No values of row type exist => coercion unnecessary *)
@@ -165,7 +178,7 @@ end = struct
                         val coerceField = subType env currPos (fieldt, fieldt')
                         val coerceExt = subExts (ext, ext')
                     in case coerceField
-                       of SOME coerceField => (label, coerceField) :: coerceExt
+                       of SOME coerceField => (label, fieldt', coerceField) :: coerceExt
                         | NONE => coerceExt
                     end
                  | rows => (subType env currPos rows; [])

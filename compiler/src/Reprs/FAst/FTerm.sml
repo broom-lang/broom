@@ -6,7 +6,7 @@ signature FAST_TERM = sig
     datatype expr
         = Fn of Pos.t * def * expr
         | TFn of Pos.t * Type.def vector * expr
-        | Extend of Pos.t * Type.concr  * (Name.t * expr) vector * expr option
+        | Extend of Pos.t * Type.concr * (Name.t * expr) vector * expr option
         | App of Pos.t * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.t * Type.concr * {callee: expr, args: Type.concr vector}
         | Field of Pos.t * Type.concr * expr * Name.t

@@ -121,6 +121,19 @@ end = struct
             (* FIXME: If `elaborateType` called us transitively, it won't `reAbstract` the `defs` we toss here: *)
             |> Option.map (fn Exists (_, defs, t) => t)
 
+    and reAbstract env =
+        fn Exists (_, #[], t) => t
+         | Exists (pos, params, body) =>
+            let val SOME (Scope.ExistsScope (_, absBindings)) = Env.nearestExists env
+                val mapping =
+                    Vector.foldl (fn ({var, kind}, mapping) =>
+                                      let val id' = Bindings.Type.fresh absBindings kind
+                                      in Id.SortedMap.insert (mapping, var, FType.UseT (pos, {var = id', kind}))
+                                      end)
+                                 Id.SortedMap.empty params
+            in Concr.substitute mapping body
+            end
+
 (* Elaborating subtrees *)
 
     (* Elaborate the type `typ` and return the elaborated version. *)
@@ -128,18 +141,6 @@ end = struct
         let val absBindings = Bindings.Type.new ()
             val absScope = Scope.ExistsScope (Scope.Id.fresh (), absBindings)
             val env = Env.pushScope env absScope
-
-            val rec reAbstract =
-                fn Exists (_, #[], t) => t
-                 | Exists (pos, params, body) =>
-                    let val mapping =
-                            Vector.foldl (fn ({var, kind}, mapping) =>
-                                              let val id' = Bindings.Type.fresh absBindings kind
-                                              in Id.SortedMap.insert (mapping, var, FType.UseT (pos, {var = id', kind}))
-                                              end)
-                                         Id.SortedMap.empty params
-                    in Concr.substitute mapping body
-                    end
 
             fun elaborate env =
                 fn CType.Pi (pos, {var, typ = domain}, codomain) =>
@@ -178,7 +179,7 @@ end = struct
                     end
                  | CType.Path pathExpr =>
                     (case #1 (elaborateExpr env pathExpr)
-                     of FType.Type (_, t) => reAbstract t
+                     of FType.Type (_, t) => reAbstract env t
                       | _ => raise Fail ("Type path " ^ CTerm.exprToString pathExpr
                                          ^ "does not denote type at " ^ Pos.toString (CTerm.exprPos pathExpr)))
                  | CType.TypeT pos =>
@@ -192,9 +193,9 @@ end = struct
             and elaborateDecl env (name, t) =
                 ( name
                 , case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
-                  of Unvisited args => reAbstract (unvisitedBindingType (CType.pos t) env name args)
+                  of Unvisited args => reAbstract env (unvisitedBindingType (CType.pos t) env name args)
                    | Visiting args => 
-                      reAbstract ((lookupCallbacksInType () |> #onCycle) (CType.pos t) env name args)
+                      reAbstract env ((lookupCallbacksInType () |> #onCycle) (CType.pos t) env name args)
                    | Typed (t, _, _) | Visited (t, _) => t
                    | Typed (_, SOME _, _) => raise Fail "unreachable" )
 
