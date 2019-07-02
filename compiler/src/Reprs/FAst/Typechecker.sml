@@ -170,7 +170,7 @@ end = struct
                 val mapping = Vector.foldl (fn (({var, ...}, arg), mapping) =>
                                                 Id.SortedMap.insert (mapping, var, arg))
                                            Id.SortedMap.empty pargs
-                val typ' = FFType.Concr.substitute mapping body
+                val typ' = FFType.Concr.substitute (Fn.constantly false) mapping body
             in checkEq env (typ', typ)
              ; typ
             end

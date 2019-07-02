@@ -107,7 +107,7 @@ end = struct
                                       in Id.SortedMap.insert (mapping, var, FType.UseT (pos, {var = id', kind}))
                                       end)
                                  Id.SortedMap.empty params
-            in Concr.substitute mapping body
+            in Concr.substitute (Env.hasScope env) mapping body
             end
 
 (* Elaborating subtrees *)
@@ -362,7 +362,7 @@ end = struct
                                             Id.SortedMap.insert (mapping, var, path))
                                        Id.SortedMap.empty
                                        (Vector.zip (params, paths))
-            val implType = Concr.substitute mapping body
+            val implType = Concr.substitute (Env.hasScope env) mapping body
         in (implType, coScopeId, namedPaths)
         end
 
@@ -410,7 +410,7 @@ end = struct
                                               end)
                                          Id.SortedMap.empty params
                         val args = Id.SortedMap.listItems mapping |> Vector.fromList
-                        val calleeType = Concr.substitute mapping t
+                        val calleeType = Concr.substitute (Env.hasScope env) mapping t
                     in coerce (FTerm.TApp (pos, calleeType, {callee, args})) calleeType
                     end
                  | FType.Arrow (_, domains) => (callee, domains)

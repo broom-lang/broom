@@ -275,7 +275,7 @@ signature CLOSED_FAST_TYPE = sig
         val pos: concr -> Pos.t
         val toDoc: concr -> PPrint.t
         val toString: concr -> string
-        val substitute: concr Id.SortedMap.map -> concr -> concr
+        val substitute: (ScopeId.t -> bool) ->concr Id.SortedMap.map -> concr -> concr
     end
 
     structure Abs: sig

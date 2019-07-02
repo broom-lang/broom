@@ -90,7 +90,7 @@ end = struct
                                       Id.SortedMap.insert (mapping, var, UseT (currPos, def')))
                                  Id.SortedMap.empty
                                  (Vector.zip (params, params'))
-                val body = Concr.substitute mapping body
+                val body = Concr.substitute (Env.hasScope env) mapping body
             in Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params', coerce expr))
                           (subType env currPos (typ, body))
             end
@@ -102,7 +102,7 @@ end = struct
                    Vector.foldl (fn (({var, ...}, arg), mapping) => Id.SortedMap.insert (mapping, var, arg))
                                 Id.SortedMap.empty
                                 (Vector.zip (params, args))
-               val body = Concr.substitute mapping body
+               val body = Concr.substitute (Env.hasScope env) mapping body
            in Option.map (fn coerce => fn expr => coerce (FTerm.TApp (currPos, body, {callee = expr, args})))
                          (subType env currPos (body, superTyp))
            end

@@ -47,11 +47,15 @@ structure FlexFAst = struct
             and pathSvarOccurs path =
                 fn Path path' => TypeVars.Path.eq (path', path)
 
-            fun substitute kv = FType.Concr.substitute svarSubstitute kv
-            and svarSubstitute kv =
-                fn UVar uv => (case TypeVars.Uv.get uv
+            fun substitute hasScope kv = FType.Concr.substitute (svarSubstitute hasScope) kv
+            and svarSubstitute hasScope kv =
+                fn Path path =>
+                    (case TypeVars.Path.get hasScope path
+                     of Either.Left _ => NONE (* path faces are always CallTFn:s with OVar args *)
+                      | Either.Right (t, _) => SOME (substitute hasScope kv t))
+                 | UVar uv => (case TypeVars.Uv.get uv
                                of Either.Left _ => NONE
-                                | Either.Right t => SOME (substitute kv t))
+                                | Either.Right t => SOME (substitute hasScope kv t))
 
             val tryToUv =
                 fn SVar (_, UVar uv) => SOME uv
@@ -65,7 +69,6 @@ structure FlexFAst = struct
             val toString = toString svarToDoc
 
             val occurs = occurs Concr.svarOccurs
-            val substitute = substitute Concr.svarSubstitute
         end
     end
 
@@ -96,7 +99,7 @@ structure FixedFAst = struct
             open Concr
 
             val toDoc = toDoc svarToDoc
-            val substitute: concr Id.SortedMap.map -> concr -> concr = substitute (fn _ => fn _ => NONE)
+            val substitute = fn hasScope => substitute (fn _ => fn _ => NONE)
             val kindOf: concr -> kind = kindOf (fn _ => raise Fail "unreachable")
             val toString = concrToString
         end
@@ -106,7 +109,6 @@ structure FixedFAst = struct
 
             val toDoc = toDoc svarToDoc
             val toString = toString svarToDoc
-            val substitute: concr Id.SortedMap.map -> abs -> abs = substitute (fn _ => fn _ => NONE)
         end
     end
 
