@@ -71,7 +71,7 @@ end = struct
                            (case FAstEval.interpret venv stmt
                             of Either.Left err => printErr "Runtime error.\n"
                              | Either.Right v =>
-                                print ( Name.toString var ^ " "
+                                print ( Name.toString var ^ " = "
                                       ^ FAstEval.Value.toString v ^ " : "
                                       ^ FixedFAst.Type.Concr.toString typ ^ "\n" ))
                         | stmt as (Expr _) =>

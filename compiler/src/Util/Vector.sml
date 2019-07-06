@@ -1,6 +1,11 @@
 structure Vector = struct
     open Vector
 
+    fun uncons xs =
+        if length xs > 0
+        then SOME (sub (xs, 0), VectorSlice.slice (xs, 1, NONE))
+        else NONE
+
     fun zip (xs, ys) =
         let val len = Int.min (Vector.length xs, Vector.length ys)
             val {update, done, ...} = MLton.Vector.create len
