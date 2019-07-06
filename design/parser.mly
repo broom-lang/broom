@@ -1,8 +1,8 @@
 %token VAR BINOP
-       WILD "_"
+       (* WILD "_" *)
        DO "do" END "end" MODULE "module"
        TYPE "type" INTERFACE "interface"
-       EQ "=" RDARROW "=>"
+       EQ "=" RDARROW "=>" RARROW "->"
        DOT "." DDOT ".."
        LPAREN "(" RPAREN ")" LBRACKET "[" RBRACKET "]" LBRACE "{" RBRACE "}"
        BAR "|" AMP "&"
@@ -56,7 +56,8 @@ clause : "|" params expr {()}
 params : params param {()}
        | param {()}
 
-param : apattern "=>" {()} (* or-patterns need to be parenthesized to be unambiguous *)
+param : apattern "->" {()} (* or-patterns need to be parenthesized to be unambiguous *)
+      | apattern "=>" {()}
 
 rowExpr : fields tail {()}
 
@@ -85,7 +86,10 @@ apattern : apattern "&" expr {()}
 
 (* Types *)
 
-typ : expr {()}
+(* We can recognize and promote `(a: type) -> list a` to a pi after parsing it: *)
+typ : expr "->" typ {()}
+    | expr "=>" typ {()}
+    | expr {()}
 
 typeAnn : binapp {()}
 
