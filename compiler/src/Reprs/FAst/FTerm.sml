@@ -36,10 +36,14 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
     val op<++> = PPrint.<++>
+    val op<|> = PPrint.<|>
     val space = PPrint.space
+    val newline = PPrint.newline
     val parens = PPrint.parens
     val brackets = PPrint.brackets
     val braces = PPrint.braces
+    val punctuate = PPrint.punctuate
+    val align = PPrint.align
 
     structure Type = Type
 
@@ -81,7 +85,10 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
    val rec stmtToDoc =
        fn Val (_, def, valExpr) =>
-           text "val" <+> defToDoc def <+> text "=" <+> PPrint.align (exprToDoc valExpr)
+           let val lhs = text "val" <+> defToDoc def <+> text "="
+               val rhs = PPrint.align (exprToDoc valExpr)
+           in lhs <> (space <> rhs <|> PPrint.nest 4 (newline <> rhs))
+           end
         | Axiom (_, name, typ) =>
            text "axiom" <+> Name.toDoc name <> text ":" <+> Type.Concr.toDoc typ
         | Expr expr => exprToDoc expr
@@ -99,11 +106,22 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
            text "/\\" <> PPrint.punctuate space (Vector.map Type.defToDoc params)
                <+> text "=>" <+> exprToDoc body
         | Extend (_, _, fields, record) =>
-           braces (PPrint.align (PPrint.punctuate PPrint.newline
-                                                  (Vector.map fieldToDoc fields)
-                                 <> (case record
-                                     of SOME record => text " with" <+> exprToDoc record
-                                      | NONE => PPrint.empty)))
+           let val fieldDocs = Vector.map fieldToDoc fields
+               val oneLiner = braces (punctuate (text "," <> space) fieldDocs
+                                      <> (case record
+                                          of SOME record =>
+                                              space <> text ".." <+> exprToDoc record
+                                           | NONE => PPrint.empty))
+               val multiLiner =
+                   align (braces (space
+                                  <> punctuate (newline <> text "," <> space) fieldDocs
+                                  <> (case record
+                                      of SOME record =>
+                                          newline <> text ".." <+> exprToDoc record
+                                       | NONE => PPrint.empty)
+                                  <> space))
+           in oneLiner <|> multiLiner
+           end
         | App (_, _, {callee, arg}) =>
            parens (exprToDoc callee <+> exprToDoc arg)
         | TApp (_, _, {callee, args}) =>
@@ -114,7 +132,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
            parens (exprToDoc expr <> text "." <> Name.toDoc label)
         | Let (_, stmts, body) =>
            text "let" <+> PPrint.align (stmtsToDoc stmts)
-           <++> text "in" <+> exprToDoc body
+           <++> text "in" <+> align (exprToDoc body)
            <++> text "end"
         | If (_, cond, conseq, alt) =>
            text "if" <+> exprToDoc cond

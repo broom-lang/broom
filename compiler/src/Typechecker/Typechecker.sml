@@ -132,8 +132,10 @@ end = struct
                         val env = Env.pushScope env fnScope
 
                         val codomain = elaborate env codomain
-                    in FType.ForAll ( pos, Vector.fromList typeDefs
-                                    , FType.Arrow (pos, {domain, codomain}) )
+                        val arrow = FType.Arrow (pos, {domain, codomain})
+                    in case typeDefs
+                       of [] => arrow
+                        | _ => FType.ForAll (pos, Vector.fromList typeDefs, arrow)
                     end
                  | CType.RecordT (pos, row) => FType.Record (pos, elaborate env row)
                  | CType.RowExt (pos, {fields, ext}) =>

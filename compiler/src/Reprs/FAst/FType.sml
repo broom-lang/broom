@@ -60,9 +60,12 @@ structure FType :> FAST_TYPE = struct
     val text = PPrint.text
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
+    val op<|> = PPrint.<|>
     val space = PPrint.space
+    val newline = PPrint.newline
     val brackets = PPrint.brackets
     val braces = PPrint.braces
+    val align = PPrint.align
 
     structure Id = Id(struct end)
 
@@ -113,9 +116,20 @@ structure FType :> FAST_TYPE = struct
                         <+> text "." <+> concrToDoc t
                  | Arrow (_, {domain, codomain}) =>
                     concrToDoc domain <+> text "->" <+> concrToDoc codomain
-                 | Record (_, row) => braces (concrToDoc row)
-                 | RowExt (_, {field = (label, fieldType), ext}) =>
-                    Name.toDoc label <> text ":" <+> concrToDoc fieldType <+> text "|" <+> concrToDoc ext
+                 | Record (_, row) =>
+                    let val oneLiner = braces (rowToOneLiner svarToDoc row)
+                        val multiLiner =
+                            align (braces (space <> rowToMultiLiner svarToDoc row<> space))
+                    in oneLiner <|> multiLiner
+                    end
+                 | row as RowExt _ =>
+                    let val oneLiner = text "(|" <> rowToOneLiner svarToDoc row <> text "|)"
+                        val multiLiner =
+                            text "(|"
+                                <> align (braces (space <> rowToMultiLiner svarToDoc row <> space))
+                                <> text "|)"
+                    in oneLiner <|> multiLiner
+                    end
                  | EmptyRow _ => text "(||)"
                  | Type (_, t) => brackets (text "=" <+> absToDoc svarToDoc t)
                  | CallTFn (_, f, args) =>
@@ -125,6 +139,29 @@ structure FType :> FAST_TYPE = struct
                  | Prim (_, p) => Prim.toDoc p
         in concrToDoc
         end
+
+    and rowToOneLiner svarToDoc =
+        fn RowExt (_, {field, ext}) =>
+            fieldToDoc svarToDoc field
+                <> (case ext
+                    of RowExt _ => text "," <+> rowToOneLiner svarToDoc ext
+                     | EmptyRow _ => PPrint.empty
+                     | _ => space <> text "|" <+> concrToDoc svarToDoc ext)
+         | EmptyRow _ => PPrint.empty
+         | t => concrToDoc svarToDoc t
+
+    and rowToMultiLiner svarToDoc =
+        fn RowExt (_, {field, ext}) =>
+            fieldToDoc svarToDoc field
+                <> (case ext
+                    of RowExt _ => newline <> text "," <+> rowToMultiLiner svarToDoc ext
+                     | EmptyRow _ => PPrint.empty
+                     | _ => newline <> text "|" <+> concrToDoc svarToDoc ext)
+         | EmptyRow _ => PPrint.empty
+         | t => concrToDoc svarToDoc t
+
+    and fieldToDoc svarToDoc (label, fieldt) =
+        Name.toDoc label <> text ":" <+> concrToDoc svarToDoc fieldt
 
     and absToDoc svarToDoc =
         fn Exists (_, #[], t) => concrToDoc svarToDoc t
