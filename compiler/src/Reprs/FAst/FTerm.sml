@@ -25,7 +25,9 @@ signature FAST_TERM = sig
     val exprPos: expr -> Pos.t
     val exprToDoc: expr -> PPrint.t
     val exprToString: expr -> string
+    val stmtToDoc: stmt -> PPrint.t
     val stmtsToDoc: stmt vector -> PPrint.t
+    val typeOf: expr -> Type.concr
 end
 
 functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM

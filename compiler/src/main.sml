@@ -1,6 +1,10 @@
 structure Main :> sig
     val main: string list -> unit
 end = struct
+    val op|> = Fn.|>
+    val op<> = PPrint.<>
+    val op<+> = PPrint.<+>
+    val text = PPrint.text
     datatype flag_arity = datatype CLIParser.flag_arity
     datatype input = datatype Parser.input
     datatype stmt = datatype FixedFAst.Term.stmt
@@ -59,29 +63,52 @@ end = struct
 
     val prompt = "broom> "
 
+    fun rep (tenv, venv) line =
+        let val stmts = Parser.parse (Console (TextIO.openString line))
+            val (stmts, tenv) = Typechecker.elaborateProgram tenv stmts
+            val stmts = Vector.map ExitTypechecker.stmtToF stmts
+        in Vector.app (fn stmt as (Val (_, {var, typ}, _)) =>
+                           (case FAstEval.interpret venv stmt
+                            of Either.Left err => printErr "Runtime error.\n"
+                             | Either.Right v =>
+                                print ( Name.toString var ^ " "
+                                      ^ FAstEval.Value.toString v ^ " : "
+                                      ^ FixedFAst.Type.Concr.toString typ ^ "\n" ))
+                        | stmt as (Expr _) =>
+                           (case FAstEval.interpret venv stmt
+                            of Either.Left err => printErr "Runtime error.\n"
+                             | Either.Right _ => ()))
+                      stmts
+         ; (tenv, venv)
+        end
+
+    fun rtp tenv line =
+        let val stmts = Parser.parse (Console (TextIO.openString line))
+           val (stmts, tenv) = Typechecker.elaborateProgram tenv stmts
+           val stmts = Vector.map ExitTypechecker.stmtToF stmts
+        in Vector.app (fn stmt as (Val _) =>
+                           stmt |> FixedFAst.Term.stmtToDoc
+                                |> PPrint.pretty 80 |> print
+                        | stmt as (Expr expr) =>
+                           FixedFAst.Term.stmtToDoc stmt <> text ":"
+                               <+> (expr |> FixedFAst.Term.typeOf
+                                         |> FixedFAst.Type.Concr.toDoc)
+                               |> PPrint.pretty 80 |> print)
+                      stmts
+         ; tenv
+        end
+
     fun repl () =
         let val topVals = FAstEval.newToplevel ()
             fun loop tenv venv =
                 let val _ = print prompt
                 in case TextIO.inputLine TextIO.stdIn
                    of SOME line =>
-                       (let val stmts = Parser.parse (Console (TextIO.openString line))
-                            val (stmts, tenv) = Typechecker.elaborateProgram tenv stmts
-                            val stmts = Vector.map ExitTypechecker.stmtToF stmts
-                        in Vector.app (fn stmt as (Val (_, {var, typ}, _)) =>
-                                           (case FAstEval.interpret venv stmt
-                                            of Either.Left err => printErr "Runtime error.\n"
-                                             | Either.Right v => (print "woo";
-                                                print ( Name.toString var ^ " "
-                                                      ^ FAstEval.Value.toString v ^ " : "
-                                                      ^ FixedFAst.Type.Concr.toString typ ^ "\n" )))
-                                        | stmt as (Expr _) =>
-                                           (case FAstEval.interpret venv stmt
-                                            of Either.Left err => printErr "Runtime error.\n"
-                                             | Either.Right _ => ()))
-                                      stmts
-                         ; print (Int.toString (Vector.length stmts) ^ "\n")
-                         ; loop tenv venv
+                       (let val (tenv, venv) =
+                                if String.isPrefix ":t " line (* TODO: Allow leading whitespace. *)
+                                then (rtp tenv (String.extract (line, 2, NONE)), venv)
+                                else rep (tenv, venv) line
+                        in loop tenv venv
                         end
                         handle Parser.ParseError => loop tenv venv
                              | TypeError err => 
