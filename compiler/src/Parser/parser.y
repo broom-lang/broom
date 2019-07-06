@@ -14,7 +14,7 @@ type decl = Name.t * Type.typ
 %pos Pos.t
 
 %term INT of int | BOOL of bool | ID of string
-    | VAL | TYPE | FN | LET | IN | END | IF | THEN | ELSE
+    | VAL | TYPE | DO | FN | LET | IN | END | IF | THEN | ELSE
     | MODULE | INTERFACE | FUN
     | LPAREN | RPAREN | LBRACE | RBRACE
     | EQ | DARROW | COLON | ARROW | DDOT | DOT | COMMA
@@ -62,6 +62,7 @@ stmtList : ([])
 stmt : VAL ID EQ expr (Term.Val (VALleft, Name.fromString ID, NONE, expr))
      | VAL ID COLON typ EQ expr (Term.Val (VALleft, Name.fromString ID, SOME typ, expr))
      | TYPE ID EQ typ (Term.Val (TYPEleft, Name.fromString ID, NONE, Term.Type (typleft, typ)))
+     | DO expr (Term.Expr expr)
 
 (* Expressions *)
 

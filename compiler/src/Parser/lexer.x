@@ -74,6 +74,7 @@ ws = [\ \t];
 
 "val"    => (tok0 startPos Tokens.VAL yytext);
 "type"   => (tok0 startPos Tokens.TYPE yytext);
+"do"     => (tok0 startPos Tokens.DO yytext);
 "fn"     => (tok0 startPos Tokens.FN yytext);
 "let"    => (tok0 startPos Tokens.LET yytext);
 "in"     => (tok0 startPos Tokens.IN yytext);
