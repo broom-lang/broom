@@ -58,7 +58,6 @@ end = struct
 
     and stmtToF =
         fn Val (pos, {var, typ}, expr) => FFTerm.Val (pos, {var, typ = concrToF typ}, exprToF expr)
-         | Axiom (pos, name, typ) => FFTerm.Axiom (pos, name, concrToF typ) (* FIXME *)
          | Expr expr => FFTerm.Expr (exprToF expr)
 end
 

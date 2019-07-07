@@ -19,7 +19,6 @@ signature FAST_TERM = sig
 
     and stmt
         = Val of Pos.t * def * expr
-        | Axiom of Pos.t * Name.t * Type.concr
         | Expr of expr
 
     val exprPos: expr -> Pos.t
@@ -67,7 +66,6 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     and stmt
         = Val of Pos.t * def * expr
-        | Axiom of Pos.t * Name.t * Type.concr
         | Expr of expr
 
     val exprPos =
@@ -91,8 +89,6 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
                val rhs = PPrint.align (exprToDoc valExpr)
            in lhs <> (space <> rhs <|> PPrint.nest 4 (newline <> rhs))
            end
-        | Axiom (_, name, typ) =>
-           text "axiom" <+> Name.toDoc name <> text ":" <+> Type.Concr.toDoc typ
         | Expr expr => exprToDoc expr
 
    and stmtsToDoc =

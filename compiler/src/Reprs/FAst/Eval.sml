@@ -143,7 +143,6 @@ end = struct
 
     and exec env cont =
         fn Val (_, {var, ...}, expr) => eval env (Def (env, var) :: cont) expr
-         | Axiom _ => continue cont Unit
          | Expr expr => eval env cont expr
 
     and apply cont f arg =

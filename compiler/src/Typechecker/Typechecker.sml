@@ -23,6 +23,7 @@ end = struct
     structure Bindings = Env.Bindings
     structure Scope = Env.Scope
     datatype expr_binding_state = datatype Bindings.Expr.binding_state
+    structure Path = TypeVars.Path
  
     val subType = Subtyping.subType
     val applyCoercion = Subtyping.applyCoercion
@@ -347,7 +348,7 @@ end = struct
 
             val typeFnArgDefs = Env.bigLambdaParams env
             val typeFnArgs = Vector.map (fn def => FType.UseT (pos, def)) typeFnArgDefs
-            val paramKinds = Vector.map (Fn.constantly (FType.TypeK pos)) typeFnArgDefs
+            val paramKinds = Vector.map #kind typeFnArgDefs
             val typeFns = Vector.map (fn {var, kind} => Env.freshAbstract env var {paramKinds, kind})
                                      params
             val axiomNames = Vector.map (fn typeFnName =>
@@ -372,10 +373,17 @@ end = struct
         end
 
     and elaborateAsExistsInst env (implType, scopeId, namedPaths) expr =
-        let val pos = CTerm.exprPos expr
-        in FTerm.Let ( pos
-                     , Vector.map (fn (name, co) => FTerm.Axiom (pos, name, co)) namedPaths
-                     , elaborateExprAs (Env.pushScope env (Scope.Marker scopeId)) implType expr )
+        let val env' = Env.pushScope env (Scope.Marker scopeId)
+            val expr = elaborateExprAs env' implType expr
+        in Vector.app (fn (name, FAst.Type.SVar (_, FType.Path path)) =>
+                           let val Either.Left (face, _) = Path.get (Env.hasScope env) path
+                               val impl = case Path.get (Env.hasScope env') path
+                                          of Either.Left (face, _) => face
+                                           | Either.Right (impl, _) => impl
+                           in Env.insertAxiom env name (face, impl)
+                           end)
+                      namedPaths
+         ; expr
         end
 
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)

@@ -74,7 +74,9 @@ structure TypecheckingEnv :> sig
     val nearestExists: t -> Scope.t option
     val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
     val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
+
     val freshAbstract: t -> FlexFAst.Type.Id.t -> Bindings.TypeFn.kind_sig -> Name.t
+    val insertAxiom: t -> Name.t -> output_type * output_type -> unit
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
@@ -109,6 +111,7 @@ end = struct
             type bindings = binding NameHashTable.hash_table
 
             fun new () = NameHashTable.mkTable (0, Subscript)
+            val insert = NameHashTable.insert
         end
 
         structure Type = struct
@@ -168,6 +171,9 @@ end = struct
             in Bindings.TypeFn.insert typeFns (name, kindSig)
              ; name
             end
+
+        fun insertAxiom ({axioms, ...}: toplevel) name ax =
+            Bindings.Axiom.insert axioms (name, ax)
 
         datatype t = TopScope of Id.t * toplevel
                    | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
@@ -245,6 +251,8 @@ end = struct
 
     fun freshAbstract ({toplevel, ...}: t) id kindSig =
         Scope.freshAbstract toplevel id kindSig
+
+    fun insertAxiom ({toplevel, ...}: t) = Scope.insertAxiom toplevel
 
     fun findExprClosure (env: t) name =
         let val rec find =
