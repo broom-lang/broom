@@ -50,7 +50,7 @@ end = struct
           
             val _ = log "===\n"
 
-            val (program, _) = Typechecker.elaborateProgram TypecheckingEnv.empty program
+            val (program, _) = Typechecker.elaborateProgram (TypecheckingEnv.default ()) program
             val program = Vector.map ExitTypechecker.stmtToF program
             val _ = log (PPrint.pretty 80 (FixedFAst.Term.stmtsToDoc program) ^ "\n")
          in if lint
@@ -116,7 +116,7 @@ end = struct
                                 ; loop tenv venv ))
                     | NONE => ()
                 end
-        in loop TypecheckingEnv.empty (FAstEval.newToplevel ())
+        in loop (TypecheckingEnv.default ()) (FAstEval.newToplevel ())
         end
 
     fun main args =

@@ -42,7 +42,7 @@ end = struct
                     (case elaborateType env t
                      of ([], t) => (t, Typed (t, NONE, oexpr))
                       | (defs, t) =>
-                         (case valOf (Env.topScope env)
+                         (case valOf (Env.innermostScope env)
                           of Scope.InterfaceScope _ =>
                               let val abst = Exists (pos, Vector.fromList defs, t)
                                   val t = reAbstract env abst (* OPTIMIZE *)
@@ -90,7 +90,7 @@ end = struct
         Option.map (fn (Unvisited args, env) => unvisitedBindingType (CTerm.exprPos expr) env name args
                      | (Visiting args, env) =>
                         let val pos = CTerm.exprPos expr
-                        in case valOf (Env.topScope env)
+                        in case valOf (Env.innermostScope env)
                            of Scope.InterfaceScope _ => raise Fail ("Type cycle at " ^ Pos.toString pos)
                             | _ => cyclicBindingType pos env name args
                         end
@@ -345,8 +345,11 @@ end = struct
             : concr * Scope.Id.t * (Name.t * concr) vector = 
         let val coScopeId = Scope.Id.fresh ()
 
-            val typeFnArgs = Vector.map (fn def => FType.UseT (pos, def)) (Env.bigLambdaParams env)
-            val typeFns = Vector.map (Env.freshAbstract env (Vector.length typeFnArgs)) params
+            val typeFnArgDefs = Env.bigLambdaParams env
+            val typeFnArgs = Vector.map (fn def => FType.UseT (pos, def)) typeFnArgDefs
+            val paramKinds = Vector.map (Fn.constantly (FType.TypeK pos)) typeFnArgDefs
+            val typeFns = Vector.map (fn {var, kind} => Env.freshAbstract env var {paramKinds, kind})
+                                     params
             val axiomNames = Vector.map (fn typeFnName =>
                                              Name.toString typeFnName ^ "Impl"
                                                  |> Name.fromString

@@ -2,12 +2,22 @@ structure TypecheckingEnv :> sig
     type input_type = Cst.Type.typ
     type input_expr = Cst.Term.expr
     type output_type = FlexFAst.Type.concr
+    type kind = FlexFAst.Type.kind
     type abs_ctx = FlexFAst.ScopeId.t * (Name.t * output_type) vector 
     type output_expr = FlexFAst.Term.expr
 
     structure Bindings: sig
+        structure TypeFn: sig
+            type kind_sig = {paramKinds: kind vector, kind: kind}
+            type bindings
+        end
+
+        structure Axiom: sig
+            type bindings
+        end
+
         structure Type: sig
-            type binding = FlexFAst.Type.kind
+            type binding = kind
             type bindings
 
             val new: unit -> bindings
@@ -37,7 +47,12 @@ structure TypecheckingEnv :> sig
     structure Scope: sig
         structure Id: ID where type t = FlexFAst.ScopeId.t
 
-        datatype t = FnScope of Id.t * Name.t * Bindings.Expr.binding_state
+        type toplevel = { typeFns: Bindings.TypeFn.bindings
+                        , axioms: Bindings.Axiom.bindings
+                        , vals: Bindings.Expr.bindings }
+
+        datatype t = TopScope of Id.t * toplevel
+                   | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
                    | ForAllScope of Id.t * FlexFAst.Type.def
                    | ExistsScope of Id.t * Bindings.Type.bindings
                    | BlockScope of Id.t * Bindings.Expr.bindings
@@ -47,8 +62,9 @@ structure TypecheckingEnv :> sig
 
     type t
 
-    val empty: t
-    val topScope: t -> Scope.t option
+    val default: unit -> t
+    val initial: Scope.Id.t * Scope.toplevel -> t
+    val innermostScope: t -> Scope.t option
     val pushScope: t -> Scope.t -> t
     val scopeIds: t -> Scope.Id.t list
     val hasScope: t -> Scope.Id.t -> bool
@@ -58,7 +74,7 @@ structure TypecheckingEnv :> sig
     val nearestExists: t -> Scope.t option
     val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
     val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
-    val freshAbstract: t -> int -> FlexFAst.Type.def -> Name.t
+    val freshAbstract: t -> FlexFAst.Type.Id.t -> Bindings.TypeFn.kind_sig -> Name.t
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
@@ -71,16 +87,34 @@ end = struct
     type input_type = Cst.Type.typ
     type input_expr = Cst.Term.expr
     type output_type = FAst.Type.concr
+    type kind = FlexFAst.Type.kind
     type abs_ctx = FlexFAst.ScopeId.t * (Name.t * output_type) vector 
     type output_expr = FAst.Term.expr
 
     val op|> = Fn.|>
 
     structure Bindings = struct
+        structure TypeFn = struct
+            type kind_sig = {paramKinds: kind vector, kind: kind}
+
+            type bindings = kind_sig NameHashTable.hash_table
+
+            fun new () = NameHashTable.mkTable (0, Subscript)
+            val insert = NameHashTable.insert
+        end
+
+        structure Axiom = struct
+            type binding = output_type * output_type
+
+            type bindings = binding NameHashTable.hash_table
+
+            fun new () = NameHashTable.mkTable (0, Subscript)
+        end
+
         structure Type = struct
             structure Id = FType.Id
 
-            type binding = FAst.Type.kind
+            type binding = kind
             type bindings = binding Id.HashTable.hash_table
             
             val find = Id.HashTable.find
@@ -120,8 +154,24 @@ end = struct
     structure Scope = struct
         structure Id = FAst.ScopeId
 
-        datatype t = FnScope of Id.t * Name.t * Bindings.Expr.binding_state
-                   | ForAllScope of Id.t * FAst.Type.def
+        type toplevel = { typeFns: Bindings.TypeFn.bindings
+                        , axioms: Bindings.Axiom.bindings
+                        , vals: Bindings.Expr.bindings }
+
+        fun initialToplevel () =
+            { typeFns = Bindings.TypeFn.new ()
+            , axioms = Bindings.Axiom.new ()
+            , vals = Bindings.Expr.Builder.new () |> Bindings.Expr.Builder.build }
+
+        fun freshAbstract ({typeFns, ...}: toplevel) id kindSig =
+            let val name = "g__" ^ FAst.Type.Id.toString id |> Name.fromString |> Name.freshen
+            in Bindings.TypeFn.insert typeFns (name, kindSig)
+             ; name
+            end
+
+        datatype t = TopScope of Id.t * toplevel
+                   | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
+                   | ForAllScope of Id.t * FlexFAst.Type.def
                    | ExistsScope of Id.t * Bindings.Type.bindings
                    | BlockScope of Id.t * Bindings.Expr.bindings
                    | InterfaceScope of Id.t * Bindings.Expr.bindings
@@ -142,24 +192,30 @@ end = struct
 
         fun findExpr scope name =
             case scope
-            of FnScope (_, var, bs) => if var = name then SOME bs else NONE
+            of TopScope (_, {vals, ...}) => Bindings.Expr.find vals name
+             | FnScope (_, var, bs) => if var = name then SOME bs else NONE
              | ForAllScope _ | ExistsScope _ | Marker _ => NONE
              | BlockScope (_, bindings) | InterfaceScope (_, bindings) => Bindings.Expr.find bindings name
     end
 
-    type t = {scopeIds: Scope.Id.t list, scopes: Scope.t list}
+    type t = { toplevel: Scope.toplevel
+             , scopeIds: Scope.Id.t list
+             , scopes: Scope.t list }
+    
+    fun initial (id, toplevel) =
+        {toplevel, scopeIds = [id], scopes = [Scope.TopScope (id, toplevel)]}
 
-    val empty = {scopeIds = [], scopes = []}
+    fun default () = initial (Scope.Id.fresh (), Scope.initialToplevel ())
 
-    fun topScope {scopes, scopeIds = _} =
+    fun innermostScope ({scopes, ...}: t) =
         case scopes
         of scope :: _ => SOME scope
          | [] => NONE
 
-    fun pushScope {scopeIds, scopes} scope =
-        {scopes = scope :: scopes, scopeIds = Scope.id scope :: scopeIds}
+    fun pushScope {scopeIds, scopes, toplevel} scope =
+        {scopes = scope :: scopes, scopeIds = Scope.id scope :: scopeIds, toplevel}
 
-    fun scopeIds {scopeIds, scopes = _} = scopeIds
+    val scopeIds: t -> Scope.Id.t list = #scopeIds
 
     fun hasScope (env: t) id =
         List.exists (fn id' => id' = id) (#scopeIds env)
@@ -174,7 +230,7 @@ end = struct
 
     fun bigLambdaParams env = #[] (* FIXME *)
 
-    fun nearestExists {scopes, scopeIds = _} =
+    fun nearestExists ({scopes, ...}: t) =
         List.find (fn Scope.ExistsScope _ => true | _ => false) scopes
 
     fun newUv (env: t) (predicativity, name) =
@@ -187,17 +243,16 @@ end = struct
         of scope :: _ => TypeVars.Uv.fresh (Scope.id scope, predicativity)
          | [] => raise Fail "unreachable"
 
-    fun freshAbstract env arity {var, kind} =
-        (* FIXME: Put into toplevel so that we can emit it. *)
-        ("g__" ^ FType.Id.toString var) |> Name.fromString |> Name.freshen
+    fun freshAbstract ({toplevel, ...}: t) id kindSig =
+        Scope.freshAbstract toplevel id kindSig
 
     fun findExprClosure (env: t) name =
         let val rec find =
-                fn env as {scopes = scope :: scopes, scopeIds = _ :: scopeIds} =>
+                fn env as {scopes = scope :: scopes, scopeIds = _ :: scopeIds, toplevel} =>
                     (case Scope.findExpr scope name
                      of SOME b => SOME (b, env)
-                      | NONE => find {scopes, scopeIds})
-                 | {scopes = [], scopeIds = []} => NONE
+                      | NONE => find {scopes, scopeIds, toplevel})
+                 | {scopes = [], scopeIds = [], ...} => NONE
         in find env
         end
 
