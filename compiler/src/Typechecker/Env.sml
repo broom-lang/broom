@@ -8,7 +8,6 @@ structure TypecheckingEnv :> sig
 
     structure Bindings: sig
         structure TypeFn: sig
-            type kind_sig = {paramKinds: kind vector, kind: kind}
             type bindings
         end
 
@@ -75,7 +74,7 @@ structure TypecheckingEnv :> sig
     val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
     val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
 
-    val freshAbstract: t -> FlexFAst.Type.Id.t -> Bindings.TypeFn.kind_sig -> Name.t
+    val freshAbstract: t -> FlexFAst.Type.Id.t -> FlexFAst.Type.tfn_sig -> Name.t
     val insertAxiom: t -> Name.t -> output_type * output_type -> unit
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
@@ -90,6 +89,7 @@ end = struct
     type input_expr = Cst.Term.expr
     type output_type = FAst.Type.concr
     type kind = FlexFAst.Type.kind
+    type tfn_sig = FAst.Type.tfn_sig
     type abs_ctx = FlexFAst.ScopeId.t * (Name.t * output_type) vector 
     type output_expr = FAst.Term.expr
 
@@ -97,9 +97,7 @@ end = struct
 
     structure Bindings = struct
         structure TypeFn = struct
-            type kind_sig = {paramKinds: kind vector, kind: kind}
-
-            type bindings = kind_sig NameHashTable.hash_table
+            type bindings = tfn_sig NameHashTable.hash_table
 
             fun new () = NameHashTable.mkTable (0, Subscript)
             val insert = NameHashTable.insert

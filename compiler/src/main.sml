@@ -51,8 +51,8 @@ end = struct
             val _ = log "===\n"
 
             val (program, _) = Typechecker.elaborateProgram (TypecheckingEnv.default ()) program
-            val program = Vector.map ExitTypechecker.stmtToF program
-            val _ = log (PPrint.pretty 80 (FixedFAst.Term.stmtsToDoc program) ^ "\n")
+            val program = ExitTypechecker.programToF program
+            val _ = log (PPrint.pretty 80 (FixedFAst.Term.programToDoc program) ^ "\n")
          in if lint
             then case FAstTypechecker.typecheckProgram program
                  of SOME err => raise Fail "Lint failed"
@@ -65,8 +65,8 @@ end = struct
 
     fun rep (tenv, venv) line =
         let val stmts = Parser.parse (Console (TextIO.openString line))
-            val (stmts, tenv) = Typechecker.elaborateProgram tenv stmts
-            val stmts = Vector.map ExitTypechecker.stmtToF stmts
+            val (program, tenv) = Typechecker.elaborateProgram tenv stmts
+            val {body = FixedFAst.Term.Let (_, stmts, _), ...} = ExitTypechecker.programToF program
         in Vector.app (fn stmt as (Val (_, {var, typ}, _)) =>
                            (case FAstEval.interpret venv stmt
                             of Either.Left err => printErr "Runtime error.\n"
@@ -84,8 +84,8 @@ end = struct
 
     fun rtp tenv line =
         let val stmts = Parser.parse (Console (TextIO.openString line))
-           val (stmts, tenv) = Typechecker.elaborateProgram tenv stmts
-           val stmts = Vector.map ExitTypechecker.stmtToF stmts
+            val (program, tenv) = Typechecker.elaborateProgram tenv stmts
+            val {body = FixedFAst.Term.Let (_, stmts, _), ...} = ExitTypechecker.programToF program
         in Vector.app (fn stmt as (Val _) =>
                            stmt |> FixedFAst.Term.stmtToDoc
                                 |> PPrint.pretty 80 |> print

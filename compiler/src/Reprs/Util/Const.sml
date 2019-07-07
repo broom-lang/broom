@@ -1,6 +1,7 @@
 structure Const :> sig
     datatype t = Int of int
                | Bool of bool
+               | Unit
 
     val toString: t -> string
     val toDoc: t -> PPrint.t
@@ -8,13 +9,16 @@ structure Const :> sig
 end = struct
     datatype t = Int of int
                | Bool of bool
+               | Unit
 
     val toString = fn Int n => Int.toString n (* HACK *)
                     | Bool true => "True"
                     | Bool false => "False"
+                    | Unit => "()"
 
     val toDoc = PPrint.text o toString
 
     val typeOf = fn Int _ => PrimType.I32
                   | Bool _ => PrimType.Bool
+                  | Unit => PrimType.Unit
 end

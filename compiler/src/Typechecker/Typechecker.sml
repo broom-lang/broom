@@ -1,5 +1,5 @@
 structure Typechecker :> sig
-    val elaborateProgram: TypecheckingEnv.t -> Cst.Term.stmt vector -> FlexFAst.Term.stmt vector * TypecheckingEnv.t
+    val elaborateProgram: TypecheckingEnv.t -> Cst.Term.stmt vector -> FlexFAst.Term.program * TypecheckingEnv.t
 end = struct
     val op|> = Fn.|>
     datatype either = datatype Either.t
@@ -465,7 +465,12 @@ end = struct
     fun elaborateProgram env stmts =
         let val env = Env.pushScope env (stmtsScope stmts)
             val stmts = Vector.map (elaborateStmt env) stmts
-        in (stmts, env)
+            val pos = FTerm.stmtPos (Vector.sub (stmts, 0)) (* FIXME: `stmts` could be empty *)
+            val body = FTerm.Let (pos, stmts, FTerm.Const (pos, Const.Unit))
+            val program = { typeFns = #[]
+                          , axioms = #[]
+                          , body }
+        in (program, env)
         end
 end
 

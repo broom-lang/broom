@@ -1,6 +1,7 @@
 structure ExitTypechecker :> sig
     val exprToF: FlexFAst.Term.expr -> FixedFAst.Term.expr
     val stmtToF: FlexFAst.Term.stmt -> FixedFAst.Term.stmt
+    val programToF: FlexFAst.Term.program -> FixedFAst.Term.program
 end = struct
     datatype sv = datatype FlexFAst.Type.sv
     structure FFType = FixedFAst.Type
@@ -34,6 +35,8 @@ end = struct
     and absToF: FlexFAst.Type.abs -> FFType.abs =
         fn Exists (pos, params, body) => Exists (pos, params, concrToF body)
 
+    fun axiomToF (name, l, r) = (name, concrToF l, concrToF r)
+
     val rec exprToF: FlexFAst.Term.expr -> FFTerm.expr =
         fn Fn (pos, {var, typ}, body) =>
             FFTerm.Fn (pos, {var, typ = concrToF typ}, exprToF body)
@@ -59,5 +62,10 @@ end = struct
     and stmtToF =
         fn Val (pos, {var, typ}, expr) => FFTerm.Val (pos, {var, typ = concrToF typ}, exprToF expr)
          | Expr expr => FFTerm.Expr (exprToF expr)
+
+    fun programToF {typeFns, axioms, body} =
+        { typeFns = typeFns
+        , axioms = Vector.map axiomToF axioms
+        , body = exprToF body }
 end
 

@@ -8,6 +8,8 @@ signature FAST_TYPE = sig
 
     type def = {var: Id.t, kind: kind}
 
+    type tfn_sig = {paramKinds: kind vector, kind: kind}
+
     datatype 'sv concr
         = ForAll of Pos.t * def vector * 'sv concr
         | Arrow of Pos.t * {domain: 'sv concr, codomain: 'sv concr}
@@ -76,6 +78,8 @@ structure FType :> FAST_TYPE = struct
                   | RowK of Pos.t
 
     type def = {var: Id.t, kind: kind}
+
+    type tfn_sig = {paramKinds: kind vector, kind: kind}
 
     datatype 'sv concr
         = ForAll of Pos.t * def vector * 'sv concr
@@ -292,6 +296,7 @@ signature CLOSED_FAST_TYPE = sig
 
     datatype kind = datatype FType.kind
     type def = FType.def
+    type tfn_sig = FType.tfn_sig
 
     datatype concr' = datatype FType.concr
     datatype abs' = datatype FType.abs

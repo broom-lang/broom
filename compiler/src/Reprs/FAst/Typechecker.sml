@@ -1,6 +1,6 @@
 structure FAstTypechecker :> sig
     val typecheck: FixedFAst.Term.expr -> ((* FIXME: *) unit, FixedFAst.Type.concr) Either.t
-    val typecheckProgram: FixedFAst.Term.stmt vector -> (* FIXME: *) unit option
+    val typecheckProgram: FixedFAst.Term.program -> (* FIXME: *) unit option
 end = struct
     structure FAst = FixedFAst
     structure FType = FAst.Type
@@ -215,10 +215,8 @@ end = struct
 
     val typecheck = Either.Right o check Env.empty
 
-    fun typecheckProgram stmts =
-        let val env = pushStmts Env.empty stmts
-        in Vector.app (checkStmt env) stmts
-         ; NONE
-        end
+    fun typecheckProgram {typeFns, axioms, body} =
+        ( check Env.empty body (* TODO: Use `typeFns`, `axioms` *)
+        ; NONE )
 end
 

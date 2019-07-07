@@ -21,11 +21,17 @@ signature FAST_TERM = sig
         = Val of Pos.t * def * expr
         | Expr of expr
 
+    type program = { typeFns: (Name.t * Type.tfn_sig) vector
+                   , axioms: (Name.t * Type.concr * Type.concr) vector
+                   , body: expr }
+
     val exprPos: expr -> Pos.t
     val exprToDoc: expr -> PPrint.t
     val exprToString: expr -> string
+    val stmtPos: stmt -> Pos.t
     val stmtToDoc: stmt -> PPrint.t
     val stmtsToDoc: stmt vector -> PPrint.t
+    val programToDoc: program -> PPrint.t
     val typeOf: expr -> Type.concr
 end
 
@@ -80,6 +86,10 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | Type (pos, _) => pos
          | Use (pos, _) => pos
          | Const (pos, _) => pos
+
+    type program = { typeFns: (Name.t * Type.tfn_sig) vector
+                   , axioms: (Name.t * Type.concr * Type.concr) vector
+                   , body: expr }
 
    fun defToDoc {var, typ} = Name.toDoc var <> text ":" <+> Type.Concr.toDoc typ
 
@@ -141,6 +151,24 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | Const (_, c) => Const.toDoc c
 
     val exprToString = PPrint.pretty 80 o exprToDoc
+
+    val stmtPos =
+        fn Val (pos, _, _) => pos
+         | Expr expr => exprPos expr
+
+    fun typeFnToDoc (name, {paramKinds, kind}) =
+        text "type" <+> Name.toDoc name
+            <+> punctuate space (Vector.map Type.kindToDoc paramKinds)
+            <+> text "=" <+> Type.kindToDoc kind
+
+    fun axiomToDoc (name, l, r) =
+        text "axiom" <+> Name.toDoc name <+> text ":"
+            <+> Type.Concr.toDoc l <+> text "~" <+> Type.Concr.toDoc r
+
+    fun programToDoc {typeFns, axioms, body} =
+        punctuate (newline <> newline) (Vector.map typeFnToDoc typeFns)
+            <++> newline <> punctuate (newline <> newline) (Vector.map axiomToDoc axioms)
+            <++> newline <> exprToDoc body
 
     val rec typeOf =
         fn Fn (pos, {typ = domain, ...}, body) => Type.Arrow (pos, {domain, codomain = typeOf body})
