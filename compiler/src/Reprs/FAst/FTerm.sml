@@ -157,12 +157,15 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | Expr expr => exprPos expr
 
     fun typeFnToDoc (name, {paramKinds, kind}) =
-        text "type" <+> Name.toDoc name
-            <+> punctuate space (Vector.map Type.kindToDoc paramKinds)
-            <+> text "=" <+> Type.kindToDoc kind
+        text "type" <+> Name.toDoc name <> text ":"
+            <+> punctuate (text "," <> space) (Vector.map Type.kindToDoc paramKinds)
+            <+> (if Vector.length paramKinds > 0
+                 then text "->" <> space
+                 else PPrint.empty)
+            <> Type.kindToDoc kind
 
     fun axiomToDoc (name, l, r) =
-        text "axiom" <+> Name.toDoc name <+> text ":"
+        text "axiom" <+> Name.toDoc name <> text ":"
             <+> Type.Concr.toDoc l <+> text "~" <+> Type.Concr.toDoc r
 
     fun programToDoc {typeFns, axioms, body} =

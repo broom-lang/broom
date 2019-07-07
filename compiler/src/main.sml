@@ -85,16 +85,8 @@ end = struct
     fun rtp tenv line =
         let val stmts = Parser.parse (Console (TextIO.openString line))
             val (program, tenv) = Typechecker.elaborateProgram tenv stmts
-            val {body = FixedFAst.Term.Let (_, stmts, _), ...} = ExitTypechecker.programToF program
-        in Vector.app (fn stmt as (Val _) =>
-                           stmt |> FixedFAst.Term.stmtToDoc
-                                |> PPrint.pretty 80 |> print
-                        | stmt as (Expr expr) =>
-                           FixedFAst.Term.stmtToDoc stmt <> text ":"
-                               <+> (expr |> FixedFAst.Term.typeOf
-                                         |> FixedFAst.Type.Concr.toDoc)
-                               |> PPrint.pretty 80 |> print)
-                      stmts
+            val program = ExitTypechecker.programToF program
+        in print (PPrint.pretty 80 (FixedFAst.Term.programToDoc program))
          ; tenv
         end
 

@@ -75,7 +75,9 @@ structure TypecheckingEnv :> sig
     val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
 
     val freshAbstract: t -> FlexFAst.Type.Id.t -> FlexFAst.Type.tfn_sig -> Name.t
+    val typeFns: t -> (Name.t * FlexFAst.Type.tfn_sig) vector
     val insertAxiom: t -> Name.t -> output_type * output_type -> unit
+    val axioms: t -> (Name.t * output_type * output_type) vector 
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
@@ -101,6 +103,7 @@ end = struct
 
             fun new () = NameHashTable.mkTable (0, Subscript)
             val insert = NameHashTable.insert
+            val toVector = Vector.fromList o NameHashTable.listItemsi
         end
 
         structure Axiom = struct
@@ -110,6 +113,9 @@ end = struct
 
             fun new () = NameHashTable.mkTable (0, Subscript)
             val insert = NameHashTable.insert
+            fun toVector axioms =
+                axioms |> NameHashTable.listItemsi |> Vector.fromList
+                       |> Vector.map (fn (name, (l, r)) => (name, l, r))
         end
 
         structure Type = struct
@@ -170,8 +176,12 @@ end = struct
              ; name
             end
 
+        fun typeFns ({typeFns, ...}: toplevel) = Bindings.TypeFn.toVector typeFns
+
         fun insertAxiom ({axioms, ...}: toplevel) name ax =
             Bindings.Axiom.insert axioms (name, ax)
+
+        fun axioms ({axioms, ...}: toplevel) = Bindings.Axiom.toVector axioms
 
         datatype t = TopScope of Id.t * toplevel
                    | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
@@ -250,7 +260,11 @@ end = struct
     fun freshAbstract ({toplevel, ...}: t) id kindSig =
         Scope.freshAbstract toplevel id kindSig
 
+    fun typeFns ({toplevel, ...}: t) = Scope.typeFns toplevel
+
     fun insertAxiom ({toplevel, ...}: t) = Scope.insertAxiom toplevel
+
+    fun axioms ({toplevel, ...}: t) = Scope.axioms toplevel
 
     fun findExprClosure (env: t) name =
         let val rec find =

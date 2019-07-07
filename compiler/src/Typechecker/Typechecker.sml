@@ -467,8 +467,8 @@ end = struct
             val stmts = Vector.map (elaborateStmt env) stmts
             val pos = FTerm.stmtPos (Vector.sub (stmts, 0)) (* FIXME: `stmts` could be empty *)
             val body = FTerm.Let (pos, stmts, FTerm.Const (pos, Const.Unit))
-            val program = { typeFns = #[]
-                          , axioms = #[]
+            val program = { typeFns = Env.typeFns env
+                          , axioms = Env.axioms env
                           , body }
         in (program, env)
         end
