@@ -7,6 +7,7 @@ signature FAST_TERM = sig
         = Fn of Pos.t * def * expr
         | TFn of Pos.t * Type.def vector * expr
         | Extend of Pos.t * Type.concr * (Name.t * expr) vector * expr option
+        | Override of Pos.t * Type.concr * (Name.t * expr) vector * expr
         | App of Pos.t * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.t * Type.concr * {callee: expr, args: Type.concr vector}
         | Field of Pos.t * Type.concr * expr * Name.t
@@ -60,6 +61,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         = Fn of Pos.t * def * expr
         | TFn of Pos.t * Type.def vector * expr
         | Extend of Pos.t * Type.concr  * (Name.t * expr) vector * expr option
+        | Override of Pos.t * Type.concr * (Name.t * expr) vector * expr
         | App of Pos.t * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.t * Type.concr * {callee: expr, args: Type.concr vector}
         | Field of Pos.t * Type.concr * expr * Name.t
@@ -78,6 +80,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         fn Fn (pos, _, _) => pos
          | TFn (pos, _, _) => pos
          | Extend (pos, _, _, _) => pos
+         | Override (pos, _, _, _) => pos
          | App (pos, _, _) => pos
          | TApp (pos, _, _) => pos
          | Field (pos, _, _, _) => pos
@@ -113,23 +116,8 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | TFn (_, params, body) =>
            text "/\\" <> PPrint.punctuate space (Vector.map Type.defToDoc params)
                <+> text "=>" <+> exprToDoc body
-        | Extend (_, _, fields, record) =>
-           let val fieldDocs = Vector.map fieldToDoc fields
-               val oneLiner = braces (punctuate (text "," <> space) fieldDocs
-                                      <> (case record
-                                          of SOME record =>
-                                              space <> text ".." <+> exprToDoc record
-                                           | NONE => PPrint.empty))
-               val multiLiner =
-                   align (braces (space
-                                  <> punctuate (newline <> text "," <> space) fieldDocs
-                                  <> (case record
-                                      of SOME record =>
-                                          newline <> text ".." <+> exprToDoc record
-                                       | NONE => PPrint.empty)
-                                  <> space))
-           in oneLiner <|> multiLiner
-           end
+        | Extend args => recordToDoc "extending" args
+        | Override (pos, typ, fields, ext) => recordToDoc "overriding" (pos, typ, fields, SOME ext)
         | App (_, _, {callee, arg}) =>
            parens (exprToDoc callee <+> exprToDoc arg)
         | TApp (_, _, {callee, args}) =>
@@ -149,6 +137,25 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | Type (_, t) => brackets (Type.Abs.toDoc t)
         | Use (_, {var, ...}) => Name.toDoc var 
         | Const (_, c) => Const.toDoc c
+
+    and recordToDoc =
+        fn curtain => fn (_, _, fields, record) =>
+            let val fieldDocs = Vector.map fieldToDoc fields
+                val oneLiner = braces (punctuate (text "," <> space) fieldDocs
+                                       <> (case record
+                                           of SOME record =>
+                                               space <> text curtain <+> exprToDoc record
+                                            | NONE => PPrint.empty))
+                val multiLiner =
+                    align (braces (space
+                                   <> punctuate (newline <> text "," <> space) fieldDocs
+                                   <> (case record
+                                       of SOME record =>
+                                           newline <> text curtain <+> exprToDoc record
+                                        | NONE => PPrint.empty)
+                                   <> space))
+            in oneLiner <|> multiLiner
+            end
 
     val exprToString = PPrint.pretty 80 o exprToDoc
 
@@ -176,7 +183,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
     val rec typeOf =
         fn Fn (pos, {typ = domain, ...}, body) => Type.Arrow (pos, {domain, codomain = typeOf body})
          | TFn (pos, params, body) => Type.ForAll (pos, params, typeOf body)
-         | Extend (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => typ
+         | Extend (_, typ, _, _) | Override (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => typ
          | Field (_, typ, _, _) => typ
          | Let (_, _, body) => typeOf body
          | If (_, _, conseq, _) => typeOf conseq

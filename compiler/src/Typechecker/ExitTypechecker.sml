@@ -43,8 +43,12 @@ end = struct
          | TFn (pos, param, body) => FFTerm.TFn (pos, param, exprToF body)
          | Extend (pos, typ, fields, record) =>
             FFTerm.Extend ( pos, concrToF typ
-                          , Vector.map (Pair.second (exprToF)) fields
-                          , Option.map (exprToF) record)
+                          , Vector.map (Pair.second exprToF) fields
+                          , Option.map exprToF record)
+         | Override (pos, typ, fields, ext) =>
+            FFTerm.Override ( pos, concrToF typ
+                            , Vector.map (Pair.second exprToF) fields
+                            , exprToF ext )
          | Let (pos, stmts, body) =>
             FFTerm.Let (pos, Vector.map (stmtToF) stmts, exprToF body)
          | If (pos, cond, conseq, alt) =>

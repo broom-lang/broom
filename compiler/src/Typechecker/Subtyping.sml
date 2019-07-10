@@ -118,10 +118,10 @@ end = struct
                                fun emitField (label, fieldt, coerceField) =
                                    (label, coerceField (FTerm.Field (currPos, fieldt, tmpUse, label)))
                            in FTerm.Let ( currPos, #[FTerm.Val (currPos, tmpDef, expr)]
-                                        , FTerm.Extend ( currPos
-                                                       , superTyp
-                                                       , Vector.map emitField (Vector.fromList fieldCoercions)
-                                                       , SOME tmpUse ) )
+                                        , FTerm.Override ( currPos
+                                                         , superTyp
+                                                         , Vector.map emitField (Vector.fromList fieldCoercions)
+                                                         , tmpUse ) )
                            end))
          | (RowExt _, RowExt _) =>
            ( subRows env currPos (typ, superTyp)
