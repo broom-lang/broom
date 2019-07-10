@@ -8,6 +8,7 @@ end = struct
     structure FFTerm = FixedFAst.Term
     datatype concr = datatype FlexFAst.Type.concr'
     datatype abs = datatype FlexFAst.Type.abs'
+    datatype co = datatype FlexFAst.Type.co'
     datatype expr = datatype FlexFAst.Term.expr
     datatype stmt = datatype FlexFAst.Term.stmt
     datatype either = datatype Either.t
@@ -35,6 +36,11 @@ end = struct
     and absToF: FlexFAst.Type.abs -> FFType.abs =
         fn Exists (pos, params, body) => Exists (pos, params, concrToF body)
 
+    and coercionToF: FlexFAst.Type.co -> FFType.co =
+        fn Refl t => Refl (concrToF t)
+         | Symm co => Symm (coercionToF co)
+         | UseCo name => UseCo name
+
     fun axiomToF (name, l, r) = (name, concrToF l, concrToF r)
 
     val rec exprToF: FlexFAst.Term.expr -> FFTerm.expr =
@@ -59,6 +65,8 @@ end = struct
             FFTerm.TApp (pos, concrToF typ, {callee = exprToF callee, args = Vector.map concrToF args})
          | Field (pos, typ, expr, label) =>
             FFTerm.Field (pos, concrToF typ, exprToF expr, label)
+         | Cast (pos, typ, expr, coercion) =>
+            FFTerm.Cast (pos, concrToF typ, exprToF expr, coercionToF coercion)
          | Type (pos, typ) => FFTerm.Type (pos, absToF typ)
          | Use (pos, {var, typ}) => FFTerm.Use (pos, {var, typ = concrToF typ})
          | Const (pos, c) => FFTerm.Const (pos, c)

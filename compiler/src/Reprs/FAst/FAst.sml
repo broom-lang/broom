@@ -37,11 +37,15 @@ structure FlexFAst = struct
             val toDoc = concrToDoc
             val toString = toString svarToDoc
 
-            fun occurs uv = FType.Concr.occurs svarOccurs uv
-            and svarOccurs uv =
-                fn UVar uv' => (case TypeVars.Uv.get uv'
+            fun occurs hasScope uv = FType.Concr.occurs (svarOccurs hasScope) uv
+            and svarOccurs hasScope uv =
+                fn Path path =>
+                    (case TypeVars.Path.get hasScope path
+                     of Either.Left (t, _) => occurs hasScope uv t
+                      | Either.Right (t, _) => occurs hasScope uv t)
+                 | UVar uv' => (case TypeVars.Uv.get uv'
                                 of Either.Left uv' => TypeVars.Uv.eq (uv, uv')
-                                 | Either.Right t => occurs uv t)
+                                 | Either.Right t => occurs hasScope uv t)
 
             fun pathOccurs path = FType.Concr.occurs pathSvarOccurs path
             and pathSvarOccurs path =
@@ -68,7 +72,13 @@ structure FlexFAst = struct
             val toDoc = toDoc svarToDoc
             val toString = toString svarToDoc
 
-            val occurs = occurs Concr.svarOccurs
+            val occurs = fn hasScope => occurs (Concr.svarOccurs hasScope)
+        end
+
+        structure Co = struct
+            open Co
+
+            val toDoc = toDoc svarToDoc
         end
     end
 
@@ -109,6 +119,12 @@ structure FixedFAst = struct
 
             val toDoc = toDoc svarToDoc
             val toString = toString svarToDoc
+        end
+
+        structure Co = struct
+            open Co
+            
+            val toDoc = toDoc svarToDoc
         end
     end
 

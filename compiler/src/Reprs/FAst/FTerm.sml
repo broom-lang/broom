@@ -13,7 +13,7 @@ signature FAST_TERM = sig
         | Field of Pos.t * Type.concr * expr * Name.t
         | Let of Pos.t * stmt vector * expr
         | If of Pos.t * expr * expr * expr
-        | Cast of Pos.t * expr * Type.co
+        | Cast of Pos.t * Type.concr * expr * Type.co
         | Type of Pos.t * Type.abs
         | Use of Pos.t * def
         | Const of Pos.t * Const.t
@@ -67,7 +67,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | Field of Pos.t * Type.concr * expr * Name.t
         | Let of Pos.t * stmt vector * expr
         | If of Pos.t * expr * expr * expr
-        | Cast of Pos.t * expr * Type.co
+        | Cast of Pos.t * Type.concr * expr * Type.co
         | Type of Pos.t * Type.abs
         | Use of Pos.t * def
         | Const of Pos.t * Const.t
@@ -86,6 +86,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | Field (pos, _, _, _) => pos
          | Let (pos, _, _) => pos
          | If (pos, _, _, _) => pos
+         | Cast (pos, _, _, _) => pos
          | Type (pos, _) => pos
          | Use (pos, _) => pos
          | Const (pos, _) => pos
@@ -134,6 +135,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
            text "if" <+> exprToDoc cond
                <+> text "then" <+> exprToDoc conseq
                <+> text "else" <+> exprToDoc alt
+        | Cast (_, _, expr, co) => exprToDoc expr <+> text "via" <+> Type.Co.toDoc co
         | Type (_, t) => brackets (Type.Abs.toDoc t)
         | Use (_, {var, ...}) => Name.toDoc var 
         | Const (_, c) => Const.toDoc c
@@ -187,6 +189,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | Field (_, typ, _, _) => typ
          | Let (_, _, body) => typeOf body
          | If (_, _, conseq, _) => typeOf conseq
+         | Cast (_, t, _, _) => t
          | Type (pos, t) => Type.Type (pos, t)
          | Use (_, {typ, ...}) => typ
          | Const (pos, c) => Type.Prim (pos, Const.typeOf c)

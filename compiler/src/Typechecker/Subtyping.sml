@@ -47,7 +47,7 @@ end = struct
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
     fun assign (env: Env.t) (y, uv: (Scope.Id.t, concr) TypeVars.uv, t: concr): unit =
-        if Concr.occurs uv t
+        if Concr.occurs (Env.hasScope env) uv t
         then raise TypeError (Occurs (SVar (Concr.pos t, UVar uv), concr t))
         else doAssign env y (uv, t)
 
@@ -65,6 +65,7 @@ end = struct
             (case Uv.get uv'
              of Left uv' => uvSet env (uv, t)
               | Right t => uvSet env (uv, t))
+         | SVar (_, Path _) => uvSet env (uv, t)
 
     and doAssignArrow (env: Env.t) y uv pos {domain, codomain} =
         let val domainUv = Env.freshUv env Predicative
@@ -211,13 +212,22 @@ end = struct
          | Left (face, SOME coercionDef) => (* FIXME: enforce predicativity: *)
             if Concr.pathOccurs path t
             then raise TypeError (Occurs (face, concr t))
-            else ( pathSet env (path, t)
-                 ; SOME (pathCoercion y coercionDef) )
-         | Right (typ, coercionDef) => SOME (pathCoercion y coercionDef)
+            else let val resT = case y
+                                of Sub => t
+                                 | Super => face
+                 in pathSet env (path, t)
+                  ; SOME (pathCoercion y resT coercionDef)
+                 end
+         | Right (typ, coercionDef) =>
+            let val resT = case y
+                           of Sub => t
+                            | Super => Path.face path
+            in SOME (pathCoercion y resT coercionDef)
+            end
 
-    and pathCoercion y coercionDef =
+    and pathCoercion y t coercionDef =
         case y
-        of Sub => (fn expr => FTerm.Cast (FTerm.exprPos expr, expr, UseCo coercionDef))
-         | Super => (fn expr => FTerm.Cast (FTerm.exprPos expr, expr, Symm (UseCo coercionDef)))
+        of Sub => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, UseCo coercionDef))
+         | Super => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, Symm (UseCo coercionDef)))
 end
 

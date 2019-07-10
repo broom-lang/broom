@@ -17,20 +17,32 @@ end = struct
         val insertType: t * Id.t * (Id.t * FFType.kind) -> t
         val find: t * Name.t -> FFType.concr option
         val findType: t * Id.t -> (Id.t * FFType.kind) option
+        val insertCo: t * Name.t * FFType.concr * FFType.concr -> t
+        val findCo: t * Name.t -> (FFType.concr * FFType.concr) option
     end = struct
         type t = { vals: FFType.concr NameSortedMap.map
-                 , types: (Id.t * FFType.kind) Id.SortedMap.map }
+                 , types: (Id.t * FFType.kind) Id.SortedMap.map
+                 , coercions: (FFType.concr * FFType.concr) NameSortedMap.map }
 
-        val empty = {vals = NameSortedMap.empty, types = Id.SortedMap.empty}
-        fun insert ({vals, types}, name, t) = {vals = NameSortedMap.insert (vals, name, t), types}
-        fun insertType ({vals, types}, id, entry) = {vals, types = Id.SortedMap.insert (types, id, entry)}
+        val empty =
+            {vals = NameSortedMap.empty, types = Id.SortedMap.empty, coercions = NameSortedMap.empty}
+
+        fun insert ({vals, types, coercions}, name, t) =
+            {vals = NameSortedMap.insert (vals, name, t), types, coercions}
+        fun insertType ({vals, types, coercions}, id, entry) =
+            {vals, types = Id.SortedMap.insert (types, id, entry), coercions}
+        fun insertCo ({vals, types, coercions}, name, l, r) =
+            {vals, types, coercions = NameSortedMap.insert (coercions, name, (l, r))}
+
         fun find ({vals, ...}: t, name) = NameSortedMap.find (vals, name)
         fun findType ({types, ...}: t, id) = Id.SortedMap.find (types, id)
+        fun findCo ({coercions, ...}: t, name) = NameSortedMap.find (coercions, name)
     end
 
     datatype kind = datatype FAst.Type.kind
     datatype concr = datatype FAst.Type.concr'
     datatype abs = datatype FAst.Type.abs'
+    datatype co = datatype FAst.Type.co'
     datatype expr = datatype FAst.Term.expr
     datatype stmt = datatype FAst.Term.stmt
 
@@ -116,6 +128,13 @@ end = struct
                          then ()
                          else raise Fail (FFType.concrToString (#1 ts) ^ " != " ^ FFType.concrToString (#2 ts))
 
+    fun checkCo env =
+        fn Refl t => (t, t)
+         | Symm co => Pair.flip (checkCo env co)
+         | UseCo name => (case Env.findCo (env, name)
+                          of SOME co => co
+                           | NONE => raise Fail ("Unbound coercion " ^ Name.toString name))
+
     fun check env =
         fn Fn f => checkFn env f
          | TFn f => checkTFn env f
@@ -126,6 +145,7 @@ end = struct
          | Field access => checkField env access
          | Let lett => checkLet env lett
          | If iff => checkIf env iff
+         | Cast cast => checkCast env cast
          | Use use => checkUse env use
          | Type (pos, t) => FFType.Type (pos, t)
          | Const (pos, c) => Prim (pos, Const.typeOf c)
@@ -221,6 +241,14 @@ end = struct
         in ct
         end
 
+    and checkCast env (pos, typ, expr, co) =
+        let val exprT = check env expr
+            val (fromT, toT) = checkCo env co
+        in checkEq env (exprT, fromT)
+         ; checkEq env (toT, typ)
+         ; typ
+        end
+
     and checkUse env (pos, {var, typ}) =
         let val t = case Env.find (env, var)
                     of SOME t => t
@@ -239,7 +267,10 @@ end = struct
     val typecheck = Either.Right o check Env.empty
 
     fun typecheckProgram {typeFns, axioms, body} =
-        ( check Env.empty body (* TODO: Use `typeFns`, `axioms` *)
-        ; NONE )
+        let val env = Vector.foldl (fn ((name, l, r), env) => Env.insertCo (env, name, l, r))
+                                   Env.empty axioms
+        in check env body (* TODO: Use `typeFns`, `axioms` *)
+         ; NONE
+        end
 end
 

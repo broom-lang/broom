@@ -56,6 +56,10 @@ signature FAST_TYPE = sig
                         -> 'sv concr Id.SortedMap.map -> 'sv abs -> 'sv abs
         val kindOf: (Pos.t * 'sv -> kind) -> 'sv abs -> kind
     end
+
+    structure Co: sig
+        val toDoc: ('sv -> PPrint.t) -> 'sv co -> PPrint.t
+    end
 end
 
 structure FType :> FAST_TYPE = struct
@@ -173,6 +177,11 @@ structure FType :> FAST_TYPE = struct
             text "exists" <+> PPrint.punctuate space (Vector.map defToDoc params)
                 <+> text "." <+> concrToDoc svarToDoc t
 
+    and coercionToDoc svarToDoc =
+        fn Refl t => concrToDoc svarToDoc t
+         | Symm co => text "symm" <+> coercionToDoc svarToDoc co
+         | UseCo name => Name.toDoc name
+
     fun mapConcrChildren f =
         fn ForAll (pos, param, body) => ForAll (pos, param, f body)
          | Arrow (pos, {domain, codomain}) =>
@@ -287,6 +296,10 @@ structure FType :> FAST_TYPE = struct
             fn Exists (_, #[], t) => Concr.kindOf svarKind t
              | Exists (pos, _, _) => TypeK pos
     end
+
+    structure Co = struct
+        val toDoc = coercionToDoc
+    end
 end
 
 signature CLOSED_FAST_TYPE = sig
@@ -325,6 +338,10 @@ signature CLOSED_FAST_TYPE = sig
         val toDoc: abs -> PPrint.t
         val toString: abs -> string
         val concr: concr -> abs
+    end
+
+    structure Co: sig
+        val toDoc: co -> PPrint.t
     end
 end
 

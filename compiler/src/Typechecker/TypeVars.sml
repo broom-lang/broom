@@ -26,6 +26,7 @@ structure TypeVars :> sig
 
     structure Path: sig
         val new: 't * 'scope * 'co -> ('scope, 't, 'co) path
+        val face: ('scope, 't, 'co) path -> 't
         val get: ('scope -> bool) (* Is the required coercion available? *)
                  -> ('scope, 't, 'co) path -> ('t * 'co option, 't * 'co) Either.t
         val set: ('t -> Name.t)
@@ -140,6 +141,8 @@ end = struct
 
     structure Path = struct
         fun new (face, scope, coercion) = {face, scope, coercion, impl = ref NONE}
+
+        val face: ('scope, 't, 'co) path -> 't = #face
 
         fun get inScope {face, scope, coercion, impl} =
             if inScope scope
