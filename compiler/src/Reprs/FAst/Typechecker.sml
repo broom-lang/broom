@@ -91,6 +91,9 @@ end = struct
               | NONE => false)
          | (EmptyRow _, EmptyRow _) => true
          | (FType.Type (_, t), FType.Type (_, t')) => absEq env (t, t')
+         | (CallTFn (_, callee, args), CallTFn (_, callee', args')) =>
+            callee = callee'
+            andalso Vector.all (eq env) (Vector.zip (args, args'))
          | (UseT (_, {var, ...}), UseT (_, {var = var', ...})) =>
             (case Env.findType (env, var)
              of SOME (id, _) => (case Env.findType (env, var')
@@ -98,13 +101,16 @@ end = struct
                                   | NONE => raise Fail ("Out of scope: g__" ^ Id.toString var'))
               | NONE => raise Fail ("Out of scope: g__" ^ Id.toString var))
          | (Prim (_, p), Prim (_, p')) => p = p' (* HACK? *)
+         | _ => raise Fail (FFType.Concr.toString t ^ " /= " ^ FFType.Concr.toString t')
     
     and absEq env =
-        fn (Exists (_, #[], t), Exists (_, #[], t')) => eq env (t, t')
-         | (Exists (pos, params, body), Exists (pos', params', body')) => 
-            if Vector.length params = Vector.length params'
-            then raise Fail "unimplemented"
-            else false
+        fn (Exists (pos, params, body), Exists (pos', params', body')) => 
+            let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
+                                       env params
+                val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
+                                       env params'
+            in eq env (body, body)
+            end
 
     fun checkEq env ts = if eq env ts
                          then ()
