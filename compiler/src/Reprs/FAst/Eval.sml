@@ -78,7 +78,12 @@ end = struct
 
     fun splat fields ext =
         case ext
-        of Record ext => NameHashTable.appi (NameHashTable.insert fields) ext
+        of Record ext =>
+            NameHashTable.appi (fn (label, v) =>
+                                    if NameHashTable.inDomain fields label
+                                    then ()
+                                    else NameHashTable.insert fields (label, v))
+                               ext
          | _ => raise Fail "unreachable"
 
     fun getField record label =
@@ -135,6 +140,13 @@ end = struct
                  (case ext
                   of SOME ext => eval env cont ext
                    | NONE => continue cont (Record (NameHashTable.mkTable (0, Subscript)))))
+         | Override (_, _, fields, original) =>
+            (case Vector.uncons fields
+             of SOME ((label, expr), fields') =>
+                 let val record = NameHashTable.mkTable (0, Subscript)
+                 in eval env (InitField (env, fields', SOME original, record, label) :: cont) expr
+                 end
+              | NONE => eval env cont original)
          | Field (_, _, expr, label) => eval env (GetField (env, label) :: cont) expr
          | Cast (_, _, expr, _) => eval env cont expr
          | Type _ => continue cont Unit
