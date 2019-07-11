@@ -222,7 +222,13 @@ end = struct
             let val resT = case y
                            of Sub => t
                             | Super => Path.face path
-            in SOME (pathCoercion y resT coercionDef)
+                val coerceToImpl = subType env currPos (case y
+                                                        of Sub => (typ, t)
+                                                         | Super => (t, typ))
+                val coerceToPath = pathCoercion y resT coercionDef
+            in case coerceToImpl
+               of SOME coerceToImpl => SOME (coerceToPath o coerceToImpl)
+                | NONE => SOME coerceToPath
             end
 
     and pathCoercion y t coercionDef =
