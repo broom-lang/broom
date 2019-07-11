@@ -72,6 +72,7 @@ end = struct
             then SOME fieldt
             else rowLabelType ext label
          | EmptyRow _ => NONE
+         | _ => raise Fail ("Not a row type: " ^ FType.Concr.toString row)
 
     val rec kindEq =
         fn (ArrowK _, ArrowK _) => raise Fail "unimplemented"

@@ -17,6 +17,10 @@ structure List = struct
              | [] => "") ^ "]"
         end
 
+    fun some f =
+        fn x :: xs => Option.orElse (fn () => some f xs) (f x)
+         | [] => NONE
+
     structure Builder :> LIST_BUILDER = struct
         type 'a t = 'a list ref
 

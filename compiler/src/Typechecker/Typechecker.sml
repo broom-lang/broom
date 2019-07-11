@@ -98,9 +98,8 @@ end = struct
                    (Env.findExprClosure env name)
 
     and reAbstract env =
-        fn Exists (_, #[], t) => t
-         | Exists (pos, params, body) =>
-            let val SOME (Scope.ExistsScope (_, absBindings)) = Env.nearestExists env
+        fn Exists (pos, params, body) =>
+            let val (_, absBindings) = valOf (Env.nearestExists env)
                 val mapping =
                     Vector.foldl (fn ({var, kind}, mapping) =>
                                       let val id' = Bindings.Type.fresh absBindings kind
@@ -172,8 +171,7 @@ end = struct
                 , case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
                   of Unvisited args => unvisitedBindingType (CType.pos t) env name args
                    | Visiting _ => raise Fail ("Type cycle at " ^ Pos.toString (CType.pos t))
-                   | Typed (t, _, _) | Visited (t, _) => t
-                   | Typed (_, SOME _, _) => raise Fail "unreachable" )
+                   | Typed (t, _, _) | Visited (t, _) => t )
 
             val t = elaborate env t
             val defs = Bindings.Type.defs absBindings
@@ -368,7 +366,7 @@ end = struct
         let val env' = Env.pushScope env (Scope.Marker scopeId)
             val expr = elaborateExprAs env' implType expr
         in Vector.app (fn (name, FAst.Type.SVar (_, FType.Path path)) =>
-                           let val Either.Left (face, _) = Path.get (Env.hasScope env) path
+                           let val (face, _) = Either.unwrapLeft (Path.get (Env.hasScope env) path)
                                val impl = case Path.get (Env.hasScope env') path
                                           of Either.Left (face, _) => face
                                            | Either.Right (impl, _) => impl
@@ -450,7 +448,7 @@ end = struct
                                    in uvSet env (uv, typ)
                                     ; fieldType
                                    end)
-         | _ => raise TypeError (UnDottable (expr, typ))
+                 | _ => raise TypeError (UnDottable (expr, typ))
             and coerceRow =
                 fn FType.RowExt (_, {field = (label', fieldt), ext}) =>
                     if label' = label

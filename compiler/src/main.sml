@@ -34,8 +34,10 @@ end = struct
                               , lint = isSome (CLIParser.Flaggeds.find (flaggeds, "lint"))
                               , input = case positionals
                                         of [] => Console TextIO.stdIn
-                                         | [filename] => File (TextIO.openIn filename, filename) }
-                     | ("repl", _, _) => Repl)
+                                         | [filename] => File (TextIO.openIn filename, filename)
+                                         | _ => raise Fail "Multiple input files unimplemented" }
+                     | ("repl", _, _) => Repl
+                     | (cmd, _, _) => raise Fail ("Unreachable code; unknown subcommand " ^ cmd))
                    (parser argv)
 
     fun printErr str = TextIO.output (TextIO.stdErr, str)
