@@ -38,8 +38,8 @@ end = struct
                    | Branch of env * expr * expr
                    | InitField of env * (Name.t * expr) VectorSlice.slice * expr option
                                 * value NameHashTable.hash_table * Name.t
-                   | Splat of env * value NameHashTable.hash_table
-                   | GetField of env * Name.t
+                   | Splat of value NameHashTable.hash_table
+                   | GetField of Name.t
     
     type cont = frame list
 
@@ -147,7 +147,7 @@ end = struct
                  in eval env (InitField (env, fields', SOME original, record, label) :: cont) expr
                  end
               | NONE => eval env cont original)
-         | Field (_, _, expr, label) => eval env (GetField (env, label) :: cont) expr
+         | Field (_, _, expr, label) => eval env (GetField label :: cont) expr
          | Cast (_, _, expr, _) => eval env cont expr
          | Type _ => continue cont Unit
          | Use (_, {var, ...}) => continue cont (lookup env var)
@@ -192,12 +192,12 @@ end = struct
                   eval env (InitField (env, fields, ext, record, label) :: cont) expr
                | NONE => 
                   (case ext
-                   of SOME ext => eval env (Splat (env, record) :: cont) ext
+                   of SOME ext => eval env (Splat record :: cont) ext
                     | NONE => continue cont (Record record)) )
-         | Splat (env, record) :: cont =>
+         | Splat record :: cont =>
             ( splat record value
             ; continue cont (Record record) )
-         | GetField (env, label) :: cont => continue cont (getField value label)
+         | GetField label :: cont => continue cont (getField value label)
          | [] => value
 
     fun newToplevel () = NameHashTable.mkTable (0, Subscript)

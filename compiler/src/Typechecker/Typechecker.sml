@@ -14,7 +14,6 @@ end = struct
     structure Concr = FType.Concr
     datatype abs' = datatype FAst.Type.abs'
     type concr = FType.concr
-    type abs = FType.abs
     val concr = FType.Abs.concr
 
     open TypeError
@@ -165,14 +164,14 @@ end = struct
                         val var = Bindings.Type.fresh absBindings kind
                     in FType.Type (pos, concr (FType.UseT (pos, {var, kind})))
                     end
-                 | CType.Singleton (pos, expr) => #1 (elaborateExpr env expr)
+                 | CType.Singleton (_, expr) => #1 (elaborateExpr env expr)
                  | CType.Prim (pos, p) => FType.Prim (pos, p)
 
             and elaborateDecl env (name, t) =
                 ( name
                 , case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
                   of Unvisited args => unvisitedBindingType (CType.pos t) env name args
-                   | Visiting args => raise Fail ("Type cycle at " ^ Pos.toString (CType.pos t))
+                   | Visiting _ => raise Fail ("Type cycle at " ^ Pos.toString (CType.pos t))
                    | Typed (t, _, _) | Visited (t, _) => t
                    | Typed (_, SOME _, _) => raise Fail "unreachable" )
 
@@ -256,8 +255,7 @@ end = struct
             in (typ, FTerm.Let (pos, stmts, body))
             end
          | CTerm.App (pos, {callee, arg}) =>
-            let val ct as (_, callee) = elaborateExpr env callee
-                val (callee, {domain, codomain}) = coerceCallee env ct 
+            let val (callee, {domain, codomain}) = coerceCallee env (elaborateExpr env callee)
                 val arg = elaborateExprAs env domain arg
             in (codomain, FTerm.App (pos, codomain, {callee, arg}))
             end
@@ -286,7 +284,7 @@ end = struct
             (FType.Prim (pos, Const.typeOf c), FTerm.Const (pos, c))
 
     and elaborateRecord env pos ({fields, ext}: CTerm.row): concr * FTerm.expr =
-        let fun elaborateField (field as (label, expr), (rowType, fieldExprs)) =
+        let fun elaborateField ((label, expr), (rowType, fieldExprs)) =
                 let val pos = CTerm.exprPos expr
                     val (fieldt, expr) = elaborateExpr env expr
                 in ( FType.RowExt (pos, {field = (label, fieldt), ext = rowType})

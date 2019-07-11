@@ -40,7 +40,6 @@ signature CST = sig
 
         val pos: typ -> Pos.t
         val toDoc: typ -> PPrint.t
-        val toString: typ -> string
     end
 
     structure Term: sig
@@ -197,11 +196,9 @@ structure Cst :> CST = struct
         structure Prim = PrimType
 
         datatype typ = datatype typ
-        type def = def
 
         val pos = typePos
         val toDoc = typeToDoc
-        val toString = PPrint.pretty 80 o toDoc
     end
 
     structure Term = struct

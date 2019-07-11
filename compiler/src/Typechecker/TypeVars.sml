@@ -155,7 +155,7 @@ end = struct
                   | NONE => Either.Left (face, SOME coercion)
             else Either.Left (face, NONE)
 
-        fun set faceName inScope ({face, scope, coercion, impl}, t) =
+        fun set faceName inScope ({face, scope, coercion = _, impl}, t) =
             if inScope scope
             then case !impl
                  of SOME _ => raise Reset

@@ -66,7 +66,6 @@ structure TypecheckingEnv :> sig
     val initial: Scope.Id.t * Scope.toplevel -> t
     val innermostScope: t -> Scope.t option
     val pushScope: t -> Scope.t -> t
-    val scopeIds: t -> Scope.Id.t list
     val hasScope: t -> Scope.Id.t -> bool
 
     val findType: t -> FType.Id.t -> Bindings.Type.binding option
@@ -234,8 +233,6 @@ end = struct
 
     fun pushScope {scopeIds, scopes, toplevel} scope =
         {scopes = scope :: scopes, scopeIds = Scope.id scope :: scopeIds, toplevel}
-
-    val scopeIds: t -> Scope.Id.t list = #scopeIds
 
     fun hasScope (env: t) id =
         List.exists (fn id' => id' = id) (#scopeIds env)

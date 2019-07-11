@@ -1,5 +1,4 @@
 structure FAstTypechecker :> sig
-    val typecheck: FixedFAst.Term.expr -> ((* FIXME: *) unit, FixedFAst.Type.concr) Either.t
     val typecheckProgram: FixedFAst.Term.program -> (* FIXME: *) unit option
 end = struct
     structure FAst = FixedFAst
@@ -62,7 +61,7 @@ end = struct
                     else Option.map (fn {field, ext} =>
                                          {field, ext = RowExt (pos, {field = (flabel, ftype), ext})})
                                     (rewrite ext)
-                 | t => NONE
+                 | _ => NONE
         in rewrite row
         end
 
@@ -91,7 +90,7 @@ end = struct
                                        env params
                 val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
                                        env params'
-            in eq env (body, body)
+            in eq env (body, body')
             end
          | (Arrow (_, {domain, codomain}), Arrow (_, {domain = domain', codomain = codomain'})) =>
             eq env (domain, domain') andalso eq env (codomain, codomain')
@@ -116,12 +115,12 @@ end = struct
          | _ => raise Fail (FFType.Concr.toString t ^ " /= " ^ FFType.Concr.toString t')
     
     and absEq env =
-        fn (Exists (pos, params, body), Exists (pos', params', body')) => 
+        fn (Exists (_, params, body), Exists (_, params', body')) => 
             let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
                                        env params
                 val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
                                        env params'
-            in eq env (body, body)
+            in eq env (body, body')
             end
 
     fun checkEq env ts = if eq env ts
@@ -207,7 +206,7 @@ end = struct
             let do if Vector.length args = Vector.length params then () else raise Fail "argument count"
                 val pargs = Vector.zip (params, args)
                 
-                fun checkArg ({var, kind}, arg) = checkKindEq (FFType.Concr.kindOf arg, kind)
+                fun checkArg ({var = _, kind}, arg) = checkKindEq (FFType.Concr.kindOf arg, kind)
                 do Vector.app checkArg pargs
 
                 val mapping = Vector.foldl (fn (({var, ...}, arg), mapping) =>
@@ -223,7 +222,9 @@ end = struct
         case check env expr
         of t as Record (_, row) =>
             (case rowLabelType row label
-             of SOME fieldt => fieldt
+             of SOME fieldt => 
+                 ( checkEq env (fieldt, typ)
+                 ; fieldt )
               | NONE => raise Fail ("Record " ^ FFTerm.exprToString expr ^ ": " ^ FFType.concrToString t
                                     ^ " does not have field " ^ Name.toString label))
          | t => raise Fail ("Not a record: " ^ FFTerm.exprToString expr ^ ": " ^ FFType.concrToString t)
@@ -241,7 +242,7 @@ end = struct
         in ct
         end
 
-    and checkCast env (pos, typ, expr, co) =
+    and checkCast env (_, typ, expr, co) =
         let val exprT = check env expr
             val (fromT, toT) = checkCo env co
         in checkEq env (exprT, fromT)
@@ -263,8 +264,6 @@ end = struct
             in checkEq env (exprType, typ)
             end
          | Expr expr => ignore (check env expr)
-
-    val typecheck = Either.Right o check Env.empty
 
     fun typecheckProgram {typeFns, axioms, body} =
         let val env = Vector.foldl (fn ((name, l, r), env) => Env.insertCo (env, name, l, r))

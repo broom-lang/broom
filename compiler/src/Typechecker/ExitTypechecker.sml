@@ -29,9 +29,9 @@ end = struct
          | SVar (pos, UVar uv) => (case TypeVars.Uv.get uv
                                    of Right t => concrToF t
                                     | Left _ => Prim (pos, FFType.Prim.Unit))
-         | SVar (pos, Path path) => (case TypeVars.Path.get (Fn.constantly false) path (* FIXME *)
-                                     of Right (t, _) => concrToF t
-                                      | Left (t, _) => concrToF t)
+         | SVar (_, Path path) => (case TypeVars.Path.get (Fn.constantly false) path (* FIXME *)
+                                   of Right (t, _) => concrToF t
+                                    | Left (t, _) => concrToF t)
 
     and absToF: FlexFAst.Type.abs -> FFType.abs =
         fn Exists (pos, params, body) => Exists (pos, params, concrToF body)

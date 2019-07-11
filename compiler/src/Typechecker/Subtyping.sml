@@ -67,7 +67,7 @@ end = struct
         of SOME f => f expr
          | NONE => expr
 
-    fun fnCoercion coerceDomain coerceCodomain ({domain, codomain}, {domain = domain', codomain = codomain'}) callee =
+    fun fnCoercion coerceDomain coerceCodomain ({domain = _, codomain}, {domain = domain', codomain = _}) callee =
         let val pos = FTerm.exprPos callee
             val param = {var = Name.fresh (), typ = domain'}
             val arg = applyCoercion coerceDomain (FTerm.Use (pos, param))
@@ -97,11 +97,11 @@ end = struct
             else raise Fail ("Opaque type out of scope: g__" ^ Id.toString var)
          | SVar (_, UVar uv') =>
             (case Uv.get uv'
-             of Left uv' => uvSet env (uv, t)
+             of Left _ => uvSet env (uv, t)
               | Right t => uvSet env (uv, t))
          | SVar (_, Path _) => uvSet env (uv, t)
 
-    and doAssignUniversal env y uv (universal as (pos, params, body)) =
+    and doAssignUniversal env y uv (universal as (pos, _, _)) =
         case y
         of Sub =>
             skolemize env universal (fn (env, params, body) =>
@@ -170,7 +170,7 @@ end = struct
         of Sub => subType env currPos (t, t')
          | Super => subType env currPos (t', t)
 
-    and suberUniversal env currPos y (universal as (pos, params, body)) t =
+    and suberUniversal env currPos y universal t =
         case y
         of Sub =>
             instantiate env universal (fn (env, args, body) =>
