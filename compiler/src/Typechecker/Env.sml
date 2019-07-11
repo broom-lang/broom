@@ -20,6 +20,7 @@ structure TypecheckingEnv :> sig
             type bindings
 
             val new: unit -> bindings
+            val fromDefs: FlexFAst.Type.def vector -> bindings
             val fresh: bindings -> binding -> FType.Id.t
             val defs: bindings -> FlexFAst.Type.def list
         end
@@ -52,7 +53,7 @@ structure TypecheckingEnv :> sig
 
         datatype t = TopScope of Id.t * toplevel
                    | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
-                   | ForAllScope of Id.t * FlexFAst.Type.def
+                   | ForAllScope of Id.t * Bindings.Type.bindings
                    | ExistsScope of Id.t * Bindings.Type.bindings
                    | BlockScope of Id.t * Bindings.Expr.bindings
                    | InterfaceScope of Id.t * Bindings.Expr.bindings
@@ -134,6 +135,12 @@ end = struct
 
             fun new () = Id.HashTable.mkTable (0, Subscript)
 
+            fun fromDefs defs =
+                let val bs = new ()
+                in Vector.app (fn {var, kind} => Id.HashTable.insert bs (var, kind)) defs
+                 ; bs
+                end
+
             fun defs bs = Id.HashTable.listItemsi bs |> List.map (fn (var, kind) => {var, kind})
         end
 
@@ -185,7 +192,7 @@ end = struct
 
         datatype t = TopScope of Id.t * toplevel
                    | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
-                   | ForAllScope of Id.t * FlexFAst.Type.def
+                   | ForAllScope of Id.t * Bindings.Type.bindings
                    | ExistsScope of Id.t * Bindings.Type.bindings
                    | BlockScope of Id.t * Bindings.Expr.bindings
                    | InterfaceScope of Id.t * Bindings.Expr.bindings
@@ -200,8 +207,7 @@ end = struct
 
         fun findType scope id =
             case scope
-            of ForAllScope (_, {var, kind}) => if var = id then SOME kind else NONE
-             | ExistsScope (_, bindings) => Bindings.Type.find bindings id
+            of ForAllScope (_, bindings) | ExistsScope (_, bindings) => Bindings.Type.find bindings id
              | FnScope _ | BlockScope _ | InterfaceScope _ | Marker _ => NONE
 
         fun findExpr scope name =

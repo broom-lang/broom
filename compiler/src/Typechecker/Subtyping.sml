@@ -4,6 +4,7 @@ structure Subtyping :> sig
     val applyCoercion: coercion -> FlexFAst.Term.expr -> FlexFAst.Term.expr
     val subType: TypecheckingEnv.t -> Pos.t -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
 end = struct
+    val op|> = Fn.|>
     datatype either = datatype Either.t
     structure Uv = TypeVars.Uv
     structure Path = TypeVars.Path
@@ -21,6 +22,7 @@ end = struct
     structure FTerm = FAst.Term
     structure Env = TypecheckingEnv
     structure Scope = Env.Scope
+    structure Bindings = Env.Bindings
     open TypeError
 
     fun idInScope env id = isSome (Env.findType env id)
@@ -34,6 +36,28 @@ end = struct
     fun pathSet env =
         Path.set (Name.fromString o Concr.toString) (* HACK *)
                  (Env.hasScope env)
+
+    fun instantiate env (pos, params, body) f =
+        let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
+            val args = Vector.map (fn _ => SVar (pos, UVar (Env.freshUv env Predicative)))
+                                  params
+            val mapping = (params, args)
+                        |> Vector.zipWith (fn ({var, kind = _}, arg) => (var, arg))
+                        |> Id.SortedMap.fromVector
+            val body = Concr.substitute (Env.hasScope env) mapping body
+        in f (env, args, body)
+        end
+
+    fun skolemize env (pos, params, body) f =
+        let val params' = Vector.map (fn {kind, var = _} => {var = Id.fresh (), kind}) params
+            val env = Env.pushScope env (Scope.ForAllScope ( Scope.Id.fresh ()
+                                                           , Bindings.Type.fromDefs params' ))
+            val mapping = (params, params')
+                        |> Vector.zipWith (fn ({var, ...}, def') => (var, UseT (pos, def')))
+                        |> Id.SortedMap.fromVector
+            val body = Concr.substitute (Env.hasScope env) mapping body
+        in f (env, params', body)
+        end
 
     type coercion = (FTerm.expr -> FTerm.expr) option
     type field_coercion = Name.t * concr * (FTerm.expr -> FTerm.expr)
@@ -77,34 +101,18 @@ end = struct
               | Right t => uvSet env (uv, t))
          | SVar (_, Path _) => uvSet env (uv, t)
 
-    and doAssignUniversal env y uv (pos, params, body) =
+    and doAssignUniversal env y uv (universal as (pos, params, body)) =
         case y
         of Sub =>
-            let val params' = Vector.map (fn {kind, ...} => {var = Id.fresh (), kind}) params
-                val env = Vector.foldl (fn (def, env) =>
-                                            Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), def)))
-                                       env params'
-                val mapping =
-                    Vector.foldl (fn (({var, ...}, def'), mapping) =>
-                                      Id.SortedMap.insert (mapping, var, UseT (pos, def')))
-                                 Id.SortedMap.empty
-                                 (Vector.zip (params, params'))
-                val body = Concr.substitute (Env.hasScope env) mapping body
-            in Option.map (fn coerce => fn expr => FTerm.TFn (pos, params', coerce expr))
-                          (doAssign env y (uv, body))
-            end
+            skolemize env universal (fn (env, params, body) =>
+                Option.map (fn coerce => fn expr => FTerm.TFn (pos, params, coerce expr))
+                           (doAssign env y (uv, body))
+            )
          | Super =>
-            let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
-                val args = Vector.map (fn _ => SVar (pos, UVar (Env.freshUv env Predicative)))
-                                      params
-                val mapping =
-                    Vector.foldl (fn (({var, ...}, arg), mapping) => Id.SortedMap.insert (mapping, var, arg))
-                                 Id.SortedMap.empty
-                                 (Vector.zip (params, args))
-                val body = Concr.substitute (Env.hasScope env) mapping body
-            in Option.map (fn coerce => fn callee => coerce (FTerm.TApp (pos, body, {callee, args})))
-                          (doAssign env y (uv, body))
-            end
+            instantiate env universal (fn (env, args, body) =>
+                Option.map (fn coerce => fn callee => coerce (FTerm.TApp (pos, body, {callee, args})))
+                           (doAssign env y (uv, body))
+            )
 
     and doAssignArrow (env: Env.t) y uv pos (arrow as {domain, codomain}) =
         let val domainUv = Env.freshUv env Predicative
@@ -162,35 +170,18 @@ end = struct
         of Sub => subType env currPos (t, t')
          | Super => subType env currPos (t', t)
 
-    and suberUniversal env currPos y (pos, params, body) t =
+    and suberUniversal env currPos y (universal as (pos, params, body)) t =
         case y
         of Sub =>
-            let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
-                val args = Vector.map (fn _ => SVar (currPos, UVar (Env.freshUv env Predicative)))
-                                      params
-                val mapping =
-                    Vector.foldl (fn (({var, ...}, arg), mapping) => Id.SortedMap.insert (mapping, var, arg))
-                                 Id.SortedMap.empty
-                                 (Vector.zip (params, args))
-                val body = Concr.substitute (Env.hasScope env) mapping body
-            in Option.map (fn coerce => fn expr => coerce (FTerm.TApp (currPos, body, {callee = expr, args})))
-                          (subType env currPos (body, t))
-            end
+            instantiate env universal (fn (env, args, body) =>
+                Option.map (fn coerce => fn expr => coerce (FTerm.TApp (currPos, body, {callee = expr, args})))
+                           (subType env currPos (body, t))
+            )
          | Super =>
-            let val params' = Vector.map (fn {kind, ...} => {var = Id.fresh (), kind}) params
-                val env =
-                    Vector.foldl (fn (def, env) =>
-                                      Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), def)))
-                                 env params'
-                val mapping =
-                    Vector.foldl (fn (({var, ...}, def'), mapping) =>
-                                      Id.SortedMap.insert (mapping, var, UseT (currPos, def')))
-                                 Id.SortedMap.empty
-                                 (Vector.zip (params, params'))
-                val body = Concr.substitute (Env.hasScope env) mapping body
-            in Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params', coerce expr))
-                          (subType env currPos (t, body))
-            end
+            skolemize env universal (fn (env, params, body) =>
+                Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
+                           (subType env currPos (t, body))
+            )
 
     and subArrows env currPos (arrows as ({domain, codomain}, {domain = domain', codomain = codomain'})) =
         let val coerceDomain = subType env currPos (domain', domain)

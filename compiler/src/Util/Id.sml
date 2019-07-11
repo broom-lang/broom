@@ -10,7 +10,11 @@ signature ID = sig
     structure OrdKey: ORD_KEY where type ord_key = t
 
     structure HashTable: MONO_HASH_TABLE where type Key.hash_key = t
-    structure SortedMap: ORD_MAP where type Key.ord_key = t
+    structure SortedMap: sig
+        include ORD_MAP where type Key.ord_key = t
+        
+        val fromVector: (Key.ord_key * 'v) vector -> 'v map
+    end
 end
 
 functor Id(UnitStruct: sig end) :> ID = struct
@@ -44,6 +48,13 @@ functor Id(UnitStruct: sig end) :> ID = struct
 
     structure HashTable = HashTableFn(HashKey)
     
-    structure SortedMap = BinaryMapFn(OrdKey)
+    structure SortedMap = struct
+        structure Super = BinaryMapFn(OrdKey)
+        open Super
+
+        fun fromVector kvs =
+            Vector.foldl (fn ((k, v), map) => insert (map, k, v))
+                         empty kvs
+    end
 end
 

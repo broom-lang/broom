@@ -126,9 +126,8 @@ end = struct
                             of SOME domain => elaborateType env domain
                              | NONE => ([], FType.SVar (pos, FType.UVar (Env.freshUv env Predicative)))
 
-                        val env = List.foldl (fn (def, env) =>
-                                                  Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), def)))
-                                             env typeDefs
+                        val env = Env.pushScope env (Scope.ForAllScope ( Scope.Id.fresh ()
+                                                                       , typeDefs |> Vector.fromList |> Bindings.Type.fromDefs ))
                         val fnScope = Scope.FnScope (Scope.Id.fresh (), var, Visited (domain, NONE))
                         val env = Env.pushScope env fnScope
 
@@ -209,9 +208,8 @@ end = struct
                      | NONE => ([], FType.SVar (pos, FType.UVar (Env.freshUv env Predicative)))
                 val codomain = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
 
-                val env = List.foldl (fn (def, env) =>
-                                          Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), def)))
-                                     env typeDefs
+                val env = Env.pushScope env (Scope.ForAllScope ( Scope.Id.fresh ()
+                                                               , typeDefs |> Vector.fromList |> Bindings.Type.fromDefs ))
                 val fnScope = Scope.FnScope (Scope.Id.fresh (), var, Visited (domain, NONE))
                 val env = Env.pushScope env fnScope
 
@@ -330,10 +328,7 @@ end = struct
               | _ => coerceExprTo env typ expr)
 
     and elaborateAsForAll env (pos, params, body) expr =
-        let val env =
-                Vector.foldl (fn (def, env) =>
-                                  Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), def)))
-                             env params
+        let val env = Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), Bindings.Type.fromDefs params))
         in FTerm.TFn (pos, params, elaborateExprAs env body expr)
         end
 
