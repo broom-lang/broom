@@ -422,9 +422,16 @@ end = struct
                     in coerce (FTerm.TApp (pos, calleeType, {callee, args})) calleeType
                     end
                  | FType.Arrow (_, domains) => (callee, domains)
-                 | FType.SVar (_, FType.UVar uv) =>
+                 | FType.SVar (pos, FType.UVar uv) =>
                     (case Uv.get uv
-                     of Left uv => raise Fail "unimplemented"
+                     of Left uv =>
+                         let val domainUv = TypeVars.Uv.freshSibling (uv, Predicative)
+                             val codomainUv = TypeVars.Uv.freshSibling (uv, Predicative)
+                             val arrow = { domain = FType.SVar (pos, FType.UVar domainUv)
+                                         , codomain = FType.SVar (pos, FType.UVar codomainUv) }
+                         in uvSet env (uv, FType.Arrow (pos, arrow))
+                          ; (callee, arrow)
+                         end
                       | Right typ => coerce callee typ)
                  | _ => raise TypeError (UnCallable (callee, typ))
         in coerce callee typ

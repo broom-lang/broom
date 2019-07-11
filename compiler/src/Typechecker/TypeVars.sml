@@ -15,6 +15,7 @@ structure TypeVars :> sig
     structure Uv: sig
         val new: 'scope * predicativity * Name.t -> ('scope, 't) uv
         val fresh: 'scope * predicativity -> ('scope, 't) uv
+        val freshSibling: ('scope, 't) uv * predicativity -> ('scope, 't) uv
         val get: ('scope, 't) uv -> (('scope, 't) uv, 't) Either.t
         val set: ('t -> ('scope, 't) uv option) (* Try to unwrap another uv from provided 't. *)
                  -> ('scope * 'scope -> order) (* scope ordering to preserve scoping invariants *)
@@ -66,6 +67,7 @@ end = struct
 
         fun fresh (scope, predicativity) = new (scope, predicativity, Name.fresh ())
 
+
         fun find uv =
             case !uv
             of Link uv' => let val res = find uv'
@@ -78,6 +80,8 @@ end = struct
             case !(find uv)
             of Root root => root
              | Link _ => raise Fail "unreachable"
+
+        fun freshSibling (uv, predicativity) = fresh (#scope (#meta (root uv)), predicativity)
 
         fun get uv =
             let val uv = find uv

@@ -115,8 +115,8 @@ end = struct
             )
 
     and doAssignArrow (env: Env.t) y uv pos (arrow as {domain, codomain}) =
-        let val domainUv = Env.freshUv env Predicative
-            val codomainUv = Env.freshUv env Predicative
+        let val domainUv = TypeVars.Uv.freshSibling (uv, Predicative)
+            val codomainUv = TypeVars.Uv.freshSibling (uv, Predicative)
             val arrow' = { domain = SVar (pos, UVar domainUv)
                          , codomain = SVar (pos, UVar codomainUv)}
             val t' = Arrow (pos, arrow')
