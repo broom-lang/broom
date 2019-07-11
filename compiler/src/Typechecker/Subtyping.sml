@@ -95,7 +95,7 @@ end = struct
             ( subType env currPos (t, t')
             ; subType env currPos (t', t)
             ; SOME (fn _ => FTerm.Type (pos, sup)))
-         | (CallTFn _, CallTFn _) => raise Fail "unimplemented"
+         | (CallTFn call, CallTFn call') => subCallTFn env currPos (call, call') (typ, superTyp)
          | (UseT (_, {var, ...}), UseT (_, {var = var', ...})) =>
             (* TODO: Go back to using `OVar` => this becomes `raise Fail "unreachable" *)
             if var = var'
@@ -204,6 +204,13 @@ end = struct
         if p = p'
         then NONE
         else raise TypeError (NonSubType (currPos, concr typ, concr superTyp))
+
+    and subCallTFn env currPos ((_, callee, args), (_, callee', args')) (t, t') =
+        if callee = callee'
+        then ( Vector.app (ignore o subType env currPos) (Vector.zip (args, args'))
+             ; Vector.app (ignore o subType env currPos) (Vector.zip (args', args))
+             ; NONE ) (* Since both callee and args have to unify, coercion is always no-op. *)
+        else raise TypeError (NonSubType (currPos, concr t, concr t'))
 
     and subUvs env currPos superTyp (uv, uv') =
         case (Uv.get uv, Uv.get uv')
