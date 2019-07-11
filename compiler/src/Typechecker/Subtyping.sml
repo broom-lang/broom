@@ -25,9 +25,12 @@ end = struct
 
     fun idInScope env id = isSome (Env.findType env id)
 
-    fun uvSet env =
-        Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env)
+    (* FIXME: Check kinds and smallness/monotype *)
+    fun uvSet env (uv, t) =
+        ( Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env) (uv, t)
+        ; NONE )
 
+    (* FIXME: Check kinds and smallness/monotype *)
     fun pathSet env =
         Path.set (Name.fromString o Concr.toString) (* HACK *)
                  (Env.hasScope env)
@@ -40,23 +43,30 @@ end = struct
         of SOME f => f expr
          | NONE => expr
 
+    fun fnCoercion coerceDomain coerceCodomain ({domain, codomain}, {domain = domain', codomain = codomain'}) callee =
+        let val pos = FTerm.exprPos callee
+            val param = {var = Name.fresh (), typ = domain'}
+            val arg = applyCoercion coerceDomain (FTerm.Use (pos, param))
+            val body = applyCoercion coerceCodomain (FTerm.App (pos, codomain, {callee, arg}))
+        in FTerm.Fn (pos, param, body)
+        end
+
     datatype lattice_y = Sub | Super
 
     val flipY = fn Sub => Super
                  | Super => Sub
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
-    fun assign (env: Env.t) (y, uv: (Scope.Id.t, concr) TypeVars.uv, t: concr): unit =
+    fun assign (env: Env.t) (y, uv: (Scope.Id.t, concr) TypeVars.uv, t: concr): coercion =
         if Concr.occurs (Env.hasScope env) uv t
         then raise TypeError (Occurs (SVar (Concr.pos t, UVar uv), concr t))
         else doAssign env y (uv, t)
 
-    and doAssign (env: Env.t) y (uv, t: concr) =
+    and doAssign (env: Env.t) y (uv, t: concr): coercion =
         case t
-        of Arrow (pos, domains) => doAssignArrow env y uv pos domains
-         | RowExt _ => uvSet env (uv, t) (* FIXME: row kind check, t smallness check *)
-         | EmptyRow _ => uvSet env (uv, t) (* FIXME: Check that uv is of row kind. *)
-         | Prim _ => uvSet env (uv, t)
+        of ForAll args => doAssignUniversal env y uv args
+         | Arrow (pos, domains) => doAssignArrow env y uv pos domains
+         | RowExt _ | EmptyRow _ | Record _ | CallTFn _ | Prim _ | Type _ => uvSet env (uv, t)
          | UseT (_, {var, ...}) => 
             if idInScope env var
             then uvSet env (uv, t)
@@ -67,14 +77,51 @@ end = struct
               | Right t => uvSet env (uv, t))
          | SVar (_, Path _) => uvSet env (uv, t)
 
-    and doAssignArrow (env: Env.t) y uv pos {domain, codomain} =
+    and doAssignUniversal env y uv (pos, params, body) =
+        case y
+        of Sub =>
+            let val params' = Vector.map (fn {kind, ...} => {var = Id.fresh (), kind}) params
+                val env = Vector.foldl (fn (def, env) =>
+                                            Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), def)))
+                                       env params'
+                val mapping =
+                    Vector.foldl (fn (({var, ...}, def'), mapping) =>
+                                      Id.SortedMap.insert (mapping, var, UseT (pos, def')))
+                                 Id.SortedMap.empty
+                                 (Vector.zip (params, params'))
+                val body = Concr.substitute (Env.hasScope env) mapping body
+            in Option.map (fn coerce => fn expr => FTerm.TFn (pos, params', coerce expr))
+                          (doAssign env y (uv, body))
+            end
+         | Super =>
+            let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
+                val args = Vector.map (fn _ => SVar (pos, UVar (Env.freshUv env Predicative)))
+                                      params
+                val mapping =
+                    Vector.foldl (fn (({var, ...}, arg), mapping) => Id.SortedMap.insert (mapping, var, arg))
+                                 Id.SortedMap.empty
+                                 (Vector.zip (params, args))
+                val body = Concr.substitute (Env.hasScope env) mapping body
+            in Option.map (fn coerce => fn callee => coerce (FTerm.TApp (pos, body, {callee, args})))
+                          (doAssign env y (uv, body))
+            end
+
+    and doAssignArrow (env: Env.t) y uv pos (arrow as {domain, codomain}) =
         let val domainUv = Env.freshUv env Predicative
             val codomainUv = Env.freshUv env Predicative
-            val t' = Arrow (pos, { domain = SVar (pos, UVar domainUv)
-                                       , codomain = SVar (pos, UVar codomainUv)})
-        in uvSet env (uv, t')
-         ; assign env (flipY y, domainUv, domain) (* contravariance *)
-         ; assign env (y, codomainUv, codomain)
+            val arrow' = { domain = SVar (pos, UVar domainUv)
+                         , codomain = SVar (pos, UVar codomainUv)}
+            val t' = Arrow (pos, arrow')
+            do ignore (uvSet env (uv, t'))
+            val coerceDomain = assign env (flipY y, domainUv, domain) (* contravariance *)
+            val coerceCodomain = assign env (y, codomainUv, codomain)
+        in if isSome coerceDomain orelse isSome coerceCodomain
+           then let val arrows = case y
+                                 of Sub => (arrow', arrow)
+                                  | Super => (arrow, arrow')
+                in SOME (fnCoercion coerceDomain coerceCodomain arrows)
+                end
+           else NONE
         end
 
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
@@ -145,17 +192,11 @@ end = struct
                           (subType env currPos (t, body))
             end
 
-    and subArrows env currPos ({domain, codomain}, {domain = domain', codomain = codomain'}) =
+    and subArrows env currPos (arrows as ({domain, codomain}, {domain = domain', codomain = codomain'})) =
         let val coerceDomain = subType env currPos (domain', domain)
             val coerceCodomain = subType env currPos (codomain, codomain')
         in if isSome coerceDomain orelse isSome coerceCodomain
-           then SOME (fn callee =>
-                          let val pos = FTerm.exprPos callee
-                              val param = {var = Name.fresh (), typ = domain'}
-                              val arg = applyCoercion coerceDomain (FTerm.Use (pos, param))
-                              val body = applyCoercion coerceCodomain (FTerm.App (pos, codomain, {callee, arg}))
-                          in FTerm.Fn (pos, param, body)
-                          end)
+           then SOME (fnCoercion coerceDomain coerceCodomain arrows)
            else NONE
         end
 
@@ -216,13 +257,13 @@ end = struct
         case (Uv.get uv, Uv.get uv')
         of (Left uv, Left _) =>
             (uvSet env (uv, superTyp); NONE) (* Call `uvSet` directly to skip occurs check. *)
-         | (Left uv, Right t) => (assign env (Sub, uv, t); NONE)
-         | (Right t, Left uv) => (assign env (Super, uv, t); NONE)
+         | (Left uv, Right t) => assign env (Sub, uv, t)
+         | (Right t, Left uv) => assign env (Super, uv, t)
          | (Right t, Right t') => subType env currPos (t, t')
 
     and suberUv env currPos y uv t =
         case Uv.get uv
-        of Left uv => (assign env (y, uv, t); NONE)
+        of Left uv => assign env (y, uv, t)
          | Right t' => suberType env currPos y (t', t)
 
     and suberPath env currPos y path t =
