@@ -357,10 +357,9 @@ end = struct
                                    (Vector.zip (typeFns, axiomNames))
             val namedPaths = Vector.zip (axiomNames, paths)
            
-            val mapping = Vector.foldl (fn (({var, ...}, path), mapping) =>
-                                            Id.SortedMap.insert (mapping, var, path))
-                                       Id.SortedMap.empty
-                                       (Vector.zip (params, paths))
+            val mapping = (params, paths)
+                        |> Vector.zipWith (fn ({var, ...}, path) => (var, path))
+                        |> Id.SortedMap.fromVector
             val implType = Concr.substitute (Env.hasScope env) mapping body
         in (implType, coScopeId, namedPaths)
         end
