@@ -20,7 +20,8 @@ type decl = Name.t * Type.typ
     | EQ | DARROW | COLON | ARROW | DDOT | DOT | COMMA
     | AMP
     | EOF
-%nonterm stmts of stmt vector
+%nonterm program of stmt vector
+       | stmts of stmt vector
        | stmtList of stmt list
        | stmt of stmt
        | expr of expr
@@ -51,6 +52,8 @@ type decl = Name.t * Type.typ
 %eop EOF
 
 %%
+
+program : stmts (stmts)
 
 (* Statements *)
 
