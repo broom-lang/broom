@@ -1,0 +1,12 @@
+type NOTHING = interface
+    type T;
+
+    unusable: fun a: type -> T -> a -> a;
+end;
+
+Nothing: NOTHING = module
+    type T = Unit;
+
+    unusable = {| a: type -> _: T -> x: a -> x };
+end;
+

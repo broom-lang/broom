@@ -26,10 +26,10 @@ itest: itests
 	@echo "All integration tests passed."
 
 .PHONY: itests
-itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.ml)))
+itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.brm)))
 
 .PHONY: %.test
-%.test: %.ml $(BROOM)
+%.test: %.brm $(BROOM)
 	@expected_err=$(addsuffix .err, $(basename $<)); \
 	if [ -f $$expected_err ]; then \
           ./$(BROOM) build --lint $< 2>&1 >/dev/null | diff $$expected_err -; \

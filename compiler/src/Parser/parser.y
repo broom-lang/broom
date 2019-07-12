@@ -17,14 +17,17 @@ type decl = Name.t * Type.typ
     | VAL | TYPE | DO | FN | LET | IN | END | IF | THEN | ELSE
     | MODULE | INTERFACE | FUN
     | LPAREN | RPAREN | LBRACE | RBRACE
-    | EQ | DARROW | COLON | ARROW | DDOT | DOT | COMMA
+    | EQ | DARROW | COLON | ARROW | BAR | DDOT | DOT | COMMA | SEMICOLON
     | AMP
     | EOF
 %nonterm program of stmt vector
        | stmts of stmt vector
        | stmtList of stmt list
        | stmt of stmt
+       | blockStmts of stmt list * expr
        | expr of expr
+       | params of (Name.t * typ option) list
+       | param of Name.t * typ option
        | body of expr
        | app of expr
        | nestable of expr
@@ -62,17 +65,30 @@ stmts : stmtList (Vector.fromList (List.rev stmtList) (* OPTIMIZE *))
 stmtList : ([])
          | stmtList stmt (stmt :: stmtList)
 
-stmt : VAL ID EQ expr (Term.Val (VALleft, Name.fromString ID, NONE, expr))
-     | VAL ID COLON typ EQ expr (Term.Val (VALleft, Name.fromString ID, SOME typ, expr))
-     | TYPE ID EQ typ (Term.Val (TYPEleft, Name.fromString ID, NONE, Term.Type (typleft, typ)))
-     | DO expr (Term.Expr expr)
+stmt : ID EQ expr SEMICOLON (Term.Val (IDleft, Name.fromString ID, NONE, expr))
+     | ID COLON typ EQ expr SEMICOLON (Term.Val (IDleft, Name.fromString ID, SOME typ, expr))
+     | TYPE ID EQ typ SEMICOLON (Term.Val (TYPEleft, Name.fromString ID, NONE, Term.Type (typleft, typ)))
+     | expr SEMICOLON (Term.Expr expr)
+
+blockStmts : stmt SEMICOLON blockStmts
+               (let val (stmts, expr) = blockStmts
+                in (stmt :: stmts, expr)
+                end)
+           | expr (([], expr))
 
 (* Expressions *)
 
-expr : FN ID DARROW expr (Term.Fn (FNleft, Name.fromString ID, NONE, expr))
-     | FN ID COLON typ DARROW expr (Term.Fn (FNleft, Name.fromString ID, SOME typ, expr))
+expr : LBRACE BAR params expr RBRACE
+         (List.foldl (fn ((param, domain), expr) => Term.Fn (LBRACEleft, param, domain, expr))
+                     expr params)
      | IF expr THEN expr ELSE expr (Term.If (IFleft, expr1, expr2, expr3))
      | body (body)
+
+params : params param (param :: params)
+       | param ([param])
+
+param : ID ARROW ((Name.fromString ID, NONE))
+      | ID COLON nestableTyp ARROW ((Name.fromString ID, SOME nestableTyp))
 
 body : body COLON nestableTyp (Term.Ann (bodyleft, body, nestableTyp))
      | app (app)
@@ -80,7 +96,9 @@ body : body COLON nestableTyp (Term.Ann (bodyleft, body, nestableTyp))
 app : app nestable (Term.App (appleft, {callee = app, arg = nestable}))
     | nestable (nestable)
 
-nestable : LET stmts IN expr END (Term.Let (exprleft, stmts, expr))
+nestable : DO blockStmts END (let val (stmts, expr) = blockStmts
+                              in Term.Let (DOleft, Vector.fromList stmts, expr)
+                              end)
          | record (record)
          | MODULE stmts END (Term.Module (MODULEleft, stmts))
          | nestable DOT ID (Term.Field (nestableleft, nestable, Name.fromString ID))
@@ -160,8 +178,8 @@ decls : declList (Vector.fromList (List.rev declList))
 declList : ([])
          | declList decl (decl :: declList)
 
-decl : VAL ID COLON typ ((Name.fromString ID, typ))
-     | TYPE ID ((Name.fromString ID, Type.TypeT TYPEleft))
-     | TYPE ID EQ typ
+decl : ID COLON typ SEMICOLON ((Name.fromString ID, typ))
+     | TYPE ID SEMICOLON ((Name.fromString ID, Type.TypeT TYPEleft))
+     | TYPE ID EQ typ SEMICOLON
         ((Name.fromString ID, Type.Singleton (TYPEleft, Term.Type (TYPEleft, typ))))
 

@@ -1,0 +1,12 @@
+type USER_ID = interface
+    type t;
+    
+    sudo: t -> t;
+end;
+
+UserId: USER_ID = module
+    type t = Int;
+
+    sudo = {| _: t -> 0};
+end;
+

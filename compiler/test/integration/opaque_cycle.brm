@@ -1,0 +1,3 @@
+M: interface type t; end = module type t = N.t; end;
+N: interface type t; end = module type t = M.t; end;
+
