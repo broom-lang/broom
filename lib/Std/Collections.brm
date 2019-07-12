@@ -1,0 +1,4 @@
+Collections = module
+    @require "./Collections/Array"
+end
+

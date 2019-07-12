@@ -1,0 +1,95 @@
+type ARRAY = interface
+    type t elem
+    type size = uint
+    type key = uint
+
+    count : forall elem => t elem -> size
+    get : forall elem => t elem -> key -> elem
+    set : forall elem => t elem -> key -> elem -> t elem
+    update : forall elem => t elem -> key -> (elem -> elem) -> t elem
+
+    unfoldl : forall elem v => size -> (state -> elem * state) -> state -> t elem * state
+    unfoldr : forall elem state => size -> (state -> elem * state) -> state -> t elem * state
+
+    foldl : forall elem state => (state -> elem -> state) -> state -> t elem -> state
+    foldr : forall elem state => (elem -> state -> state) -> state -> t elem -> state
+end
+
+Array : ARRAY = module
+    type t elem = __array elem
+    type size = uint
+    type key = uint
+
+    fun count arr = __arrayCount arr
+
+    fun get arr i = __arrayGet arr i
+
+    fun set arr i v =
+        unfoldl (count arr) {| i' ->
+            if (i' == i)
+            [| (v, i' - 1) ]
+            [| (get arr i', i' - 1) ]
+        }
+
+    fun update arr = set arr i (f (get arr i))
+
+    # Unsafe
+    Builder : interface
+        type t elem
+
+        new : forall elem => size -> t elem
+        set : forall elem => t elem -> key -> elem -> unit
+        build : forall elem => t elem -> Array.t elem
+    end = module
+        type t elem = __array elem
+
+        fun new len = __arrayNew len
+        fun set builder i v = __arraySet builder i v
+        build = Fn.id
+    end
+
+    fun unfoldl len f state = {
+        builder = Builder.new len
+        fun loop i state =
+            if (i > 0) [|
+                i' = i - 1
+                (v, state') = f state
+                Builder.set builder i' v
+                loop i' state'
+            ]
+            [| Builder.build builder ]
+        loop len state
+    }
+
+    fun unfoldr len f state = {
+        builder = Builder.new len
+        fun loop i state =
+            if (i < len) [|
+                (v, state') = f state
+                Builder.set builder i v
+                loop (i + 1) state'
+            ]
+            [| Builder.build builder ]
+        loop 0 state
+    }
+
+    fun foldl f state arr = {
+        len = count arr
+        fun loop i state =
+            if (i < len)
+            [| loop (i + 1) (f state (get arr i)) ]
+            [| state ]
+        loop 0 state
+    }
+
+    fun foldr f state arr = {
+        fun loop i state =
+            if (i > 0) [|
+                i' = i - 1
+                loop i' (f (get arr i') state)
+            ]
+            [| state ]
+        loop (count arr) state
+    }
+end
+
