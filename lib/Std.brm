@@ -1,13 +1,5 @@
 Std = module
-    {t = bool, True, False} = @data (True | False : t)
-
     fun match matchee f = f matchee
-
-    fun if cond then else =
-        match cond {
-            | True => then ()
-            | False => else ()
-        }
 
     @require "./Std/Fn"
 
