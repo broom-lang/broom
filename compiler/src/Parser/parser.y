@@ -124,6 +124,7 @@ triv : BOOL (Term.Const (BOOLleft, Const.Bool BOOL))
            of "Int" => Term.Type (IDleft, Type.Prim (IDleft, Type.Prim.I32))
             | "Bool" => Term.Type (IDleft, Type.Prim (IDleft, Type.Prim.Bool))
             | "Unit" => Term.Type (IDleft, Type.Prim (IDleft, Type.Prim.Unit))
+            | "Type" => Term.Type (IDleft, Type.TypeT IDleft)
             | _ => Term.Use (IDleft, Name.fromString ID))
      | INT (Term.Const (INTleft, Const.Int INT))
 
@@ -167,8 +168,8 @@ nestableTyp
     | LPAREN typ RPAREN (typ)
     | LPAREN typ COLON typ RPAREN (raise Fail "unimplemented")
 
-purelyTyp : TYPE (Type.TypeT TYPEleft)
-          | LBRACE rowType RBRACE (Type.RecordT (LBRACEleft, rowType))
+purelyTyp : (*TYPE (Type.TypeT TYPEleft)
+          |*) LBRACE rowType RBRACE (Type.RecordT (LBRACEleft, rowType))
           | LPAREN EQ ascription RPAREN (Type.Singleton (LPARENleft, ascription))
           | INTERFACE decls END (Type.Interface (INTERFACEleft, decls))
 

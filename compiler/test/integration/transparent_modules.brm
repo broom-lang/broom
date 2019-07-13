@@ -1,6 +1,6 @@
 Prelude = module
     Fn = module
-        identity = {| a: type -> x: a -> x};
+        identity = {| a: Type -> x: a -> x};
     end;
 
     Integer = module

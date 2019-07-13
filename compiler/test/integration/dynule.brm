@@ -1,16 +1,16 @@
 type DEFAULT = interface
-    type t;
-    default: t;
+    type T;
+    default: T;
 end;
 
 Dyfault: DEFAULT =
     if True
     then module
-             type t = Int;
+             type T = Int;
              default = 0;
          end
     else module
-             type t = {:};
+             type T = {:};
              default = {};
          end;
 
