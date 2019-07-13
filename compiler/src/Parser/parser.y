@@ -90,7 +90,7 @@ blockStmts : stmt SEMICOLON blockStmts
 ascription : ascription COLON typ (Term.Ann (ascriptionleft, ascription, typ))
            | body (body)
 
-body : IF ascription THEN ascription ELSE ascription (Term.If (IFleft, ascription1, ascription2, ascription3))
+body : IF ascription THEN ascription ELSE body (Term.If (IFleft, ascription1, ascription2, body))
      | binapp (binapp)
 
 binapp : app (app)
@@ -152,7 +152,7 @@ typ : FUN paramPattern ARROW typ
        (Type.Pi (bodyTypleft, {var = Name.fresh (), typ = SOME bodyTyp}, typ))
     | bodyTyp (bodyTyp)
 
-bodyTyp : IF typ THEN typ ELSE typ (raise Fail "unimplemented")
+bodyTyp : IF typ THEN typ ELSE bodyTyp (raise Fail "unimplemented")
         | binTyp (binTyp)
 
 binTyp : appTyp (appTyp)
@@ -168,8 +168,7 @@ nestableTyp
     | LPAREN typ RPAREN (typ)
     | LPAREN typ COLON typ RPAREN (raise Fail "unimplemented")
 
-purelyTyp : (*TYPE (Type.TypeT TYPEleft)
-          |*) LBRACE rowType RBRACE (Type.RecordT (LBRACEleft, rowType))
+purelyTyp : LBRACE rowType RBRACE (Type.RecordT (LBRACEleft, rowType))
           | LPAREN EQ ascription RPAREN (Type.Singleton (LPARENleft, ascription))
           | INTERFACE decls END (Type.Interface (INTERFACEleft, decls))
 
