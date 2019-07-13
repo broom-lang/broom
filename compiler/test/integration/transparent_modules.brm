@@ -10,5 +10,5 @@ Prelude = module
     end;
 end;
 
-n: Prelude.Integer.T = Prelude.Fn.identity (type Prelude.Integer.T) Prelude.Integer.zero;
+n: Prelude.Integer.T = Prelude.Fn.identity Prelude.Integer.T Prelude.Integer.zero;
 

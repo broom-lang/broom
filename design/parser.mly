@@ -18,7 +18,7 @@
 
 program : stmts EOF {()}
 
-(* Statements *)
+(* # Statements *)
 
 stmts : {()}
       | stmts stmt {()}
@@ -26,7 +26,7 @@ stmts : {()}
 stmt : pattern "=" expr ";" {()}
      | expr ";" {()}
 
-(* Expressions *)
+(* # Expressions *)
 
 expr : expr ":" typeAnn {()}
      | binapp {()}
@@ -45,7 +45,7 @@ nestableExpr : "{" clauses "}" {()}
              | nestableExpr "." VAR {()}
              | "(" BINOP ")" {()}
              | purelyTyp {()}
-             | "(" expr ")" {()}
+             | "(" typ ")" {()}
              | triv {()}
 
 clauses : clauses clause {()}
@@ -76,15 +76,7 @@ triv : VAR {()}
 
 const : "(" ")" {()}
 
-(* Patterns *)
-
-pattern : pattern "|" apattern {()}
-        | apattern {()}
-
-apattern : apattern "&" expr {()}
-         | expr {()} (* validating that expr is a valid pattern is easier outside grammar proper *)
-
-(* Types *)
+(* # Types *)
 
 (* We can recognize and promote `(a: type) -> list a` to a pi after parsing it: *)
 typ : expr "->" typ {()}
@@ -97,6 +89,7 @@ purelyTyp : "{" row "}" {()}
           | "interface" decls "end" {()}
           | "(" "|" row "|" ")" {()}
           | "(" "=" expr ")" {()}
+          | "type" {()}
 
 row : ":" {()}
     | rowFields {()}
@@ -111,7 +104,7 @@ rowField : VAR ":" typ {()}
 rowTail : "&" {()}
         | "&" typ {()}
 
-(* Declarations *)
+(* ## Declarations *)
 
 decls : {()}
       | decls decl {()}
@@ -120,4 +113,15 @@ decl : VAR ":" typ ";" {()}
      | "type" VAR "=" typ ";" {()}
      | "type" VAR ":" typ ";" {()}
      | "type" VAR ";" {()}
+
+(* # Patterns *)
+
+pattern : pattern "|" apattern {()}
+        | apattern {()}
+
+apattern : apattern "&" bpattern {()}
+         | bpattern {()} (* validating that expr is a valid pattern is easier outside grammar proper *)
+
+bpattern : "(" pattern ")" {()}
+         | expr {()}
 

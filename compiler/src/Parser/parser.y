@@ -11,6 +11,8 @@ type decl = Name.t * Type.typ
 
 %name Broom
 
+%verbose
+
 %pos Pos.t
 
 %term INT of int | BOOL of bool | ID of string
@@ -25,12 +27,14 @@ type decl = Name.t * Type.typ
        | stmtList of stmt list
        | stmt of stmt
        | blockStmts of stmt list * expr
-       | expr of expr
+       | ascription of expr
        | params of (Name.t * typ option) list
        | param of Name.t * typ option
        | body of expr
+       | binapp of expr
        | app of expr
        | nestable of expr
+       | purelyExpr of expr
        | record of expr
        | fieldExprs of (Name.t * expr) vector
        | fieldExprList of (Name.t * expr) list
@@ -38,6 +42,10 @@ type decl = Name.t * Type.typ
        | optSplat of expr option
        | triv of expr
        | typ of typ
+       | bodyTyp of typ
+       | binTyp of typ
+       | appTyp of typ
+       | paramType of typ
        | arrowTyp of typ
        | nonArrowTyp of typ
        | nestableTyp of typ
@@ -49,6 +57,8 @@ type decl = Name.t * Type.typ
        | decls of decl vector
        | declList of decl list
        | decl of decl
+       | pattern of Name.t * typ option
+       | paramPattern of Name.t * typ option
 
 %keyword VAL EQ
 %noshift EOF
@@ -58,53 +68,66 @@ type decl = Name.t * Type.typ
 
 program : stmts (stmts)
 
-(* Statements *)
+(* # Statements *)
 
 stmts : stmtList (Vector.fromList (List.rev stmtList) (* OPTIMIZE *))
 
 stmtList : ([])
          | stmtList stmt (stmt :: stmtList)
 
-stmt : ID EQ expr SEMICOLON (Term.Val (IDleft, Name.fromString ID, NONE, expr))
-     | ID COLON typ EQ expr SEMICOLON (Term.Val (IDleft, Name.fromString ID, SOME typ, expr))
+stmt : pattern EQ ascription SEMICOLON (Term.Val (patternleft, #1 pattern, #2 pattern, ascription))
      | TYPE ID EQ typ SEMICOLON (Term.Val (TYPEleft, Name.fromString ID, NONE, Term.Type (typleft, typ)))
-     | expr SEMICOLON (Term.Expr expr)
+     | ascription SEMICOLON (Term.Expr ascription)
 
 blockStmts : stmt SEMICOLON blockStmts
                (let val (stmts, expr) = blockStmts
                 in (stmt :: stmts, expr)
                 end)
-           | expr (([], expr))
+           | ascription (([], ascription))
 
-(* Expressions *)
+(* # Expressions *)
 
-expr : LBRACE BAR params expr RBRACE
-         (List.foldl (fn ((param, domain), expr) => Term.Fn (LBRACEleft, param, domain, expr))
-                     expr params)
-     | IF expr THEN expr ELSE expr (Term.If (IFleft, expr1, expr2, expr3))
-     | body (body)
+ascription : ascription COLON typ (Term.Ann (ascriptionleft, ascription, typ))
+           | body (body)
 
-params : params param (param :: params)
-       | param ([param])
+body : IF ascription THEN ascription ELSE ascription (Term.If (IFleft, ascription1, ascription2, ascription3))
+     | binapp (binapp)
 
-param : ID ARROW ((Name.fromString ID, NONE))
-      | ID COLON nestableTyp ARROW ((Name.fromString ID, SOME nestableTyp))
-
-body : body COLON nestableTyp (Term.Ann (bodyleft, body, nestableTyp))
-     | app (app)
+binapp : app (app)
 
 app : app nestable (Term.App (appleft, {callee = app, arg = nestable}))
     | nestable (nestable)
 
-nestable : DO blockStmts END (let val (stmts, expr) = blockStmts
-                              in Term.Let (DOleft, Vector.fromList stmts, expr)
-                              end)
-         | record (record)
-         | MODULE stmts END (Term.Module (MODULEleft, stmts))
-         | nestable DOT ID (Term.Field (nestableleft, nestable, Name.fromString ID))
-         | LPAREN TYPE typ RPAREN (Term.Type (typleft, typ))
-         | LPAREN expr RPAREN (expr)
-         | triv (triv)
+nestable : purelyExpr (purelyExpr)
+         | purelyTyp (Term.Type (purelyTypleft, purelyTyp))
+         | LPAREN ascription RPAREN (ascription)
+
+purelyExpr
+    : LBRACE BAR params ascription RBRACE
+        (List.foldl (fn ((param, domain), expr) => Term.Fn (LBRACEleft, param, domain, expr))
+                    ascription params)
+    | DO blockStmts END (let val (stmts, expr) = blockStmts
+                             in Term.Let (DOleft, Vector.fromList stmts, expr)
+                             end)
+    | record (record)
+    | MODULE stmts END (Term.Module (MODULEleft, stmts))
+    | purelyExpr DOT ID (Term.Field (purelyExprleft, purelyExpr, Name.fromString ID))
+    | triv (triv)
+
+params : params param (param :: params)
+       | param ([param])
+
+param : paramPattern ARROW (paramPattern)
+
+triv : BOOL (Term.Const (BOOLleft, Const.Bool BOOL))
+     | ID (case ID (* HACK *)
+           of "Int" => Term.Type (IDleft, Type.Prim (IDleft, Type.Prim.I32))
+            | "Bool" => Term.Type (IDleft, Type.Prim (IDleft, Type.Prim.Bool))
+            | "Unit" => Term.Type (IDleft, Type.Prim (IDleft, Type.Prim.Unit))
+            | _ => Term.Use (IDleft, Name.fromString ID))
+     | INT (Term.Const (INTleft, Const.Int INT))
+
+(* ## Record fields *)
 
 record : LBRACE fieldExprs optSplat RBRACE (Term.Record (LBRACEleft, {fields = fieldExprs, ext = optSplat}))
 
@@ -115,49 +138,41 @@ fieldExprList : ([])
               | fieldExprList COMMA fieldExpr (fieldExpr :: fieldExprList)
 
 fieldExpr : ID ((Name.fromString ID, Term.Use (IDleft, Name.fromString ID)))
-          | ID EQ expr ((Name.fromString ID, expr))
+          | ID EQ ascription ((Name.fromString ID, ascription))
 
 optSplat : (NONE)
-         | DDOT expr (SOME expr)
+         | DDOT ascription (SOME ascription)
 
-triv : BOOL (Term.Const (BOOLleft, Const.Bool BOOL))
-     | ID (Term.Use (IDleft, Name.fromString ID))
-     | INT (Term.Const (INTleft, Const.Int INT))
+(* # Types *)
 
-(* Types *)
+typ : FUN paramPattern ARROW typ
+       (Type.Pi (FUNleft, {var = #1 paramPattern, typ = #2 paramPattern}, typ))
+    | bodyTyp ARROW typ
+       (Type.Pi (bodyTypleft, {var = Name.fresh (), typ = SOME bodyTyp}, typ))
+    | bodyTyp (bodyTyp)
 
-typ : FUN ID COLON nestableTyp ARROW arrowTyp
-       (Type.Pi (FUNleft, {var = Name.fromString ID, typ = SOME nestableTyp}, arrowTyp))
-    | FUN ID ARROW arrowTyp
-       (Type.Pi (FUNleft, {var = Name.fromString ID, typ = NONE}, arrowTyp))
-    | arrowTyp (arrowTyp)
+bodyTyp : IF typ THEN typ ELSE typ (raise Fail "unimplemented")
+        | binTyp (binTyp)
 
-arrowTyp : nonArrowTyp ARROW typ
-            (Type.Pi (typleft, {var = Name.fresh (), typ = SOME nonArrowTyp}, typ))
-         | nonArrowTyp (nonArrowTyp)
+binTyp : appTyp (appTyp)
 
-nonArrowTyp : purelyTyp (purelyTyp)
-            | LPAREN typ RPAREN (typ)
-            | expr (case expr
-                    of Term.Use (_, name) => (case Name.toString name
-                                              of "Int" => Type.Prim (exprleft, Type.Prim.I32)
-                                               | "Unit" => Type.Prim (exprleft, Type.Prim.Unit)
-                                               | _ => Type.Path expr)
-                    | _ => Type.Path expr)
+appTyp : appTyp nestableTyp
+           (Type.Path (Term.App (appTypleft, { callee = Term.Type (appTypleft, appTyp)
+                                             , arg = Term.Type (nestableTypleft, nestableTyp) })))
+       | nestableTyp (nestableTyp)
 
-nestableTyp : purelyTyp (purelyTyp)
-            | LPAREN typ RPAREN (typ)
-            | nestable (case nestable
-                        of Term.Use (_, name) => (case Name.toString name
-                                                  of "Int" => Type.Prim (nestableleft, Type.Prim.I32)
-                                                   | "Unit" => Type.Prim (nestableleft, Type.Prim.Unit)
-                                                   | _ => Type.Path nestable)
-                        | _ => Type.Path nestable)
+nestableTyp
+    : purelyExpr (Type.Path purelyExpr)
+    | purelyTyp (purelyTyp)
+    | LPAREN typ RPAREN (typ)
+    | LPAREN typ COLON typ RPAREN (raise Fail "unimplemented")
 
 purelyTyp : TYPE (Type.TypeT TYPEleft)
           | LBRACE rowType RBRACE (Type.RecordT (LBRACEleft, rowType))
-          | LPAREN EQ expr RPAREN (Type.Singleton (LPARENleft, expr))
+          | LPAREN EQ ascription RPAREN (Type.Singleton (LPARENleft, ascription))
           | INTERFACE decls END (Type.Interface (INTERFACEleft, decls))
+
+(* ## Rows *)
 
 rowType: COLON (Type.EmptyRow COLONleft)
        | rowFields (Type.RowExt (rowFieldsleft, { fields = rowFields
@@ -173,6 +188,8 @@ rowFieldList : ID COLON typ ([(Name.fromString ID, typ)])
 rowExt : AMP (Type.WildRow AMPleft)
        | AMP typ (typ)
 
+(* ## Declarations *)
+
 decls : declList (Vector.fromList (List.rev declList))
 
 declList : ([])
@@ -182,4 +199,12 @@ decl : ID COLON typ SEMICOLON ((Name.fromString ID, typ))
      | TYPE ID SEMICOLON ((Name.fromString ID, Type.TypeT TYPEleft))
      | TYPE ID EQ typ SEMICOLON
         ((Name.fromString ID, Type.Singleton (TYPEleft, Term.Type (TYPEleft, typ))))
+
+(* # Patterns *)
+
+pattern : ID ((Name.fromString ID, NONE))
+        | ID COLON typ ((Name.fromString ID, SOME typ))
+
+paramPattern : ID ((Name.fromString ID, NONE))
+             | ID COLON bodyTyp ((Name.fromString ID, SOME bodyTyp))
 

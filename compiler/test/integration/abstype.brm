@@ -1,2 +1,2 @@
-T = (type Int): type;
+T = Int: type;
 
