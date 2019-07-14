@@ -1,4 +1,4 @@
 Collections = module
-    @require "./Collections/Array"
+    @include "./Collections/Array"
 end
 

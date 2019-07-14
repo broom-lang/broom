@@ -1,8 +1,8 @@
 Std = module
     fun match matchee f = f matchee
 
-    @require "./Std/Fn"
+    @include "./Std/Fn"
 
-    @require "./Std/Collections"
+    @include "./Std/Collections"
 end
 
