@@ -16,7 +16,7 @@ type decl = Name.t * Type.typ
 %pos Pos.t
 
 %term INT of int | BOOL of bool | ID of string
-    | VAL | TYPE | DO | FN | LET | IN | END | IF | THEN | ELSE
+    | TYPE | DO | END | IF | THEN | ELSE
     | MODULE | INTERFACE | FUN
     | LPAREN | RPAREN | LBRACE | RBRACE
     | EQ | DARROW | COLON | ARROW | BAR | DDOT | DOT | COMMA | SEMICOLON
@@ -60,7 +60,7 @@ type decl = Name.t * Type.typ
        | pattern of Name.t * typ option
        | paramPattern of Name.t * typ option
 
-%keyword VAL EQ
+%keyword EQ
 %noshift EOF
 %eop EOF
 

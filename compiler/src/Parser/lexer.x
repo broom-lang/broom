@@ -74,12 +74,8 @@ ws = [\ \t];
 "{"      => (tok0 startPos Tokens.LBRACE yytext);
 "}"      => (tok0 startPos Tokens.RBRACE yytext);
 
-"val"    => (tok0 startPos Tokens.VAL yytext);
 "type"   => (tok0 startPos Tokens.TYPE yytext);
 "do"     => (tok0 startPos Tokens.DO yytext);
-"fn"     => (tok0 startPos Tokens.FN yytext);
-"let"    => (tok0 startPos Tokens.LET yytext);
-"in"     => (tok0 startPos Tokens.IN yytext);
 "module" => (tok0 startPos Tokens.MODULE yytext);
 "interface" => (tok0 startPos Tokens.INTERFACE yytext);
 "fun"    => (tok0 startPos Tokens.FUN yytext);
