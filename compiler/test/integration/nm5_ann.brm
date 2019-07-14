@@ -1,2 +1,2 @@
-m: Int = n;
-n: Int = 5;
+m: Int = n
+n: Int = 5

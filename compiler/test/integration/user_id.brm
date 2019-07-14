@@ -1,12 +1,12 @@
 type USER_ID = interface
-    type T;
+    type T
     
-    sudo: T -> T;
+    sudo: T -> T
 end;
 
 UserId: USER_ID = module
-    type T = Int;
+    type T = Int
 
-    sudo = {| _: T -> 0};
+    sudo = {| _: T -> 0}
 end;
 

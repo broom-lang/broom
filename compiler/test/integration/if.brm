@@ -1,1 +1,1 @@
-n = if True then 23 else 42;
+n = if True then 23 else 42

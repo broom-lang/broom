@@ -30,14 +30,14 @@ local
            src/Reprs/Cst.sml
        end
     end
-    
-    src/Parser/parser.y.sig
-    src/Parser/parser.y.sml
-    src/Parser/lexer.x.sml
 
     ann "warnUnused true"
     in ann "allowSuccessorML true"
        in
+           src/Parser/parser.y.sig
+           src/Parser/parser.y.sml
+           src/Parser/lexer.x.sml
+
            src/Typechecker/TypeVars.sml
            src/Reprs/FAst/FType.sml
            src/Reprs/FAst/FTerm.sml

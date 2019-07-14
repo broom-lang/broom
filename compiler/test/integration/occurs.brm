@@ -1,2 +1,2 @@
-foo = {| _: Int -> foo};
+foo = {| _: Int -> foo}
 

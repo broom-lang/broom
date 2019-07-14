@@ -1,6 +1,6 @@
-getX = {| point: {x: Int, y: Int &} -> point.x};
-xr: {x: Int} = {x = 23};
-y = 17;
-xy: {x: Int, y: Int} = {y .. xr};
-x: Int = getX {z = 42 .. xy};
+getX = {| point: {x: Int, y: Int &} -> point.x}
+xr: {x: Int} = {x = 23}
+y = 17
+xy: {x: Int, y: Int} = {y .. xr}
+x: Int = getX {z = 42 .. xy}
 
