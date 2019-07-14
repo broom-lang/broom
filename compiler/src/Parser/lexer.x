@@ -125,7 +125,7 @@ ws = [\ \t];
 "else"   => (tok0 startPos Tokens.ELSE false yytext);
 "True"   => (tok1 startPos Tokens.BOOL true yytext true);
 "False"  => (tok1 startPos Tokens.BOOL true yytext false);
-({alpha}|_)+ => (tok1 startPos Tokens.ID true yytext yytext);
+({alpha}|_)({alpha}|{digit}|_)* => (tok1 startPos Tokens.ID true yytext yytext);
 
 {digit}+ => (tok1 startPos Tokens.INT true yytext (valOf (Int.fromString yytext)));
 
