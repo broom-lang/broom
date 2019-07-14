@@ -6,13 +6,14 @@ type svalue = Tokens.svalue
 type ('a, 'b) token = ('a, 'b) Tokens.token
 type lexresult = (svalue, pos) token
 
-val pos = ref NONE
-fun ensurePos startPos = if isSome (!pos) then () else pos := SOME startPos
-fun getPos () = valOf (!pos)
+val startState = NONE
+val state = ref startState
+fun ensurePos startPos = if isSome (!state) then () else state := SOME startPos
+fun getPos () = valOf (!state)
 fun advanceOne startPos c =
-    pos := SOME (case !pos
-                 of SOME prev => Pos.next prev c
-                  | NONE => startPos)
+    state := SOME (case !state
+                   of SOME prev => Pos.next prev c
+                    | NONE => startPos)
 fun advance startPos cs =
     let fun loop i =
             if i < String.size cs
@@ -21,6 +22,7 @@ fun advance startPos cs =
             else ()
     in loop 0
     end
+fun reset () = state := startState
 
 fun tok0 startPos tok cs =
     let val _ = ensurePos startPos
@@ -39,7 +41,12 @@ fun tok1 startPos tok cs v =
     end
 
 (* FIXME: If file is empty, `eof` will raise Option. *)
-fun eof _ = Tokens.EOF(getPos (), getPos ())
+fun eof _ =
+    let val pos = getPos ()
+    in reset ()
+     ; Tokens.EOF(pos, pos)
+    end
+
 fun error (e, l, r) = TextIO.output (TextIO.stdOut, String.concat[
         "line ", Pos.toString l, "-", Pos.toString r, ": ", e, "\n"
       ])
