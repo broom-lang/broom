@@ -15,7 +15,8 @@ type decl = Name.t * Type.typ
 
 %pos Pos.t
 
-%term INT of int | BOOL of bool | ID of string
+%term INT of int | BOOL of bool | CHAR of char | STRING of string
+    | ID of string | META of string | INTRINSIC of string
     | TYPE | DO | END | IF | THEN | ELSE
     | MODULE | INTERFACE | FUN
     | LPAREN | RPAREN | LBRACE | RBRACE

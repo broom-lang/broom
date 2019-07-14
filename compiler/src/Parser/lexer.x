@@ -125,7 +125,16 @@ ws = [\ \t];
 "else"   => (tok0 startPos Tokens.ELSE false yytext);
 "True"   => (tok1 startPos Tokens.BOOL true yytext true);
 "False"  => (tok1 startPos Tokens.BOOL true yytext false);
+
+@({alpha}|{digit}|_)+ => (tok1 startPos Tokens.META true yytext (String.extract (yytext, 1, NONE)));
+
+__({alpha}|{digit}|_)* => (tok1 startPos Tokens.INTRINSIC true yytext (String.extract (yytext, 2, NONE)));
+
 ({alpha}|_)({alpha}|{digit}|_)* => (tok1 startPos Tokens.ID true yytext yytext);
+
+\"[^\"]*\" => (tok1 startPos Tokens.STRING true yytext (String.substring (yytext, 1, String.size yytext - 2)));
+
+'([^']|\\')' => (tok1 startPos Tokens.CHAR true yytext (String.sub (yytext, String.size yytext - 2)));
 
 {digit}+ => (tok1 startPos Tokens.INT true yytext (valOf (Int.fromString yytext)));
 
