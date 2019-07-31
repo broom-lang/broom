@@ -2,6 +2,11 @@
 
 Written in Standard ML / MLton.
 
+# Dependencies
+
+https://github.com/nilern/nipo is required to build the lexer and parser and
+is included as a Git submodule in `../deps/nipo`.
+
 # Building
 
 ```sh
