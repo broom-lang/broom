@@ -1,0 +1,48 @@
+lexer NipoLexer -> {NipoTokens.t} where
+
+rules
+
+start tok
+    = '=' '>'? { fn (s, cs, _) =>
+                     case String.size cs
+                     of 1 => Eq s
+                      | 2 => DArrow s
+                      | _ => raise Fail "unreachable" }
+    | '-' '>'  { Arrow o #1 }
+    | '|'      { Bar o #1 }
+    | '&'      { Amp o #1 }
+    | '.' '.'? { fn (s, cs, _) =>
+                     case String.size cs
+                     of 1 => Dot s
+                      | 2 => DDot s
+                      | _ => raise Fail "unreachable" }
+    | ':' { Colon o #1 }
+    | ',' { Comma o #1 }
+    
+    | '(' { LParen o #1 }
+    | ')' { RParen o #1 }
+    | '[' { LBracket o #1 }
+    | ']' { RBracket o #1 }
+    | '{' { LBrace o #1 }
+    | '}' { RBrace o #1 }
+
+    | ([[:alpha:]] | '_')+ { fn args as (s, cs, _) =>
+                                 case cs
+                                 of "val" => Val s
+                                  | "type" => Type s
+                                  | "do" => Do s
+                                  | "module" => Module s
+                                  | "interface" => Interface s
+                                  | "fun" => Fun s
+                                  | "end" => End s
+                                  | "if" => If s
+                                  | "then" => Then s
+                                  | "else" => Else s
+                                  | "True" => Bool (s, true)
+                                  | "False" => Bool (s, false)
+                                  | _ => Id args }
+
+    | [[:digit:]]+ { fn (s, cs, e) => Int (s, valOf (Int.fromString cs), e) };
+
+whitespace ws = [[:space:]]* ;
+

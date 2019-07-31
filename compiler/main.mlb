@@ -30,7 +30,8 @@ local
            src/Reprs/Cst.sml
        end
     end
-    
+
+    src/Parser/Lexer.sml
     src/Parser/parser.y.sig
     src/Parser/parser.y.sml
     src/Parser/lexer.x.sml
