@@ -1,0 +1,38 @@
+parser NipoParser where
+
+{ open NipoTokens }
+
+token {NipoTokens.t}
+    = Val
+    | Eq '='
+    | Id
+    | Int
+    | Bool
+    ;
+
+rules
+
+start stmts = stmts=stmt* { stmts };
+
+stmt
+    = Val pattern '=' expr
+    ;
+
+expr
+    = atom
+    ;
+
+pattern
+    = const
+    ;
+
+atom
+    = Id
+    | const
+    ;
+
+const
+    = Int
+    | Bool
+    ;
+

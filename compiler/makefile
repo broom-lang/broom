@@ -3,12 +3,12 @@ BROOM = broom
 .PHONY: dev
 dev: $(BROOM)
 
-$(BROOM): main.mlb src/Parser/Lexer.sml src/Parser/lexer.x.sml src/Parser/parser.y.sml src/Parser/parser.y.sig \
+$(BROOM): main.mlb src/Parser/Lexer.sml src/Parser/Parser.sml src/Parser/lexer.x.sml src/Parser/parser.y.sml src/Parser/parser.y.sig \
            $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
 	mlton -const 'Exn.keepHistory true' -output $(BROOM) main.mlb
 
 .PHONY: prod
-prod: main.mlb src/Parser/Lexer.sml src/Parser/lexer.x.sml src/Parser/parser.y.sml src/Parser/parser.y.sig \
+prod: main.mlb src/Parser/Lexer.sml src/Parser/Parser.sml src/Parser/lexer.x.sml src/Parser/parser.y.sml src/Parser/parser.y.sig \
       $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
 	mlton -output $(BROOM) main.mlb
 
@@ -17,6 +17,9 @@ src/Parser/Lexer.sml: src/Parser/lexer.nipo
 
 src/Parser/lexer.x.sml: src/Parser/lexer.x
 	mllex $^
+
+src/Parser/Parser.sml: src/Parser/parser.nipo
+	nipo $< > $@
 
 src/Parser/parser.y.sml: src/Parser/parser.y
 	mlyacc $^

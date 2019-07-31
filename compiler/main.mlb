@@ -32,6 +32,7 @@ local
     end
 
     src/Parser/Lexer.sml
+    src/Parser/Parser.sml
     src/Parser/parser.y.sig
     src/Parser/parser.y.sml
     src/Parser/lexer.x.sml
