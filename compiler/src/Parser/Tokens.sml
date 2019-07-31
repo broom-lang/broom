@@ -26,6 +26,8 @@ structure BroomTokens = struct
         | RBracket of Pos.t
         | LBrace of Pos.t
         | RBrace of Pos.t
+        | Meta of Pos.t * Name.t * Pos.t
+        | Intrinsic of Pos.t * string * Pos.t
         | Id of Pos.t * Name.t * Pos.t
         | Int of Pos.t * int * Pos.t
         | Bool of Pos.t * bool

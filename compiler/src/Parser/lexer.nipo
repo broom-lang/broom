@@ -19,6 +19,7 @@ start tok
                       | 2 => DDot s
                       | _ => raise Fail "unreachable" }
     | ':' { Colon o #1 }
+    | ';' { Semi o #1 }
     | ',' { Comma o #1 }
     
     | '(' { LParen o #1 }
@@ -28,23 +29,32 @@ start tok
     | '{' { LBrace o #1 }
     | '}' { RBrace o #1 }
 
-    | ([[:alpha:]] | '_')+ { fn (s, cs, e) =>
-                                 case cs
-                                 of "val" => Val s
-                                  | "type" => Type s
-                                  | "do" => Do s
-                                  | "module" => Module s
-                                  | "interface" => Interface s
-                                  | "fun" => Fun s
-                                  | "end" => End s
-                                  | "if" => If s
-                                  | "then" => Then s
-                                  | "else" => Else s
-                                  | "True" => Bool (s, true)
-                                  | "False" => Bool (s, false)
-                                  | _ => Id (s, Name.fromString cs, e) }
+    | '@' constituent+ { fn (s, cs, e) => Meta (s, Name.fromString (String.extract (cs, 1, NONE)), e) }
+
+    | constituent+ { fn (s, cs, e) =>
+                         case cs
+                         of "val" => Val s
+                          | "type" => Type s
+                          | "do" => Do s
+                          | "module" => Module s
+                          | "interface" => Interface s
+                          | "fun" => Fun s
+                          | "end" => End s
+                          | "if" => If s
+                          | "then" => Then s
+                          | "else" => Else s
+                          | "True" => Bool (s, true)
+                          | "False" => Bool (s, false)
+                          | _ =>
+                             if String.isPrefix "__" cs
+                             then Intrinsic (s, String.extract (cs, 2, NONE), e)
+                             else Id (s, Name.fromString cs, e) }
+
+    # TODO: String and char literals
 
     | [[:digit:]]+ { fn (s, cs, e) => Int (s, valOf (Int.fromString cs), e) };
+
+constituent = [[:alpha:]] | '_' ;
 
 # TODO: Emit `Newline` tokens on '\n':
 whitespace ws = [[:space:]]* ;
