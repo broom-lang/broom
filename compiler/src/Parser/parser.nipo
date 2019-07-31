@@ -6,12 +6,22 @@ token {BroomTokens.t}
     = Val 'val'
     | Fun 'fun'
     | Type 'type'
+    | Do 'do'
+    | Module 'module'
     | Interface 'interface'
+    | If 'if'
+    | Then 'then'
+    | Else 'else'
     | End 'end'
     | Eq '='
     | Arrow '->'
+    | Bar '|'
     | Amp '&'
     | Colon ':'
+    | Dot '.'
+    | DDot '..'
+    | Semi ';'
+    | Comma ','
     | LBrace '{'
     | RBrace '}'
     | LParen '('
@@ -23,20 +33,52 @@ token {BroomTokens.t}
 
 rules
 
+start program = stmts;
+
 # Statements
 
-start stmts = stmts=stmt* { stmts };
+stmts = stmts=stmt* ;
 
 stmt
-    = 'val' Id typ? '=' expr
+    = pattern '=' expr
     | 'type' Id '=' expr
     ;
 
 # Expressions
 
-expr
-    = atom
+expr = ascription;
+
+ascription = ascriptee (':' typ)*;
+
+ascriptee
+    = 'if' expr 'then' expr 'else' ascriptee
+    | binapp
     ;
+
+binapp = app;
+
+app = nestable+;
+
+nestable
+    = purelyExpr ('.' Id)*
+    | purelyTyp
+    | '(' expr ')'
+    ;
+
+purelyExpr
+    = '{' '|' params=(paramPattern '->')+ expr '}'
+    | 'do' stmts ';' expr 'end'
+    | '{' recordFields ('..' expr)? '}'
+    | 'module' stmts 'end'
+    | atom
+    ;
+
+recordFields
+    = recordField (',' recordField)*
+    |
+    ;
+
+recordField = Id ('=' expr)? ;
 
 atom
     = Id
@@ -46,6 +88,16 @@ atom
 const
     = Int
     | Bool
+    ;
+
+# Patterns
+
+pattern
+    = Id (':' typ)?
+    ;
+
+paramPattern
+    = Id (':' nonArrowTyp)?
     ;
 
 # Types
@@ -75,7 +127,12 @@ purelyTyp
 
 rowType
     = ':'
-    | fields=rowField* ext=('&' typ)
+    | fields=rowField* ('&' typ)?
+    ;
+
+rowFields
+    = rowField (',' rowField)*
+    |
     ;
 
 rowField = Id ':' typ ;

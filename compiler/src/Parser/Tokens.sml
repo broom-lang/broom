@@ -19,6 +19,7 @@ structure BroomTokens = struct
         | DDot of Pos.t
         | Colon of Pos.t
         | Comma of Pos.t
+        | Semi of Pos.t
         | LParen of Pos.t
         | RParen of Pos.t
         | LBracket of Pos.t
