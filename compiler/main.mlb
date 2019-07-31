@@ -4,6 +4,8 @@ local
     $(SML_LIB)/smlnj-lib/Util/smlnj-lib.mlb
     $(SML_LIB)/mlyacc-lib/mlyacc-lib.mlb
 
+    ../deps/nipo/lib/all.mlb
+
     ann "warnUnused true"
     in ann "allowSuccessorML true"
        in

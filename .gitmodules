@@ -1,0 +1,3 @@
+[submodule "deps/nipo"]
+	path = deps/nipo
+	url = git@github.com:nilern/nipo.git

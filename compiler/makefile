@@ -1,3 +1,4 @@
+NIPO = ../deps/nipo/src/nipo
 BROOM = broom
 
 .PHONY: dev
@@ -13,13 +14,13 @@ prod: main.mlb src/Parser/Lexer.sml src/Parser/Parser.sml src/Parser/lexer.x.sml
 	mlton -output $(BROOM) main.mlb
 
 src/Parser/Lexer.sml: src/Parser/lexer.nipo
-	nipo $< > $@
+	$(NIPO) $< > $@
 
 src/Parser/lexer.x.sml: src/Parser/lexer.x
 	mllex $^
 
 src/Parser/Parser.sml: src/Parser/parser.nipo
-	nipo $< > $@
+	$(NIPO) $< > $@
 
 src/Parser/parser.y.sml: src/Parser/parser.y
 	mlyacc $^
