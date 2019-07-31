@@ -1,1 +1,1 @@
-TypeError in test/integration/callint.ml at 2:14: Value n of type I32 can not be called.
+TypeError in test/integration/callint.brm at 2:10: Value n of type I32 can not be called.

@@ -2,7 +2,7 @@ if exists('b:current_syntax')
     finish
 endif
 
-syntax keyword broomKeyword module interface end type val fun when
+syntax keyword broomKeyword module interface do end type val fun when
 highlight default link broomKeyword Keyword
 
 syntax match broomColon ":"

@@ -47,7 +47,7 @@ Array : ARRAY = module
         build = Fn.id
     end
 
-    fun unfoldl len f state = {
+    fun unfoldl len f state = do
         builder = Builder.new len
         fun loop state = {
             | i when i > 0 -> 
@@ -58,9 +58,9 @@ Array : ARRAY = module
             | _ -> Builder.build builder
         }
         loop state len
-    }
+    end
 
-    fun unfoldr len f state = {
+    fun unfoldr len f state = do
         builder = Builder.new len
         fun loop state = {
             | i when i < len ->
@@ -70,18 +70,18 @@ Array : ARRAY = module
             | _ -> Builder.build builder
         }
         loop state 0
-    }
+    end
 
-    fun foldl f state arr = {
+    fun foldl f state arr = do
         len = count arr
         fun loop state = {
             | i when i < len -> loop (f state (get arr i)) (i + 1)
             | _ -> state
         }
         loop state 0
-    }
+    end
 
-    fun foldr f state arr = {
+    fun foldr f state arr = do
         fun loop state = {
             | i when i > 0 ->
                 i' = i - 1
@@ -89,6 +89,6 @@ Array : ARRAY = module
             | _ -> state
         }
         loop state (count arr)
-    }
+    end
 end
 

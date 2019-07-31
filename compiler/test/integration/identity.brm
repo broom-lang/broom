@@ -1,0 +1,3 @@
+identity = {| a: Type -> x: a -> x }
+n: Int = identity Int 5
+
