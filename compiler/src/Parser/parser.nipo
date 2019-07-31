@@ -42,6 +42,7 @@ stmts = stmts=stmt* ;
 stmt
     = pattern '=' expr
     | 'type' Id '=' expr
+    | expr
     ;
 
 # Expressions
