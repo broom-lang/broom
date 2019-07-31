@@ -4,8 +4,6 @@ local
     $(SML_LIB)/smlnj-lib/Util/smlnj-lib.mlb
     $(SML_LIB)/mlyacc-lib/mlyacc-lib.mlb
 
-    ../deps/nipo/lib/all.mlb
-
     ann "warnUnused true"
     in ann "allowSuccessorML true"
        in
@@ -30,11 +28,17 @@ local
            src/Reprs/Util/PrimType.sml
            src/Reprs/Util/Const.sml
            src/Reprs/Cst.sml
+
+           local
+               ../deps/nipo/lib/all.mlb
+           in
+               src/Parser/Tokens.sml
+               src/Parser/Lexer.sml
+               src/Parser/Parser.sml
+           end
        end
     end
 
-    src/Parser/Lexer.sml
-    src/Parser/Parser.sml
     src/Parser/parser.y.sig
     src/Parser/parser.y.sml
     src/Parser/lexer.x.sml

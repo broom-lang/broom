@@ -1,10 +1,21 @@
-parser NipoParser where
+parser BroomParser where
 
-{ open NipoTokens }
+{ open BroomTokens }
 
-token {NipoTokens.t}
-    = Val
+token {BroomTokens.t}
+    = Val 'val'
+    | Fun 'fun'
+    | Type 'type'
+    | Interface 'interface'
+    | End 'end'
     | Eq '='
+    | Arrow '->'
+    | Amp '&'
+    | Colon ':'
+    | LBrace '{'
+    | RBrace '}'
+    | LParen '('
+    | RParen ')'
     | Id
     | Int
     | Bool
@@ -12,18 +23,19 @@ token {NipoTokens.t}
 
 rules
 
+# Statements
+
 start stmts = stmts=stmt* { stmts };
 
 stmt
-    = Val pattern '=' expr
+    = 'val' Id typ? '=' expr
+    | 'type' Id '=' expr
     ;
+
+# Expressions
 
 expr
     = atom
-    ;
-
-pattern
-    = const
     ;
 
 atom
@@ -34,5 +46,42 @@ atom
 const
     = Int
     | Bool
+    ;
+
+# Types
+
+typ
+    = 'fun' Id (':' nestableTyp)? '->' typ
+    | nonArrowTyp ('->' typ)?
+    ;
+
+nonArrowTyp
+    = purelyTyp
+    | '(' typ ')'
+    | expr
+    ;
+
+nestableTyp
+    = purelyTyp
+    | '(' typ ')'
+    ;
+
+purelyTyp
+    = 'type'
+    | '{' rowType '}'
+    | '(' '=' expr ')'
+    | 'interface' decls=decl* 'end'
+    ;
+
+rowType
+    = ':'
+    | fields=rowField* ext=('&' typ)
+    ;
+
+rowField = Id ':' typ ;
+
+decl
+    = 'val' Id ':' typ
+    | 'type' Id ('=' typ)?
     ;
 

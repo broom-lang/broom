@@ -1,6 +1,6 @@
-lexer NipoLexer -> {NipoTokens.t} where
+lexer BroomLexer -> {BroomTokens.t} where
 
-{ open NipoTokens }
+{ open BroomTokens }
 
 rules
 
@@ -28,7 +28,7 @@ start tok
     | '{' { LBrace o #1 }
     | '}' { RBrace o #1 }
 
-    | ([[:alpha:]] | '_')+ { fn args as (s, cs, _) =>
+    | ([[:alpha:]] | '_')+ { fn (s, cs, e) =>
                                  case cs
                                  of "val" => Val s
                                   | "type" => Type s
@@ -42,7 +42,7 @@ start tok
                                   | "else" => Else s
                                   | "True" => Bool (s, true)
                                   | "False" => Bool (s, false)
-                                  | _ => Id args }
+                                  | _ => Id (s, Name.fromString cs, e) }
 
     | [[:digit:]]+ { fn (s, cs, e) => Int (s, valOf (Int.fromString cs), e) };
 
