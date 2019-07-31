@@ -1,5 +1,7 @@
 lexer NipoLexer -> {NipoTokens.t} where
 
+{ open NipoTokens }
+
 rules
 
 start tok
@@ -44,5 +46,6 @@ start tok
 
     | [[:digit:]]+ { fn (s, cs, e) => Int (s, valOf (Int.fromString cs), e) };
 
+# TODO: Emit `Newline` tokens on '\n':
 whitespace ws = [[:space:]]* ;
 

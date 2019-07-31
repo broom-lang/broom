@@ -45,5 +45,5 @@ itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.ml)))
 
 .PHONY: clean
 clean:
-	rm -rf src/Parser/lexer.x.sml src/Parser/parser.y.* $(BROOM)
+	rm -rf src/Parser/Lexer.sml src/Parser/Parser.sml src/Parser/lexer.x.sml src/Parser/parser.y.* $(BROOM)
 
