@@ -4,6 +4,7 @@ parser BroomParser where
 
 token {BroomTokens.t}
     = Val 'val'
+    | In 'in'
     | Fun 'fun'
     | Type 'type'
     | Do 'do'
@@ -40,46 +41,58 @@ start program = stmts;
 stmts = stmts=stmt* ;
 
 stmt
-    = pattern '=' expr
-    | 'type' Id '=' expr
-    | expr
+    = pattern '=' expr ';'
+    | 'type' Id '=' expr ';'
+    | expr ';'
     ;
 
-# Expressions
+# Expressions/Types
 
 expr = ascription;
 
-ascription = ascriptee (':' typ)*;
+typ = expr;
 
-ascriptee
-    = 'if' expr 'then' expr 'else' ascriptee
-    | binapp
-    ;
+ascription = arrow (':' arrow)*;
+
+arrow
+    = 'fun' Id (':' binapp)? '->' arrow
+    | binapp ('->' arrow)?
+    ; 
 
 binapp = app;
 
-app = nestable+;
+app = select+;
+
+select = nestable ('.' Id)* ;
 
 nestable
-    = purelyExpr ('.' Id)*
-    | purelyTyp
-    | '(' expr ')'
-    ;
-
-purelyExpr
-    = '{' '|' params=(paramPattern '->')+ expr '}'
-    | 'do' stmts ';' expr 'end'
-    | '{' recordFields ('..' expr)? '}'
+    = '{' ( '|' params=(paramPattern '->')+ expr '}'
+          | '}' # empty record
+          | ':' '}' # empty record type
+          | '..' expr '}' # ext-only record
+          | '&' typ '}' # ext-only record type
+          | Id ( '}' # record of one pun field
+               | ',' recordField (',' recordField)* ('..' expr)? '}' # pun-starting nonempty record
+               | '=' expr (',' recordField)* ('..' expr)? '}' # nonempty record
+               | ':' typ (',' rowField)* ('&' typ)? '}' # nonempty record type
+               | '..' expr '}' ) ) # record of one pun and ext
+    | 'do' stmts expr 'end'
     | 'module' stmts 'end'
+    | 'interface' decls=decl* 'end'
+    | '(' ('=' expr ')'
+          | expr ')')
+    #| 'type'
     | atom
     ;
 
-recordFields
-    = recordField (',' recordField)*
-    |
-    ;
-
 recordField = Id ('=' expr)? ;
+
+rowField = Id ':' typ ;
+
+decl
+    = 'val' Id ':' typ ';'
+    | 'type' Id ('=' typ)? ';'
+    ;
 
 atom
     = Id
@@ -98,48 +111,8 @@ pattern
     ;
 
 paramPattern
-    = Id (':' nonArrowTyp)?
+    = Id (':' patternTyp)?
     ;
 
-# Types
-
-typ
-    = 'fun' Id (':' nestableTyp)? '->' typ
-    | nonArrowTyp ('->' typ)?
-    ;
-
-nonArrowTyp
-    = purelyTyp
-    | '(' typ ')'
-    | expr
-    ;
-
-nestableTyp
-    = purelyTyp
-    | '(' typ ')'
-    ;
-
-purelyTyp
-    = 'type'
-    | '{' rowType '}'
-    | '(' '=' expr ')'
-    | 'interface' decls=decl* 'end'
-    ;
-
-rowType
-    = ':'
-    | fields=rowField* ('&' typ)?
-    ;
-
-rowFields
-    = rowField (',' rowField)*
-    |
-    ;
-
-rowField = Id ':' typ ;
-
-decl
-    = 'val' Id ':' typ
-    | 'type' Id ('=' typ)?
-    ;
+patternTyp = binapp ;
 
