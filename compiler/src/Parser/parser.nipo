@@ -1,6 +1,10 @@
 parser BroomParser where
 
-{ open BroomTokens }
+{
+open BroomTokens
+structure Term = Cst.Term
+structure Type = Cst.Type
+}
 
 token {BroomTokens.t}
     = Val 'val'
@@ -31,52 +35,65 @@ token {BroomTokens.t}
 
 rules
 
-start program = stmts;
+start program = stmts { stmts };
 
 # Statements and Blocks
 
 valDef
-    = 'val' pattern '=' expr
-    | 'fun' apat+ '=' expr
+    = pos 'val' pattern '=' expr { Term.Val (pos, pattern, expr) }
+    | pos 'fun' pats=apat+ '=' expr { Term.funDef (pos, pats, expr) }
     ;
 
 stmt
-    = valDef ';'
-    | 'type' ( Id '=' expr ';'
-             | ';' )
-    | ascription ';'
+    = valDef ';' { valDef }
+    | pos 'type' res=( Id '=' expr ';' { Term.typeDef (pos, tokId, expr) }
+                     | ';'             { Term.Expr (Term.Type (pos, Type.TypeT)) } )
+                 { res }
+    | ascription ';' { Term.Expr ascription }
     ;
 
 stmts = stmt* ;
 
 block
-    = valDef ';' block
-    | 'type' ( Id '=' expr ';' block
-             | ';' block
-             | 'end' )
-    | ascription ( ';' block
-                 | 'end' )
+    = valDef ';' block { let val (stmts, body) = block
+                         in (valDef :: stmts, body)
+                         end }
+    | pos 'type' res=( Id '=' expr ';' block { let val (stmts, body) = block
+                                               in (Term.typeDef (pos, tokId, expr) :: stmts, body)
+                                               end }
+                     | ';' block             { let val (stmts, body) = block
+                                               in (Term.Expr (Term.Type (pos, Type.TypeT)) :: stmts, body)
+                                               end }
+                     | 'end'                 { ([], Term.Type (pos, Type.TypeT)) } )
+                 { res }
+    | ascription res=( ';' block { let val (stmts, body) = block
+                                   in (Term.Expr ascription :: stmts, body)
+                                   end }
+                     | 'end'     { ([], ascription) } )
+                 { res }
     ;
 
 # Expressions/Types
 
 expr
-    = ascription
-    | 'type'
+    = ascription { ascription }
+    | pos 'type' { Term.Type (pos, Type.TypeT) }
     ;
 
-typ = expr;
+typ = expr { Type.Path expr };
 
-ascription = arrow (':' arrow)*;
+ascription = arrow arrows=(':' arrow { arrow })*
+           { List.foldr (fn (arrow, res) => Term.Ann (pos, arrow, Type.Path res))
+                        arrow arrows };
 
 arrow
     = 'pi' Id (':' binapp)? '->' arrow
     | binapp ('->' arrow)?
     ; 
 
-binapp = app;
+binapp = app { app };
 
-app = select+;
+app = select selects=select* ;
 
 select = nestable ('.' Id)* ;
 
