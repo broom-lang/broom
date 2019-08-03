@@ -73,7 +73,7 @@ app = select+;
 select = nestable ('.' Id)* ;
 
 nestable
-    = '{' ( '|' params=(paramPattern '->')+ expr '}'
+    = '{' ( '|' clauses '}'
           | '}' # empty record
           | ':' '}' # empty record type
           | '..' expr '}' # ext-only record
@@ -91,6 +91,8 @@ nestable
     #| 'type'
     | atom
     ;
+
+clauses = paramPattern '->' expr ('|' paramPattern '->' expr)* ;
 
 recordField = Id ('=' expr)? ;
 
