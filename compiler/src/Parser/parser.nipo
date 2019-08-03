@@ -6,6 +6,7 @@ token {BroomTokens.t}
     = Val 'val'
     | Fun 'fun'
     | Type 'type'
+    | Pi 'pi'
     | Do 'do'
     | Module 'module'
     | Interface 'interface'
@@ -34,8 +35,13 @@ start program = stmts;
 
 # Statements and Blocks
 
+valDef
+    = 'val' pattern '=' expr
+    | 'fun' apat+ '=' expr
+    ;
+
 stmt
-    = 'val' pattern '=' expr ';'
+    = valDef ';'
     | 'type' ( Id '=' expr ';'
              | ';' )
     | ascription ';'
@@ -44,7 +50,7 @@ stmt
 stmts = stmt* ;
 
 block
-    = 'val' pattern '=' expr ';' block
+    = valDef ';' block
     | 'type' ( Id '=' expr ';' block
              | ';' block
              | 'end' )
@@ -64,7 +70,7 @@ typ = expr;
 ascription = arrow (':' arrow)*;
 
 arrow
-    = 'fun' Id (':' binapp)? '->' arrow
+    = 'pi' Id (':' binapp)? '->' arrow
     | binapp ('->' arrow)?
     ; 
 
@@ -119,12 +125,15 @@ const
 # Patterns
 
 pattern
-    = Id (':' typ)?
+    = apat (':' typ)?
     ;
 
 paramPattern
-    = Id (':' patternTyp)?
+    = apat (':' binapp)?
     ;
 
-patternTyp = binapp ;
+apat
+    = '(' pattern ')'
+    | Id
+    ;
 
