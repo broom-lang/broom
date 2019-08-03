@@ -7,9 +7,7 @@ structure BroomTokens = struct
         | Val of Pos.t
         | Fun of Pos.t
         | Type of Pos.t
-        | If of Pos.t
-        | Then of Pos.t
-        | Else of Pos.t
+        | Pi of Pos.t
         | Eq of Pos.t
         | DArrow of Pos.t
         | Arrow of Pos.t

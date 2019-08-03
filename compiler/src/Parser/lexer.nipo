@@ -35,14 +35,12 @@ start tok
                          case cs
                          of "val" => Val s
                           | "type" => Type s
+                          | "pi" => Pi s
                           | "do" => Do s
                           | "module" => Module s
                           | "interface" => Interface s
                           | "fun" => Fun s
                           | "end" => End s
-                          | "if" => If s
-                          | "then" => Then s
-                          | "else" => Else s
                           | "True" => Bool (s, true)
                           | "False" => Bool (s, false)
                           | _ =>
