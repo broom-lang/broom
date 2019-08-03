@@ -36,14 +36,21 @@ rules
 
 start program = stmts;
 
-# Statements
-
-stmts = stmts=stmt* ;
+# Statements and Blocks
 
 stmt
-    = pattern '=' expr ';'
+    = 'val' pattern '=' expr ';'
     | 'type' Id '=' expr ';'
     | expr ';'
+    ;
+
+stmts = stmt* ;
+
+block
+    = 'val' pattern '=' expr ';' block
+    | 'type' Id '=' expr ';' block
+    | expr ( ';' block
+           | 'end' )
     ;
 
 # Expressions/Types
@@ -76,7 +83,7 @@ nestable
                | '=' expr (',' recordField)* ('..' expr)? '}' # nonempty record
                | ':' typ (',' rowField)* ('&' typ)? '}' # nonempty record type
                | '..' expr '}' ) ) # record of one pun and ext
-    | 'do' stmts expr 'end'
+    | 'do' block
     | 'module' stmts 'end'
     | 'interface' decls=decl* 'end'
     | '(' ('=' expr ')'
