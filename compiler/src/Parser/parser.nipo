@@ -4,15 +4,11 @@ parser BroomParser where
 
 token {BroomTokens.t}
     = Val 'val'
-    | In 'in'
     | Fun 'fun'
     | Type 'type'
     | Do 'do'
     | Module 'module'
     | Interface 'interface'
-    | If 'if'
-    | Then 'then'
-    | Else 'else'
     | End 'end'
     | Eq '='
     | Arrow '->'
@@ -39,26 +35,29 @@ start program = stmts;
 # Statements and Blocks
 
 stmt
-    = def ';'
-    | expr ';'
-    ;
-
-def
-    = 'val' pattern '=' expr
-    | 'type' Id '=' expr
+    = 'val' pattern '=' expr ';'
+    | 'type' ( Id '=' expr ';'
+             | ';' )
+    | ascription ';'
     ;
 
 stmts = stmt* ;
 
 block
-    = def ';' block
-    | expr ( ';' block
-           | 'end' )
+    = 'val' pattern '=' expr ';' block
+    | 'type' ( Id '=' expr ';' block
+             | ';' block
+             | 'end' )
+    | ascription ( ';' block
+                 | 'end' )
     ;
 
 # Expressions/Types
 
-expr = ascription;
+expr
+    = ascription
+    | 'type'
+    ;
 
 typ = expr;
 
@@ -89,7 +88,6 @@ nestable
     | 'interface' decls=decl* 'end'
     | '(' ('=' expr ')'
           | expr ')')
-    #| 'type'
     | atom
     ;
 
