@@ -39,16 +39,19 @@ start program = stmts;
 # Statements and Blocks
 
 stmt
-    = 'val' pattern '=' expr ';'
-    | 'type' Id '=' expr ';'
+    = def ';'
     | expr ';'
+    ;
+
+def
+    = 'val' pattern '=' expr
+    | 'type' Id '=' expr
     ;
 
 stmts = stmt* ;
 
 block
-    = 'val' pattern '=' expr ';' block
-    | 'type' Id '=' expr ';' block
+    = def ';' block
     | expr ( ';' block
            | 'end' )
     ;
@@ -78,11 +81,9 @@ nestable
           | ':' '}' # empty record type
           | '..' expr '}' # ext-only record
           | '&' typ '}' # ext-only record type
-          | Id ( '}' # record of one pun field
-               | ',' recordField (',' recordField)* ('..' expr)? '}' # pun-starting nonempty record
-               | '=' expr (',' recordField)* ('..' expr)? '}' # nonempty record
-               | ':' typ (',' rowField)* ('&' typ)? '}' # nonempty record type
-               | '..' expr '}' ) ) # record of one pun and ext
+          | Id ( recordTail '}' # pun-starting record
+               | '=' expr recordTail '}' # nonpun-starting record
+               | ':' typ rowTail '}' ) ) # nonempty record type
     | 'do' block
     | 'module' stmts 'end'
     | 'interface' decls=decl* 'end'
@@ -94,7 +95,11 @@ nestable
 
 clauses = paramPattern '->' expr ('|' paramPattern '->' expr)* ;
 
+recordTail = (',' recordField)* ('..' expr)? ;
+
 recordField = Id ('=' expr)? ;
+
+rowTail = (',' rowField)* ('&' typ)? '}' ;
 
 rowField = Id ':' typ ;
 
