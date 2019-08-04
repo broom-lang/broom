@@ -18,9 +18,10 @@ start tok
                      of 1 => Dot s
                       | 2 => DDot s
                       | _ => raise Fail "unreachable" }
-    | ':' { Colon o #1 }
-    | ';' { Semi o #1 }
-    | ',' { Comma o #1 }
+    | ':'  { Colon o #1 }
+    | ';'  { Semi o #1 }
+    | '\n' { Newline o #1 }
+    | ','  { Comma o #1 }
     
     | '(' { LParen o #1 }
     | ')' { RParen o #1 }
@@ -54,6 +55,5 @@ start tok
 
 constituent = [[:alpha:]] | '_' ;
 
-# TODO: Emit `Newline` tokens on '\n':
-whitespace ws = [[:space:]]* ;
+whitespace ws = (' ' | '\t' | '\r' | '\v' | '\f')* ;
 
