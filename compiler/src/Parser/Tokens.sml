@@ -30,5 +30,17 @@ structure BroomTokens = struct
         | Id of Pos.t * Name.t * Pos.t
         | Int of Pos.t * int * Pos.t
         | Bool of Pos.t * bool
+
+    val toName =
+        fn Id (_, name, _) => SOME name
+         | _ => NONE
+
+    val toInt =
+        fn Int (_, n, _) => SOME n
+         | _ => NONE
+
+    val toBool =
+        fn Bool (_, b) => SOME b
+         | _ => NONE
 end
 

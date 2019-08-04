@@ -24,8 +24,8 @@ token {%BroomTokens.t%}
     | DDot '..'
     | Semi ';'
     | Comma ','
-    | LBrace '{%'
-    | RBrace '%}'
+    | LBrace '{'
+    | RBrace '}'
     | LParen '('
     | RParen ')'
     | Id
@@ -41,34 +41,36 @@ start program = stmts {% stmts %};
 
 valDef
     = pos 'val' pattern '=' expr {% Term.Val (pos, pattern, expr) %}
-    | pos 'fun' pats=apat+ '=' expr {% Term.funDef (pos, pats, expr) %}
+    | pos 'fun' pats=apat+ '=' expr {% raise Fail "unimplemented" %}
     ;
 
 stmt
     = valDef ';' {% valDef %}
-    | pos 'type' res=( Id '=' typ ';' {% Term.typeDef (pos, tokId, typ) %}
+    | pos 'type' res=( Id '=' typ ';' {% Term.Val ( pos, {var = valOf (toName tokId), typ = NONE}
+                                                  , Term.Type (pos, typ) ) %}
                      | ';'             {% Term.Expr (Term.Type (pos, Type.TypeT pos)) %} )
                  {% res %}
     | ascription ';' {% Term.Expr ascription %}
     ;
 
-stmts = stmt* ;
+stmts = stmts=stmt* {% stmts %};
 
 block
     = valDef ';' block {% let val (stmts, body) = block
-                         in (valDef :: stmts, body)
-                         end %}
+                          in (valDef :: stmts, body)
+                          end %}
     | pos 'type' res=( Id '=' typ ';' block {% let val (stmts, body) = block
-                                              in (Term.typeDef (pos, tokId, typ) :: stmts, body)
-                                              end %}
+                                               in (Term.Val ( pos, {var = valOf (toName tokId), typ = NONE}
+                                                            , Term.Type (pos, typ) ) :: stmts, body)
+                                               end %}
                      | ';' block            {% let val (stmts, body) = block
-                                              in (Term.Expr (Term.Type (pos, Type.TypeT pos)) :: stmts, body)
-                                              end %}
+                                               in (Term.Expr (Term.Type (pos, Type.TypeT pos)) :: stmts, body)
+                                               end %}
                      | 'end'                {% ([], Term.Type (pos, Type.TypeT pos)) %} )
                  {% res %}
     | ascription res=( ';' block {% let val (stmts, body) = block
-                                   in (Term.Expr ascription :: stmts, body)
-                                   end %}
+                                    in (Term.Expr ascription :: stmts, body)
+                                    end %}
                      | 'end'     {% ([], ascription) %} )
                  {% res %}
     ;
@@ -82,15 +84,18 @@ expr
 
 typ = expr {% Type.Path expr %};
 
+nonArrowTyp = binapp {% Type.Path binapp %};
+
 ascription = pos arrow typ=(':' typ {%typ%})? {% case typ
                                                  of SOME t => Term.Ann (pos, arrow, t)
                                                   | NONE => arrow %};
 
 arrow
-    = pos 'pi' paramPattern '->' body=arrow {% Term.Type (pos, Type.Pi (pos, paramPattern, body)) %}
-    | pos binapp codomain=('->' arrow {%arrow%})? {% case codomain
-                                                     of SOME cd => Term.Type (pos, Type.arrow (pos, binapp, cd))
-                                                      | NONE => binapp %}
+    = pos 'pi' paramPattern '->' body=arrow {% Term.Type (pos, Type.Pi (pos, paramPattern, Type.Path body)) %}
+    | pos binapp codomain=('->' arrow {%arrow%})?
+      {% case codomain
+         of SOME cd => Term.Type (pos, Type.Pi (pos, {var = Name.fresh (), typ = SOME (Type.Path binapp)}, Type.Path cd))
+          | NONE => binapp %}
     ; 
 
 binapp = app {% app %};
@@ -99,25 +104,37 @@ app = pos select selects=select*
     {% List.foldl (fn (arg, callee) => Term.App (pos, {callee, arg}))
                   select selects %};
 
-select = nestable fields=('.' Id {% tokId %})* 
+select = pos nestable fields=('.' Id {% valOf (toName tokId) %})* 
        {% List.foldl (fn (field, r) => Term.Field (pos, r, field))
-                    nestable fields %};
+                     nestable fields %};
 
 nestable
-    = pos '{%' res=( '|' clauses '%}' {% raise Fail "unimplemented" %}
-                  | '%}' # empty record
-                  | ':' '%}' # empty record type
-                  | '..' expr '%}' # ext-only record
-                  | '&' typ '%}' # ext-only record type
-                  | Id ( recordTail '%}' # pun-starting record
-                       | '=' expr recordTail '%}' # nonpun-starting record
-                       | ':' typ rowTail '%}' ) ) # nonempty record type
+    = pos '{' res=( '|' clauses '}' {% raise Fail "unimplemented" %}
+                  | '}'             {% Term.Record (pos, {fields = #[], ext = NONE}) %}
+                  | ':' '}'         {% Term.Type (pos, Type.EmptyRow pos) %}
+                  | '..' expr '}'   {% Term.Record (pos, {fields = #[], ext = SOME expr}) %}
+                  | '&' typ '}'     {% Term.Type (pos, Type.RowExt (pos, {fields = #[], ext = typ})) %}
+                  | Id res=( recordTail '}'          {% let val {fields, ext} = recordTail
+                                                            val name = valOf (toName tokId)
+                                                            val field = (name, Term.Use (pos, name))
+                                                            val fields = Vector.fromList (field :: fields)
+                                                        in Term.Record (pos, {fields, ext})
+                                                        end %}
+                           | '=' expr recordTail '}' {% let val {fields, ext} = recordTail
+                                                            val fields = Vector.fromList ((valOf (toName tokId), expr) :: fields)
+                                                        in Term.Record (pos, {fields, ext})
+                                                        end %}
+                           | ':' typ rowTail '}'     {% let val {fields, ext} = rowTail
+                                                            val fields = Vector.fromList ((valOf (toName tokId), typ) :: fields)
+                                                        in Term.Type (pos, Type.RowExt (pos, {fields, ext}))
+                                                        end %} )
+                       {% res %} )
               {% res %}
     | pos 'do' block           {% let val (stmts, body) = block
-                                 in Term.Let (pos, Vector.fromList stmts, body)
-                                 end %}
+                                  in Term.Let (pos, Vector.fromList stmts, body)
+                                  end %}
     | pos 'module' stmts 'end' {% Term.Module (pos, Vector.fromList stmts) %}
-    | 'interface' decls=decl* 'end'
+    | pos 'interface' decls=decl* 'end' {% Term.Type (pos, Type.Interface (pos, Vector.fromList decls)) %}
     | pos '(' res=('=' expr ')' {% Term.Type (pos, Type.Singleton (pos, expr)) %}
                   | expr ')'    {% expr %} )
               {% res %}
@@ -126,43 +143,49 @@ nestable
 
 clauses = clause clauses=('|' clause {% clause %})* {% Vector.fromList (clause :: clauses) %};
 
-clause = paramPattern '->' expr ;
+clause = pattern=paramPattern '->' body=expr {% {pattern, body} %};
 
-recordTail = (',' recordField)* ('..' expr)? ;
+recordTail = fields=(',' recordField {%recordField%})* ext=('..' expr {%expr%})? {% {fields, ext} %};
 
-recordField = Id ('=' expr)? ;
+recordField = pos Id expr=('=' expr {%expr%})? {% case expr
+                                                  of SOME expr => (valOf (toName tokId), expr)
+                                                   | NONE => (valOf (toName tokId), Term.Use (pos, valOf (toName tokId))) %};
 
-rowTail = (',' rowField)* ('&' typ)? '%}' ;
+rowTail = fields=(',' rowField {%rowField%})* pos ext=('&' typ {%typ%})?
+        {% {fields, ext = getOpt (ext, Type.EmptyRow pos)} %};
 
-rowField = Id ':' typ ;
+rowField = Id ':' typ {% (valOf (toName tokId), typ) %};
 
 decl
-    = 'val' Id ':' typ ';'
-    | 'type' Id ('=' typ)? ';'
+    = 'val' Id ':' typ ';' {% (valOf (toName tokId), typ) %}
+    | pos 'type' Id typ=('=' pos typ {% (pos, typ) %})? ';'
+      {% case typ
+         of SOME (pos, t) => (valOf (toName tokId), Type.Singleton (pos, Term.Type (pos, t)))
+          | NONE => (valOf (toName tokId), Type.TypeT pos) %}
     ;
 
 atom
-    = Id
-    | const
+    = pos Id    {% Term.Use (pos, valOf (toName tokId)) %}
+    | pos const {% Term.Const (pos, const) %}
     ;
 
 const
-    = Int
-    | Bool
+    = Int  {% Const.Int (valOf (toInt tokInt)) %}
+    | Bool {% Const.Bool (valOf (toBool tokBool)) %}
     ;
 
 # Patterns
 
 pattern
-    = apat (':' typ)?
+    = apat typ=(':' typ {%typ%})? {% {var = apat, typ} %}
     ;
 
 paramPattern
-    = apat (':' binapp)?
+    = apat typ=(':' nonArrowTyp {%nonArrowTyp%})? {% {var = apat, typ} %}
     ;
 
 apat
-    = '(' pattern ')'
-    | Id
+    = '(' pattern ')' {% raise Fail "unimplemented" %}
+    | Id              {% valOf (toName tokId) %}
     ;
 
