@@ -27,7 +27,7 @@ signature CST = sig
         | Const of Pos.t * Const.t
 
     and stmt
-        = Val of Pos.t * Name.t * typ option * expr
+        = Val of Pos.t * def * expr
         | Expr of expr
 
     withtype def = {var: Name.t, typ: typ option}
@@ -93,7 +93,7 @@ structure Cst :> CST = struct
         | Const of Pos.t * Const.t
 
     and stmt
-        = Val of Pos.t * Name.t * typ option * expr
+        = Val of Pos.t * def * expr
         | Expr of expr
 
     withtype def = {var: Name.t, typ: typ option}
@@ -185,7 +185,7 @@ structure Cst :> CST = struct
             end
 
     and stmtToDoc =
-        fn Val (_, name, ann, valExpr) =>
+        fn Val (_, {var = name, typ = ann}, valExpr) =>
             text "val " <> Name.toDoc name <> annToDoc ann <> text " = " <> exprToDoc valExpr
          | Expr expr => exprToDoc expr
 

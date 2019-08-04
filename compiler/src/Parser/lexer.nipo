@@ -1,38 +1,38 @@
-lexer BroomLexer -> {BroomTokens.t} where
+lexer BroomLexer -> {%BroomTokens.t%} where
 
-{ open BroomTokens }
+{% open BroomTokens %}
 
 rules
 
 start tok
-    = '=' '>'? { fn (s, cs, _) =>
+    = '=' '>'? {% fn (s, cs, _) =>
                      case String.size cs
                      of 1 => Eq s
                       | 2 => DArrow s
-                      | _ => raise Fail "unreachable" }
-    | '-' '>'  { Arrow o #1 }
-    | '|'      { Bar o #1 }
-    | '&'      { Amp o #1 }
-    | '.' '.'? { fn (s, cs, _) =>
+                      | _ => raise Fail "unreachable" %}
+    | '-' '>'  {% Arrow o #1 %}
+    | '|'      {% Bar o #1 %}
+    | '&'      {% Amp o #1 %}
+    | '.' '.'? {% fn (s, cs, _) =>
                      case String.size cs
                      of 1 => Dot s
                       | 2 => DDot s
-                      | _ => raise Fail "unreachable" }
-    | ':'  { Colon o #1 }
-    | ';'  { Semi o #1 }
-    | '\n' { Newline o #1 }
-    | ','  { Comma o #1 }
+                      | _ => raise Fail "unreachable" %}
+    | ':'  {% Colon o #1 %}
+    | ';'  {% Semi o #1 %}
+    | '\n' {% Newline o #1 %}
+    | ','  {% Comma o #1 %}
     
-    | '(' { LParen o #1 }
-    | ')' { RParen o #1 }
-    | '[' { LBracket o #1 }
-    | ']' { RBracket o #1 }
-    | '{' { LBrace o #1 }
-    | '}' { RBrace o #1 }
+    | '(' {% LParen o #1 %}
+    | ')' {% RParen o #1 %}
+    | '[' {% LBracket o #1 %}
+    | ']' {% RBracket o #1 %}
+    | '{' {% LBrace o #1 %}
+    | '}' {% RBrace o #1 %}
 
-    | '@' constituent+ { fn (s, cs, e) => Meta (s, Name.fromString (String.extract (cs, 1, NONE)), e) }
+    | '@' constituent+ {% fn (s, cs, e) => Meta (s, Name.fromString (String.extract (cs, 1, NONE)), e) %}
 
-    | constituent+ { fn (s, cs, e) =>
+    | constituent+ {% fn (s, cs, e) =>
                          case cs
                          of "val" => Val s
                           | "type" => Type s
@@ -47,11 +47,11 @@ start tok
                           | _ =>
                              if String.isPrefix "__" cs
                              then Intrinsic (s, String.extract (cs, 2, NONE), e)
-                             else Id (s, Name.fromString cs, e) }
+                             else Id (s, Name.fromString cs, e) %}
 
     # TODO: String and char literals
 
-    | [[:digit:]]+ { fn (s, cs, e) => Int (s, valOf (Int.fromString cs), e) };
+    | [[:digit:]]+ {% fn (s, cs, e) => Int (s, valOf (Int.fromString cs), e) %};
 
 constituent = [[:alpha:]] | '_' ;
 
