@@ -3,7 +3,7 @@ structure TypecheckingEnv :> sig
     type input_expr = Cst.Term.expr
     type output_type = FlexFAst.Type.concr
     type kind = FlexFAst.Type.kind
-    type abs_ctx = (Name.t * output_type) vector 
+    type abs_ctx = output_type vector 
     type output_expr = FlexFAst.Term.expr
 
     structure Bindings: sig
@@ -92,7 +92,7 @@ end = struct
     type output_type = FAst.Type.concr
     type kind = FlexFAst.Type.kind
     type tfn_sig = FAst.Type.tfn_sig
-    type abs_ctx = (Name.t * output_type) vector 
+    type abs_ctx = output_type vector 
     type output_expr = FAst.Term.expr
 
     val op|> = Fn.|>
