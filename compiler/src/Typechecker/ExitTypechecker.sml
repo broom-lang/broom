@@ -73,6 +73,7 @@ end = struct
 
     and stmtToF =
         fn Val (pos, {var, typ}, expr) => FFTerm.Val (pos, {var, typ = concrToF typ}, exprToF expr)
+         | Axiom (pos, name, l, r) => FFTerm.Axiom (pos, name, concrToF l, concrToF r)
          | Expr expr => FFTerm.Expr (exprToF expr)
 
     fun programToF {typeFns, axioms, body} =

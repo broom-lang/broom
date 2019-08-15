@@ -241,7 +241,7 @@ end = struct
             let val env = Env.pushScope env (stmtsScope stmts)
                 val stmts = Vector.map (elaborateStmt env) stmts
                 val defs = Vector.foldr (fn (FTerm.Val (_, def, _), defs) => def :: defs
-                                          | (FTerm.Expr _, defs) => defs)
+                                          | (FTerm.Axiom _, defs) | (FTerm.Expr _, defs) => defs)
                                         [] stmts
                 val row = List.foldl (fn ({var, typ}, ext) => FType.RowExt (pos, {field = (var, typ), ext}))
                                      (FType.EmptyRow pos) defs
@@ -364,16 +364,18 @@ end = struct
 
     and elaborateAsExistsInst env (implType, scopeId, namedPaths) expr =
         let val env' = Env.pushScope env (Scope.Marker scopeId)
+            val pos = CTerm.exprPos expr
             val expr = elaborateExprAs env' implType expr
-        in Vector.app (fn (name, FAst.Type.SVar (_, FType.Path path)) =>
-                           let val (face, _) = Either.unwrapLeft (Path.get (Env.hasScope env) path)
-                               val impl = case Path.get (Env.hasScope env') path
-                                          of Either.Left (face, _) => face
-                                           | Either.Right (impl, _) => impl
-                           in Env.insertAxiom env name (face, impl)
-                           end)
-                      namedPaths
-         ; expr
+            val axiomStmts =
+                Vector.map (fn (name, FAst.Type.SVar (_, FType.Path path)) =>
+                                let val (face, _) = Either.unwrapLeft (Path.get (Env.hasScope env) path)
+                                    val impl = case Path.get (Env.hasScope env') path
+                                               of Either.Left (face, _) => face
+                                                | Either.Right (impl, _) => impl
+                                in FTerm.Axiom (pos, name, face, impl)
+                                end)    
+                           namedPaths
+        in FTerm.Let (pos, axiomStmts, expr)
         end
 
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)

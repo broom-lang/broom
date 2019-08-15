@@ -49,6 +49,7 @@ end = struct
         let fun pushStmt (stmt, env) =
                 case stmt
                 of Val (_, {var, typ}, _) => Env.insert (env, var, typ)
+                 | Axiom (_, name, l, r) => Env.insertCo (env, name, l, r)
                  | Expr _ => env
         in Vector.foldl pushStmt env stmts
         end
@@ -264,6 +265,7 @@ end = struct
             let val exprType = check env expr
             in checkEq env (exprType, typ)
             end
+         | Axiom _ => () (* TODO: Some checks here (see F_c paper) *)
          | Expr expr => ignore (check env expr)
 
     fun typecheckProgram {typeFns, axioms, body} =
