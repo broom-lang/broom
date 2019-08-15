@@ -55,9 +55,7 @@ end = struct
 
     type ('scope, 't) path =
         { face: 't
-        , impl: { scope: 'scope option
-                , typ: 't option
-                , coercion: Name.t option } ref }
+        , impls: ('scope * {typ: 't option, coercion: Name.t option}) list ref }
 
     structure Ov = struct
         fun new (scope, predicativity, name, kind) =
@@ -149,11 +147,7 @@ end = struct
     end
 
     structure Path = struct
-        fun new face =
-            { face
-            , impl = ref { scope = NONE
-                         , typ = NONE
-                         , coercion = NONE } }
+        fun new face = {face, impls = ref []}
 
         val face: ('scope, 't) path -> 't = #face
 
@@ -167,21 +161,29 @@ end = struct
                 else Either.Left (face, NONE)
              | NONE => Either.Left (face, NONE)
 
-        fun addScope ({face = _, impl}, scope, coercion) =
-            impl := {scope = SOME scope , typ = NONE, coercion = SOME coercion}
+        fun get inScope {face, impls} =
+            case List.find (inScope o #1) (!impls)
+            of SOME (_, {typ = SOME t, coercion}) => Either.Right (t, valOf coercion)
+             | SOME (_, {typ = NONE, coercion}) => Either.Left (face, coercion)
+             | NONE => Either.Left (face, NONE)
 
-        fun set faceName inScope ({face, impl = impl as ref {scope, typ, coercion}}, t) =
-            case scope
-            of SOME scope =>
-                if inScope scope
-                then case typ
-                     of SOME _ => raise Reset
-                      | NONE => impl := {scope = SOME scope, typ = SOME t, coercion}
-                else raise SetPrivate (faceName face)
-             | NONE => raise SetPrivate (faceName face)
+        fun addScope ({face, impls}, scope, coercion) =
+            impls := (scope, {typ = NONE, coercion = SOME coercion}) :: !impls
 
-        fun eq ({impl, ...}: ('scope, 't) path, {impl = impl', ...}: ('scope, 't) path) =
-            impl = impl'
+        fun set faceName inScope ({face, impls}, t) =
+            let val rec loop =
+                    fn (scope, impl as {typ, coercion}) :: impls =>
+                        if inScope scope
+                        then case typ
+                             of SOME _ => raise Reset
+                              | NONE => (scope, {typ = SOME t, coercion}) :: impls
+                        else (scope, impl) :: loop impls
+                     | [] => raise SetPrivate (faceName face)
+            in impls := loop (!impls)
+            end
+
+        fun eq ({impls, ...}: ('scope, 't) path, {impls = impls', ...}: ('scope, 't) path) =
+            impls = impls'
    end
 end
 

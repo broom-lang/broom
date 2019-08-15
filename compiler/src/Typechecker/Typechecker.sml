@@ -346,7 +346,7 @@ end = struct
                                                  |> Name.freshen)
                                         typeFns
             val paths = Vector.map (fn (typeFn, coName) =>
-                                        let val path = TypeVars.Path.new (FType.CallTFn (pos, typeFn, typeFnArgs))
+                                        let val path = Path.new (FType.CallTFn (pos, typeFn, typeFnArgs))
                                         in FAst.Type.SVar (pos, FType.Path path)
                                         end)
                                    (Vector.zip (typeFns, axiomNames))
