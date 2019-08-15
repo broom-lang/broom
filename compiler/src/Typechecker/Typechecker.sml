@@ -49,9 +49,9 @@ end = struct
                               in (t, Typed (t, NONE, oexpr))
                               end
                            | _ =>
-                              let val (t, scopeId, namedPaths) =
+                              let val (t, namedPaths) =
                                       instantiateExistential env (Exists (pos, Vector.fromList defs, t))
-                              in (t, Typed (t, SOME (scopeId, namedPaths), oexpr))
+                              in (t, Typed (t, SOME namedPaths, oexpr))
                               end))
                  | (NONE, SOME expr) =>
                     let val (t, expr) = elaborateExpr env expr
@@ -329,15 +329,13 @@ end = struct
         end
 
     and elaborateAsExists env t expr: concr * FTerm.expr =
-        let val tWithCtx as (t, _, _) = instantiateExistential env t
+        let val tWithCtx as (t, _) = instantiateExistential env t
         in (t, elaborateAsExistsInst env tWithCtx expr)
         end
 
     and instantiateExistential env (Exists (pos, params: FType.def vector, body))
-            : concr * Scope.Id.t * (Name.t * concr) vector = 
-        let val coScopeId = Scope.Id.fresh ()
-
-            val typeFnArgDefs = Env.bigLambdaParams env
+            : concr * (Name.t * concr) vector = 
+        let val typeFnArgDefs = Env.bigLambdaParams env
             val typeFnArgs = Vector.map (fn def => FType.UseT (pos, def)) typeFnArgDefs
             val paramKinds = Vector.map #kind typeFnArgDefs
             val typeFns = Vector.map (fn {var, kind} => Env.freshAbstract env var {paramKinds, kind})
@@ -348,8 +346,7 @@ end = struct
                                                  |> Name.freshen)
                                         typeFns
             val paths = Vector.map (fn (typeFn, coName) =>
-                                        let val path = TypeVars.Path.new ( FType.CallTFn (pos, typeFn, typeFnArgs)
-                                                                         , coScopeId, coName )
+                                        let val path = TypeVars.Path.new (FType.CallTFn (pos, typeFn, typeFnArgs))
                                         in FAst.Type.SVar (pos, FType.Path path)
                                         end)
                                    (Vector.zip (typeFns, axiomNames))
@@ -359,22 +356,24 @@ end = struct
                         |> Vector.zipWith (fn ({var, ...}, path) => (var, path))
                         |> Id.SortedMap.fromVector
             val implType = Concr.substitute (Env.hasScope env) mapping body
-        in (implType, coScopeId, namedPaths)
+        in (implType, namedPaths)
         end
 
-    and elaborateAsExistsInst env (implType, scopeId, namedPaths) expr =
-        let val env' = Env.pushScope env (Scope.Marker scopeId)
+    and elaborateAsExistsInst env (implType, namedPaths) expr =
+        let val scopeId = Scope.Id.fresh ()
+            val env' = Env.pushScope env (Scope.Marker scopeId)
             val pos = CTerm.exprPos expr
-            val expr = elaborateExprAs env' implType expr
             val axiomStmts =
                 Vector.map (fn (name, FAst.Type.SVar (_, FType.Path path)) =>
-                                let val (face, _) = Either.unwrapLeft (Path.get (Env.hasScope env) path)
+                                let do Path.addScope (path, scopeId, name)
+                                    val (face, _) = Either.unwrapLeft (Path.get (Env.hasScope env) path)
                                     val impl = case Path.get (Env.hasScope env') path
                                                of Either.Left (face, _) => face
                                                 | Either.Right (impl, _) => impl
                                 in FTerm.Axiom (pos, name, face, impl)
                                 end)    
                            namedPaths
+            val expr = elaborateExprAs env' implType expr
         in FTerm.Let (pos, axiomStmts, expr)
         end
 
@@ -394,8 +393,7 @@ end = struct
                     of Unvisited _ | Visiting _ => raise Fail "unreachable" (* Not possible after `lookupValType`. *)
                      | Typed (_, ctx, SOME expr) =>
                         (case ctx
-                         of SOME (scopeId, namedPaths) =>
-                             elaborateAsExistsInst env (t, scopeId, namedPaths) expr
+                         of SOME namedPaths => elaborateAsExistsInst env (t, namedPaths) expr
                           | NONE => elaborateExprAs env t expr)
                      | Visited (_, SOME expr) => expr
                      | Typed (_, _, NONE) | Visited (_, NONE) => raise Fail "unreachable"

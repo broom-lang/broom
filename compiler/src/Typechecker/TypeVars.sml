@@ -6,7 +6,7 @@ structure TypeVars :> sig
 
     type ('scope, 'kind) ov
     type ('scope, 't) uv
-    type ('scope, 't, 'co) path
+    type ('scope, 't) path
 
     structure Ov: sig
         val new: 'scope * predicativity * Name.t * 'kind -> ('scope, 'kind) ov
@@ -26,14 +26,15 @@ structure TypeVars :> sig
     end
 
     structure Path: sig
-        val new: 't * 'scope * 'co -> ('scope, 't, 'co) path
-        val face: ('scope, 't, 'co) path -> 't
+        val new: 't -> ('scope, 't) path
+        val face: ('scope, 't) path -> 't
         val get: ('scope -> bool) (* Is the required coercion available? *)
-                 -> ('scope, 't, 'co) path -> ('t * 'co option, 't * 'co) Either.t
+                 -> ('scope, 't) path -> ('t * Name.t option, 't * Name.t) Either.t
+        val addScope: ('scope, 't) path * 'scope * Name.t -> unit
         val set: ('t -> Name.t)
                  -> ('scope -> bool) (* Is the required coercion available? *)
-                 -> ('scope, 't, 'co) path * 't -> unit
-        val eq: ('scope, 't, 'co) path * ('scope, 't, 'co) path -> bool
+                 -> ('scope, 't) path * 't -> unit
+        val eq: ('scope, 't) path * ('scope, 't) path -> bool
     end
 end = struct
     datatype predicativity = Predicative | Impredicative
@@ -52,7 +53,11 @@ end = struct
         | Root of {meta: 'scope meta, typ: 't option ref, rank: int ref}
     withtype ('scope, 't) uv = ('scope, 't) link ref
 
-    type ('scope, 't, 'co) path = {face: 't, scope: 'scope, coercion: 'co, impl: 't option ref}
+    type ('scope, 't) path =
+        { face: 't
+        , impl: { scope: 'scope option
+                , typ: 't option
+                , coercion: Name.t option } ref }
 
     structure Ov = struct
         fun new (scope, predicativity, name, kind) =
@@ -144,25 +149,38 @@ end = struct
     end
 
     structure Path = struct
-        fun new (face, scope, coercion) = {face, scope, coercion, impl = ref NONE}
+        fun new face =
+            { face
+            , impl = ref { scope = NONE
+                         , typ = NONE
+                         , coercion = NONE } }
 
-        val face: ('scope, 't, 'co) path -> 't = #face
+        val face: ('scope, 't) path -> 't = #face
 
-        fun get inScope {face, scope, coercion, impl} =
-            if inScope scope
-            then case !impl
-                 of SOME t => Either.Right (t, coercion)
-                  | NONE => Either.Left (face, SOME coercion)
-            else Either.Left (face, NONE)
+        fun get inScope {face, impl = ref {scope, typ, coercion}} =
+            case scope
+            of SOME scope =>
+                if inScope scope
+                then case typ
+                     of SOME t => Either.Right (t, valOf coercion)
+                      | NONE => Either.Left (face, coercion)
+                else Either.Left (face, NONE)
+             | NONE => Either.Left (face, NONE)
 
-        fun set faceName inScope ({face, scope, coercion = _, impl}, t) =
-            if inScope scope
-            then case !impl
-                 of SOME _ => raise Reset
-                  | NONE => impl := SOME t
-            else raise SetPrivate (faceName face)
+        fun addScope ({face = _, impl}, scope, coercion) =
+            impl := {scope = SOME scope , typ = NONE, coercion = SOME coercion}
 
-        fun eq ({impl, ...}: ('scope, 't, 'co) path, {impl = impl', ...}: ('scope, 't, 'co) path) =
+        fun set faceName inScope ({face, impl = impl as ref {scope, typ, coercion}}, t) =
+            case scope
+            of SOME scope =>
+                if inScope scope
+                then case typ
+                     of SOME _ => raise Reset
+                      | NONE => impl := {scope = SOME scope, typ = SOME t, coercion}
+                else raise SetPrivate (faceName face)
+             | NONE => raise SetPrivate (faceName face)
+
+        fun eq ({impl, ...}: ('scope, 't) path, {impl = impl', ...}: ('scope, 't) path) =
             impl = impl'
    end
 end
