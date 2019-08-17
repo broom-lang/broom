@@ -2,7 +2,7 @@ if exists('b:current_syntax')
     finish
 endif
 
-syntax keyword broomKeyword begin module interface do return end val fun type pi forall match when
+syntax keyword broomKeyword module interface do end val fun type pi forall match when
 highlight default link broomKeyword Keyword
 
 syntax match broomColon ":"
