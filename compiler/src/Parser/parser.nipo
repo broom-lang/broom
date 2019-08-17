@@ -11,7 +11,9 @@ token {%BroomTokens.t%}
     | Fun 'fun'
     | Type 'type'
     | Pi 'pi'
+    | Begin 'begin'
     | Do 'do'
+    | Return 'return'
     | Module 'module'
     | Interface 'interface'
     | End 'end'
@@ -22,7 +24,6 @@ token {%BroomTokens.t%}
     | Colon ':'
     | Dot '.'
     | DDot '..'
-    | Semi ';'
     | Comma ','
     | LBrace '{'
     | RBrace '}'
@@ -39,41 +40,15 @@ start program = stmts {% stmts %};
 
 # Statements and Blocks
 
-valDef
+stmt
     = pos 'val' pattern '=' expr {% Term.Val (pos, pattern, expr) %}
     | pos 'fun' pats=apat+ '=' expr {% raise Fail "unimplemented" %}
-    ;
-
-stmt
-    = valDef ';' {% valDef %}
-    | pos 'type' res=( Id '=' typ ';' {% Term.Val ( pos, {var = valOf (toName tokId), typ = NONE}
-                                                  , Term.Type (pos, typ) ) %}
-                     | ';'             {% Term.Expr (Term.Type (pos, Type.TypeT pos)) %} )
-                 {% res %}
-    | ascription ';' {% Term.Expr ascription %}
+    | pos 'type' Id '=' typ {% Term.Val ( pos, {var = valOf (toName tokId), typ = NONE}
+                                        , Term.Type (pos, typ) ) %}
+    | 'do' expr {% Term.Expr expr %}
     ;
 
 stmts = stmts=stmt* {% stmts %};
-
-block
-    = valDef ';' block {% let val (stmts, body) = block
-                          in (valDef :: stmts, body)
-                          end %}
-    | pos 'type' res=( Id '=' typ ';' block {% let val (stmts, body) = block
-                                               in (Term.Val ( pos, {var = valOf (toName tokId), typ = NONE}
-                                                            , Term.Type (pos, typ) ) :: stmts, body)
-                                               end %}
-                     | ';' block            {% let val (stmts, body) = block
-                                               in (Term.Expr (Term.Type (pos, Type.TypeT pos)) :: stmts, body)
-                                               end %}
-                     | 'end'                {% ([], Term.Type (pos, Type.TypeT pos)) %} )
-                 {% res %}
-    | ascription res=( ';' block {% let val (stmts, body) = block
-                                    in (Term.Expr ascription :: stmts, body)
-                                    end %}
-                     | 'end'     {% ([], ascription) %} )
-                 {% res %}
-    ;
 
 # Expressions/Types
 
@@ -130,9 +105,7 @@ nestable
                                                         end %} )
                        {% res %} )
               {% res %}
-    | pos 'do' block           {% let val (stmts, body) = block
-                                  in Term.Let (pos, Vector.fromList stmts, body)
-                                  end %}
+    | pos 'begin' stmts 'return' body=expr 'end' {% Term.Let (pos, Vector.fromList stmts, body) %}
     | pos 'module' stmts 'end' {% Term.Module (pos, Vector.fromList stmts) %}
     | pos 'interface' decls=decl* 'end' {% Term.Type (pos, Type.Interface (pos, Vector.fromList decls)) %}
     | pos '(' res=('=' expr ')' {% Term.Type (pos, Type.Singleton (pos, expr)) %}
@@ -157,8 +130,8 @@ rowTail = fields=(',' rowField {%rowField%})* pos ext=('&' typ {%typ%})?
 rowField = Id ':' typ {% (valOf (toName tokId), typ) %};
 
 decl
-    = 'val' Id ':' typ ';' {% (valOf (toName tokId), typ) %}
-    | pos 'type' Id typ=('=' pos typ {% (pos, typ) %})? ';'
+    = 'val' Id ':' typ {% (valOf (toName tokId), typ) %}
+    | pos 'type' Id typ=('=' pos typ {% (pos, typ) %})?
       {% case typ
          of SOME (pos, t) => (valOf (toName tokId), Type.Singleton (pos, Term.Type (pos, t)))
           | NONE => (valOf (toName tokId), Type.TypeT pos) %}

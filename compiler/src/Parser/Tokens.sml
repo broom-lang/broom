@@ -1,6 +1,8 @@
 structure BroomTokens = struct
     datatype t
-        = Do of Pos.t
+        = Begin of Pos.t
+        | Do of Pos.t
+        | Return of Pos.t
         | Module of Pos.t
         | Interface of Pos.t
         | End of Pos.t
