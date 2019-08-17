@@ -1,9 +1,9 @@
 type FN = interface
-    id : forall a => a -> a
-    const : forall a b => a -> (b -> a)
+    val id : forall a => a -> a
+    val const : forall a b => a -> (b -> a)
 end
 
-Fn = module
+val Fn = module
     fun id x = x
 
     fun const v = {| _ => v}

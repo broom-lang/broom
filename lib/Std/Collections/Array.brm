@@ -3,19 +3,19 @@ type ARRAY = interface
     type size = uint
     type key = uint
 
-    count : forall elem => t elem -> size
-    get : forall elem => t elem -> key -> elem
-    set : forall elem => t elem -> key -> elem -> t elem
-    update : forall elem => t elem -> key -> (elem -> elem) -> t elem
+    val count : forall elem => t elem -> size
+    val get : forall elem => t elem -> key -> elem
+    val set : forall elem => t elem -> key -> elem -> t elem
+    val update : forall elem => t elem -> key -> (elem -> elem) -> t elem
 
-    unfoldl : forall elem elem => size -> (state -> elem * state) -> state -> t elem * state
-    unfoldr : forall elem state => size -> (state -> elem * state) -> state -> t elem * state
+    val unfoldl : forall elem elem => size -> (state -> elem * state) -> state -> t elem * state
+    val unfoldr : forall elem state => size -> (state -> elem * state) -> state -> t elem * state
 
-    foldl : forall elem state => (state -> elem -> state) -> state -> t elem -> state
-    foldr : forall elem state => (elem -> state -> state) -> state -> t elem -> state
+    val foldl : forall elem state => (state -> elem -> state) -> state -> t elem -> state
+    val foldr : forall elem state => (elem -> state -> state) -> state -> t elem -> state
 end
 
-Array : ARRAY = module
+val Array : ARRAY = module
     type t elem = __array elem
     type size = uint
     type key = uint
@@ -33,62 +33,64 @@ Array : ARRAY = module
     fun update arr = set arr i (f (get arr i))
 
     # TODO: Add 'unsafe' effect to `set` and `build` when effect system appears:
-    Builder : interface
+    val Builder : interface
         type t elem
 
-        new : forall elem => size -> t elem
-        set : forall elem => t elem -> key -> elem -> unit
-        build : forall elem => t elem -> Array.t elem
+        val new : forall elem => size -> t elem
+        val set : forall elem => t elem -> key -> elem -> unit
+        val build : forall elem => t elem -> Array.t elem
     end = module
         type t elem = __array elem
 
         fun new len = __arrayNew len
         fun set builder i v = __arrayUnsafeSet builder i v
-        build = Fn.id
+        val build = Fn.id
     end
 
-    fun unfoldl len f state = do
-        builder = Builder.new len
+    fun unfoldl len f state = begin
+        val builder = Builder.new len
         fun loop state = {
-            | i when i > 0 -> 
-                i' = i - 1
-                (v, state') = f state
-                Builder.set builder i' v
-                loop state' i'
+            | i when i > 0 -> begin
+                val i' = i - 1
+                val (v, state') = f state
+                do Builder.set builder i' v
+                return loop state' i'
+            end
             | _ -> Builder.build builder
         }
-        loop state len
+        return loop state len
     end
 
-    fun unfoldr len f state = do
-        builder = Builder.new len
+    fun unfoldr len f state = begin
+        val builder = Builder.new len
         fun loop state = {
-            | i when i < len ->
+            | i when i < len -> begin
                 (v, state') = f state
                 Builder.set builder i v
                 loop state' (i + 1)
+            end
             | _ -> Builder.build builder
         }
-        loop state 0
+        return loop state 0
     end
 
-    fun foldl f state arr = do
-        len = count arr
+    fun foldl f state arr = begin
+        val len = count arr
         fun loop state = {
             | i when i < len -> loop (f state (get arr i)) (i + 1)
             | _ -> state
         }
-        loop state 0
+        return loop state 0
     end
 
-    fun foldr f state arr = do
+    fun foldr f state arr = begin
         fun loop state = {
             | i when i > 0 ->
                 i' = i - 1
                 loop (f (get arr i') state) i'
             | _ -> state
         }
-        loop state (count arr)
+        return loop state (count arr)
     end
 end
 

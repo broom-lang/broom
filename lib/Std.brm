@@ -1,6 +1,4 @@
-Std = module
-    fun match matchee f = f matchee
-
+val Std = module
     @include "./Std/Fn"
 
     @include "./Std/Collections"
