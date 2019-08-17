@@ -1,5 +1,4 @@
-src/Parser/*.y.*
-src/Parser/*.x.sml
 src/Parser/Lexer.sml
 src/Parser/Parser.sml
 broom
+

@@ -51,7 +51,7 @@ structure TypeError :> TYPE_ERROR = struct
                                      ( Abs.pos t
                                      , text "Occurs check: unifying" <+> Concr.toDoc v
                                            <+> text "with" <+> Abs.toDoc t <+> text "would create infinite type." )
-        in text "TypeError in" <+> Pos.toDoc pos <> text ":" <+> details
+        in text "TypeError in" <+> text (Pos.toString pos) <> text ":" <+> details
         end
 end
 

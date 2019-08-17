@@ -104,10 +104,11 @@ end = struct
                                 else rep (tenv, venv) line
                         in loop tenv venv
                         end
+                        (* FIXME: 
                         handle Parser.ParseError => loop tenv venv
                              | TypeError err => 
                                 ( printErr (PPrint.pretty 80 (TypeError.toDoc err))
-                                ; loop tenv venv ))
+                                ; loop tenv venv ) *))
                     | NONE => ()
                 end
         in loop (TypecheckingEnv.default ()) (FAstEval.newToplevel ())

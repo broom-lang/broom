@@ -48,7 +48,7 @@ stmt
     | 'do' expr {% Term.Expr expr %}
     ;
 
-stmts = stmts=stmt* {% stmts %};
+stmts = stmts=stmt* {% Vector.fromList stmts %};
 
 # Expressions/Types
 
@@ -105,8 +105,8 @@ nestable
                                                         end %} )
                        {% res %} )
               {% res %}
-    | pos 'begin' stmts 'return' body=expr 'end' {% Term.Let (pos, Vector.fromList stmts, body) %}
-    | pos 'module' stmts 'end' {% Term.Module (pos, Vector.fromList stmts) %}
+    | pos 'begin' stmts 'return' body=expr 'end' {% Term.Let (pos, stmts, body) %}
+    | pos 'module' stmts 'end' {% Term.Module (pos, stmts) %}
     | pos 'interface' decls=decl* 'end' {% Term.Type (pos, Type.Interface (pos, Vector.fromList decls)) %}
     | pos '(' res=('=' expr ')' {% Term.Type (pos, Type.Singleton (pos, expr)) %}
                   | expr ')'    {% expr %} )

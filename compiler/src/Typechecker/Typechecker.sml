@@ -188,7 +188,7 @@ end = struct
 
     and stmtsScope stmts =
         let val builder = Bindings.Expr.Builder.new ()
-            do Vector.app (fn CTerm.Val (_, name, t, expr) =>
+            do Vector.app (fn CTerm.Val (_, {var = name, typ = t}, expr) =>
                                Bindings.Expr.Builder.insert builder name (Unvisited (t, SOME expr))
                             | CTerm.Expr _ => ())
                           stmts
@@ -385,7 +385,7 @@ end = struct
 
     (* Elaborate a statement and return the elaborated version. *)
     and elaborateStmt env: Cst.Term.stmt -> FTerm.stmt =
-        fn CTerm.Val (pos, name, _, expr) =>
+        fn CTerm.Val (pos, {var = name, typ = _}, expr) =>
             let val t = valOf (lookupValType expr name env) (* `name` is in `env` by construction *)
                 val expr =
                     case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)

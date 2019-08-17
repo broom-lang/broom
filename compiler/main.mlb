@@ -33,15 +33,6 @@ local
            src/Parser/Tokens.sml
            src/Parser/Lexer.sml
            src/Parser/Parser.sml
-       end
-    end
-
-    ann "warnUnused true"
-    in ann "allowSuccessorML true"
-       in
-           src/Parser/parser.y.sig
-           src/Parser/parser.y.sml
-           src/Parser/lexer.x.sml
 
            src/Typechecker/TypeVars.sml
            src/Reprs/FAst/FType.sml

@@ -20,7 +20,6 @@ start tok
                       | _ => raise Fail "unreachable" %}
     | ':'  {% Colon o #1 %}
     | ';'  {% Semi o #1 %}
-    | '\n' {% Newline o #1 %}
     | ','  {% Comma o #1 %}
     
     | '(' {% LParen o #1 %}
@@ -57,5 +56,5 @@ start tok
 
 constituent = [[:alpha:]] | '_' ;
 
-whitespace ws = (' ' | '\t' | '\r' | '\v' | '\f')* ;
+whitespace ws = [[:space:]]* ;
 
