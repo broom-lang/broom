@@ -18,7 +18,7 @@ structure FlexFAst = struct
         and co = sv FType.co
         and ov = (ScopeId.t, kind) TypeVars.ov
         and uv = (ScopeId.t, sv FType.concr) TypeVars.uv
-        and path = (ScopeId.t, sv FType.concr, Name.t) TypeVars.path
+        and path = (ScopeId.t, sv FType.concr) TypeVars.path
 
         val rec concrToDoc = fn t => FType.Concr.toDoc svarToDoc t
         and svarToDoc =

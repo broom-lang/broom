@@ -20,6 +20,7 @@ signature FAST_TERM = sig
 
     and stmt
         = Val of Pos.t * def * expr
+        | Axiom of Pos.t * Name.t * Type.concr * Type.concr
         | Expr of expr
 
     type program = { typeFns: (Name.t * Type.tfn_sig) vector
@@ -74,6 +75,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     and stmt
         = Val of Pos.t * def * expr
+        | Axiom of Pos.t * Name.t * Type.concr * Type.concr
         | Expr of expr
 
     val exprPos =
@@ -103,6 +105,9 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
                val rhs = PPrint.align (exprToDoc valExpr)
            in lhs <> (space <> rhs <|> PPrint.nest 4 (newline <> rhs))
            end
+        | Axiom (_, name, l, r) =>
+           text "axiom" <+> Name.toDoc name <+> text ":"
+           <+> Type.Concr.toDoc l <+> text "~" <+> Type.Concr.toDoc r
         | Expr expr => exprToDoc expr
 
    and stmtsToDoc =
@@ -163,6 +168,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     val stmtPos =
         fn Val (pos, _, _) => pos
+         | Axiom (pos, _, _, _) => pos
          | Expr expr => exprPos expr
 
     fun typeFnToDoc (name, {paramKinds, kind}) =
