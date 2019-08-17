@@ -198,7 +198,7 @@ end = struct
     (* Elaborate the expression `exprRef` and return its computed type. *)
     and elaborateExpr (env: Env.t) (expr: CTerm.expr): concr * FTerm.expr =
         case expr
-        of CTerm.Fn (pos, var, domain, body) =>
+        of CTerm.Fn (pos, #[{pattern = {var, typ = domain}, body}]) =>
             let val (typeDefs, domain) =
                     case domain
                     of SOME domain => elaborateType env domain
@@ -302,7 +302,7 @@ end = struct
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
     and elaborateExprAs (env: Env.t) (typ: concr) (expr: CTerm.expr): FTerm.expr =
         case expr
-        of CTerm.Fn (pos, param, paramType, body) =>
+        of CTerm.Fn (pos, #[{pattern = {var = param, typ = paramType}, body}]) =>
             (case typ
              of FType.ForAll args => elaborateAsForAll env args expr
               | FType.Arrow (_, {domain, codomain}) =>

@@ -1,2 +1,2 @@
-m: Int = n
-n: Int = 5
+val m: Int = n
+val n: Int = 5

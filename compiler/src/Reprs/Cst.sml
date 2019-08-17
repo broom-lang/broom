@@ -14,7 +14,7 @@ signature CST = sig
         | Prim of Pos.t * Prim.t
 
     and expr
-        = Fn of Pos.t * Name.t * typ option * expr
+        = Fn of Pos.t * clause vector
         | Let of Pos.t * stmt vector * expr
         | If of Pos.t * expr * expr * expr
         | Record of Pos.t * row
@@ -31,6 +31,7 @@ signature CST = sig
         | Expr of expr
 
     withtype def = {var: Name.t, typ: typ option}
+    and clause = {pattern: {var: Name.t, typ: typ option}, body: expr}
     and row = {fields: (Name.t * expr) vector, ext: expr option}
 
     structure Type: sig
@@ -80,7 +81,7 @@ structure Cst :> CST = struct
         | Prim of Pos.t * Prim.t
 
     and expr
-        = Fn of Pos.t * Name.t * typ option * expr
+        = Fn of Pos.t * clause vector
         | Let of Pos.t * stmt vector * expr
         | If of Pos.t * expr * expr * expr
         | Record of Pos.t * row
@@ -97,10 +98,11 @@ structure Cst :> CST = struct
         | Expr of expr
 
     withtype def = {var: Name.t, typ: typ option}
+    and clause = {pattern: {var: Name.t, typ: typ option}, body: expr}
     and row = {fields: (Name.t * expr) vector, ext: expr option}
 
     val exprPos =
-        fn Fn (pos, _, _, _) => pos
+        fn Fn (pos, _) => pos
          | Let (pos, _, _) => pos
          | If (pos, _, _, _) => pos
          | Record (pos, _) => pos
@@ -154,8 +156,10 @@ structure Cst :> CST = struct
          | NONE => PPrint.empty
 
     and exprToDoc =
-        fn Fn (_, param, ann, body) =>
-               text "fn" <+> Name.toDoc param <> annToDoc ann <> text " => " <> exprToDoc body
+        fn Fn (_, clauses) => let
+                fun clausesToDoc clauses = PPrint.punctuate newline (Vector.map clauseToDoc clauses)
+                in braces (PPrint.align (clausesToDoc clauses))
+            end
          | If (_, cond, conseq, alt) =>
             text "if" <+> exprToDoc cond
                 <+> text "then" <+> exprToDoc conseq
@@ -175,6 +179,8 @@ structure Cst :> CST = struct
          | Type (_, t) => text "type" <+> typeToDoc t
          | Use (_, name) => Name.toDoc name
          | Const (_, c) => Const.toDoc c
+
+    and defToDoc = fn {var, typ} => Name.toDoc var <> annToDoc typ
     
     and rowToDoc = 
         fn {fields, ext} =>
@@ -183,6 +189,8 @@ structure Cst :> CST = struct
                 val extDoc = Option.mapOr (fn ext => text " .." <+> exprToDoc ext) PPrint.empty ext
             in fieldsDoc <> extDoc
             end
+
+    and clauseToDoc = fn {pattern, body} => defToDoc pattern <+> text "=>" <+> exprToDoc body
 
     and stmtToDoc =
         fn Val (_, {var = name, typ = ann}, valExpr) =>

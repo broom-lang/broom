@@ -1,2 +1,2 @@
-foo = {| _: Int -> foo}
+fun foo (_: Int) = foo
 

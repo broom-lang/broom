@@ -42,7 +42,10 @@ start program = stmts {% stmts %};
 
 stmt
     = pos 'val' pattern '=' expr {% Term.Val (pos, pattern, expr) %}
-    | pos 'fun' pats=apat+ '=' expr {% raise Fail "unimplemented" %}
+    | pos 'fun' Id pats=apat+ '=' expr {% let
+          fun step (pattern, body) = Term.Fn (pos, #[{pattern, body}])
+          in Term.Val (pos, {var = valOf (toName tokId), typ = NONE}, List.foldr step expr pats)
+      end %}
     | pos 'type' Id '=' typ {% Term.Val ( pos, {var = valOf (toName tokId), typ = NONE}
                                         , Term.Type (pos, typ) ) %}
     | 'do' expr {% Term.Expr expr %}
@@ -59,7 +62,10 @@ expr
 
 typ = expr {% Type.Path expr %};
 
-nonArrowTyp = binapp {% Type.Path binapp %};
+nonArrowTyp
+    = binapp {% Type.Path binapp %}
+    | pos 'type' {% Type.TypeT pos %}
+    ;
 
 ascription = pos arrow typ=(':' typ {%typ%})? {% case typ
                                                  of SOME t => Term.Ann (pos, arrow, t)
@@ -84,11 +90,13 @@ select = pos nestable fields=('.' Id {% valOf (toName tokId) %})*
                      nestable fields %};
 
 nestable
-    = pos '{' res=( '|' clauses '}' {% raise Fail "unimplemented" %}
+    = pos '{' res=( '|' clauses '}' {% Term.Fn (pos, clauses) %}
                   | '}'             {% Term.Record (pos, {fields = #[], ext = NONE}) %}
                   | ':' '}'         {% Term.Type (pos, Type.EmptyRow pos) %}
                   | '..' expr '}'   {% Term.Record (pos, {fields = #[], ext = SOME expr}) %}
-                  | '&' typ '}'     {% Term.Type (pos, Type.RowExt (pos, {fields = #[], ext = typ})) %}
+                  | '&' res=( '}'     {% Term.Type (pos, Type.WildRow pos) %}
+                            | typ '}' {% Term.Type (pos, Type.RowExt (pos, {fields = #[], ext = typ})) %} )
+                            {% res %}
                   | Id res=( recordTail '}'          {% let val {fields, ext} = recordTail
                                                             val name = valOf (toName tokId)
                                                             val field = (name, Term.Use (pos, name))
@@ -124,8 +132,12 @@ recordField = pos Id expr=('=' expr {%expr%})? {% case expr
                                                   of SOME expr => (valOf (toName tokId), expr)
                                                    | NONE => (valOf (toName tokId), Term.Use (pos, valOf (toName tokId))) %};
 
-rowTail = fields=(',' rowField {%rowField%})* pos ext=('&' typ {%typ%})?
-        {% {fields, ext = getOpt (ext, Type.EmptyRow pos)} %};
+rowTail = fields=(',' rowField {%rowField%})* pos ext=rowExt {% {fields, ext} %};
+
+rowExt
+    = pos '&' ext=typ? {% getOpt (ext, Type.WildRow pos) %}
+    | pos              {% Type.EmptyRow pos %}
+    ;
 
 rowField = Id ':' typ {% (valOf (toName tokId), typ) %};
 
@@ -138,7 +150,12 @@ decl
     ;
 
 atom
-    = pos Id    {% Term.Use (pos, valOf (toName tokId)) %}
+    = pos Id    {% let val name = valOf (toName tokId)
+                   in  case Name.toString name (* HACK *)
+                       of "Unit" => Term.Type (pos, Type.Prim (pos, Type.Prim.Unit))
+                        | "Int" => Term.Type (pos, Type.Prim (pos, Type.Prim.I32))
+                        | _ => Term.Use (pos, name)
+                   end %}
     | pos const {% Term.Const (pos, const) %}
     ;
 
@@ -150,15 +167,15 @@ const
 # Patterns
 
 pattern
-    = apat typ=(':' typ {%typ%})? {% {var = apat, typ} %}
+    = apat typ=(':' typ {%typ%})? {% {var = #var apat, typ} %}
     ;
 
 paramPattern
-    = apat typ=(':' nonArrowTyp {%nonArrowTyp%})? {% {var = apat, typ} %}
+    = apat typ=(':' nonArrowTyp {%nonArrowTyp%})? {% {var = #var apat, typ} %}
     ;
 
 apat
-    = '(' pattern ')' {% raise Fail "unimplemented" %}
-    | Id              {% valOf (toName tokId) %}
+    = '(' pattern ')' {% pattern %}
+    | Id              {% {var = valOf (toName tokId), typ = NONE} %}
     ;
 

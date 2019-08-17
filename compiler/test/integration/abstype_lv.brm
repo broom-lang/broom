@@ -1,2 +1,2 @@
-T: Type = Int
+val T: type = Int
 

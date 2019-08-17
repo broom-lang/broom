@@ -1,3 +1,3 @@
-M: interface type T; end = module type T = N.T; end
-N: interface type T; end = module type T = M.T; end
+val M: interface type T end = module type T = N.T end
+val N: interface type T end = module type T = M.T end
 
