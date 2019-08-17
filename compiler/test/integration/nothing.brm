@@ -1,12 +1,12 @@
 type NOTHING = interface
-    type T
+    type t
 
-    val unusable: pi a: type -> T -> a -> a
+    val unusable: pi a: type -> t -> a -> a
 end
 
 val Nothing: NOTHING = module
-    type T = Unit
+    type t = unit
 
-    fun unusable (a: type) (_: T) (x: a) = x
+    fun unusable (a: type) (_: t) (x: a) = x
 end
 

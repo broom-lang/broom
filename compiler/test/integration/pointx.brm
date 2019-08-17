@@ -1,6 +1,6 @@
-fun getX (point: {x: Int, y: Int}) = point.x
-val xr: {x: Int} = {x = 23}
+fun getX (point: {x: int, y: int}) = point.x
+val xr: {x: int} = {x = 23}
 val y = 17
-val xy: {x: Int, y: Int} = {y .. xr }
-val x: Int = getX xy
+val xy: {x: int, y: int} = {y .. xr }
+val x: int = getX xy
 

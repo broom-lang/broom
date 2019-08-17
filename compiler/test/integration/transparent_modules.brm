@@ -4,11 +4,11 @@ val Prelude = module
     end
 
     val Integer = module
-        type T = Int
+        type t = int
 
-        val zero: T = 0
+        val zero: t = 0
     end
 end
 
-val n: Prelude.Integer.T = Prelude.Fn.identity Prelude.Integer.T Prelude.Integer.zero
+val n: Prelude.Integer.t = Prelude.Fn.identity Prelude.Integer.t Prelude.Integer.zero
 

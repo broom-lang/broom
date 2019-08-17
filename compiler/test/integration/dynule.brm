@@ -1,16 +1,16 @@
 type DEFAULT = interface
-    type T
-    val default: T
+    type t
+    val default: t
 end
 
 val Dyfault: DEFAULT =
     match True {
         | True -> module
-            type T = Int
+            type t = int
             val default = 0
         end 
         | False -> module
-            type T = {:}
+            type t = {:}
             val default = {}
         end
     }

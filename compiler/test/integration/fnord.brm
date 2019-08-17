@@ -1,2 +1,2 @@
-val foo: Int = fnord
+val foo: int = fnord
 

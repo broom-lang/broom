@@ -152,8 +152,8 @@ decl
 atom
     = pos Id    {% let val name = valOf (toName tokId)
                    in  case Name.toString name (* HACK *)
-                       of "Unit" => Term.Type (pos, Type.Prim (pos, Type.Prim.Unit))
-                        | "Int" => Term.Type (pos, Type.Prim (pos, Type.Prim.I32))
+                       of "unit" => Term.Type (pos, Type.Prim (pos, Type.Prim.Unit))
+                        | "int" => Term.Type (pos, Type.Prim (pos, Type.Prim.I32))
                         | _ => Term.Use (pos, name)
                    end %}
     | pos const {% Term.Const (pos, const) %}
