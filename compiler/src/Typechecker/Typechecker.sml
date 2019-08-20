@@ -24,8 +24,9 @@ end = struct
     datatype expr_binding_state = datatype Bindings.Expr.binding_state
     structure Path = TypeVars.Path
  
-    val subType = Subtyping.subType
     val applyCoercion = Subtyping.applyCoercion
+    val subType = Subtyping.subType
+    val unify = Subtyping.unify
 
     fun uvSet env =
         Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env)
@@ -188,8 +189,10 @@ end = struct
 
     and stmtsScope stmts =
         let val builder = Bindings.Expr.Builder.new ()
-            do Vector.app (fn CTerm.Val (_, {var = name, typ = t}, expr) =>
-                               Bindings.Expr.Builder.insert builder name (Unvisited (t, SOME expr))
+            do Vector.app (fn CTerm.Val (_, CTerm.Def (_, name), expr) =>
+                               Bindings.Expr.Builder.insert builder name (Unvisited (NONE, SOME expr))
+                            | CTerm.Val (_, CTerm.AnnP (_, {pat = CTerm.Def (_, name), typ}), expr) =>
+                               Bindings.Expr.Builder.insert builder name (Unvisited (SOME typ, SOME expr))
                             | CTerm.Expr _ => ())
                           stmts
         in Scope.BlockScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
@@ -198,7 +201,7 @@ end = struct
     (* Elaborate the expression `exprRef` and return its computed type. *)
     and elaborateExpr (env: Env.t) (expr: CTerm.expr): concr * FTerm.expr =
         case expr
-        of CTerm.Fn (pos, #[{pattern = {var, typ = domain}, body}]) =>
+        of CTerm.Fn (pos, {var, typ = domain}, body) =>
             let val (typeDefs, domain) =
                     case domain
                     of SOME domain => elaborateType env domain
@@ -229,7 +232,7 @@ end = struct
                 val (typ, body) = elaborateExpr env body
             in (typ, FTerm.Let (pos, stmts, body))
             end
-         | CTerm.If (pos, _, _, _) =>
+         | CTerm.Match (pos, _, _) =>
             let val t = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
             in (t, elaborateExprAs env t expr)
             end
@@ -302,7 +305,7 @@ end = struct
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
     and elaborateExprAs (env: Env.t) (typ: concr) (expr: CTerm.expr): FTerm.expr =
         case expr
-        of CTerm.Fn (pos, #[{pattern = {var = param, typ = paramType}, body}]) =>
+        of CTerm.Fn (pos, {var = param, typ = paramType}, body) =>
             (case typ
              of FType.ForAll args => elaborateAsForAll env args expr
               | FType.Arrow (_, {domain, codomain}) =>
@@ -314,10 +317,13 @@ end = struct
                       in FTerm.Fn (pos, {var = param, typ = domain}, body)
                       end)
               | _ => coerceExprTo env typ expr)
-         | CTerm.If (pos, cond, conseq, alt) =>
-            FTerm.If (pos, elaborateExprAs env (FType.Prim (pos, FType.Prim.Bool)) cond
-                         , elaborateExprAs env typ conseq
-                         , elaborateExprAs env typ alt )
+         | CTerm.Match (pos, matchee, clauses) => (* TODO: Exhaustiveness checking: *)
+            let val (matcheeTyp, matchee) = elaborateExpr env matchee
+            in FTerm.Match ( pos, typ, matchee
+                           , elaborateClauses env matcheeTyp
+                                 (fn (env, body) => elaborateExprAs env typ body)
+                                 clauses )
+            end
          | _ =>
             (case typ
              of FType.ForAll args => elaborateAsForAll env args expr
@@ -327,6 +333,26 @@ end = struct
         let val env = Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), Bindings.Type.fromDefs params))
         in FTerm.TFn (pos, params, elaborateExprAs env body expr)
         end
+
+    and elaborateClauses env matcheeTyp elaborateBody =
+        Vector.map (elaborateClause env matcheeTyp elaborateBody)
+
+    and elaborateClause env matcheeTyp elaborateBody {pattern, body} =
+        let val (pattern, env) = elaboratePatternAs env matcheeTyp pattern
+            val body = elaborateBody (env, body)
+        in {pattern, body}
+        end
+
+    and elaboratePatternAs env t =
+        fn CTerm.AnnP (pos, {pat, typ}) => raise Fail "unimplemented"
+         | CTerm.Def (pos, name) =>
+            ( FTerm.Def (pos, name)
+            , Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), name, Visited (t, NONE))) )
+         | CTerm.ConstP (pos, c) =>
+            let val cTyp = FType.Prim (pos, Const.typeOf c)
+                do unify env pos (cTyp, t)
+            in (FTerm.ConstP (pos, c), env)
+            end
 
     and elaborateAsExists env t expr: concr * FTerm.expr =
         let val tWithCtx as (t, _) = instantiateExistential env t
@@ -353,10 +379,13 @@ end = struct
         end
 
     and elaborateAsExistsInst env (implType, paths) =
-        fn CTerm.If (pos, cond, conseq, alt) =>
-            FTerm.If ( pos, elaborateExprAs env (FType.Prim (pos, FType.Prim.Bool)) cond
-                          , elaborateAsExistsInst env (implType, paths) conseq
-                          , elaborateAsExistsInst env (implType, paths) alt )
+        fn CTerm.Match (pos, matchee, clauses) =>
+            let val (matcheeTyp, matchee) = elaborateExpr env matchee
+            in FTerm.Match ( pos, implType, matchee
+                           , elaborateClauses env matcheeTyp
+                                 (fn (env, body) => elaborateAsExistsInst env (implType, paths) body)
+                                 clauses )
+            end
          | expr =>
             let val scopeId = Scope.Id.fresh ()
                 val env' = Env.pushScope env (Scope.Marker scopeId)
@@ -385,8 +414,12 @@ end = struct
 
     (* Elaborate a statement and return the elaborated version. *)
     and elaborateStmt env: Cst.Term.stmt -> FTerm.stmt =
-        fn CTerm.Val (pos, {var = name, typ = _}, expr) =>
-            let val t = valOf (lookupValType expr name env) (* `name` is in `env` by construction *)
+        fn CTerm.Val (pos, pat, expr) =>
+            let val rec patName =
+                    fn CTerm.Def (_, name) => name
+                     | CTerm.AnnP (_, {pat, ...}) => patName pat
+                val name = patName pat
+                val t = valOf (lookupValType expr name env) (* `name` is in `env` by construction *)
                 val expr =
                     case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
                     of Unvisited _ | Visiting _ => raise Fail "unreachable" (* Not possible after `lookupValType`. *)

@@ -53,6 +53,7 @@ structure TypecheckingEnv :> sig
 
         datatype t = TopScope of Id.t * toplevel
                    | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
+                   | PatternScope of Id.t * Name.t * Bindings.Expr.binding_state
                    | ForAllScope of Id.t * Bindings.Type.bindings
                    | ExistsScope of Id.t * Bindings.Type.bindings
                    | BlockScope of Id.t * Bindings.Expr.bindings
@@ -191,6 +192,7 @@ end = struct
 
         datatype t = TopScope of Id.t * toplevel
                    | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
+                   | PatternScope of Id.t * Name.t * Bindings.Expr.binding_state
                    | ForAllScope of Id.t * Bindings.Type.bindings
                    | ExistsScope of Id.t * Bindings.Type.bindings
                    | BlockScope of Id.t * Bindings.Expr.bindings
@@ -198,6 +200,7 @@ end = struct
                    | Marker of Id.t
 
         val id = fn FnScope (id, _, _) => id
+                  | PatternScope (id, _, _) => id
                   | ForAllScope (id, _) => id
                   | ExistsScope (id, _) => id
                   | BlockScope (id, _) => id
@@ -207,12 +210,12 @@ end = struct
         fun findType scope id =
             case scope
             of ForAllScope (_, bindings) | ExistsScope (_, bindings) => Bindings.Type.find bindings id
-             | FnScope _ | BlockScope _ | InterfaceScope _ | Marker _ => NONE
+             | FnScope _ | PatternScope _ | BlockScope _ | InterfaceScope _ | Marker _ => NONE
 
         fun findExpr scope name =
             case scope
             of TopScope (_, {vals, ...}) => Bindings.Expr.find vals name
-             | FnScope (_, var, bs) => if var = name then SOME bs else NONE
+             | FnScope (_, var, bs) | PatternScope (_, var, bs) => if var = name then SOME bs else NONE
              | ForAllScope _ | ExistsScope _ | Marker _ => NONE
              | BlockScope (_, bindings) | InterfaceScope (_, bindings) => Bindings.Expr.find bindings name
     end

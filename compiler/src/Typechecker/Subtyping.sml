@@ -3,6 +3,7 @@ structure Subtyping :> sig
    
     val applyCoercion: coercion -> FlexFAst.Term.expr -> FlexFAst.Term.expr
     val subType: TypecheckingEnv.t -> Pos.t -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
+    val unify: TypecheckingEnv.t -> Pos.t -> FlexFAst.Type.concr * FlexFAst.Type.concr -> unit
 end = struct
     val op|> = Fn.|>
     datatype either = datatype Either.t
@@ -75,10 +76,11 @@ end = struct
         in FTerm.Fn (pos, param, body)
         end
 
-    datatype lattice_y = Sub | Super
+    datatype lattice_y = Sub | Super | Unify
 
     val flipY = fn Sub => Super
                  | Super => Sub
+                 | Unify => Unify
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
     fun assign (env: Env.t) (y, uv: (Scope.Id.t, concr) TypeVars.uv, t: concr): coercion =
@@ -131,6 +133,12 @@ end = struct
                 end
            else NONE
         end
+
+    fun unify env currPos =
+        fn (lt as Prim (_, p), rt as Prim (_, p')) =>
+            if p = p'
+            then ()
+            else raise TypeError (NonUnifiable (currPos, concr lt, concr rt))
 
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
     fun subType (env: Env.t) currPos (typ: concr, superTyp: concr): coercion =

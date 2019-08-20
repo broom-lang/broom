@@ -1,5 +1,6 @@
 signature TYPE_ERROR = sig
     datatype t = NonSubType of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs
+               | NonUnifiable of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs
                | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.t * Name.t
@@ -21,6 +22,7 @@ structure TypeError :> TYPE_ERROR = struct
     val op<+> = PPrint.<+>
 
     datatype t = NonSubType of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs
+               | NonUnifiable of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs
                | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.t * Name.t
@@ -33,7 +35,10 @@ structure TypeError :> TYPE_ERROR = struct
         let val (pos, details) = case err
                                  of NonSubType (pos, typ, superTyp) =>
                                      ( pos
-                                     ,  Abs.toDoc typ <+> text "is not a subtype of" <+> Abs.toDoc superTyp)
+                                     , Abs.toDoc typ <+> text "is not a subtype of" <+> Abs.toDoc superTyp )
+                                  | NonUnifiable (pos, lt, rt) =>
+                                     ( pos
+                                     , Abs.toDoc lt <+> text "does not unify with" <+> Abs.toDoc rt )
                                   | UnCallable (expr, typ) =>
                                      ( FTerm.exprPos expr
                                      , text "Value" <+> FTerm.exprToDoc expr

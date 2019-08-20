@@ -44,10 +44,13 @@ start program = stmts {% Vector.fromList stmts %};
 stmt
     = pos 'val' pattern '=' expr {% Term.Val (pos, pattern, expr) %}
     | pos 'fun' Id pats=apat+ '=' expr {% let
-          fun step (pattern, body) = Term.Fn (pos, #[{pattern, body}])
-          in Term.Val (pos, {var = valOf (toName tokId), typ = NONE}, List.foldr step expr pats)
+          fun step (pat, body) = let val var = Name.fresh ()
+                                 in Term.Fn ( pos, {var, typ = NONE}
+                                            , Term.Let (pos, #[Term.Val (pos, pat, Term.Use (pos, var))], body)  )
+                                 end
+          in Term.Val (pos, Term.Def (pos, valOf (toName tokId)), List.foldr step expr pats)
       end %}
-    | pos 'type' Id '=' typ {% Term.Val ( pos, {var = valOf (toName tokId), typ = NONE}
+    | pos 'type' Id '=' typ {% Term.Val ( pos, Term.Def (pos, valOf (toName tokId))
                                         , Term.Type (pos, typ) ) %}
     | ';' expr {% Term.Expr expr %}
     ;
@@ -73,7 +76,7 @@ ascription = pos arrow typ=(':' typ {%typ%})? {% case typ
                                                   | NONE => arrow %};
 
 arrow
-    = pos 'pi' paramPattern '->' body=arrow {% Term.Type (pos, Type.Pi (pos, paramPattern, Type.Path body)) %}
+    = pos 'pi' piParam '->' body=arrow {% Term.Type (pos, Type.Pi (pos, piParam, Type.Path body)) %}
     | pos binapp codomain=('->' arrow {%arrow%})?
       {% case codomain
          of SOME cd => Term.Type (pos, Type.Pi (pos, {var = Name.fresh (), typ = SOME (Type.Path binapp)}, Type.Path cd))
@@ -91,7 +94,10 @@ select = pos nestable fields=('.' Id {% valOf (toName tokId) %})*
                      nestable fields %};
 
 nestable
-    = pos '{' res=( '|' clauses '}' {% Term.Fn (pos, clauses) %}
+    = pos '{' res=( '|' clauses '}' {% let val var = Name.fresh ()
+                                       in Term.Fn ( pos, {var, typ = NONE}
+                                                  , Term.Match (pos, Term.Use (pos, var), clauses) )
+                                       end %}
                   | '}'             {% Term.Record (pos, {fields = #[], ext = NONE}) %}
                   | ':' '}'         {% Term.Type (pos, Type.EmptyRow pos) %}
                   | '..' expr '}'   {% Term.Record (pos, {fields = #[], ext = SOME expr}) %}
@@ -180,16 +186,23 @@ const
 
 # Patterns
 
+piParam = Id typ=(':' nonArrowTyp {% nonArrowTyp %})? {% {var = valOf (toName tokId), typ} %};
+
 pattern
-    = apat typ=(':' typ {%typ%})? {% {var = #var apat, typ} %}
+    = pos apat typ=(':' typ {% typ %})? {% case typ
+                                           of SOME typ => Term.AnnP (pos, {pat = apat, typ})
+                                            | NONE => apat %}
     ;
 
 paramPattern
-    = apat typ=(':' nonArrowTyp {%nonArrowTyp%})? {% {var = #var apat, typ} %}
+    = pos apat typ=(':' nonArrowTyp {% nonArrowTyp %})? {% case typ
+                                                           of SOME typ => Term.AnnP (pos, {pat = apat, typ})
+                                                            | NONE => apat %}
     ;
 
 apat
     = '(' pattern ')' {% pattern %}
-    | Id              {% {var = valOf (toName tokId), typ = NONE} %}
+    | pos Id          {% Term.Def (pos, valOf (toName tokId)) %}
+    | pos const       {% Term.ConstP (pos, const) %}
     ;
 

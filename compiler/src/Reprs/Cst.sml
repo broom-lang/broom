@@ -14,9 +14,9 @@ signature CST = sig
         | Prim of Pos.t * Prim.t
 
     and expr
-        = Fn of Pos.t * clause vector
+        = Fn of Pos.t * def * expr
         | Let of Pos.t * stmt vector * expr
-        | If of Pos.t * expr * expr * expr
+        | Match of Pos.t * expr * clause vector
         | Record of Pos.t * row
         | Module of Pos.t * stmt vector
         | App of Pos.t * {callee: expr, arg: expr}
@@ -27,11 +27,16 @@ signature CST = sig
         | Const of Pos.t * Const.t
 
     and stmt
-        = Val of Pos.t * def * expr
+        = Val of Pos.t * pat * expr
         | Expr of expr
 
+    and pat
+        = AnnP of Pos.t * {pat: pat, typ: typ}
+        | Def of Pos.t * Name.t
+        | ConstP of Pos.t * Const.t
+
     withtype def = {var: Name.t, typ: typ option}
-    and clause = {pattern: {var: Name.t, typ: typ option}, body: expr}
+    and clause = {pattern: pat, body: expr}
     and row = {fields: (Name.t * expr) vector, ext: expr option}
 
     structure Type: sig
@@ -46,6 +51,7 @@ signature CST = sig
     structure Term: sig
         datatype expr = datatype expr
         datatype stmt = datatype stmt
+        datatype pat = datatype pat
         type def = def
         type row = row
 
@@ -81,9 +87,9 @@ structure Cst :> CST = struct
         | Prim of Pos.t * Prim.t
 
     and expr
-        = Fn of Pos.t * clause vector
+        = Fn of Pos.t * def * expr
         | Let of Pos.t * stmt vector * expr
-        | If of Pos.t * expr * expr * expr
+        | Match of Pos.t * expr * clause vector
         | Record of Pos.t * row
         | Module of Pos.t * stmt vector
         | App of Pos.t * {callee: expr, arg: expr}
@@ -94,17 +100,22 @@ structure Cst :> CST = struct
         | Const of Pos.t * Const.t
 
     and stmt
-        = Val of Pos.t * def * expr
+        = Val of Pos.t * pat * expr
         | Expr of expr
 
+    and pat
+        = AnnP of Pos.t * {pat: pat, typ: typ}
+        | Def of Pos.t * Name.t
+        | ConstP of Pos.t * Const.t
+
     withtype def = {var: Name.t, typ: typ option}
-    and clause = {pattern: {var: Name.t, typ: typ option}, body: expr}
+    and clause = {pattern: pat, body: expr}
     and row = {fields: (Name.t * expr) vector, ext: expr option}
 
     val exprPos =
-        fn Fn (pos, _) => pos
+        fn Fn (pos, _, _) => pos
          | Let (pos, _, _) => pos
-         | If (pos, _, _, _) => pos
+         | Match (pos, _, _) => pos
          | Record (pos, _) => pos
          | Module (pos, _) => pos
          | App (pos, _) => pos
@@ -156,14 +167,11 @@ structure Cst :> CST = struct
          | NONE => PPrint.empty
 
     and exprToDoc =
-        fn Fn (_, clauses) => let
+        fn Fn (_, def, body) => braces (text "|" <+> defToDoc def <+> text "->" <+> exprToDoc body)
+         | Match (_, matchee, clauses) => let
                 fun clausesToDoc clauses = PPrint.punctuate newline (Vector.map clauseToDoc clauses)
-                in braces (PPrint.align (clausesToDoc clauses))
+                in text "match" <+> exprToDoc matchee <+> braces (PPrint.align (clausesToDoc clauses))
             end
-         | If (_, cond, conseq, alt) =>
-            text "if" <+> exprToDoc cond
-                <+> text "then" <+> exprToDoc conseq
-                <+> text "else" <+> exprToDoc alt
          | Record (_, row) => braces (rowToDoc row)
          | Module (_, stmts) =>
             text "module"
@@ -190,15 +198,20 @@ structure Cst :> CST = struct
             in fieldsDoc <> extDoc
             end
 
-    and clauseToDoc = fn {pattern, body} => defToDoc pattern <+> text "=>" <+> exprToDoc body
+    and clauseToDoc = fn {pattern, body} => patToDoc pattern <+> text "=>" <+> exprToDoc body
 
     and stmtToDoc =
-        fn Val (_, {var = name, typ = ann}, valExpr) =>
-            text "val " <> Name.toDoc name <> annToDoc ann <> text " = " <> exprToDoc valExpr
+        fn Val (_, pat, valExpr) =>
+            text "val" <+> patToDoc pat <+> text " = " <> exprToDoc valExpr
          | Expr expr => exprToDoc expr
 
     and stmtsToDoc =
         fn stmts => PPrint.punctuate newline (Vector.map stmtToDoc stmts)
+
+    and patToDoc =
+        fn AnnP (_, {pat, typ}) => patToDoc pat <> text ":" <+> typeToDoc typ
+         | Def (_, name) => Name.toDoc name
+         | ConstP (_, c) => Const.toDoc c
 
     structure Type = struct
         structure Prim = PrimType
@@ -212,6 +225,7 @@ structure Cst :> CST = struct
     structure Term = struct
         datatype expr = datatype expr
         datatype stmt = datatype stmt
+        datatype pat = datatype pat
         type def = def
         type row = row
 

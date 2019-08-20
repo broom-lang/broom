@@ -11,6 +11,7 @@ end = struct
     datatype co = datatype FlexFAst.Type.co'
     datatype expr = datatype FlexFAst.Term.expr
     datatype stmt = datatype FlexFAst.Term.stmt
+    datatype pat = datatype FlexFAst.Term.pat
     datatype either = datatype Either.t
 
     val rec concrToF: FlexFAst.Type.concr -> FFType.concr =
@@ -57,8 +58,8 @@ end = struct
                             , exprToF ext )
          | Let (pos, stmts, body) =>
             FFTerm.Let (pos, Vector.map (stmtToF) stmts, exprToF body)
-         | If (pos, cond, conseq, alt) =>
-            FFTerm.If (pos, exprToF cond, exprToF conseq, exprToF alt)
+         | Match (pos, typ, matchee, clauses) =>
+            FFTerm.Match (pos, concrToF typ, exprToF matchee, Vector.map clauseToF clauses)
          | App (pos, typ, {callee, arg}) =>
             FFTerm.App (pos, concrToF typ, {callee = exprToF callee, arg = exprToF arg})
          | TApp (pos, typ, {callee, args}) =>
@@ -70,6 +71,13 @@ end = struct
          | Type (pos, typ) => FFTerm.Type (pos, absToF typ)
          | Use (pos, {var, typ}) => FFTerm.Use (pos, {var, typ = concrToF typ})
          | Const (pos, c) => FFTerm.Const (pos, c)
+
+    and clauseToF = fn {pattern, body} => {pattern = patternToF pattern, body = exprToF body}
+
+    and patternToF =
+        fn AnnP (pos, {pat, typ}) => FFTerm.AnnP (pos, {pat = patternToF pat, typ = concrToF typ})
+         | Def (pos, name) => FFTerm.Def (pos, name)
+         | ConstP (pos, c) => FFTerm.ConstP (pos, c)
 
     and stmtToF =
         fn Val (pos, {var, typ}, expr) => FFTerm.Val (pos, {var, typ = concrToF typ}, exprToF expr)

@@ -129,7 +129,8 @@ end = struct
                  in exec env (BlockCont (env, stmts, body) :: cont) stmt
                  end
               | NONE => eval env cont body)
-         | If (_, cond, conseq, alt) => eval env (Branch (env, conseq, alt) :: cont) cond
+         (*| If (_, cond, conseq, alt) => eval env (Branch (env, conseq, alt) :: cont) cond*)
+         | Match (_, _, matchee, clauses) => raise Fail "unimplemented"
          | Extend (_, _, fields, ext) =>
             (case Vector.uncons fields
              of SOME ((label, expr), fields') =>

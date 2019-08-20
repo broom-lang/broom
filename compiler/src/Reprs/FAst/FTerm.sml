@@ -12,7 +12,7 @@ signature FAST_TERM = sig
         | TApp of Pos.t * Type.concr * {callee: expr, args: Type.concr vector}
         | Field of Pos.t * Type.concr * expr * Name.t
         | Let of Pos.t * stmt vector * expr
-        | If of Pos.t * expr * expr * expr
+        | Match of Pos.t * Type.concr * expr * clause vector
         | Cast of Pos.t * Type.concr * expr * Type.co
         | Type of Pos.t * Type.abs
         | Use of Pos.t * def
@@ -22,6 +22,13 @@ signature FAST_TERM = sig
         = Val of Pos.t * def * expr
         | Axiom of Pos.t * Name.t * Type.concr * Type.concr
         | Expr of expr
+
+    and pat
+        = AnnP of Pos.t * {pat: pat, typ: Type.concr}
+        | Def of Pos.t * Name.t
+        | ConstP of Pos.t * Const.t
+
+    withtype clause = {pattern: pat, body: expr}
 
     type program = { typeFns: (Name.t * Type.tfn_sig) vector
                    , axioms: (Name.t * Type.concr * Type.concr) vector
@@ -67,7 +74,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | TApp of Pos.t * Type.concr * {callee: expr, args: Type.concr vector}
         | Field of Pos.t * Type.concr * expr * Name.t
         | Let of Pos.t * stmt vector * expr
-        | If of Pos.t * expr * expr * expr
+        | Match of Pos.t * Type.concr * expr * clause vector
         | Cast of Pos.t * Type.concr * expr * Type.co
         | Type of Pos.t * Type.abs
         | Use of Pos.t * def
@@ -78,6 +85,13 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | Axiom of Pos.t * Name.t * Type.concr * Type.concr
         | Expr of expr
 
+    and pat
+        = AnnP of Pos.t * {pat: pat, typ: Type.concr}
+        | Def of Pos.t * Name.t
+        | ConstP of Pos.t * Const.t
+
+    withtype clause = {pattern: pat, body: expr}
+
     val exprPos =
         fn Fn (pos, _, _) => pos
          | TFn (pos, _, _) => pos
@@ -87,7 +101,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | TApp (pos, _, _) => pos
          | Field (pos, _, _, _) => pos
          | Let (pos, _, _) => pos
-         | If (pos, _, _, _) => pos
+         | Match (pos, _, _, _) => pos
          | Cast (pos, _, _, _) => pos
          | Type (pos, _) => pos
          | Use (pos, _) => pos
@@ -136,10 +150,11 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
            text "let" <+> PPrint.align (stmtsToDoc stmts)
            <++> text "in" <+> align (exprToDoc body)
            <++> text "end"
-        | If (_, cond, conseq, alt) =>
-           text "if" <+> exprToDoc cond
-               <+> text "then" <+> exprToDoc conseq
-               <+> text "else" <+> exprToDoc alt
+        | Match (_, _, matchee, clauses) => let
+               fun clauseToDoc {pattern, body} = patternToDoc pattern <+> text "->" <+> exprToDoc body
+               in text "match" <+> exprToDoc matchee
+                  <+> braces (newline <> PPrint.punctuate newline (Vector.map clauseToDoc clauses))
+           end
         | Cast (_, _, expr, co) => exprToDoc expr <+> text "via" <+> Type.Co.toDoc co
         | Type (_, t) => brackets (Type.Abs.toDoc t)
         | Use (_, {var, ...}) => Name.toDoc var 
@@ -163,6 +178,11 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
                                    <> space))
             in oneLiner <|> multiLiner
             end
+
+    and patternToDoc =
+        fn AnnP (_, {pat, typ}) => patternToDoc pat <> text ":" <+> Type.Concr.toDoc typ
+         | Def (_, name) => Name.toDoc name
+         | ConstP (_, c) => Const.toDoc c
 
     val exprToString = PPrint.pretty 80 o exprToDoc
 
@@ -194,7 +214,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | Extend (_, typ, _, _) | Override (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => typ
          | Field (_, typ, _, _) => typ
          | Let (_, _, body) => typeOf body
-         | If (_, _, conseq, _) => typeOf conseq
+         | Match (_, t, _, _) => t
          | Cast (_, t, _, _) => t
          | Type (pos, t) => Type.Type (pos, t)
          | Use (_, {typ, ...}) => typ
