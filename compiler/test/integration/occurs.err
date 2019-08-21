@@ -1,1 +1,1 @@
-TypeError in test/integration/occurs.brm at 1:1: Occurs check: unifying ^g__0 with I32 -> ^g__0 would create infinite type.
+TypeError in test/integration/occurs.brm at 1:1: Occurs check: unifying ^g__2 with I32 -> ^g__2 would create infinite type.

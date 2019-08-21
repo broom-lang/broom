@@ -8,6 +8,7 @@ structure BroomTokens = struct
         | End of Pos.t
         | Val of Pos.t
         | Fun of Pos.t
+        | Match of Pos.t
         | Type of Pos.t
         | Pi of Pos.t
         | Eq of Pos.t
@@ -44,6 +45,7 @@ structure BroomTokens = struct
          | End pos => pos
          | Val pos => pos
          | Fun pos => pos
+         | Match pos => pos
          | Type pos => pos
          | Pi pos => pos
          | Eq pos => pos
@@ -89,6 +91,7 @@ structure BroomTokens = struct
          | End _ => "end"
          | Val _ => "val"
          | Fun _ => "fun"
+         | Match _ => "match"
          | Type _ => "type"
          | Pi _ => "pi"
          | Eq _ => "="

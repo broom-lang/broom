@@ -12,6 +12,7 @@ token {%BroomTokens.t%}
     | Type 'type'
     | Pi 'pi'
     | Begin 'begin'
+    | Match 'match'
     | Do 'do'
     | Return 'return'
     | Module 'module'
@@ -120,6 +121,7 @@ nestable
                                                         end %} )
                        {% res %} )
               {% res %}
+    | pos 'match' select '{' '|' clauses '}' {% Term.Match (pos, select, clauses) %}
     | pos 'do' stmts 'end' {% case stmts
                               of [] => Term.Let (pos, #[], Term.Const (pos, Const.Unit))
                                | _ => let val rec loop =

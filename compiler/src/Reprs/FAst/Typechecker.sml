@@ -44,6 +44,7 @@ end = struct
     datatype co = datatype FAst.Type.co'
     datatype expr = datatype FAst.Term.expr
     datatype stmt = datatype FAst.Term.stmt
+    datatype pat = datatype FAst.Term.pat
 
     fun pushStmts env stmts =
         let fun pushStmt (stmt, env) =
@@ -145,8 +146,7 @@ end = struct
          | TApp app => checkTApp env app
          | Field access => checkField env access
          | Let lett => checkLet env lett
-         (*| If iff => checkIf env iff*)
-         | Match match => raise Fail "unimplemented"
+         | Match match => checkMatch env match
          | Cast cast => checkCast env cast
          | Use use => checkUse env use
          | Type (pos, t) => FFType.Type (pos, t)
@@ -238,12 +238,22 @@ end = struct
          ; check env body
         end
 
-    and checkIf env (pos, cond, conseq, alt) =
-        let do checkEq env (check env cond, Prim (pos, Prim.Bool))
-            val ct = check env conseq
-            do checkEq env (ct, check env alt)
-        in ct
+    and checkMatch env (_, typ, matchee, clauses) =
+        let val matcheeTyp = check env matchee
+            val clauseTypes = Vector.map (checkClause env matcheeTyp) clauses
+        in Vector.app (fn clauseTyp => checkEq env (clauseTyp, typ)) clauseTypes
+         ; typ
         end
+
+    and checkClause env matcheeTyp {pattern, body} =
+        let val env = checkPattern env matcheeTyp pattern
+        in check env body
+        end
+
+    and checkPattern env matcheeTyp =
+        fn AnnP (_, {pat, typ}) => raise Fail "unimplemented"
+         | Def (_, name) => Env.insert (env, name, matcheeTyp)
+         | ConstP (pos, c) => (checkEq env (Prim (pos, Const.typeOf c), matcheeTyp); env)
 
     and checkCast env (_, typ, expr, co) =
         let val exprT = check env expr

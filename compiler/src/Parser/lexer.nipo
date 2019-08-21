@@ -42,6 +42,7 @@ start tok
                           | "module" => Module s
                           | "interface" => Interface s
                           | "fun" => Fun s
+                          | "match" => Match s
                           | "end" => End s
                           | "True" => Bool (s, true)
                           | "False" => Bool (s, false)
