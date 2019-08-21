@@ -194,7 +194,7 @@ structure FType :> FAST_TYPE = struct
     fun mapAbsChildren f =
         fn Exists (pos, params, t) => Exists (pos, params, f t)
 
-    fun concrCata (alg as {forAll, arrow, record, rowExt, emptyRow, typ, svar, uset, prim}) =
+    fun concrCata (alg as {forAll, arrow, record, rowExt, emptyRow, typ, svar, callTFn, uset, prim}) =
         fn ForAll (pos, param, body) => forAll (pos, param, concrCata alg body)
          | Arrow (pos, {domain, codomain}) =>
             arrow (pos, {domain = concrCata alg domain, codomain = concrCata alg codomain})
@@ -204,6 +204,7 @@ structure FType :> FAST_TYPE = struct
          | EmptyRow args => emptyRow args
          | Type args => typ args
          | SVar args => svar args
+         | CallTFn (pos, name, args) => callTFn (pos, name, Vector.map (concrCata alg) args)
          | UseT args => uset args
          | Prim args => prim args
 
@@ -217,6 +218,7 @@ structure FType :> FAST_TYPE = struct
                                            , emptyRow = Fn.constantly false
                                            , typ = fn (_, t) => absOccurs svarOcc sv t
                                            , svar = fn (_, sv') => svarOcc sv sv'
+                                           , callTFn = fn (_, _, args) => Vector.exists Fn.identity args
                                            , uset = Fn.constantly false
                                            , prim = Fn.constantly false }
 
