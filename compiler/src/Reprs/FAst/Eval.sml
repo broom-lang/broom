@@ -14,6 +14,8 @@ end = struct
     structure FTerm = FixedFAst.Term
     datatype expr = datatype FTerm.expr
     datatype stmt = datatype FTerm.stmt
+    datatype pat = datatype FTerm.pat
+    type clause = FTerm.clause
 
     datatype value = Closure of env * Name.t * expr
                    | Thunk of env * expr
@@ -25,6 +27,7 @@ end = struct
     and env = Toplevel of bindings
             | FnScope of env * Name.t * value
             | BlockScope of env * bindings
+            | PatternScope of env * Name.t * value
 
     withtype bindings = value NameHashTable.hash_table
 
@@ -35,7 +38,7 @@ end = struct
                    | Arg of value
                    | Forcee
                    | BlockCont of env * stmt VectorSlice.slice * expr
-                   | Branch of env * expr * expr
+                   | Branches of env * clause VectorSlice.slice
                    | InitField of env * (Name.t * expr) VectorSlice.slice * expr option
                                 * value NameHashTable.hash_table * Name.t
                    | Splat of value NameHashTable.hash_table
@@ -99,12 +102,12 @@ end = struct
         case env
         of Toplevel bindings | BlockScope (_, bindings) =>
             NameHashTable.insert bindings (var, value)
-         | FnScope _ => raise Fail "unreachable"
+         | FnScope _ | PatternScope _ => raise Fail "unreachable"
 
     fun lookup env var =
         case env
         of Toplevel toplevel => NameHashTable.lookup toplevel var
-         | FnScope (parent, var', value) =>
+         | FnScope (parent, var', value) | PatternScope (parent, var', value) =>
             if var = var'
             then value
             else lookup parent var
@@ -129,8 +132,8 @@ end = struct
                  in exec env (BlockCont (env, stmts, body) :: cont) stmt
                  end
               | NONE => eval env cont body)
-         (*| If (_, cond, conseq, alt) => eval env (Branch (env, conseq, alt) :: cont) cond*)
-         | Match (_, _, matchee, clauses) => raise Fail "unimplemented"
+         | Match (_, _, matchee, clauses) =>
+            eval env (Branches (env, VectorSlice.full clauses) :: cont) matchee
          | Extend (_, _, fields, ext) =>
             (case Vector.uncons fields
              of SOME ((label, expr), fields') =>
@@ -169,6 +172,32 @@ end = struct
         of Thunk (env, body) => eval env cont body
          | _ => raise Fail "unreachable"
 
+    (* TODO: When user code can run inside patterns, will need to capture position in pattern in cont: *)
+    and match env cont clauses value =
+        case VectorSlice.uncons clauses
+        of SOME (clause, clauses) =>
+            let fun matchClause {pattern, body} =
+                    case pattern
+                    of AnnP (_, {pat, ...}) => matchClause {pattern = pat, body}
+                     | FTerm.Def (_, name) =>
+                        let val env = PatternScope (env, name, value)
+                        in eval env cont body
+                        end
+                     | ConstP (_, c) =>
+                        (case (constValue c, value)
+                         of (Int n, Int nv) =>
+                             if n = nv
+                             then eval env cont body
+                             else match env cont clauses value
+                          | (Bool b, Bool nb) =>
+                             if b = nb
+                             then eval env cont body
+                             else match env cont clauses value
+                          | (Unit, Unit) => eval env cont body)
+            in matchClause clause
+            end
+         | NONE => raise Fail ("Missing case for " ^ Value.toString value)
+
     and continue cont value =
         case cont
         of Def (env, var) :: cont =>
@@ -182,11 +211,7 @@ end = struct
              of SOME (stmt, stmts) =>
                  exec env (BlockCont (env, stmts, body) :: cont) stmt
               | NONE => eval env cont body)
-         | Branch (env, conseq, alt) :: cont =>
-            (case value
-             of Bool true => eval env cont conseq
-              | Bool false => eval env cont alt
-              | _ => raise Fail "unreachable")
+         | Branches (env, clauses) :: cont => match env cont clauses value
          | InitField (env, fields, ext, record, label) :: cont =>
             ( initField record label value
             ; case VectorSlice.uncons fields
