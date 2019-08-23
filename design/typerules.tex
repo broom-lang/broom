@@ -1,0 +1,551 @@
+\documentclass[a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+
+\usepackage{xcolor}
+
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathpartir}
+
+\begin{document}
+\newcommand\btw[1]{{\color{gray} #1}}
+\newcommand\btwleadsto[1]{\btw{\; \leadsto #1}}
+\newcommand\leadstoo{\leadsto ! \,}
+\newcommand\Pure{\mathtt{P}}
+\newcommand\Impure{\mathtt{I}}
+\newcommand\eff{\varepsilon}
+\newcommand\join{\vee}
+\newcommand\white{\circ}
+\newcommand\black{\bullet}
+\newcommand\grey{{\color{gray} \black}}
+\newcommand\cast{\blacktriangleright}
+
+\begin{figure}[h!]
+    \begin{mathpar}
+        \inferrule[\textsc{Trun}]
+            {\Gamma |_s \left\{\right\}_\exists; \theta \vdash T \leadstoo \Sigma
+                 \dashv \Delta |_s \left\{\bar{\alpha}\right\} \Theta; \theta'}
+            {\Gamma; \theta \vdash T \leadsto \exists \bar{\alpha} . \Sigma \dashv \Delta; \theta'}
+
+        \\
+
+        \inferrule[\textsc{Trecord}]
+            {\Gamma; \theta \vdash T \leadstoo \Sigma \dashv \Delta; \theta'}
+            {\Gamma; \theta \vdash \{T\} \leadstoo \{\Sigma\} \dashv \Delta; \theta'}
+
+        \inferrule[\textsc{TrowEmpty}]
+            {}
+            {\Gamma; \theta \vdash (||) \leadstoo (||) \dashv \Gamma; \theta}
+
+        \inferrule[\textsc{TrowExt}]
+            {\Gamma; \theta \vdash T_f \leadstoo \Sigma_{Lf} \dashv \Theta; \theta' \\
+             \Theta; \theta' \vdash T_e \leadstoo \Sigma_e \dashv \Delta; \theta''}
+            {\Gamma; \theta \vdash (|l: T_f .. T_e|) \leadstoo (|l: \Sigma_{Lf} .. \Sigma_e|) \dashv \Delta; \theta''}
+
+        \inferrule[\textsc{TrowDotdot}]
+            {\Gamma; \theta \vdash T_f \leadstoo \Sigma_{Lf} \dashv \Delta; \theta'}
+            {\Gamma; \theta \vdash (|l: T_f ..|) \leadstoo (|l: \Sigma_{Lf} .. \check{\beta}|) \dashv \Delta; \theta'}
+
+        \inferrule[\textsc{Tinterface}]
+            {\Gamma; \theta \vdash T_s \leadstoo \left\{\overline{x_s : \Sigma_{x_s}}\right\} \dashv \Theta_1; \theta' \\
+             \Theta_1 |_s \left\{ \overline{x_s :^\black \Sigma_{x_s}}; \overline{x :^\white T} \right\}; \theta' \vdash
+                 \overline{\mathsf{val} \, x : T} \leadstoo \left\{\overline{x : \Sigma}\right\}
+                 \dashv \Delta |_s \Theta_2; \theta''}
+            {\Gamma; \theta \vdash \mathsf{interface} \, \mathsf{extends} \, T_s \overline{\mathsf{val} \, x : T} \, \mathsf{end}
+             \leadstoo \left\{\overline{x_s : \Sigma_{x_s}}; \overline{x : \Sigma}\right\} \dashv \Delta; \theta''}
+
+        \inferrule[\textsc{Tpath}]
+            {\Gamma; \theta \vdash E \Rightarrow_{\mathsf{P}} \left[= \exists \bar{\alpha} . \Sigma\right]
+                 \dashv \Delta; \theta' \btwleadsto{e} \\
+             \bar{\beta} = \forall params(\Gamma) \\
+             \overline{\alpha' : \overline{\kappa_\beta \rightarrow} \kappa_\alpha}}
+            {\Gamma\left[\left\{\bar{\beta}'\right\}_\exists\right]; \theta \vdash E
+                 \leadstoo \Sigma\left[\overline{\alpha'\bar{\beta}/\alpha}\right]
+                 \dashv \Delta\left[\left\{\bar{\beta}'\bar{\alpha}'\right\}_\exists\right]; \theta'}
+
+        \inferrule[\textsc{Ttype}]
+            {\bar{\beta} = \forall params(\Gamma) \\
+             \alpha : \overline{\kappa_\beta \rightarrow} \mathsf{Type}}
+            {\Gamma\left[\left\{\bar{\beta}'\right\}_\exists\right]; \theta \vdash \mathsf{type} \leadstoo \left[= \alpha \right]
+                 \dashv \Gamma\left[\left\{\bar{\beta}'\alpha\right\}_\exists\right]; \theta}
+
+        \inferrule[\textsc{Tsing}]
+            {\Gamma; \theta \vdash E \Rightarrow_{\mathsf{P}} \Sigma \dashv \Delta; \theta' \btwleadsto{e}}
+            {\Gamma; \theta \vdash \left(= E\right) \leadstoo \Sigma \dashv \Delta; \theta'}
+
+        \inferrule[\textsc{Tbool}]
+            {}
+            {\Gamma; \theta \vdash \mathsf{bool} \leadstoo \mathsf{bool} \dashv \Gamma; \theta}
+
+        \inferrule[\textsc{Tfunctor}]
+            {\Gamma; \theta \vdash T_d \leadsto \exists \bar{\alpha} . \Sigma_d \dashv \Theta_1; \theta' \\
+             \gamma : \mathsf{Callsite} \\
+             \Theta_1 |_s \left\{ \gamma \bar{\alpha} \right\}_\forall |_t \left\{ x :^\black \Sigma_d \right\}_\Pi; \theta'
+                 \vdash T_c \leadstoo \Sigma_c \dashv \Delta |_s \Theta_2; \theta''}
+            {\Gamma; \theta \vdash \mathsf{pi} \, x: T_d \Rightarrow T_c \leadstoo \forall \gamma \bar{\alpha} . \Sigma_c
+                 \rightarrow_{\mathsf{P}} \Sigma_d \dashv \Delta; \theta''}
+
+        \inferrule[\textsc{Tpfunctor}]
+            {\Gamma; \theta \vdash T_d \leadsto \exists \bar{\alpha} . \Sigma_d \dashv \Theta_1; \theta' \\
+             \gamma : \mathsf{Callsite} \\
+             \Theta_1 |_s \left\{ \gamma \bar{\alpha} \right\}_\forall |_t \left\{ x :^\black \Sigma_d \right\}_\Pi; \theta'
+                 \vdash T_c \leadstoo \Sigma_c \dashv \Delta |_s \Theta_2; \theta''}
+            {\Gamma; \theta \vdash \mathsf{pi} \, x: T_d \rightarrow T_c \leadstoo \forall \gamma \bar{\alpha} . \Sigma_c
+                 \rightarrow_{\mathsf{I}} \Sigma_d \dashv \Delta; \theta''}
+
+        \inferrule[\textsc{Twhere}]
+            {\Gamma; \theta \vdash T \leadstoo \Sigma \dashv \Theta_1; \theta' \\
+             \bar{\alpha} = \exists params(\Theta_1) \cap FV(\Sigma\overline{.x}) \\
+             \Theta_1; \theta' \vdash T_{\bar{x}} \leadstoo \Sigma_{\bar{x}} \dashv \Theta_2; \theta'' \\
+             \Theta_2; \theta'' |_s \overline{\hat{\alpha}} \vdash \Sigma_{\bar{x}} <: \Sigma\overline{.x}\left[\overline{\hat{\alpha}/\alpha}\right]
+                 \dashv \Delta |_s \Theta_3; \theta''' \btwleadsto{f}}
+            {\Gamma; \theta \vdash T \, \mathsf{where} \, \overline{.x} = T_{\bar{x}}
+                 \leadstoo \Sigma\left[\overline{\hat{\alpha}/\alpha}\right]
+                 \dashv \Delta; \theta'''}
+    \end{mathpar}
+
+    \caption{Elaborating types}
+    \label{fig:type_elab}
+\end{figure}
+
+\begin{figure}[h!]
+    \begin{mathpar}
+        \inferrule[\textsc{Dvar}]
+            {\Gamma; \theta \vdash def(x) \Rightarrow \Sigma_x \dashv \Theta; \theta' \\
+             \Theta; \theta' \vdash \overline{D} \leadstoo \left\{\overline{y : \Sigma_D}\right\} \dashv \Delta; \theta'' }
+            {\Gamma; \theta \vdash \mathsf{val} \, x : T; \overline{D}
+             \leadstoo \left\{x: \Sigma_x; \overline{y : \Sigma_D}\right\} \dashv \Delta; \theta''}
+
+        \inferrule[\textsc{Dempty}]
+            {}
+            {\Gamma; \theta \vdash \epsilon \leadstoo \{\} \dashv \Gamma; \theta}
+    \end{mathpar}
+
+    \caption{Elaborating declarations}
+\end{figure}
+
+\begin{figure}[h!]
+    \begin{mathpar}
+        % FIXME: Skolemize and hoist abstract types
+        \inferrule[\textsc{LwhiteAnn}]
+            {\Gamma\left[x :^\grey T = E\right] |_s; \theta \vdash T
+                 \leadsto \exists \bar{\alpha} . \Sigma \dashv \Delta |_s \Theta_2; \theta' \\
+             \bar{\beta} = \Lambda params\left(\Gamma\right) \\
+             \overline{\alpha' : \overline{\kappa_\beta \rightarrow} \kappa_\alpha} \\
+             \overline{\pi = \alpha'\bar{\beta}} \\
+             \Sigma' = \Sigma\left[\overline{\langle\pi, \hat{\alpha}, x_c\rangle/\alpha}\right]}
+            {\Gamma\left[x :^\white T = E\right] |_s \Theta_1; \theta
+                 \vdash def(x) \Rightarrow \Sigma', \overline{\langle\pi, \hat{\alpha}, x_c\rangle}\btw{, E}
+                 \dashv |_t \left[\overline{\mathsf{type} \; \alpha' \overline{\kappa_\beta} : \kappa_\alpha}\right]
+                 \Delta\left[x :^\black_{\overline{\langle\pi, \hat{\alpha}, x_c\rangle}} \Sigma' = E\right]
+                 |_s \Theta_2; \theta'}
+
+        \inferrule[\textsc{LwhiteDef}]
+            {\Gamma\left[x :^\grey \emptyset = E\right]; \theta \vdash E \Rightarrow_\eff \Sigma
+                 \dashv \Delta; \theta' \btwleadsto{e}}
+            {\Gamma\left[x :^\white \emptyset = E\right]; \theta \vdash def(x) \Rightarrow \Sigma, \eff\btw{, e}
+                 \dashv \Delta\left[x :_\eff^\black \Sigma = e\right]; \theta'}
+
+        \inferrule[\textsc{LwhiteDecl}]
+            {\Gamma\left\{x :^\grey T, \overline{y : T'}\right\} |_s; \theta \vdash T
+                 \leadstoo \Sigma \dashv \Delta |_s \Theta_2; \theta'}
+            {\Gamma\left\{x :^\white T, \overline{y : T'}\right\} |_s \Theta_1; \theta \vdash def(x) \Rightarrow \Sigma\btw{, \emptyset}
+                 \dashv \Delta\left[x :^\black \Sigma\right] |_s \Theta_2; \theta'}
+
+        \inferrule[\textsc{Lgray}]
+            {}
+            {\Gamma\left[x :^\grey T = E\right]; \theta \vdash def(x) \Rightarrow \hat{\alpha}\btw{, E}
+                 \dashv \Gamma\left[\hat{\alpha}, x :^\black \hat{\alpha} = E\right]; \theta}
+
+        \inferrule[\textsc{LblackAnn}]
+            {}
+            {\Gamma\left[x :^\black_{\overline{\langle\pi, \hat{\alpha}, x_c\rangle}} \Sigma = E\right];
+                 \theta \vdash def(x) \Rightarrow \Sigma, \overline{\langle\pi, \hat{\alpha}, x_c\rangle}\btw{, E}
+                 \dashv \Gamma; \theta}
+
+        \inferrule[\textsc{LblackDef}]
+            {}
+            {\Gamma\left[x :^\black_{\eff} \Sigma = e\right]; \theta \vdash def(x) \Rightarrow \Sigma, \eff\btw{, e} \dashv \Gamma; \theta}
+
+        \inferrule[\textsc{LblackDecl}]
+            {}
+            {\Gamma\left[x :^\black \Sigma\right]; \theta \vdash def(x) \Rightarrow \Sigma\btw{, \emptyset} \dashv \Gamma; \theta}
+    \end{mathpar}
+
+    \caption{Forward-reference- and cycle-tolerant use-def lookup}
+\end{figure}
+
+\begin{figure}[h!]
+    \begin{mathpar}
+        \inferrule[\textsc{Var}]
+            {\Gamma; \theta \vdash def(x) \Rightarrow \Sigma \dashv \Delta; \theta'}
+            {\Gamma; \theta \vdash x \Rightarrow_\Pure \Sigma \dashv \Delta; \theta' \btwleadsto{x}}
+
+        \inferrule[\textsc{Seal}]
+            {\Gamma; \theta \vdash T \leadsto \exists \bar{\alpha} . \Sigma \dashv \Theta; \theta' \\
+             \bar{\beta} = \Lambda params\left(\Gamma\right) \\
+             \overline{\alpha' : \overline{\kappa_\beta \rightarrow} \kappa_\alpha} \\
+             \overline{\pi = \alpha'\bar{\beta}} \\
+             \Sigma' = \left[\overline{\langle\pi, \hat{\alpha}, x_c\rangle/\alpha}\right]\Sigma \\
+             \Theta; \theta' \vdash E \Leftarrow_\eff \exists \overline{\langle\pi, \hat{\alpha}, x_c\rangle} . \Sigma'
+                 \dashv \Delta; \theta'' \btwleadsto{e}}
+            {\Gamma; \theta \vdash \left(E : T\right) \Rightarrow_\eff \Sigma'
+                 \dashv |_t \left[\overline{\mathsf{type} \; \alpha' \overline{\kappa_\beta} : \kappa_\alpha}\right]\Delta; \theta''
+                 \btwleadsto{e}}
+
+        \inferrule[\textsc{FnSynth}]
+            {\Gamma |_s \hat{\alpha}, \hat{\beta}, x : \hat{\alpha}; \theta
+                 \vdash E \Leftarrow_\Impure \hat{\beta}
+                 \dashv \Delta |_s \hat{\alpha} = \sigma, \Theta; \theta' \btwleadsto{e}}
+            {\Gamma; \theta \vdash \left(\mathsf{fn} \, x \Rightarrow E\right)
+                 \Rightarrow_\Pure \hat{\alpha} \rightarrow_\Impure \hat{\beta} \dashv \Delta; \theta'
+                 \btwleadsto{\lambda x: \sigma . e}}
+
+        \inferrule[\textsc{App}]
+            {\Gamma; \theta \vdash E_f \Rightarrow_{\eff_f} \Sigma_f \dashv \Theta; \theta' \btwleadsto{e_f} \\
+             \Theta; \theta' \vdash \Sigma_f \cdot E_a \Rrightarrow_{\eff_a} \Sigma_c \dashv \Delta; \theta''
+                 \btwleadsto{\bar{e}_a}}
+            {\Gamma; \theta \vdash E_f E_a \Rightarrow_{\eff_f \join \eff_a} \Sigma_c \dashv \Delta; \theta''
+                 \btwleadsto{e_f \bar{e}_a}}
+
+        \inferrule[\textsc{EmptyRecord}]
+            {}
+            {\Gamma; \theta \vdash \{\} \Rightarrow_\Pure \{\} \dashv \Gamma; \theta \btwleadsto{\{\}}}
+
+        \inferrule[\textsc{Extend}]
+            {\Gamma; \theta \vdash E_l \Rightarrow_{\eff_l} \Sigma_l \dashv \Theta; \theta' \btwleadsto{e_l} \\
+             \Theta; \theta' \vdash E_t \Rightarrow_{\eff_t} \{\Sigma_t\} \dashv \Delta; \theta'' \btwleadsto{e_t}}
+            {\Gamma; \theta \vdash \{l = E_l .. E_t\} \Rightarrow_{\eff_l \join \eff_t} \{l: \Sigma_l .. \Sigma_t\}
+                 \dashv \Delta; \theta'' \btwleadsto{\{l: e_l .. e_t\}}}
+
+        \inferrule[\textsc{Select}]
+            {\Gamma; \theta \vdash E \Rightarrow_\eff \Sigma \dashv \Theta; \theta' \btwleadsto {e} \\
+             \Theta; \theta' \vdash \Sigma \cdot l \Rrightarrow \Sigma_l \dashv \Delta; \theta'' \btwleadsto{\bar{e}'}}
+            {\Gamma; \theta \vdash E.l \Rightarrow_\eff \Sigma_l \dashv \Delta; \theta''
+                 \btwleadsto {\left(e \bar{e}'\right).l}}
+
+        \inferrule[\textsc{Let}]
+            {\Gamma, letScope(\bar{S}); \theta \vdash \bar{S} \Rightarrow_{\eff_s}; \theta \dashv \Theta_1; \theta'
+                 \btwleadsto{\bar{s}} \\
+             \Theta_1; \theta' \vdash E \Rightarrow_{\eff_e} \Sigma \dashv \Delta, letScope(\bar{S}), \Theta_2; \theta''
+                 \btwleadsto{e}}
+            {\Gamma; \theta \vdash \mathsf{let} \; \bar{S} \; \mathsf{in} \; E \; \mathsf{end}
+                 \Rightarrow_{\eff_s \join \eff_e} \Sigma
+                 \dashv \Delta; \theta'' \btwleadsto{\mathsf{let} \; \bar{s} \; \mathsf{in} \; e}}
+
+        \inferrule[\textsc{True}]
+            {}
+            {\Gamma; \theta \vdash \mathsf{True} \Rightarrow_\Pure \mathsf{bool} \dashv \Gamma; \theta
+                 \btwleadsto{\mathsf{true}}}
+
+        \inferrule[\textsc{False}]
+            {}
+            {\Gamma; \theta \vdash \mathsf{False} \Rightarrow_\Pure \mathsf{bool} \dashv \Gamma; \theta
+                 \btwleadsto{\mathsf{false}}}
+
+        \inferrule[\textsc{IfSynth}]
+            {\Gamma, \hat{\alpha}; \theta
+                 \vdash \mathsf{if} \; E_c \; \mathsf{then} \; E_t \; \mathsf{else} \; E_f
+                 \Leftarrow_\eff \hat{\alpha} \dashv \Delta; \theta' \btwleadsto{e}}
+            {\Gamma; \theta \vdash \mathsf{if} \; E_c \; \mathsf{then} \; E_t \; \mathsf{else} \; E_f
+                 \Rightarrow_\eff \left[\Delta\right] \hat{\alpha} \dashv \Delta; \theta' \btwleadsto{e}}
+    \end{mathpar}
+
+    \caption{Expression type synthesis}
+    \label{fig:expr_synth}
+\end{figure}
+
+\begin{figure}[h!]
+    \begin{mathpar}
+        \inferrule[\textsc{AppPure}]
+            {fnEff\left(\Sigma_f\right) = \Pure \\
+             \Gamma; \theta \vdash \left[\gamma_\Pure/\gamma\right] \Sigma_f \cdot E
+                 \Rrightarrow_\eff \Sigma_c \dashv \Delta; \theta'
+                 \btwleadsto{\bar{e}_a}}
+            {\Gamma; \theta \vdash \forall \gamma . \Sigma_f \cdot E \Rrightarrow_\eff \Sigma_c \dashv \Delta; \theta'
+                 \btwleadsto{\left[\gamma_\Pure\right] \bar{e}_a}}
+
+
+        \inferrule[\textsc{AppImpure}]
+            {fnEff\left(\Sigma_f\right) = \Impure \\
+             |_t \mathsf{type} \; \gamma_{c0} : \mathsf{Callsite}, \Gamma; \theta
+                 \vdash \left[\gamma_c/\gamma\right] \Sigma_f \cdot E
+                 \Rrightarrow_\eff \Sigma_c \dashv \Delta; \theta'
+                 \btwleadsto{\bar{e}_a}}
+            {\Gamma; \theta \vdash \forall \gamma . \Sigma_f \cdot E \Rrightarrow_\eff \Sigma_c \dashv \Delta; \theta'
+                 \btwleadsto{\left[\gamma_c\right] \bar{e}_a}}
+
+        \inferrule[\textsc{AppForall}]
+            {\Gamma, \hat{\alpha}; \theta \vdash \left[\hat{\alpha}/\alpha\right] \Sigma_f \cdot E
+                 \Rrightarrow_\eff \Sigma_c \dashv \Delta\left[\hat{\alpha} = \sigma\right]; \theta'
+                 \btwleadsto{\bar{e}_a}}
+            {\Gamma; \theta \vdash \forall \alpha . \Sigma_f \cdot E \Rrightarrow_\eff \Sigma_c \dashv \Delta; \theta'
+                 \btwleadsto{\left[\sigma\right] \bar{e}_a}}
+
+        \inferrule[\textsc{AppUVar}]
+            {\Gamma, \hat{\alpha}_d, \hat{\alpha}_c, \hat{\alpha};
+                 \theta\left[\hat{\alpha} = \hat{\alpha}_d \rightarrow_\Impure \hat{\alpha}_c\right] \vdash
+                 E \Leftarrow_\eff \hat{\alpha}_d \dashv \Delta; \theta' \btwleadsto{e}}
+            {\Gamma; \theta \vdash \hat{\alpha} \cdot E \Rrightarrow_\Impure \hat{\alpha}_c \dashv \Delta; \theta'
+                 \btwleadsto{e}}
+
+        \inferrule[\textsc{AppArrow}]
+            {\Gamma; \theta \vdash E \Leftarrow_{\eff_d} \Sigma_d \dashv \Delta; \theta' \btwleadsto{e}}
+            {\Gamma; \theta \vdash \Sigma_d \rightarrow_\eff \Sigma_c \cdot E \Rrightarrow_{\eff \join \eff_d}
+                 \Sigma_c \dashv \Delta; \theta' \btwleadsto{e}}
+    \end{mathpar}
+
+    \caption{Application type synthesis}
+\end{figure}
+
+\begin{figure}[h!]
+    \begin{mathpar}
+        \inferrule[\textsc{SelectForall}]
+            {\Gamma, \hat{\alpha}; \theta \vdash \left[\hat{\alpha}/\alpha\right] \Sigma \cdot l
+                 \Rrightarrow \Sigma_l \dashv \Delta\left[\hat{\alpha} = \sigma\right]; \theta'
+                 \btwleadsto{\bar{e}_r}}
+            {\Gamma; \theta \vdash \forall \alpha . \Sigma \cdot l \Rrightarrow \Sigma_l \dashv \Delta; \theta'
+                 \btwleadsto{\left[\sigma\right] \bar{e}_r}}
+
+        \inferrule[\textsc{SelectUVar}]
+            {}
+            {\Gamma; \theta \vdash \hat{\alpha} \cdot l \Rrightarrow \hat{\alpha}_l
+                 \dashv \Gamma, \hat{\alpha}_l, \hat{\alpha}_t, \hat{\alpha};
+                 \theta\left[\hat{\alpha} = \{l: \hat{\alpha}_l .. \hat{\alpha}_t\}\right]}
+
+        \inferrule[\textsc{SelectRecord}]
+            {\Gamma; \theta \vdash \Sigma \simeq (|l: \Sigma_l .. \Sigma_t|) \dashv \Delta; \theta'}
+            {\Gamma; \theta \vdash \{\Sigma\} \cdot l \Rrightarrow \Sigma_l \dashv \Delta; \theta'}
+    \end{mathpar}
+
+    \caption{Field selection type synthesis}
+\end{figure}
+
+\begin{figure}[h!]
+    \begin{mathpar}
+        \inferrule[\textsc{IfCheck}]
+            {\Gamma; \theta \vdash E_c \Leftarrow_{\eff_c} \mathsf{bool} \dashv \Theta_1; \theta' \btwleadsto{e_c} \\
+             \Theta_1; \theta' \vdash E_t \Leftarrow_{\eff_t} \Xi \dashv \Theta_2; \theta'' \btwleadsto{e_t} \\
+             \Theta_2; \theta'' \vdash E_f \Leftarrow_{\eff_f} \Xi \dashv \Delta; \theta''' \btwleadsto{e_f}}
+            {\Gamma; \theta \vdash \mathsf{if} \; E_c \; \mathsf{then} \; E_t \; \mathsf{else} \; E_f
+                 \Leftarrow_{\eff_c \join \eff_t \join \eff_f \join \eff(\Xi)} \Xi \dashv \Delta; \theta'''
+                 \btwleadsto{\mathsf{if} \; e_c \; \mathsf{then} \; e_t \; \mathsf{else} \; e_f}}
+
+        \inferrule[\textsc{Implement}]
+            {\Gamma |_s \left\{\overline{\hat{\alpha}}, \overline{x_c : \pi \sim \hat{\alpha}}\right\}; \theta
+                 \vdash E \Leftarrow_\eff \Sigma
+                 \dashv \Delta |_s \Theta; \theta'
+                 \btwleadsto{e}}
+            {\Gamma; \theta \vdash E \Leftarrow_\eff \exists \overline{\langle\pi, \hat{\alpha}, x_c\rangle} . \Sigma
+                 \dashv \Delta; \theta'
+                 \btwleadsto{\mathsf{let} \, \overline{\mathsf{axiom} \, x_c : \pi \sim \hat{\alpha}} \,
+                 \mathsf{in} \, e}}
+
+        \inferrule[\textsc{Forall}]
+            {\Gamma |_s \alpha; \theta \vdash E \Leftarrow_\eff \Sigma \vdash \Delta |_s \Theta; \theta' \btwleadsto{e}}
+            {\Gamma; \theta \vdash E \Leftarrow_\eff \forall \alpha . \Sigma \dashv \Delta; \theta'
+                 \btwleadsto{\Lambda \alpha . e}}
+ 
+        \inferrule[\textsc{FnCheck}]
+            {\Gamma |_s x : \Sigma_d; \theta \vdash E \Leftarrow_{\eff_c} \Sigma_c \dashv \Delta |_s \Theta; \theta'
+                 \btwleadsto{e} \\
+             \eff_c <: \eff}
+            {\Gamma; \theta \vdash \left(\mathsf{fn} \, x \Rightarrow E\right)
+                 \Leftarrow_\Pure \Sigma_d \rightarrow_\eff \Sigma_c \dashv \Delta; \theta'
+                 \btwleadsto{\lambda x: A . e}}
+
+        \inferrule[\textsc{Sub}]
+            {\Gamma; \theta \vdash E \Rightarrow_\eff \Sigma_E \dashv \Theta; \theta' \btwleadsto{e} \\
+             \Theta; \theta' \vdash \left[\Theta\right] \Sigma_E <: \left[\Theta\right] \Sigma_T
+                 \dashv \Delta; \theta'' \btwleadsto{f}}
+            {\Gamma; \theta \vdash E \Leftarrow_\eff \Sigma_T \dashv \Delta; \theta'' \btwleadsto{f e}}
+    \end{mathpar}
+
+    \caption{Expression type checking}
+\end{figure}
+
+\begin{figure}[h!]
+    \begin{mathpar}
+        \inferrule[\textsc{ValAnn}]
+            {\Gamma; \theta \vdash def(x) \Rightarrow \Sigma, \overline{\langle\pi, \hat{\alpha}, x_c\rangle}\btw{, E}
+                 \dashv \Theta_1; \theta' \\
+             \Theta_1; \theta' \vdash E \Leftarrow_\eff \exists \overline{\langle\pi, \hat{\alpha}, x_c\rangle} . \Sigma
+                 \dashv \Theta_2; \theta'' \btwleadsto{e} \\
+             \Theta_2; \theta'' \vdash \bar{S} \Rightarrow_{\eff_s} \dashv \Delta; \theta''' \btwleadsto{\bar{s}}}
+            {\Gamma; \theta \vdash \mathsf{val} \, x : T = E; \bar{S} \Rightarrow_{\eff \vee \eff_s} \dashv \Delta; \theta'''
+                 \btwleadsto{x: \Sigma = e; \bar{s}}}
+
+        \inferrule[\textsc{Val}]
+            {\Gamma; \theta \vdash def(x) \Rightarrow \Sigma, \eff\btw{, e} \dashv \Theta; \theta' \\
+             \Theta; \theta' \vdash \bar{S} \Rightarrow_{\eff_s} \dashv \Delta; \theta'' \btwleadsto{\bar{s}}}
+            {\Gamma; \theta \vdash \mathsf{val} \, x = E; \bar{S} \Rightarrow_{\eff \vee \eff_s} \dashv \Delta; \theta''
+                 \btwleadsto{x: \Sigma = e; \bar{s}}}
+
+        \inferrule[\textsc{Do}]
+            {\Gamma; \theta \vdash E \Leftarrow_\eff () \dashv \Theta; \theta' \btwleadsto{e} \\
+             \Theta; \theta' \vdash \bar{S} \Rightarrow_{\eff_s} \dashv \Delta; \theta'' \btwleadsto{\bar{s}}}
+            {\Gamma; \theta \vdash \mathsf{do} \; E; \bar{S} \Rightarrow_{\eff \vee \eff_s}
+                 \dashv \Delta; \theta'' \btwleadsto{e; \bar{s}}}
+    \end{mathpar}
+
+    \caption{Statement type checking}
+\end{figure}
+
+\begin{figure}[h!]
+    \begin{mathpar}
+        \inferrule[\textsc{Sarrow}]
+            {\Gamma; \theta \vdash \Sigma_{Rd} <: \Sigma_{Ld} \dashv \Theta; \theta' \btwleadsto{f_1} \\
+             \Theta; \theta' \vdash \Sigma_{Lc} <: \Sigma_{Rc} \dashv \Delta; \theta'' \btwleadsto{f_2}}
+            {\Gamma; \theta \vdash \Sigma_{Ld} \rightarrow \Sigma_{Lc} <: \Sigma_{Rd} \rightarrow \Sigma_{Rc}
+                 \dashv \Delta; \theta'' \btwleadsto{\lambda x . \lambda y . f_2(x(f_1 y))}}
+
+        \inferrule[\textsc{SRecord}]
+            {\Gamma; \theta \vdash \Sigma_L <:: \Sigma_R \dashv \Delta; \theta'; \delta \btwleadsto{\overline{(l, f)}}}
+            {\Gamma; \theta \vdash \{\Sigma_L\} <: \{\Sigma_R\} \dashv \Delta; \theta'; \delta
+                 \btwleadsto{\lambda x . \left\{\overline{l = f \underline{x}.l} .. x\right\}}}
+
+        \\
+
+        \inferrule[\textsc{SforallL}]
+            {\Gamma |_s \hat{\alpha}; \theta \vdash \left[\hat{\alpha}/\alpha\right] \Sigma_L <: \Sigma_R
+                 \dashv \Delta |_s \hat{\alpha} = \sigma, \Theta; \theta' \btwleadsto{f}}
+            {\Gamma; \theta \vdash \forall \alpha . \Sigma_L <: \Sigma_R \dashv \Delta; \theta'
+                 \btwleadsto{\lambda x . f \left(x \left[\sigma\right]\right)}}
+
+        \inferrule[\textsc{SforallR}]
+            {\Gamma |_s \alpha; \theta \vdash \Sigma_L <: \Sigma_R \dashv \Delta |_s \Theta; \theta' \btwleadsto{f}}
+            {\Gamma; \theta \vdash \Sigma_L <: \forall \alpha . \Sigma_R \dashv \Delta; \theta'
+                 \btwleadsto{\lambda x . \Lambda \alpha . f x}}
+
+        \\
+
+        \inferrule[\textsc{SexistsL}]
+            {\Gamma |_s \alpha; \theta \vdash \Sigma_L <: \Sigma_R \dashv \Delta |_s \Theta; \theta' \btwleadsto{f}}
+            {\Gamma; \theta \vdash \exists \alpha . \Sigma_L <: \Sigma_R \dashv \Delta; \theta'
+                 \btwleadsto{\lambda x . unpack \left\langle \alpha, y \right\rangle = x \; in \; f y}}
+
+        \inferrule[\textsc{SexistsR}]
+            {\Gamma |_s \hat{\alpha}; \theta \vdash \Sigma_L <: \left[\hat{\alpha}/\alpha\right] \Sigma_R
+                 \dashv \Delta |_s \hat{\alpha} = \sigma, \Theta; \theta' \btwleadsto{f}}
+            {\Gamma; \theta \vdash \Sigma_L <: \exists \alpha . \Sigma_R \dashv \Gamma; \theta'
+                 \btwleadsto{\lambda x . pack \left\langle \sigma, f x \right\rangle}}
+
+        \\
+
+        \inferrule[\textsc{SUValL}]
+            {\Gamma; \theta \vdash \tau <: \Sigma \dashv \Delta; \theta' \btwleadsto{f}}
+            {\Gamma; \theta\left[\hat{\alpha} = \tau\right] \vdash \hat{\alpha} <: \Sigma
+                 \dashv \Delta; \theta' \btwleadsto{f}}
+
+        \inferrule[\textsc{SUValR}]
+            {\Gamma; \theta \vdash \Sigma <: \tau \dashv \Delta; \theta' \btwleadsto{f}}
+            {\Gamma; \theta\left[\hat{\alpha} = \tau\right] \vdash \Sigma <: \hat{\alpha}
+                 \dashv \Delta; \theta' \btwleadsto{f}}
+
+        \inferrule[\textsc{SAValL}]
+            {\Gamma; \theta \vdash \tau <: \Sigma \dashv \Delta; \theta' \btwleadsto{f}}
+            {\Gamma\left[\hat{\alpha}\right]; \theta\left[\hat{\alpha} = \tau\right]
+                 \vdash \langle\pi, \hat{\alpha}, x_c\rangle <: \Sigma \dashv \Delta; \theta'
+                 \btwleadsto{\lambda x . f (x \cast x_c)}}
+
+        \inferrule[\textsc{SAValR}]
+            {\Gamma; \theta \vdash \Sigma <: \tau \dashv \Delta; \theta' \btwleadsto{f}}
+            {\Gamma\left[\hat{\alpha}\right]; \theta\left[\hat{\alpha} = \tau\right]
+                 \vdash \Sigma <: \langle\pi, \hat{\alpha}, x_c\rangle \dashv \Delta; \theta'
+                 \btwleadsto{\lambda x . f x \cast \mathsf{sym} \, x_c}}
+
+        \\
+
+        \inferrule[\textsc{SinstantiateL}]
+            {\hat{\alpha} \not\in FV\left(\Sigma\right) \\
+             \Gamma; \theta \vdash \hat{\alpha} :\leq \Sigma \dashv \Delta; \theta' \btwleadsto{f}}
+            {\Gamma\left[\hat{\alpha}\right]; \theta \vdash \hat{\alpha} <: \Sigma
+                 \dashv \Delta; \theta' \btwleadsto{f}}
+
+        \inferrule[\textsc{SinstantiateR}]
+            {\hat{\alpha} \not\in FV\left(\Sigma\right) \\
+             \Gamma; \theta \vdash \Sigma \leq: \hat{\alpha} \dashv \Delta; \theta' \btwleadsto{f}}
+            {\Gamma\left[\hat{\alpha}\right]; \theta \vdash \Sigma <: \hat{\alpha}
+                 \dashv \Delta; \theta' \btwleadsto{f}}
+
+        \inferrule[\textsc{SimplementL}]
+            {\Gamma; \theta \vdash \hat{\alpha} <: \Sigma \dashv \Delta; \theta' \btwleadsto{f}}
+            {\Gamma\left[\hat{\alpha}\right]; \theta \vdash \langle\pi, \hat{\alpha}, x_c\rangle <: \Sigma
+                 \dashv \Delta; \theta' \btwleadsto{\lambda x . f (x \cast x_c)}}
+
+        \inferrule[\textsc{SimplementR}]
+            {\Gamma; \theta \vdash \Sigma <: \hat{\alpha} \dashv \Delta; \theta' \btwleadsto{f}}
+            {\Gamma\left[\hat{\alpha}\right]; \theta \vdash \Sigma <: \langle\pi, \hat{\alpha}, x_c\rangle
+                 \dashv \Delta; \theta' \btwleadsto{\lambda x . f x \cast \mathsf{sym} \, x_c}}
+
+        \\
+
+        \inferrule[\textsc{SprivateL}]
+            {\Gamma; \theta \vdash \pi <: \Sigma \dashv \Delta; \theta' \btwleadsto{f}}
+            {\Gamma; \theta \vdash \langle\pi, \hat{\alpha}, x_c\rangle <: \Sigma
+                 \dashv \Delta; \theta' \btwleadsto{f}}
+                 
+        \inferrule[\textsc{SprivateR}]
+            {\Gamma; \theta \vdash \Sigma <: \pi \dashv \Delta; \theta' \btwleadsto{f}}
+            {\Gamma; \theta \vdash \Sigma <: \langle\pi, \hat{\alpha}, x_c\rangle
+                 \dashv \Delta; \theta' \btwleadsto{f}}
+    \end{mathpar}
+
+    \caption{Subtyping}
+\end{figure}
+
+% TODO: Instantiation judgement
+
+\begin{figure}[h!]
+    \begin{mathpar}
+        \inferrule[\textsc{SRLabel}]
+            {\Gamma; \theta \vdash \Sigma \simeq (|l: \Sigma_{Lf} .. \Sigma_{Le}|) \dashv \Theta_1; \theta' \\
+             \Theta_1; \theta' \vdash \Sigma_{Lf} <: \Sigma_{Rf} \dashv \Theta_2; \theta'' \btwleadsto{f_f} \\
+             \Theta_2; \theta'' \vdash \Sigma_{Le} <:: \Sigma_{Re} \dashv \Delta; \theta''' \btwleadsto{f_e}}
+            {\Gamma; \theta \vdash \Sigma <:: (|l: \Sigma_{Rf} .. \Sigma_{Re}|)
+                 \dashv \Delta; \theta''' \btwleadsto{(l, f_f) :: f_e}}
+
+        \inferrule[\textsc{SRempty}]
+            {}
+            {\Gamma; \theta \vdash (||) <:: (||) \dashv \Gamma; \theta \btwleadsto{[]}}
+
+        \inferrule[\textsc{SRForget}]
+            {}
+            {\Gamma; \theta \vdash \Sigma <:: \check{\alpha} \dashv \Gamma; \theta; \{\check{\alpha} = \Sigma\}
+                 \btwleadsto{[]}}
+
+        \inferrule[\textsc{SRPunt}]
+            {\Gamma; \theta \vdash \Sigma_R <: \Sigma_R \dashv \Delta; \theta' \btwleadsto{f} \\
+             A: \mathsf{Row} \\ B: \mathsf{Row}}
+            {\Gamma; \theta \vdash \Sigma_L <:: \Sigma_R \dashv \Delta; \theta' \btwleadsto{[]}}
+    \end{mathpar}
+
+    \caption{Row subtyping}
+\end{figure}
+
+\begin{figure}[h!]
+    \begin{mathpar}
+        \inferrule[\textsc{Rhead}]
+            {}
+            {\Gamma; \theta \vdash (|l: \Sigma_{Lf} .. \Sigma_{Le}|) \simeq (|l: \Sigma_{Lf} .. \Sigma_{Le}|)
+                 \dashv \Gamma; \theta}
+
+        \inferrule[\textsc{Rswap}]
+            {l \neq l' \\
+             \Gamma; \theta \vdash \Sigma_{Le} \simeq (|l: \Sigma_{Rf} .. \Sigma_{Re}|) \dashv \Delta; \theta}
+            {\Gamma; \theta \vdash (|l': \Sigma_{Lf} .. \Sigma_{Le}|)
+                 \simeq (|l: \Sigma_{Rf} .. l': \Sigma_{Lf} .. \Sigma_{Re}|) \dashv \Delta; \theta}
+
+        \inferrule[\textsc{Rinst}]
+            {\hat{\alpha} \neq tail\left(\Sigma_{Re}\right)}
+            {\Gamma, \hat{\alpha}, \Gamma'; \theta \vdash
+                 \hat{\alpha} \simeq (|l: \hat{\beta} .. \hat{\gamma}|)
+                 \dashv \Gamma, \hat{\beta}, \hat{\gamma}, \hat{\alpha}, \Gamma';
+                 \theta\left[\hat{\alpha} = (|l: \hat{\beta} .. \hat{\gamma}|)\right]}
+    \end{mathpar}
+
+    \caption{Row rewriting}
+\end{figure}
+\end{document}
+

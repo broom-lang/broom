@@ -1,7 +1,8 @@
-parser.ml: parser.mly
-	menhir --explain $^
+typerules.pdf: typerules.tex
+	rubber --pdf $<
 
 .PHONY: clean
 clean:
-	rm parser.ml parser.mli
+	rubber --clean typerules
+	rm -f typerules.pdf
 
