@@ -279,10 +279,11 @@ end = struct
          | Axiom _ => () (* TODO: Some checks here (see F_c paper) *)
          | Expr expr => ignore (check env expr)
 
-    fun typecheckProgram {typeFns, axioms, body} =
+    fun typecheckProgram {typeFns, axioms, stmts} =
         let val env = Vector.foldl (fn ((name, l, r), env) => Env.insertCo (env, name, l, r))
                                    Env.empty axioms
-        in check env body (* TODO: Use `typeFns`, `axioms` *)
+            val env = pushStmts env stmts
+        in Vector.app (checkStmt env) stmts (* TODO: Use `typeFns`, `axioms` *)
          ; NONE
         end
 end

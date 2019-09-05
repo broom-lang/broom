@@ -68,7 +68,7 @@ end = struct
     fun rep (tenv, venv) line =
         let val stmts = Parser.parse (Console (TextIO.openString line))
             val (program, tenv) = Typechecker.elaborateProgram tenv stmts
-            val {body = FixedFAst.Term.Let (_, stmts, _), ...} = ExitTypechecker.programToF program
+            val {stmts, ...} = ExitTypechecker.programToF program
         in Vector.app (fn stmt as (Val (_, {var, typ}, _)) =>
                            (case FAstEval.interpret venv stmt
                             of Either.Left err => printErr "Runtime error.\n"

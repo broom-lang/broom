@@ -32,7 +32,7 @@ signature FAST_TERM = sig
 
     type program = { typeFns: (Name.t * Type.tfn_sig) vector
                    , axioms: (Name.t * Type.concr * Type.concr) vector
-                   , body: expr }
+                   , stmts: stmt vector }
 
     val exprPos: expr -> Pos.t
     val exprToDoc: expr -> PPrint.t
@@ -109,7 +109,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     type program = { typeFns: (Name.t * Type.tfn_sig) vector
                    , axioms: (Name.t * Type.concr * Type.concr) vector
-                   , body: expr }
+                   , stmts: stmt vector }
 
    fun defToDoc {var, typ} = Name.toDoc var <> text ":" <+> Type.Concr.toDoc typ
 
@@ -203,10 +203,10 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         text "axiom" <+> Name.toDoc name <> text ":"
             <+> Type.Concr.toDoc l <+> text "~" <+> Type.Concr.toDoc r
 
-    fun programToDoc {typeFns, axioms, body} =
+    fun programToDoc {typeFns, axioms, stmts} =
         punctuate (newline <> newline) (Vector.map typeFnToDoc typeFns)
             <++> newline <> punctuate (newline <> newline) (Vector.map axiomToDoc axioms)
-            <++> newline <> exprToDoc body
+            <++> newline <> stmtsToDoc stmts
 
     val rec typeOf =
         fn Fn (pos, {typ = domain, ...}, body) => Type.Arrow (pos, {domain, codomain = typeOf body})

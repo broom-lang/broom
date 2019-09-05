@@ -493,12 +493,9 @@ end = struct
              and enable forward decl:s for stmts to be input on later lines. *)
     fun elaborateProgram env stmts =
         let val env = Env.pushScope env (stmtsScope stmts)
-            val stmts = Vector.map (elaborateStmt env) stmts
-            val pos = FTerm.stmtPos (Vector.sub (stmts, 0)) (* FIXME: `stmts` could be empty *)
-            val body = FTerm.Let (pos, stmts, FTerm.Const (pos, Const.Unit))
             val program = { typeFns = Env.typeFns env
                           , axioms = Env.axioms env
-                          , body }
+                          , stmts = Vector.map (elaborateStmt env) stmts }
         in (program, env)
         end
 end
