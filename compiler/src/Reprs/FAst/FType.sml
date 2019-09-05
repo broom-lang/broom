@@ -227,24 +227,24 @@ structure FType :> FAST_TYPE = struct
 
     (* OPTIMIZE: Entire subtrees where the `name` does not occur could be reused. *)
     fun concrSubstitute svarSubst mapping =
-        let val rec subst =
-                fn t as ForAll (pos, params, body) =>
+        let fun subst mapping =
+                fn t as ForAll (_, params, _) =>
                     let val mapping = Vector.foldl (fn ({var, ...}, mapping) =>
                                                         (#1 (Id.SortedMap.remove (mapping, var)))
                                                         handle _ => mapping)
                                                    mapping params
-                    in mapConcrChildren subst t
+                    in mapConcrChildren (subst mapping) t
                     end
                  | t as (Arrow _ | Record _ | RowExt _ | EmptyRow _ | Prim _) =>
-                    mapConcrChildren subst t
+                    mapConcrChildren (subst mapping) t
                  | Type (pos, t) => Type (pos, absSubstitute svarSubst mapping t)
-                 | t as UseT (pos, {var, ...}) => getOpt (Id.SortedMap.find (mapping, var), t)
-                 | t as SVar (pos, sv) => getOpt (svarSubst mapping sv, t)
-        in subst
+                 | t as UseT (_, {var, ...}) => getOpt (Id.SortedMap.find (mapping, var), t)
+                 | t as SVar (_, sv) => getOpt (svarSubst mapping sv, t)
+        in subst mapping
         end
 
     and absSubstitute svarSubst mapping =
-        fn t as Exists (pos, params, body) =>
+        fn t as Exists (_, params, _) =>
             let val mapping = Vector.foldl (fn ({var, ...}, mapping) =>
                                                 (#1 (Id.SortedMap.remove (mapping, var)))
                                                 handle _ => mapping)
@@ -295,8 +295,7 @@ structure FType :> FAST_TYPE = struct
         fun concr t = Exists (Concr.pos t, #[], t)
 
         fun kindOf svarKind =
-            fn Exists (_, #[], t) => Concr.kindOf svarKind t
-             | Exists (pos, _, _) => TypeK pos
+            fn Exists (_, _, t) => Concr.kindOf svarKind t
     end
 
     structure Co = struct
