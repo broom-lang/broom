@@ -100,7 +100,7 @@ nestable
                                                   , Term.Match (pos, Term.Use (pos, var), clauses) )
                                        end %}
                   | '}'             {% Term.Record (pos, {fields = #[], ext = NONE}) %}
-                  | ':' '}'         {% Term.Type (pos, Type.EmptyRow pos) %}
+                  | ':' '}'         {% Term.Type (pos, Type.RecordT (pos, Type.EmptyRow pos)) %}
                   | '..' expr '}'   {% Term.Record (pos, {fields = #[], ext = SOME expr}) %}
                   | '&' res=( '}'     {% Term.Type (pos, Type.WildRow pos) %}
                             | typ '}' {% Term.Type (pos, Type.RowExt (pos, {fields = #[], ext = typ})) %} )
@@ -117,7 +117,7 @@ nestable
                                                         end %}
                            | ':' typ rowTail '}'     {% let val {fields, ext} = rowTail
                                                             val fields = Vector.fromList ((valOf (toName tokId), typ) :: fields)
-                                                        in Term.Type (pos, Type.RowExt (pos, {fields, ext}))
+                                                        in Term.Type (pos, Type.RecordT (pos, Type.RowExt (pos, {fields, ext})))
                                                         end %} )
                        {% res %} )
               {% res %}
