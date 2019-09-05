@@ -181,6 +181,7 @@ end = struct
         case y
         of Sub => subType env currPos (t, t')
          | Super => subType env currPos (t', t)
+         | Unify => (unify env currPos (t, t'); NONE)
 
     and suberUniversal env currPos y universal t =
         case y
