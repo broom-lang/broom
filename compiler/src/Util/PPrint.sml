@@ -166,8 +166,3 @@ structure PPrint :> PPRINT = struct
                        width = pageWidth, effWidth = pageWidth }) ^ "\n"
 end
 
-signature TO_DOC = sig
-    type t
-    val toDoc : t -> PPrint.t
-end
-
