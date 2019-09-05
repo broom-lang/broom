@@ -70,16 +70,12 @@ end = struct
             val (program, tenv) = Typechecker.elaborateProgram tenv stmts
             val {stmts, ...} = ExitTypechecker.programToF program
         in Vector.app (fn stmt as (Val (_, {var, typ}, _)) =>
-                           (case FAstEval.interpret venv stmt
-                            of Either.Left err => printErr "Runtime error.\n"
-                             | Either.Right v =>
-                                print ( Name.toString var ^ " = "
-                                      ^ FAstEval.Value.toString v ^ " : "
-                                      ^ FixedFAst.Type.Concr.toString typ ^ "\n" ))
-                        | stmt as (Expr _) =>
-                           (case FAstEval.interpret venv stmt
-                            of Either.Left err => printErr "Runtime error.\n"
-                             | Either.Right _ => ()))
+                           let val v = FAstEval.interpret venv stmt
+                           in print ( Name.toString var ^ " = "
+                                    ^ FAstEval.Value.toString v ^ " : "
+                                    ^ FixedFAst.Type.Concr.toString typ ^ "\n" )
+                           end
+                        | stmt as (Expr _) => ignore (FAstEval.interpret venv stmt))
                       stmts
          ; (tenv, venv)
         end

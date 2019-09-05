@@ -6,10 +6,9 @@ structure FAstEval :> sig
     end
 
     type toplevel = Value.t NameHashTable.hash_table
-    type runtime_error = unit
 
     val newToplevel: unit -> toplevel
-    val interpret: toplevel -> FixedFAst.Term.stmt -> (runtime_error, Value.t) Either.t
+    val interpret: toplevel -> FixedFAst.Term.stmt -> Value.t
 end = struct
     structure FTerm = FixedFAst.Term
     datatype expr = datatype FTerm.expr
@@ -43,8 +42,6 @@ end = struct
                                 * value NameHashTable.hash_table * Name.t
                    | Splat of value NameHashTable.hash_table
                    | GetField of Name.t
-    
-    type cont = frame list
 
     structure Value = struct
         val op|> = Fn.|>
@@ -74,8 +71,6 @@ end = struct
 
         val toString = PPrint.pretty 80 o toDoc
     end
-
-    type runtime_error = unit
 
     fun initField fields label value = NameHashTable.insert fields (label, value)
 
@@ -229,6 +224,6 @@ end = struct
 
     fun newToplevel () = NameHashTable.mkTable (0, Subscript)
 
-    fun interpret toplevel = Either.Right o exec (Toplevel toplevel) []
+    fun interpret toplevel = exec (Toplevel toplevel) []
 end
 

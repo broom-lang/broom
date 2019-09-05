@@ -5,7 +5,6 @@ end = struct
     structure FType = FAst.Type
     structure Id = FType.Id
     structure FFType = FAst.Type
-    structure Prim = FFType.Prim
     structure FFTerm = FAst.Term
 
     structure Env :> sig
