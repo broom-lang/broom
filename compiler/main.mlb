@@ -4,7 +4,9 @@ local
     $(SML_LIB)/smlnj-lib/Util/smlnj-lib.mlb
     $(SML_LIB)/mlyacc-lib/mlyacc-lib.mlb
 
-    ../deps/nipo/lib/all.mlb
+    ann "forceUsed" in
+        ../deps/nipo/lib/all.mlb
+    end
 
     ann "warnUnused true"
     in ann "allowSuccessorML true"
@@ -31,8 +33,10 @@ local
            src/Reprs/Cst.sml
 
            src/Parser/Tokens.sml
-           src/Parser/Lexer.sml
-           src/Parser/Parser.sml
+           ann "warnUnused false" in
+               src/Parser/Lexer.sml
+               src/Parser/Parser.sml
+           end
 
            src/Typechecker/TypeVars.sml
            src/Reprs/FAst/FType.sml
