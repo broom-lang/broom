@@ -70,7 +70,6 @@ structure FlexFAst = struct
             open Abs
 
             val toDoc = toDoc svarToDoc
-            val toString = toString svarToDoc
 
             val occurs = fn hasScope => occurs (Concr.svarOccurs hasScope)
         end
@@ -118,7 +117,6 @@ structure FixedFAst = struct
             open Abs
 
             val toDoc = toDoc svarToDoc
-            val toString = toString svarToDoc
         end
 
         structure Co = struct

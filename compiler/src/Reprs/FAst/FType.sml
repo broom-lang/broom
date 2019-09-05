@@ -330,14 +330,12 @@ signature CLOSED_FAST_TYPE = sig
     structure Concr: sig
         val pos: concr -> Pos.t
         val toDoc: concr -> PPrint.t
-        val toString: concr -> string
         val substitute: (ScopeId.t -> bool) ->concr Id.SortedMap.map -> concr -> concr
     end
 
     structure Abs: sig
         val pos: abs -> Pos.t
         val toDoc: abs -> PPrint.t
-        val toString: abs -> string
         val concr: concr -> abs
     end
 
