@@ -97,6 +97,10 @@ end = struct
             if idInScope env var
             then uvSet env (uv, t)
             else raise Fail ("Opaque type out of scope: g__" ^ Id.toString var)
+         | SVar (_, OVar ov) =>
+            if Env.hasScope env (TypeVars.Ov.scope ov)
+            then uvSet env (uv, t)
+            else raise Fail ("Opaque type out of scope: " ^ Name.toString (TypeVars.Ov.name ov))
          | SVar (_, UVar uv') =>
             (case Uv.get uv'
              of Left _ => uvSet env (uv, t)

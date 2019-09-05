@@ -10,6 +10,8 @@ structure TypeVars :> sig
 
     structure Ov: sig
         val new: 'scope * predicativity * Name.t * 'kind -> ('scope, 'kind) ov
+        val scope: ('scope, 'kind) ov -> 'scope
+        val name: ('scope, 'kind) ov -> Name.t
     end
 
     structure Uv: sig
@@ -60,6 +62,10 @@ end = struct
     structure Ov = struct
         fun new (scope, predicativity, name, kind) =
             {meta = {name, scope, predicativity}, kind}
+
+        fun scope ({meta = {scope, ...}, ...}: ('scope, 'kind) ov) = scope
+
+        fun name ({meta = {name, ...}, ...}: ('scope, 'kind) ov) = name
     end
 
     structure Uv = struct

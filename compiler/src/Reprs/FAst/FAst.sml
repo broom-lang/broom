@@ -26,6 +26,7 @@ structure FlexFAst = struct
                 (case TypeVars.Path.get (Fn.constantly false) path
                  of Either.Right (t, _) => concrToDoc t
                   | Either.Left (t, _) => concrToDoc t)
+             | OVar ov => Name.toDoc (TypeVars.Ov.name ov)
              | UVar uv =>
                 (case TypeVars.Uv.get uv
                  of Either.Right t => concrToDoc t
@@ -43,6 +44,7 @@ structure FlexFAst = struct
                     (case TypeVars.Path.get hasScope path
                      of Either.Left (t, _) => occurs hasScope uv t
                       | Either.Right (t, _) => occurs hasScope uv t)
+                 | OVar _ => false
                  | UVar uv' => (case TypeVars.Uv.get uv'
                                 of Either.Left uv' => TypeVars.Uv.eq (uv, uv')
                                  | Either.Right t => occurs hasScope uv t)
@@ -50,6 +52,10 @@ structure FlexFAst = struct
             fun pathOccurs path = FType.Concr.occurs pathSvarOccurs path
             and pathSvarOccurs path =
                 fn Path path' => TypeVars.Path.eq (path', path)
+                 | OVar _ => false
+                 | UVar uv => (case TypeVars.Uv.get uv
+                               of Either.Left uv => false
+                                | Either.Right t => pathOccurs path t)
 
             fun substitute hasScope kv = FType.Concr.substitute (svarSubstitute hasScope) kv
             and svarSubstitute hasScope kv =
@@ -57,6 +63,7 @@ structure FlexFAst = struct
                     (case TypeVars.Path.get hasScope path
                      of Either.Left _ => NONE (* path faces are always CallTFn:s with OVar args *)
                       | Either.Right (t, _) => SOME (substitute hasScope kv t))
+                 | OVar _ => NONE
                  | UVar uv => (case TypeVars.Uv.get uv
                                of Either.Left _ => NONE
                                 | Either.Right t => SOME (substitute hasScope kv t))
