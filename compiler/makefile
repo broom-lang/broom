@@ -19,6 +19,11 @@ src/Parser/Lexer.sml: src/Parser/lexer.nipo
 src/Parser/Parser.sml: src/Parser/parser.nipo
 	$(NIPO) $< > $@
 
+.PHONY: check
+check: main.mlb src/Parser/Lexer.sml src/Parser/Parser.sml \
+      $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
+	mlton -stop tc main.mlb
+
 .PHONY: itest
 itest: itests
 	@echo "All integration tests passed."
