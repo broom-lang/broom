@@ -133,6 +133,7 @@ nestable
                                                   let val (stmts', body) = loop stmts
                                                   in (stmt :: stmts', body)
                                                   end
+                                               | [] => ([], Term.Const (pos, Const.Unit))
                                           val (stmts, body) = loop stmts
                                       in Term.Let (pos, Vector.fromList stmts, body)
                                       end %}
