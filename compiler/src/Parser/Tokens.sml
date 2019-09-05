@@ -87,6 +87,7 @@ structure BroomTokens = struct
         fn Begin _ => "begin"
          | Do _ => "do"
          | Return _ => "return"
+         | Module _ => "module"
          | Interface _ => "interface"
          | End _ => "end"
          | Val _ => "val"
