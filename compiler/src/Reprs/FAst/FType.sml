@@ -189,6 +189,7 @@ structure FType :> FAST_TYPE = struct
          | Record (pos, row) => Record (pos, f row)
          | RowExt (pos, {field = (label, fieldt), ext}) =>
             RowExt (pos, {field = (label, f fieldt), ext = f ext})
+         | CallTFn (pos, name, args) => CallTFn (pos, name, Vector.map f args)
          | t as (EmptyRow _ | Type _ | SVar _ | UseT _ | Prim _) => t
 
     fun mapAbsChildren f =
@@ -235,7 +236,7 @@ structure FType :> FAST_TYPE = struct
                                                    mapping params
                     in mapConcrChildren (subst mapping) t
                     end
-                 | t as (Arrow _ | Record _ | RowExt _ | EmptyRow _ | Prim _) =>
+                 | t as (Arrow _ | Record _ | RowExt _ | EmptyRow _ | CallTFn _ | Prim _) =>
                     mapConcrChildren (subst mapping) t
                  | Type (pos, t) => Type (pos, absSubstitute svarSubst mapping t)
                  | t as UseT (_, {var, ...}) => getOpt (Id.SortedMap.find (mapping, var), t)
