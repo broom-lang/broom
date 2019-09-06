@@ -95,68 +95,8 @@ end = struct
         fn Coerce _ => NonSubType
          | Unify => NonUnifiable
 
-    (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
-    fun assign (env: Env.t) (y, uv: (Scope.Id.t, concr) TypeVars.uv, t: concr): coercion =
-        if Concr.occurs (Env.hasScope env) uv t
-        then raise TypeError (Occurs (SVar (Concr.pos t, UVar uv), concr t))
-        else doAssign env y (uv, t)
-
-    and doAssign (env: Env.t) y (uv, t: concr): coercion =
-        case t
-        of ForAll args => doAssignUniversal env y uv args
-         | Arrow (pos, domains) => doAssignArrow env y uv pos domains
-         | RowExt _ | EmptyRow _ | Record _ | CallTFn _ | Prim _ | Type _ => uvSet env (uv, t)
-         | UseT (_, {var, ...}) => 
-            if idInScope env var
-            then uvSet env (uv, t)
-            else raise Fail ("Opaque type out of scope: g__" ^ Id.toString var)
-         | SVar (_, OVar ov) =>
-            if Env.hasScope env (TypeVars.Ov.scope ov)
-            then uvSet env (uv, t)
-            else raise Fail ("Opaque type out of scope: " ^ Name.toString (TypeVars.Ov.name ov))
-         | SVar (_, UVar uv') =>
-            (case Uv.get uv'
-             of Left _ => uvSet env (uv, t)
-              | Right t => uvSet env (uv, t))
-         | SVar (_, Path _) => uvSet env (uv, t)
-
-    and doAssignUniversal env y uv (universal as (pos, _, _)) =
-        case y
-        of Coerce Up =>
-            skolemize env universal (fn (env, params, body) =>
-                Option.map (fn coerce => fn expr => FTerm.TFn (pos, params, coerce expr))
-                           (doAssign env y (uv, body))
-            )
-         | Coerce Down =>
-            instantiate env universal (fn (env, args, body) =>
-                Option.map (fn coerce => fn callee => coerce (FTerm.TApp (pos, body, {callee, args})))
-                           (doAssign env y (uv, body))
-            )
-
-    and doAssignArrow (env: Env.t) y uv pos (arrow as {domain, codomain}) =
-        let val domainUv = TypeVars.Uv.freshSibling (uv, Predicative)
-            val codomainUv = TypeVars.Uv.freshSibling (uv, Predicative)
-            val arrow' = { domain = SVar (pos, UVar domainUv)
-                         , codomain = SVar (pos, UVar codomainUv)}
-            val t' = Arrow (pos, arrow')
-            do ignore (uvSet env (uv, t'))
-            val coerceDomain = assign env (contra y, domainUv, domain) (* contravariance *)
-            val coerceCodomain = assign env (y, codomainUv, codomain)
-        in if isSome coerceDomain orelse isSome coerceCodomain
-           then let val arrows = case y
-                                 of Coerce Up => (arrow', arrow)
-                                  | Coerce Down => (arrow, arrow')
-                in SOME (fnCoercion coerceDomain coerceCodomain arrows)
-                end
-           else NONE
-        end
-
-    fun subType env = coercion (Coerce ()) env
-
-    and unify env = coercion Unify env
-
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
-    and coercion (intent: unit intent) (env: Env.t) currPos: concr * concr -> coercion =
+    fun coercion (intent: unit intent) (env: Env.t) currPos: concr * concr -> coercion =
         fn (ForAll universal, super) =>
             (case intent
              of Coerce () =>
@@ -201,6 +141,10 @@ end = struct
          | (SVar (_, Path path), super) => pathCoercion intent Up env currPos path super
          | (sub, SVar (_, Path path)) => pathCoercion intent Down env currPos path sub
          | (sub, super) => raise TypeError (NonSubType (currPos, concr sub, concr super))
+
+    and subType env = coercion (Coerce ()) env
+
+    and unify env = coercion Unify env
 
     and arrowCoercion intent env currPos (arrows as ({domain, codomain}, {domain = domain', codomain = codomain'})) =
         let val coerceDomain = coercion intent env currPos (domain', domain)
@@ -263,23 +207,6 @@ end = struct
              ; NONE ) (* Since both callee and args have to unify, coercion is always no-op. *)
         else raise TypeError (error intent (currPos, concr t, concr t'))
 
-    and uvsCoercion intent env currPos superTyp (uv, uv') =
-        case (Uv.get uv, Uv.get uv')
-        of (Left uv, Left _) =>
-            (uvSet env (uv, superTyp); NONE) (* Call `uvSet` directly to skip occurs check. *)
-         | (Left uv, Right t) => assign env (Coerce Up, uv, t)
-         | (Right t, Left uv) => assign env (Coerce Down, uv, t)
-         | (Right t, Right t') => coercion intent env currPos (t, t')
-
-    and uvCoercion env currPos intent uv t =
-        case Uv.get uv
-        of Left uv => assign env (intent, uv, t)
-         | Right t' =>
-            (case intent
-             of Coerce Up => subType env currPos (t', t)
-              | Coerce Down => subType env currPos (t, t')
-              | Unify => unify env currPos (t, t'))
-
     and pathCoercion intent y env currPos path t =
         case Path.get (Env.hasScope env) path
         of Left (face, NONE) => (* Impl not visible => <:/~ face: *)
@@ -313,5 +240,78 @@ end = struct
         case y
         of Up => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, UseCo coercionDef))
          | Down => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, Symm (UseCo coercionDef)))
+
+    and uvsCoercion intent env currPos superTyp (uv, uv') =
+        case (Uv.get uv, Uv.get uv')
+        of (Left uv, Left _) =>
+            (uvSet env (uv, superTyp); NONE) (* Call `uvSet` directly to skip occurs check. *)
+         | (Left uv, Right t) => assign env (Coerce Up, uv, t)
+         | (Right t, Left uv) => assign env (Coerce Down, uv, t)
+         | (Right t, Right t') => coercion intent env currPos (t, t')
+
+    and uvCoercion env currPos intent uv t =
+        case Uv.get uv
+        of Left uv => assign env (intent, uv, t)
+         | Right t' =>
+            (case intent
+             of Coerce Up => subType env currPos (t', t)
+              | Coerce Down => subType env currPos (t, t')
+              | Unify => unify env currPos (t, t'))
+
+    (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
+    and assign (env: Env.t) (y, uv: (Scope.Id.t, concr) TypeVars.uv, t: concr): coercion =
+        if Concr.occurs (Env.hasScope env) uv t
+        then raise TypeError (Occurs (SVar (Concr.pos t, UVar uv), concr t))
+        else doAssign env y (uv, t)
+
+    and doAssign (env: Env.t) y (uv, t: concr): coercion =
+        case t
+        of ForAll args => doAssignUniversal env y uv args
+         | Arrow (pos, domains) => doAssignArrow env y uv pos domains
+         | RowExt _ | EmptyRow _ | Record _ | CallTFn _ | Prim _ | Type _ => uvSet env (uv, t)
+         | UseT (_, {var, ...}) => 
+            if idInScope env var
+            then uvSet env (uv, t)
+            else raise Fail ("Opaque type out of scope: g__" ^ Id.toString var)
+         | SVar (_, OVar ov) =>
+            if Env.hasScope env (TypeVars.Ov.scope ov)
+            then uvSet env (uv, t)
+            else raise Fail ("Opaque type out of scope: " ^ Name.toString (TypeVars.Ov.name ov))
+         | SVar (_, UVar uv') =>
+            (case Uv.get uv'
+             of Left _ => uvSet env (uv, t)
+              | Right t => uvSet env (uv, t))
+         | SVar (_, Path _) => uvSet env (uv, t)
+
+    and doAssignUniversal env y uv (universal as (pos, _, _)) =
+        case y
+        of Coerce Up =>
+            skolemize env universal (fn (env, params, body) =>
+                Option.map (fn coerce => fn expr => FTerm.TFn (pos, params, coerce expr))
+                           (doAssign env y (uv, body))
+            )
+         | Coerce Down =>
+            instantiate env universal (fn (env, args, body) =>
+                Option.map (fn coerce => fn callee => coerce (FTerm.TApp (pos, body, {callee, args})))
+                           (doAssign env y (uv, body))
+            )
+
+    and doAssignArrow (env: Env.t) y uv pos (arrow as {domain, codomain}) =
+        let val domainUv = TypeVars.Uv.freshSibling (uv, Predicative)
+            val codomainUv = TypeVars.Uv.freshSibling (uv, Predicative)
+            val arrow' = { domain = SVar (pos, UVar domainUv)
+                         , codomain = SVar (pos, UVar codomainUv)}
+            val t' = Arrow (pos, arrow')
+            do ignore (uvSet env (uv, t'))
+            val coerceDomain = assign env (contra y, domainUv, domain) (* contravariance *)
+            val coerceCodomain = assign env (y, codomainUv, codomain)
+        in if isSome coerceDomain orelse isSome coerceCodomain
+           then let val arrows = case y
+                                 of Coerce Up => (arrow', arrow)
+                                  | Coerce Down => (arrow, arrow')
+                in SOME (fnCoercion coerceDomain coerceCodomain arrows)
+                end
+           else NONE
+        end
 end
 
