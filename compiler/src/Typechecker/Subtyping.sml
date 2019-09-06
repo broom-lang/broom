@@ -97,22 +97,25 @@ end = struct
 
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
     fun coercion (intent: unit intent) (env: Env.t) currPos: concr * concr -> coercion =
-        fn (ForAll universal, super) =>
+        fn (sub as ForAll universal, super) =>
             (case intent
              of Coerce () =>
                  instantiate env universal (fn (env, args, body) =>
                      Option.map (fn coerce => fn expr => coerce (FTerm.TApp (currPos, body, {callee = expr, args})))
                                 (subType env currPos (body, super))
                  )
-            )
-         | (sub, ForAll universal) =>
+              | Unify =>
+                 (case super
+                  of ForAll universal' => raise Fail "unimplemented"
+                   | _ => raise TypeError (NonUnifiable (currPos, concr sub, concr super))))
+         | (sub, super as ForAll universal) =>
             (case intent
              of Coerce () =>
                  skolemize env universal (fn (env, params, body) =>
                      Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
                                 (subType env currPos (sub, body))
                  )
-            )
+              | Unify => raise TypeError (NonUnifiable (currPos, concr sub, concr super)))
          | (Arrow (_, arr), Arrow (_, arr')) => arrowCoercion intent env currPos (arr, arr')
          | (sub as Record (_, row), super as Record (_, row')) =>
             recordCoercion intent env currPos (sub, super) (row, row')
