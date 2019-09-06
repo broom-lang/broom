@@ -350,7 +350,7 @@ end = struct
             , Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), name, Visited (t, NONE))) )
          | CTerm.ConstP (pos, c) =>
             let val cTyp = FType.Prim (pos, Const.typeOf c)
-                do unify env pos (cTyp, t)
+                val _ = unify env pos (cTyp, t)
             in (FTerm.ConstP (pos, c), env)
             end
 
