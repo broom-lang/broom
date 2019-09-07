@@ -305,7 +305,28 @@ end = struct
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
     and elaborateExprAs (env: Env.t) (typ: concr) (expr: CTerm.expr): FTerm.expr =
         case expr
-        of CTerm.Fn (pos, {var = param, typ = paramType}, body) =>
+        of CTerm.Fn (pos, clauses) => (* TODO: Exhaustiveness checking: *)
+            (case typ
+             of FType.ForAll args => elaborateAsForAll env args expr
+              | FType.Arrow (_, {domain, codomain}) =>
+                (case Vector.uncons clauses
+                 of SOME (clause, clauses) =>
+                     let val (matcheeTyp, clause) =
+                             elaborateClause env
+                                 (fn (env, body) => elaborateExprAs env codomain body)
+                                 clause
+                         val clauses = elaborateClausesAs env matcheeTyp
+                                           (fn (env, body) => elaborateExprAs env codomain body)
+                                           clauses
+                         val def = {var = Name.fresh (), typ = domain}
+                     in FTerm.Fn ( pos, def
+                                 , FTerm.Match ( pos, codomain, FTerm.Use (pos, def)
+                                               , Vector.prepend (clause, clauses)) )
+                     end
+                  | NONE => raise Fail "unreachable")
+              | _ => coerceExprTo env typ expr)
+
+        (* CTerm.Fn (pos, {var = param, typ = paramType}, body) =>
             (case typ
              of FType.ForAll args => elaborateAsForAll env args expr
               | FType.Arrow (_, {domain, codomain}) =>
@@ -316,13 +337,14 @@ end = struct
                           val body = elaborateExprAs env codomain body
                       in FTerm.Fn (pos, {var = param, typ = domain}, body)
                       end)
-              | _ => coerceExprTo env typ expr)
+              | _ => coerceExprTo env typ expr) *)
+
          | CTerm.Match (pos, matchee, clauses) => (* TODO: Exhaustiveness checking: *)
             let val (matcheeTyp, matchee) = elaborateExpr env matchee
             in FTerm.Match ( pos, typ, matchee
-                           , elaborateClauses env matcheeTyp
+                           , elaborateClausesAs env matcheeTyp
                                  (fn (env, body) => elaborateExprAs env typ body)
-                                 clauses )
+                                 (VectorSlice.full clauses) )
             end
          | _ =>
             (case typ
@@ -334,13 +356,17 @@ end = struct
         in FTerm.TFn (pos, params, elaborateExprAs env body expr)
         end
 
-    and elaborateClauses env matcheeTyp elaborateBody =
-        Vector.map (elaborateClause env matcheeTyp elaborateBody)
+    and elaborateClausesAs env matcheeTyp elaborateBody =
+        VectorSlice.map (elaborateClauseAs env matcheeTyp elaborateBody)
 
-    and elaborateClause env matcheeTyp elaborateBody {pattern, body} =
+    and elaborateClauseAs env matcheeTyp elaborateBody {pattern, body} =
         let val (pattern, env) = elaboratePatternAs env matcheeTyp pattern
-            val body = elaborateBody (env, body)
-        in {pattern, body}
+        in {pattern, body = elaborateBody (env, body)}
+        end
+
+    and elaborateClause env elaborateBody {pattern, body} =
+        let val (matcheeTyp, pattern, env) = elaboratePattern env pattern
+        in (matcheeTyp, {pattern, body = elaborateBody (env, body)})
         end
 
     and elaboratePatternAs env t =
@@ -382,9 +408,9 @@ end = struct
         fn CTerm.Match (pos, matchee, clauses) =>
             let val (matcheeTyp, matchee) = elaborateExpr env matchee
             in FTerm.Match ( pos, implType, matchee
-                           , elaborateClauses env matcheeTyp
+                           , elaborateClausesAs env matcheeTyp
                                  (fn (env, body) => elaborateAsExistsInst env (implType, paths) body)
-                                 clauses )
+                                 (VectorSlice.full clauses) )
             end
          | expr =>
             let val scopeId = Scope.Id.fresh ()

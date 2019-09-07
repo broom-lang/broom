@@ -6,6 +6,14 @@ structure Vector = struct
         then SOME (sub (xs, 0), VectorSlice.slice (xs, 1, NONE))
         else NONE
 
+    fun prepend (x, ys) =
+        let val len = Vector.length ys + 1
+            val {update, done, ...} = MLton.Vector.create len
+        in update (0, x)
+         ; Vector.appi (fn (i, y) => update (i + 1, y)) ys
+         ; done ()
+        end
+
     fun zipWith f (xs, ys) =
         let val len = Int.min (Vector.length xs, Vector.length ys)
             val {update, done, ...} = MLton.Vector.create len

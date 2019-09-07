@@ -45,10 +45,7 @@ start program = stmts {% Vector.fromList stmts %};
 stmt
     = pos 'val' pattern '=' expr {% Term.Val (pos, pattern, expr) %}
     | pos 'fun' Id pats=apat+ '=' expr {% let
-          fun step (pat, body) = let val var = Name.fresh ()
-                                 in Term.Fn ( pos, {var, typ = NONE}
-                                            , Term.Let (pos, #[Term.Val (pos, pat, Term.Use (pos, var))], body)  )
-                                 end
+          fun step (pattern, body) = Term.Fn (pos, #[{pattern, body}])
           in Term.Val (pos, Term.Def (pos, valOf (toName tokId)), List.foldr step expr pats)
       end %}
     | pos 'type' Id '=' typ {% Term.Val ( pos, Term.Def (pos, valOf (toName tokId))
@@ -95,10 +92,7 @@ select = pos nestable fields=('.' Id {% valOf (toName tokId) %})*
                      nestable fields %};
 
 nestable
-    = pos '{' res=( '|' clauses '}' {% let val var = Name.fresh ()
-                                       in Term.Fn ( pos, {var, typ = NONE}
-                                                  , Term.Match (pos, Term.Use (pos, var), clauses) )
-                                       end %}
+    = pos '{' res=( '|' clauses '}' {% Term.Fn (pos, clauses) %}
                   | '}'             {% Term.Record (pos, {fields = #[], ext = NONE}) %}
                   | ':' '}'         {% Term.Type (pos, Type.RecordT (pos, Type.EmptyRow pos)) %}
                   | '..' expr '}'   {% Term.Record (pos, {fields = #[], ext = SOME expr}) %}

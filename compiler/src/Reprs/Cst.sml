@@ -14,7 +14,7 @@ signature CST = sig
         | Prim of Pos.t * Prim.t
 
     and expr
-        = Fn of Pos.t * def * expr
+        = Fn of Pos.t * clause vector
         | Let of Pos.t * stmt vector * expr
         | Match of Pos.t * expr * clause vector
         | Record of Pos.t * row
@@ -87,7 +87,7 @@ structure Cst :> CST = struct
         | Prim of Pos.t * Prim.t
 
     and expr
-        = Fn of Pos.t * def * expr
+        = Fn of Pos.t * clause vector
         | Let of Pos.t * stmt vector * expr
         | Match of Pos.t * expr * clause vector
         | Record of Pos.t * row
@@ -113,7 +113,7 @@ structure Cst :> CST = struct
     and row = {fields: (Name.t * expr) vector, ext: expr option}
 
     val exprPos =
-        fn Fn (pos, _, _) => pos
+        fn Fn (pos, _) => pos
          | Let (pos, _, _) => pos
          | Match (pos, _, _) => pos
          | Record (pos, _) => pos
@@ -167,11 +167,9 @@ structure Cst :> CST = struct
          | NONE => PPrint.empty
 
     and exprToDoc =
-        fn Fn (_, def, body) => braces (text "|" <+> defToDoc def <+> text "->" <+> exprToDoc body)
-         | Match (_, matchee, clauses) => let
-                fun clausesToDoc clauses = PPrint.punctuate newline (Vector.map clauseToDoc clauses)
-                in text "match" <+> exprToDoc matchee <+> braces (PPrint.align (clausesToDoc clauses))
-            end
+        fn Fn (_, clauses) => braces (PPrint.align (clausesToDoc clauses))
+         | Match (_, matchee, clauses) =>
+            text "match" <+> exprToDoc matchee <+> braces (PPrint.align (clausesToDoc clauses))
          | Record (_, row) => braces (rowToDoc row)
          | Module (_, stmts) =>
             text "module"
@@ -199,6 +197,7 @@ structure Cst :> CST = struct
             end
 
     and clauseToDoc = fn {pattern, body} => patToDoc pattern <+> text "=>" <+> exprToDoc body
+    and clausesToDoc = fn clauses => PPrint.punctuate newline (Vector.map clauseToDoc clauses)
 
     and stmtToDoc =
         fn Val (_, pat, valExpr) =>
