@@ -16,8 +16,8 @@ end = struct
 
     val rec concrToF: FlexFAst.Type.concr -> FFType.concr =
         fn ForAll (pos, param, body) => ForAll (pos, param, concrToF body)
-         | Arrow (pos, {domain, codomain}) =>
-            Arrow (pos, {domain = concrToF domain, codomain = concrToF codomain})
+         | Arrow (pos, expl, {domain, codomain}) =>
+            Arrow (pos, expl, {domain = concrToF domain, codomain = concrToF codomain})
          | Record (pos, row) => Record (pos, concrToF row)
          | RowExt (pos, {field = (label, fieldt), ext}) =>
             RowExt (pos, {field = (label, concrToF fieldt), ext = concrToF ext})
@@ -45,8 +45,8 @@ end = struct
     fun axiomToF (name, l, r) = (name, concrToF l, concrToF r)
 
     val rec exprToF: FlexFAst.Term.expr -> FFTerm.expr =
-        fn Fn (pos, {var, typ}, body) =>
-            FFTerm.Fn (pos, {var, typ = concrToF typ}, exprToF body)
+        fn Fn (pos, {var, typ}, expl, body) =>
+            FFTerm.Fn (pos, {var, typ = concrToF typ}, expl, exprToF body)
          | TFn (pos, param, body) => FFTerm.TFn (pos, param, exprToF body)
          | Extend (pos, typ, fields, record) =>
             FFTerm.Extend ( pos, concrToF typ

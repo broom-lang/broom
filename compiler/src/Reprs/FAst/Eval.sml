@@ -116,7 +116,7 @@ end = struct
          | Const.Bool b => Bool b
 
     fun eval env cont =
-        fn Fn (_, {var, ...}, body) => continue cont (Closure (env, var, body))
+        fn Fn (_, {var, ...}, _, body) => continue cont (Closure (env, var, body))
          | TFn (_, _, body) => continue cont (Thunk (env, body))
          | App (_, _, {callee, arg}) => eval env (Callee (env, arg) :: cont) callee
          | TApp (_, _, {callee, ...}) => eval env (Forcee :: cont) callee

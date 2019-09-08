@@ -120,7 +120,7 @@ end = struct
             val env = Env.pushScope env absScope
 
             fun elaborate env =
-                fn CType.Pi (pos, {var, typ = domain}, Explicit, codomain) =>
+                fn CType.Pi (pos, {var, typ = domain}, expl, codomain) =>
                     let val (typeDefs, domain) =
                             case domain
                             of SOME domain => elaborateType env domain
@@ -132,7 +132,7 @@ end = struct
                         val env = Env.pushScope env fnScope
 
                         val codomain = elaborate env codomain
-                        val arrow = FType.Arrow (pos, {domain, codomain})
+                        val arrow = FType.Arrow (pos, expl, {domain, codomain})
                     in case typeDefs
                        of [] => arrow
                         | _ => FType.ForAll (pos, Vector.fromList typeDefs, arrow)
@@ -202,7 +202,7 @@ end = struct
     (* Elaborate the expression `exprRef` and return its computed type. *)
     and elaborateExpr (env: Env.t) (expr: CTerm.expr): concr * FTerm.expr =
         case expr
-        of CTerm.Fn (pos, Explicit, clauses) => (* TODO: Exhaustiveness checking: *)
+        of CTerm.Fn (pos, expl, clauses) => (* TODO: Exhaustiveness checking: *)
             let val codomain = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
                 val (domain, clauses) =
                     elaborateClauses env (fn (env, body) => elaborateExprAs env codomain body) clauses
@@ -211,12 +211,12 @@ end = struct
                     of SOME (typeDefs, domain) => (typeDefs, domain)
                      | NONE => (#[], FType.SVar (pos, FType.UVar (Env.freshUv env Predicative)))
                 val def = {var = Name.fresh (), typ = domain}
-            in ( let val arrow = FType.Arrow (pos, {domain, codomain})
+            in ( let val arrow = FType.Arrow (pos, expl, {domain, codomain})
                  in case typeDefs
                     of #[] => arrow
                      | _ => FType.ForAll (pos, typeDefs, arrow)
                  end
-               , let val f = FTerm.Fn ( pos, def
+               , let val f = FTerm.Fn ( pos, def, expl
                                       , FTerm.Match ( pos, codomain, FTerm.Use (pos, def)
                                                     , clauses ) )
                  in case typeDefs
@@ -260,7 +260,7 @@ end = struct
             end
          | CTerm.Field (pos, expr, label) =>
             let val te as (_, expr) = elaborateExpr env expr
-                val fieldType = coerceRecord env te label
+                val (expr, fieldType) = coerceRecord env te label
             in (fieldType, FTerm.Field (pos, fieldType, expr, label))
             end
          | CTerm.Ann (pos, expr, t) =>
@@ -303,18 +303,20 @@ end = struct
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
     and elaborateExprAs (env: Env.t) (typ: concr) (expr: CTerm.expr): FTerm.expr =
         case expr
-        of CTerm.Fn (pos, Explicit, clauses) => (* TODO: Exhaustiveness checking: *)
+        of CTerm.Fn (pos, expl, clauses) => (* TODO: Exhaustiveness checking: *)
             (case typ
              of FType.ForAll args => elaborateAsForAll env args expr
-              | FType.Arrow (_, {domain, codomain}) =>
-                 let val clauses = elaborateClausesAs env domain
-                                       (fn (env, body) => elaborateExprAs env codomain body)
-                                       clauses
-                     val def = {var = Name.fresh (), typ = domain}
-                 in FTerm.Fn ( pos, def
-                             , FTerm.Match ( pos, codomain, FTerm.Use (pos, def)
-                                           , clauses ) )
-                 end
+              | FType.Arrow (_, expl', {domain, codomain}) =>
+                 if expl = expl'
+                 then let val clauses = elaborateClausesAs env domain
+                                            (fn (env, body) => elaborateExprAs env codomain body)
+                                            clauses
+                          val def = {var = Name.fresh (), typ = domain}
+                      in FTerm.Fn ( pos, def, expl
+                                  , FTerm.Match ( pos, codomain, FTerm.Use (pos, def)
+                                                , clauses ) )
+                      end
+                 else raise Fail "Explicitness mismatch"
               | _ => coerceExprTo env typ expr)
          | CTerm.Match (pos, matchee, clauses) => (* TODO: Exhaustiveness checking: *)
             let val (matcheeTyp, matchee) = elaborateExpr env matchee
@@ -487,7 +489,15 @@ end = struct
                         val calleeType = Concr.substitute (Env.hasScope env) mapping t
                     in coerce (FTerm.TApp (pos, calleeType, {callee, args})) calleeType
                     end
-                 | FType.Arrow (_, domains) => (callee, domains)
+                 | FType.Arrow (_, Implicit, {domain, codomain}) =>
+                    (case domain
+                     of FType.Type (_, domain) =>
+                         let val pos = FTerm.exprPos callee
+                             val arg = FTerm.Type (pos, domain)
+                         in coerce (FTerm.App (pos, codomain, {callee, arg})) codomain
+                         end
+                      | _ => raise Fail "implicit parameter not of type `type`")
+                 | FType.Arrow (_, Explicit, domains) => (callee, domains)
                  | FType.SVar (pos, FType.UVar uv) =>
                     (case Uv.get uv
                      of Left uv =>
@@ -495,7 +505,7 @@ end = struct
                              val codomainUv = TypeVars.Uv.freshSibling (uv, Predicative)
                              val arrow = { domain = FType.SVar (pos, FType.UVar domainUv)
                                          , codomain = FType.SVar (pos, FType.UVar codomainUv) }
-                         in uvSet env (uv, FType.Arrow (pos, arrow))
+                         in uvSet env (uv, FType.Arrow (pos, Explicit, arrow))
                           ; (callee, arrow)
                          end
                       | Right typ => coerce callee typ)
@@ -503,29 +513,37 @@ end = struct
         in coerce callee typ
         end
    
-    (* Coerce `expr` (in place) into a record with at least `label` and return the `label`:ed type. *)
-    and coerceRecord env (typ: concr, expr: FTerm.expr) label: concr =
-        let val rec coerce =
+    (* Coerce `expr` (in place) into a record with at least `label` and return the expr and `label`:ed type. *)
+    and coerceRecord env (typ: concr, expr: FTerm.expr) label: FTerm.expr * concr =
+        let fun coerce expr = 
                 fn FType.ForAll _ => raise Fail "unimplemented"
-                 | FType.Record (_, row) => coerceRow row
+                 | FType.Arrow (_, Implicit, {domain, codomain}) =>
+                    (case domain
+                     of FType.Type (_, domain) =>
+                         let val pos = FTerm.exprPos expr
+                             val arg = FTerm.Type (pos, domain)
+                         in coerce (FTerm.App (pos, codomain, {callee = expr, arg})) codomain
+                         end
+                      | _ => raise Fail "implicit parameter not of type `type`")
+                 | FType.Record (_, row) => coerceRow expr row
                  | FType.SVar (pos, FType.UVar uv) =>
                     (case Uv.get uv
-                     of Right typ => coerce typ
+                     of Right typ => coerce expr typ
                       | Left uv => let val fieldType = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
                                        val ext = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
                                        val pos = FTerm.exprPos expr
                                        val row = FType.RowExt (pos, {field = (label, fieldType), ext})
                                        val typ = FType.Record (pos, row)
                                    in uvSet env (uv, typ)
-                                    ; fieldType
+                                    ; (expr, fieldType)
                                    end)
                  | _ => raise TypeError (UnDottable (expr, typ))
-            and coerceRow =
+            and coerceRow expr =
                 fn FType.RowExt (_, {field = (label', fieldt), ext}) =>
                     if label' = label
-                    then fieldt
-                    else coerceRow ext
-        in coerce typ
+                    then (expr, fieldt)
+                    else coerceRow expr ext
+        in coerce expr typ
         end
 
     (* TODO: Prevent boundless deepening of REPL env

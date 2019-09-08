@@ -2,6 +2,8 @@ signature FAST_TYPE = sig
     structure Id: ID
     structure Prim: PRIM_TYPE where type t = PrimType.t
 
+    type explicitness = Cst.explicitness
+
     datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
                   | TypeK of Pos.t
                   | RowK of Pos.t
@@ -12,7 +14,7 @@ signature FAST_TYPE = sig
 
     datatype 'sv concr
         = ForAll of Pos.t * def vector * 'sv concr
-        | Arrow of Pos.t * {domain: 'sv concr, codomain: 'sv concr}
+        | Arrow of Pos.t * explicitness * {domain: 'sv concr, codomain: 'sv concr}
         | Record of Pos.t * 'sv concr
         | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
         | EmptyRow of Pos.t
@@ -77,6 +79,8 @@ structure FType :> FAST_TYPE = struct
 
     structure Prim = PrimType
 
+    type explicitness = Cst.explicitness
+
     datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
                   | TypeK of Pos.t
                   | RowK of Pos.t
@@ -87,7 +91,7 @@ structure FType :> FAST_TYPE = struct
 
     datatype 'sv concr
         = ForAll of Pos.t * def vector * 'sv concr
-        | Arrow of Pos.t * {domain: 'sv concr, codomain: 'sv concr}
+        | Arrow of Pos.t * explicitness * {domain: 'sv concr, codomain: 'sv concr}
         | Record of Pos.t * 'sv concr
         | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
         | EmptyRow of Pos.t
@@ -122,8 +126,8 @@ structure FType :> FAST_TYPE = struct
                 fn ForAll (_, params, t) =>
                     text "forall" <+> PPrint.punctuate space (Vector.map defToDoc params)
                         <+> text "." <+> concrToDoc t
-                 | Arrow (_, {domain, codomain}) =>
-                    concrToDoc domain <+> text "->" <+> concrToDoc codomain
+                 | Arrow (_, explicitness, {domain, codomain}) =>
+                    concrToDoc domain <+> Cst.arrowDoc explicitness <+> concrToDoc codomain
                  | Record (_, row) =>
                     let val oneLiner = braces (rowToOneLiner svarToDoc row)
                         val multiLiner =
@@ -184,8 +188,8 @@ structure FType :> FAST_TYPE = struct
 
     fun mapConcrChildren f =
         fn ForAll (pos, param, body) => ForAll (pos, param, f body)
-         | Arrow (pos, {domain, codomain}) =>
-            Arrow (pos, {domain = f domain, codomain = f codomain})
+         | Arrow (pos, explicitness, {domain, codomain}) =>
+            Arrow (pos, explicitness, {domain = f domain, codomain = f codomain})
          | Record (pos, row) => Record (pos, f row)
          | RowExt (pos, {field = (label, fieldt), ext}) =>
             RowExt (pos, {field = (label, f fieldt), ext = f ext})
@@ -197,8 +201,8 @@ structure FType :> FAST_TYPE = struct
 
     fun concrCata (alg as {forAll, arrow, record, rowExt, emptyRow, typ, svar, callTFn, uset, prim}) =
         fn ForAll (pos, param, body) => forAll (pos, param, concrCata alg body)
-         | Arrow (pos, {domain, codomain}) =>
-            arrow (pos, {domain = concrCata alg domain, codomain = concrCata alg codomain})
+         | Arrow (pos, explicitness, {domain, codomain}) =>
+            arrow (pos, explicitness, {domain = concrCata alg domain, codomain = concrCata alg codomain})
          | Record (pos, row) => record (pos, concrCata alg row)
          | RowExt (pos, {field = (label, fieldt), ext}) =>
             rowExt (pos, {field = (label, concrCata alg fieldt), ext = concrCata alg ext})
@@ -213,7 +217,7 @@ structure FType :> FAST_TYPE = struct
         fn Exists (pos, params, body) => exists (pos, params, concr body)
 
     fun concrOccurs svarOcc sv = concrCata { forAll = #3
-                                           , arrow = fn (_, {domain, codomain}) => domain orelse codomain
+                                           , arrow = fn (_, _, {domain, codomain}) => domain orelse codomain
                                            , record = #2
                                            , rowExt = fn (_, {field = (_, fieldt), ext}) => fieldt orelse ext
                                            , emptyRow = Fn.constantly false
@@ -262,7 +266,7 @@ structure FType :> FAST_TYPE = struct
     structure Concr = struct
         val pos =
             fn ForAll (pos, _, _) => pos
-             | Arrow (pos, _) => pos
+             | Arrow (pos, _, _) => pos
              | Record (pos, _) => pos
              | RowExt (pos, _) => pos
              | EmptyRow pos => pos

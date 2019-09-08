@@ -1,10 +1,12 @@
 signature FAST_TERM = sig
     structure Type: CLOSED_FAST_TYPE
 
+    type explicitness = Cst.explicitness
+
     type def = {var: Name.t, typ: Type.concr}
 
     datatype expr
-        = Fn of Pos.t * def * expr
+        = Fn of Pos.t * def * explicitness * expr
         | TFn of Pos.t * Type.def vector * expr
         | Extend of Pos.t * Type.concr * (Name.t * expr) vector * expr option
         | Override of Pos.t * Type.concr * (Name.t * expr) vector * expr
@@ -63,10 +65,12 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     structure Type = Type
 
+    type explicitness = Cst.explicitness
+
     type def = {var: Name.t, typ: Type.concr}
 
     datatype expr
-        = Fn of Pos.t * def * expr
+        = Fn of Pos.t * def * explicitness * expr
         | TFn of Pos.t * Type.def vector * expr
         | Extend of Pos.t * Type.concr  * (Name.t * expr) vector * expr option
         | Override of Pos.t * Type.concr * (Name.t * expr) vector * expr
@@ -93,7 +97,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
     withtype clause = {pattern: pat, body: expr}
 
     val exprPos =
-        fn Fn (pos, _, _) => pos
+        fn Fn (pos, _, _, _) => pos
          | TFn (pos, _, _) => pos
          | Extend (pos, _, _, _) => pos
          | Override (pos, _, _, _) => pos
@@ -131,8 +135,8 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
        fn (label, expr) => Name.toDoc label <+> text "=" <+> exprToDoc expr
 
    and exprToDoc =
-       fn Fn (_, param, body) =>
-           text "\\" <> defToDoc param <+> text "=>" <+> exprToDoc body
+       fn Fn (_, param, explicitness, body) =>
+           text "\\" <> defToDoc param <+> Cst.arrowDoc explicitness <+> exprToDoc body
         | TFn (_, params, body) =>
            text "/\\" <> PPrint.punctuate space (Vector.map Type.defToDoc params)
                <+> text "=>" <+> exprToDoc body
@@ -209,7 +213,8 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
             <++> newline <> stmtsToDoc stmts
 
     val rec typeOf =
-        fn Fn (pos, {typ = domain, ...}, body) => Type.Arrow (pos, {domain, codomain = typeOf body})
+        fn Fn (pos, {typ = domain, ...}, explicitness, body) =>
+            Type.Arrow (pos, explicitness, {domain, codomain = typeOf body})
          | TFn (pos, params, body) => Type.ForAll (pos, params, typeOf body)
          | Extend (_, typ, _, _) | Override (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => typ
          | Field (_, typ, _, _) => typ

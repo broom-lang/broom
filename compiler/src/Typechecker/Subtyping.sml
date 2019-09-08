@@ -10,6 +10,7 @@ end = struct
     structure Uv = TypeVars.Uv
     structure Path = TypeVars.Path
     datatype predicativity = datatype TypeVars.predicativity
+    datatype explicitness = datatype Cst.explicitness
     structure FAst = FlexFAst
     structure FType = FAst.Type
     structure Id = FType.Id
@@ -73,7 +74,7 @@ end = struct
             val param = {var = Name.fresh (), typ = domain'}
             val arg = applyCoercion coerceDomain (FTerm.Use (pos, param))
             val body = applyCoercion coerceCodomain (FTerm.App (pos, codomain, {callee, arg}))
-        in FTerm.Fn (pos, param, body)
+        in FTerm.Fn (pos, param, Explicit, body)
         end
 
     datatype 'direction intent
@@ -97,7 +98,15 @@ end = struct
 
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
     fun coercion (intent: unit intent) (env: Env.t) currPos: concr * concr -> coercion =
-        fn (sub as ForAll universal, super) =>
+        fn (sub, super as ForAll universal) =>
+            (case intent
+             of Coerce () =>
+                 skolemize env universal (fn (env, params, body) =>
+                     Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
+                                (subType env currPos (sub, body))
+                 )
+              | Unify => raise TypeError (NonUnifiable (currPos, concr sub, concr super)))
+         | (sub as ForAll universal, super) =>
             (case intent
              of Coerce () =>
                  instantiate env universal (fn (env, args, body) =>
@@ -108,15 +117,20 @@ end = struct
                  (case super
                   of ForAll universal' => raise Fail "unimplemented"
                    | _ => raise TypeError (NonUnifiable (currPos, concr sub, concr super))))
-         | (sub, super as ForAll universal) =>
-            (case intent
-             of Coerce () =>
-                 skolemize env universal (fn (env, params, body) =>
-                     Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
-                                (subType env currPos (sub, body))
-                 )
-              | Unify => raise TypeError (NonUnifiable (currPos, concr sub, concr super)))
-         | (Arrow (_, arr), Arrow (_, arr')) => arrowCoercion intent env currPos (arr, arr')
+         | (sub, Arrow (_, Implicit, {domain, codomain})) =>
+            let val def = {var = Name.fresh (), typ = domain}
+                val coerceCodomain = coercion intent env currPos (sub, codomain)
+            in SOME (fn expr => FTerm.Fn (currPos, def, Implicit, applyCoercion coerceCodomain expr))
+            end
+         | (Arrow (_, Implicit, {domain, codomain}), super) =>
+            (case domain
+             of FType.Type (_, domain) =>
+                 let val arg = FTerm.Type (currPos, domain)
+                 in SOME (fn expr => FTerm.App (currPos, codomain, {callee = expr, arg}))
+                 end
+              | _ => raise Fail "implicit parameter not of type `type`")
+         | (Arrow (_, Explicit, arr), Arrow (_, Explicit, arr')) =>
+            arrowCoercion intent env currPos (arr, arr')
          | (sub as Record (_, row), super as Record (_, row')) =>
             recordCoercion intent env currPos (sub, super) (row, row')
          | (sub as RowExt _, super as RowExt _) =>
@@ -270,7 +284,7 @@ end = struct
     and doAssign (env: Env.t) y (uv, t: concr): coercion =
         case t
         of ForAll args => doAssignUniversal env y uv args
-         | Arrow (pos, domains) => doAssignArrow env y uv pos domains
+         | Arrow (pos, Explicit, domains) => doAssignArrow env y uv pos domains
          | RowExt _ | EmptyRow _ | Record _ | CallTFn _ | Prim _ | Type _ => uvSet env (uv, t)
          | UseT (_, {var, ...}) => 
             if idInScope env var
@@ -304,7 +318,7 @@ end = struct
             val codomainUv = TypeVars.Uv.freshSibling (uv, Predicative)
             val arrow' = { domain = SVar (pos, UVar domainUv)
                          , codomain = SVar (pos, UVar codomainUv)}
-            val t' = Arrow (pos, arrow')
+            val t' = Arrow (pos, Explicit, arrow')
             do ignore (uvSet env (uv, t'))
             val coerceDomain = assign env (contra y, domainUv, domain) (* contravariance *)
             val coerceCodomain = assign env (y, codomainUv, codomain)

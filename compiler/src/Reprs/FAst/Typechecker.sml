@@ -94,8 +94,10 @@ end = struct
                                        env params'
             in eq env (body, body')
             end
-         | (Arrow (_, {domain, codomain}), Arrow (_, {domain = domain', codomain = codomain'})) =>
-            eq env (domain, domain') andalso eq env (codomain, codomain')
+         | (Arrow (_, expl, {domain, codomain}), Arrow (_, expl', {domain = domain', codomain = codomain'})) =>
+            expl = expl'
+            andalso eq env (domain, domain')
+            andalso eq env (codomain, codomain')
          | (Record (_, row), Record (_, row')) => eq env (row, row')
          | (RowExt (_, {field = (label, fieldt), ext}), row' as RowExt _) =>
             (case rewriteRow label row'
@@ -151,9 +153,9 @@ end = struct
          | Type (pos, t) => FFType.Type (pos, t)
          | Const (pos, c) => Prim (pos, Const.typeOf c)
 
-    and checkFn env (pos, {var = param, typ = domain}, body) =
+    and checkFn env (pos, {var = param, typ = domain}, expl, body) =
         let val env = Env.insert (env, param, domain)
-        in Arrow (pos, {domain, codomain = check env body})
+        in Arrow (pos, expl, {domain, codomain = check env body})
         end
 
     and checkTFn env (pos, params, body) =
@@ -194,7 +196,7 @@ end = struct
 
     and checkApp env (_, typ, {callee, arg}) =
         case check env callee
-        of Arrow (_, {domain, codomain}) =>
+        of Arrow (_, _, {domain, codomain}) =>
             let val argType = check env arg
             in checkEq env (argType, domain)
              ; checkEq env (codomain, typ)

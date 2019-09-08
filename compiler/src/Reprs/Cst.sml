@@ -41,6 +41,8 @@ signature CST = sig
     and clause = {pattern: pat, body: expr}
     and row = {fields: (Name.t * expr) vector, ext: expr option}
 
+    val arrowDoc: explicitness -> PPrint.t
+
     structure Type: sig
         structure Prim: PRIM_TYPE where type t = PrimType.t
 
