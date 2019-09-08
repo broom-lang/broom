@@ -1,8 +1,10 @@
 signature CST = sig
     structure Prim: PRIM_TYPE where type t = PrimType.t
 
+    datatype explicitness = Implicit | Explicit
+
     datatype typ
-        = Pi of Pos.t * def * typ
+        = Pi of Pos.t * def * explicitness * typ
         | RecordT of Pos.t * typ
         | RowExt of Pos.t * {fields: (Name.t * typ) vector, ext: typ}
         | EmptyRow of Pos.t
@@ -14,7 +16,7 @@ signature CST = sig
         | Prim of Pos.t * Prim.t
 
     and expr
-        = Fn of Pos.t * clause vector
+        = Fn of Pos.t * explicitness * clause vector
         | Let of Pos.t * stmt vector * expr
         | Match of Pos.t * expr * clause vector
         | Record of Pos.t * row
@@ -74,8 +76,10 @@ structure Cst :> CST = struct
 
     structure Prim = PrimType
 
+    datatype explicitness = Implicit | Explicit
+
     datatype typ
-        = Pi of Pos.t * def * typ
+        = Pi of Pos.t * def * explicitness * typ
         | RecordT of Pos.t * typ
         | RowExt of Pos.t * {fields: (Name.t * typ) vector, ext: typ}
         | EmptyRow of Pos.t
@@ -87,7 +91,7 @@ structure Cst :> CST = struct
         | Prim of Pos.t * Prim.t
 
     and expr
-        = Fn of Pos.t * clause vector
+        = Fn of Pos.t * explicitness * clause vector
         | Let of Pos.t * stmt vector * expr
         | Match of Pos.t * expr * clause vector
         | Record of Pos.t * row
@@ -113,7 +117,7 @@ structure Cst :> CST = struct
     and row = {fields: (Name.t * expr) vector, ext: expr option}
 
     val exprPos =
-        fn Fn (pos, _) => pos
+        fn Fn (pos, _, _) => pos
          | Let (pos, _, _) => pos
          | Match (pos, _, _) => pos
          | Record (pos, _) => pos
@@ -126,7 +130,7 @@ structure Cst :> CST = struct
          | Const (pos, _) => pos
 
     val typePos =
-        fn Pi (pos, _, _) => pos
+        fn Pi (pos, _, _, _) => pos
          | RecordT (pos, _) => pos
          | RowExt (pos, _) => pos
          | EmptyRow pos => pos
@@ -137,10 +141,14 @@ structure Cst :> CST = struct
          | Path expr => exprPos expr
          | Prim (pos, _) => pos
 
+    val arrowDoc =
+        fn Implicit => text "=>"
+         | Explicit => text "->"
+
     val rec typeToDoc =
-        fn Pi (_, {var, typ = domain}, codomain) =>
+        fn Pi (_, {var, typ = domain}, explicitness, codomain) =>
             text "fun" <+> Name.toDoc var <> annToDoc domain
-                <+> text "->" <+> typeToDoc codomain
+                <+> arrowDoc explicitness <+> typeToDoc codomain
          | RecordT (_, row) => braces (typeToDoc row)
          | RowExt (_, {fields, ext}) =>
             let fun fieldToDoc (label, fieldt) = 
@@ -167,9 +175,11 @@ structure Cst :> CST = struct
          | NONE => PPrint.empty
 
     and exprToDoc =
-        fn Fn (_, clauses) => braces (PPrint.align (clausesToDoc clauses))
+        fn Fn (_, explicitness, clauses) =>
+            braces (PPrint.align (clausesToDoc explicitness clauses))
          | Match (_, matchee, clauses) =>
-            text "match" <+> exprToDoc matchee <+> braces (PPrint.align (clausesToDoc clauses))
+            text "match" <+> exprToDoc matchee
+                <+> braces (PPrint.align (clausesToDoc Explicit clauses))
          | Record (_, row) => braces (rowToDoc row)
          | Module (_, stmts) =>
             text "module"
@@ -196,8 +206,10 @@ structure Cst :> CST = struct
             in fieldsDoc <> extDoc
             end
 
-    and clauseToDoc = fn {pattern, body} => patToDoc pattern <+> text "=>" <+> exprToDoc body
-    and clausesToDoc = fn clauses => PPrint.punctuate newline (Vector.map clauseToDoc clauses)
+    and clauseToDoc = fn explicitness => fn {pattern, body} =>
+        patToDoc pattern <+> arrowDoc explicitness <+> exprToDoc body
+    and clausesToDoc = fn explicitness => fn clauses =>
+        PPrint.punctuate newline (Vector.map (clauseToDoc explicitness) clauses)
 
     and stmtToDoc =
         fn Val (_, pat, valExpr) =>

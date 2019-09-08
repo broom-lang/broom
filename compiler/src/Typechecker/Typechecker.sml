@@ -7,6 +7,7 @@ end = struct
     datatype predicativity = datatype TypeVars.predicativity
     structure CTerm = Cst.Term
     structure CType = Cst.Type
+    datatype explicitness = datatype Cst.explicitness
     structure FAst = FlexFAst
     structure FTerm = FAst.Term
     structure FType = FAst.Type
@@ -119,7 +120,7 @@ end = struct
             val env = Env.pushScope env absScope
 
             fun elaborate env =
-                fn CType.Pi (pos, {var, typ = domain}, codomain) =>
+                fn CType.Pi (pos, {var, typ = domain}, Explicit, codomain) =>
                     let val (typeDefs, domain) =
                             case domain
                             of SOME domain => elaborateType env domain
@@ -201,7 +202,7 @@ end = struct
     (* Elaborate the expression `exprRef` and return its computed type. *)
     and elaborateExpr (env: Env.t) (expr: CTerm.expr): concr * FTerm.expr =
         case expr
-        of CTerm.Fn (pos, clauses) => (* TODO: Exhaustiveness checking: *)
+        of CTerm.Fn (pos, Explicit, clauses) => (* TODO: Exhaustiveness checking: *)
             let val codomain = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
                 val (domain, clauses) =
                     elaborateClauses env (fn (env, body) => elaborateExprAs env codomain body) clauses
@@ -302,7 +303,7 @@ end = struct
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
     and elaborateExprAs (env: Env.t) (typ: concr) (expr: CTerm.expr): FTerm.expr =
         case expr
-        of CTerm.Fn (pos, clauses) => (* TODO: Exhaustiveness checking: *)
+        of CTerm.Fn (pos, Explicit, clauses) => (* TODO: Exhaustiveness checking: *)
             (case typ
              of FType.ForAll args => elaborateAsForAll env args expr
               | FType.Arrow (_, {domain, codomain}) =>

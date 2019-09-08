@@ -4,6 +4,7 @@ parser BroomParser where
 open BroomTokens
 structure Term = Cst.Term
 structure Type = Cst.Type
+datatype explicitness = datatype Cst.explicitness
 %}
 
 token {%BroomTokens.t%}
@@ -19,6 +20,7 @@ token {%BroomTokens.t%}
     | Interface 'interface'
     | End 'end'
     | Eq '='
+    | DArrow '=>'
     | Arrow '->'
     | Bar '|'
     | Amp '&'
@@ -45,12 +47,12 @@ start program = stmts {% Vector.fromList stmts %};
 stmt
     = pos 'val' pattern '=' expr {% Term.Val (pos, pattern, expr) %}
     | pos 'fun' Id pats=apat+ '=' expr {% let
-          fun step (pattern, body) = Term.Fn (pos, #[{pattern, body}])
+          fun step (pattern, body) = Term.Fn (pos, Explicit, #[{pattern, body}])
           in Term.Val (pos, Term.Def (pos, valOf (toName tokId)), List.foldr step expr pats)
       end %}
     | pos 'type' Id pats=kpat* '=' typ {% let
           fun step ((pos, {var, typ}), body) =
-              Term.Fn (pos, #[{pattern = Term.AnnP (pos, {pat = Term.Def (pos, var), typ}), body}])
+              Term.Fn (pos, Explicit, #[{pattern = Term.AnnP (pos, {pat = Term.Def (pos, var), typ}), body}])
           in Term.Val ( pos, Term.Def (pos, valOf (toName tokId))
                       , List.foldr step (Term.Type (pos, typ)) pats )
       end %}
@@ -78,12 +80,16 @@ ascription = pos arrow typ=(':' typ {%typ%})? {% case typ
                                                   | NONE => arrow %};
 
 arrow
-    = pos 'pi' piParam '->' body=arrow {% Term.Type (pos, Type.Pi (pos, piParam, Type.Path body)) %}
-    | pos binapp codomain=('->' arrow {%arrow%})?
+    = pos 'pi' piParam arr body=arrow
+      {% Term.Type (pos, Type.Pi (pos, piParam, arr, Type.Path body)) %}
+    | pos binapp codomain=(arr arrow {% (arr, arrow) %})?
       {% case codomain
-         of SOME cd => Term.Type (pos, Type.Pi (pos, {var = Name.fresh (), typ = SOME (Type.Path binapp)}, Type.Path cd))
+         of SOME (arr, cd) =>
+             let val def = {var = Name.fresh (), typ = SOME (Type.Path binapp)}
+             in Term.Type (pos, Type.Pi (pos, def, arr, Type.Path cd))
+             end
           | NONE => binapp %}
-    ; 
+    ;
 
 binapp = app {% app %};
 
@@ -96,7 +102,9 @@ select = pos nestable fields=('.' Id {% valOf (toName tokId) %})*
                      nestable fields %};
 
 nestable
-    = pos '{' res=( '|' clauses '}' {% Term.Fn (pos, clauses) %}
+    = pos '{' res=( '|' clauses '}' {% let val (explicitness, clauses) = clauses
+                                       in Term.Fn (pos, explicitness, clauses)
+                                       end %}
                   | '}'             {% Term.Record (pos, {fields = #[], ext = NONE}) %}
                   | ':' '}'         {% Term.Type (pos, Type.RecordT (pos, Type.EmptyRow pos)) %}
                   | '..' expr '}'   {% Term.Record (pos, {fields = #[], ext = SOME expr}) %}
@@ -119,7 +127,7 @@ nestable
                                                         end %} )
                        {% res %} )
               {% res %}
-    | pos 'match' select '{' '|' clauses '}' {% Term.Match (pos, select, clauses) %}
+    | pos 'match' select '{' '|' clauses=explicitClauses '}' {% Term.Match (pos, select, clauses) %}
     | pos 'do' stmts 'end' {% case stmts
                               of [] => Term.Let (pos, #[], Term.Const (pos, Const.Unit))
                                | _ => let val rec loop =
@@ -143,9 +151,17 @@ nestable
     | atom {% atom %}
     ;
 
-clauses = clause clauses=('|' clause {% clause %})* {% Vector.fromList (clause :: clauses) %};
+clauses = pattern=paramPattern clauses=( '->' body=expr clauses=('|' explicitClause {% explicitClause %})*
+                                         {% (Explicit, Vector.fromList ({pattern, body} :: clauses)) %}
+                                       | '=>' body=expr clauses=('|' implicitClause {% implicitClause %})*
+                                         {% (Implicit, Vector.fromList ({pattern, body} :: clauses)) %} )
+                               {% clauses %};
 
-clause = pattern=paramPattern '->' body=expr {% {pattern, body} %};
+explicitClauses = explicitClause clauses=('|' explicitClause {% explicitClause %})*
+                  {% Vector.fromList (explicitClause :: clauses) %};
+
+explicitClause = pattern=paramPattern '->' body=expr {% {pattern, body} %};
+implicitClause = pattern=paramPattern '=>' body=expr {% {pattern, body} %};
 
 recordTail = fields=(',' recordField {%recordField%})* ext=('..' expr {%expr%})? {% {fields, ext} %};
 
@@ -169,7 +185,7 @@ decl
                             of SOME (ptyp as (_, typ)) => Type.Singleton (pos, Term.Type ptyp)
                              | NONE => Type.TypeT pos
              fun step ((pos, {var, typ}), codomain) =
-                 Type.Pi (pos, {var, typ = SOME typ}, codomain)
+                 Type.Pi (pos, {var, typ = SOME typ}, Explicit, codomain)
          in (valOf (toName tokId), List.foldr step codomain pats)
          end %}
     ;
@@ -187,6 +203,11 @@ atom
 const
     = Int  {% Const.Int (valOf (toInt tokInt)) %}
     | Bool {% Const.Bool (valOf (toBool tokBool)) %}
+    ;
+
+arr
+    = '->' {% Explicit %}
+    | '=>' {% Implicit %}
     ;
 
 # Patterns
