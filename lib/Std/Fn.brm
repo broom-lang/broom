@@ -1,6 +1,6 @@
 type FN = interface
-    val id : forall a => a -> a
-    val const : forall a b => a -> (b -> a)
+    val id : pi a => a -> a
+    val const : pi a b => a -> (b -> a)
 end
 
 val Fn = module

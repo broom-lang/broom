@@ -3,16 +3,16 @@ type ARRAY = interface
     type size = uint
     type key = uint
 
-    val count : forall elem => t elem -> size
-    val get : forall elem => t elem -> key -> elem
-    val set : forall elem => t elem -> key -> elem -> t elem
-    val update : forall elem => t elem -> key -> (elem -> elem) -> t elem
+    val count : pi elem => t elem -> size
+    val get : pi elem => t elem -> key -> elem
+    val set : pi elem => t elem -> key -> elem -> t elem
+    val update : pi elem => t elem -> key -> (elem -> elem) -> t elem
 
-    val unfoldl : forall elem elem => size -> (state -> elem * state) -> state -> t elem * state
-    val unfoldr : forall elem state => size -> (state -> elem * state) -> state -> t elem * state
+    val unfoldl : pi elem elem => size -> (state -> elem * state) -> state -> t elem * state
+    val unfoldr : pi elem state => size -> (state -> elem * state) -> state -> t elem * state
 
-    val foldl : forall elem state => (state -> elem -> state) -> state -> t elem -> state
-    val foldr : forall elem state => (elem -> state -> state) -> state -> t elem -> state
+    val foldl : pi elem state => (state -> elem -> state) -> state -> t elem -> state
+    val foldr : pi elem state => (elem -> state -> state) -> state -> t elem -> state
 end
 
 val Array : ARRAY = module
@@ -36,9 +36,9 @@ val Array : ARRAY = module
     val Builder : interface
         type t elem
 
-        val new : forall elem => size -> t elem
-        val set : forall elem => t elem -> key -> elem -> unit
-        val build : forall elem => t elem -> Array.t elem
+        val new : pi elem => size -> t elem
+        val set : pi elem => t elem -> key -> elem -> unit
+        val build : pi elem => t elem -> Array.t elem
     end = module
         type t elem = __array elem
 
