@@ -48,8 +48,12 @@ stmt
           fun step (pattern, body) = Term.Fn (pos, #[{pattern, body}])
           in Term.Val (pos, Term.Def (pos, valOf (toName tokId)), List.foldr step expr pats)
       end %}
-    | pos 'type' Id '=' typ {% Term.Val ( pos, Term.Def (pos, valOf (toName tokId))
-                                        , Term.Type (pos, typ) ) %}
+    | pos 'type' Id pats=kpat* '=' typ {% let
+          fun step ((pos, {var, typ}), body) =
+              Term.Fn (pos, #[{pattern = Term.AnnP (pos, {pat = Term.Def (pos, var), typ}), body}])
+          in Term.Val ( pos, Term.Def (pos, valOf (toName tokId))
+                      , List.foldr step (Term.Type (pos, typ)) pats )
+      end %}
     | ';' expr {% Term.Expr expr %}
     ;
 
@@ -160,10 +164,14 @@ rowField = Id ':' typ {% (valOf (toName tokId), typ) %};
 
 decl
     = 'val' Id ':' typ {% (valOf (toName tokId), typ) %}
-    | pos 'type' Id typ=('=' pos typ {% (pos, typ) %})?
-      {% case typ
-         of SOME (pos, t) => (valOf (toName tokId), Type.Singleton (pos, Term.Type (pos, t)))
-          | NONE => (valOf (toName tokId), Type.TypeT pos) %}
+    | pos 'type' Id pats=kpat* typ=('=' pos typ {% (pos, typ) %})?
+      {% let val codomain = case typ
+                            of SOME (ptyp as (_, typ)) => Type.Singleton (pos, Term.Type ptyp)
+                             | NONE => Type.TypeT pos
+             fun step ((pos, {var, typ}), codomain) =
+                 Type.Pi (pos, {var, typ = SOME typ}, codomain)
+         in (valOf (toName tokId), List.foldr step codomain pats)
+         end %}
     ;
 
 atom
@@ -201,5 +209,10 @@ apat
     = '(' pattern ')' {% pattern %}
     | pos Id          {% Term.Def (pos, valOf (toName tokId)) %}
     | pos const       {% Term.ConstP (pos, const) %}
+    ;
+
+kpat
+    = pos Id                      {% (pos, {var = valOf (toName tokId), typ = (Type.TypeT pos)}) %}
+    | pos '(' Id ':' kind=typ ')' {% (pos, {var = valOf (toName tokId), typ = kind}) %}
     ;
 
