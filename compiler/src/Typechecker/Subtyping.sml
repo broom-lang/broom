@@ -69,12 +69,14 @@ end = struct
         of SOME f => f expr
          | NONE => expr
 
-    fun fnCoercion coerceDomain coerceCodomain ({domain = _, codomain}, {domain = domain', codomain = _}) callee =
+    (* FIXME: Effect subtyping: *)
+    fun fnCoercion coerceDomain coerceCodomain
+                   ((eff, {domain = _, codomain}), (eff', {domain = domain', codomain = _})) callee =
         let val pos = FTerm.exprPos callee
             val param = {var = Name.fresh (), typ = domain'}
             val arg = applyCoercion coerceDomain (FTerm.Use (pos, param))
             val body = applyCoercion coerceCodomain (FTerm.App (pos, codomain, {callee, arg}))
-        in FTerm.Fn (pos, param, Explicit, body)
+        in FTerm.Fn (pos, param, Explicit eff', body)
         end
 
     datatype 'direction intent
@@ -129,8 +131,8 @@ end = struct
                  in SOME (fn expr => FTerm.App (currPos, codomain, {callee = expr, arg}))
                  end
               | _ => raise Fail "implicit parameter not of type `type`")
-         | (Arrow (_, Explicit, arr), Arrow (_, Explicit, arr')) =>
-            arrowCoercion intent env currPos (arr, arr')
+         | (Arrow (_, Explicit eff, arr), Arrow (_, Explicit eff', arr')) =>
+            arrowCoercion intent env currPos ((eff, arr), (eff', arr'))
          | (sub as Record (_, row), super as Record (_, row')) =>
             recordCoercion intent env currPos (sub, super) (row, row')
          | (sub as RowExt _, super as RowExt _) =>
@@ -163,7 +165,9 @@ end = struct
 
     and unify env = coercion Unify env
 
-    and arrowCoercion intent env currPos (arrows as ({domain, codomain}, {domain = domain', codomain = codomain'})) =
+    (* FIXME: Effect subtyping: *)
+    and arrowCoercion intent env currPos
+                      (arrows as ((_, {domain, codomain}), (_, {domain = domain', codomain = codomain'}))) =
         let val coerceDomain = coercion intent env currPos (domain', domain)
             val coerceCodomain = coercion intent env currPos (codomain, codomain')
         in if isSome coerceDomain orelse isSome coerceCodomain
@@ -284,7 +288,7 @@ end = struct
     and doAssign (env: Env.t) y (uv, t: concr): coercion =
         case t
         of ForAll args => doAssignUniversal env y uv args
-         | Arrow (pos, Explicit, domains) => doAssignArrow env y uv pos domains
+         | Arrow (pos, Explicit eff, domains) => doAssignArrow env y uv pos eff domains
          | RowExt _ | EmptyRow _ | Record _ | CallTFn _ | Prim _ | Type _ => uvSet env (uv, t)
          | UseT (_, {var, ...}) => 
             if idInScope env var
@@ -313,19 +317,19 @@ end = struct
                            (doAssign env y (uv, body))
             )
 
-    and doAssignArrow (env: Env.t) y uv pos (arrow as {domain, codomain}) =
+    and doAssignArrow (env: Env.t) y uv pos eff (arrow as {domain, codomain}) =
         let val domainUv = TypeVars.Uv.freshSibling (uv, Predicative)
             val codomainUv = TypeVars.Uv.freshSibling (uv, Predicative)
             val arrow' = { domain = SVar (pos, UVar domainUv)
                          , codomain = SVar (pos, UVar codomainUv)}
-            val t' = Arrow (pos, Explicit, arrow')
+            val t' = Arrow (pos, Explicit eff, arrow')
             do ignore (uvSet env (uv, t'))
             val coerceDomain = assign env (contra y, domainUv, domain) (* contravariance *)
             val coerceCodomain = assign env (y, codomainUv, codomain)
         in if isSome coerceDomain orelse isSome coerceCodomain
            then let val arrows = case y
-                                 of Coerce Up => (arrow', arrow)
-                                  | Coerce Down => (arrow, arrow')
+                                 of Coerce Up => ((eff, arrow'), (eff, arrow))
+                                  | Coerce Down => ((eff, arrow), (eff, arrow'))
                 in SOME (fnCoercion coerceDomain coerceCodomain arrows)
                 end
            else NONE

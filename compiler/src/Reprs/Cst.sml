@@ -1,10 +1,14 @@
 signature CST = sig
     structure Prim: PRIM_TYPE where type t = PrimType.t
 
-    datatype explicitness = Implicit | Explicit
+    datatype 'eff explicitness = Implicit | Explicit of 'eff
+
+    datatype effect = Pure | Impure
+
+    type arrow = effect explicitness
 
     datatype typ
-        = Pi of Pos.t * def * explicitness * typ
+        = Pi of Pos.t * def * arrow * typ
         | RecordT of Pos.t * typ
         | RowExt of Pos.t * {fields: (Name.t * typ) vector, ext: typ}
         | EmptyRow of Pos.t
@@ -16,7 +20,7 @@ signature CST = sig
         | Prim of Pos.t * Prim.t
 
     and expr
-        = Fn of Pos.t * explicitness * clause vector
+        = Fn of Pos.t * arrow * clause vector
         | Let of Pos.t * stmt vector * expr
         | Match of Pos.t * expr * clause vector
         | Record of Pos.t * row
@@ -41,7 +45,7 @@ signature CST = sig
     and clause = {pattern: pat, body: expr}
     and row = {fields: (Name.t * expr) vector, ext: expr option}
 
-    val arrowDoc: explicitness -> PPrint.t
+    val arrowDoc: arrow -> PPrint.t
 
     structure Type: sig
         structure Prim: PRIM_TYPE where type t = PrimType.t
@@ -78,10 +82,14 @@ structure Cst :> CST = struct
 
     structure Prim = PrimType
 
-    datatype explicitness = Implicit | Explicit
+    datatype 'eff explicitness = Implicit | Explicit of 'eff
+
+    datatype effect = Pure | Impure
+
+    type arrow = effect explicitness
 
     datatype typ
-        = Pi of Pos.t * def * explicitness * typ
+        = Pi of Pos.t * def * arrow * typ
         | RecordT of Pos.t * typ
         | RowExt of Pos.t * {fields: (Name.t * typ) vector, ext: typ}
         | EmptyRow of Pos.t
@@ -93,7 +101,7 @@ structure Cst :> CST = struct
         | Prim of Pos.t * Prim.t
 
     and expr
-        = Fn of Pos.t * explicitness * clause vector
+        = Fn of Pos.t * arrow * clause vector
         | Let of Pos.t * stmt vector * expr
         | Match of Pos.t * expr * clause vector
         | Record of Pos.t * row
@@ -145,12 +153,13 @@ structure Cst :> CST = struct
 
     val arrowDoc =
         fn Implicit => text "=>"
-         | Explicit => text "->"
+         | Explicit Pure => text "->"
+         | Explicit Impure => text "~>"
 
     val rec typeToDoc =
-        fn Pi (_, {var, typ = domain}, explicitness, codomain) =>
+        fn Pi (_, {var, typ = domain}, arrow, codomain) =>
             text "fun" <+> Name.toDoc var <> annToDoc domain
-                <+> arrowDoc explicitness <+> typeToDoc codomain
+                <+> arrowDoc arrow <+> typeToDoc codomain
          | RecordT (_, row) => braces (typeToDoc row)
          | RowExt (_, {fields, ext}) =>
             let fun fieldToDoc (label, fieldt) = 
@@ -177,11 +186,11 @@ structure Cst :> CST = struct
          | NONE => PPrint.empty
 
     and exprToDoc =
-        fn Fn (_, explicitness, clauses) =>
-            braces (PPrint.align (clausesToDoc explicitness clauses))
+        fn Fn (_, arrow, clauses) =>
+            braces (PPrint.align (clausesToDoc arrow clauses))
          | Match (_, matchee, clauses) =>
             text "match" <+> exprToDoc matchee
-                <+> braces (PPrint.align (clausesToDoc Explicit clauses))
+                <+> braces (PPrint.align (clausesToDoc (Explicit Pure) clauses))
          | Record (_, row) => braces (rowToDoc row)
          | Module (_, stmts) =>
             text "module"
@@ -208,10 +217,10 @@ structure Cst :> CST = struct
             in fieldsDoc <> extDoc
             end
 
-    and clauseToDoc = fn explicitness => fn {pattern, body} =>
-        patToDoc pattern <+> arrowDoc explicitness <+> exprToDoc body
-    and clausesToDoc = fn explicitness => fn clauses =>
-        PPrint.punctuate newline (Vector.map (clauseToDoc explicitness) clauses)
+    and clauseToDoc = fn arrow => fn {pattern, body} =>
+        patToDoc pattern <+> arrowDoc arrow <+> exprToDoc body
+    and clausesToDoc = fn arrow => fn clauses =>
+        PPrint.punctuate newline (Vector.map (clauseToDoc arrow) clauses)
 
     and stmtToDoc =
         fn Val (_, pat, valExpr) =>

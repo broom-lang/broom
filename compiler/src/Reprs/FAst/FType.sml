@@ -2,7 +2,9 @@ signature FAST_TYPE = sig
     structure Id: ID
     structure Prim: PRIM_TYPE where type t = PrimType.t
 
-    type explicitness = Cst.explicitness
+    datatype effect = Pure | Impure
+
+    type arrow = effect Cst.explicitness
 
     datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
                   | TypeK of Pos.t
@@ -14,7 +16,7 @@ signature FAST_TYPE = sig
 
     datatype 'sv concr
         = ForAll of Pos.t * def vector * 'sv concr
-        | Arrow of Pos.t * explicitness * {domain: 'sv concr, codomain: 'sv concr}
+        | Arrow of Pos.t * arrow * {domain: 'sv concr, codomain: 'sv concr}
         | Record of Pos.t * 'sv concr
         | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
         | EmptyRow of Pos.t
@@ -35,6 +37,7 @@ signature FAST_TYPE = sig
     val kindToDoc: kind -> PPrint.t
     val kindToString: kind -> string
     val defToDoc: def -> PPrint.t
+    val arrowDoc: arrow -> PPrint.t
     val rowExtTail: 'sv concr -> 'sv concr
     val unit: Pos.t -> 'sv concr
     
@@ -79,7 +82,9 @@ structure FType :> FAST_TYPE = struct
 
     structure Prim = PrimType
 
-    type explicitness = Cst.explicitness
+    datatype effect = Pure | Impure
+
+    type arrow = effect Cst.explicitness
 
     datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
                   | TypeK of Pos.t
@@ -91,7 +96,7 @@ structure FType :> FAST_TYPE = struct
 
     datatype 'sv concr
         = ForAll of Pos.t * def vector * 'sv concr
-        | Arrow of Pos.t * explicitness * {domain: 'sv concr, codomain: 'sv concr}
+        | Arrow of Pos.t * arrow * {domain: 'sv concr, codomain: 'sv concr}
         | Record of Pos.t * 'sv concr
         | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
         | EmptyRow of Pos.t
@@ -108,6 +113,11 @@ structure FType :> FAST_TYPE = struct
         = Refl of 'sv concr
         | Symm of 'sv co
         | UseCo of Name.t
+
+    val arrowDoc =
+        fn Cst.Implicit => text "=>"
+         | Cst.Explicit Pure => text "->"
+         | Cst.Explicit Impure => text "~>"
 
     val rec kindToDoc =
         fn TypeK _ => text "Type"
@@ -126,8 +136,8 @@ structure FType :> FAST_TYPE = struct
                 fn ForAll (_, params, t) =>
                     text "forall" <+> PPrint.punctuate space (Vector.map defToDoc params)
                         <+> text "." <+> concrToDoc t
-                 | Arrow (_, explicitness, {domain, codomain}) =>
-                    concrToDoc domain <+> Cst.arrowDoc explicitness <+> concrToDoc codomain
+                 | Arrow (_, arrow, {domain, codomain}) =>
+                    concrToDoc domain <+> arrowDoc arrow <+> concrToDoc codomain
                  | Record (_, row) =>
                     let val oneLiner = braces (rowToOneLiner svarToDoc row)
                         val multiLiner =
@@ -188,8 +198,8 @@ structure FType :> FAST_TYPE = struct
 
     fun mapConcrChildren f =
         fn ForAll (pos, param, body) => ForAll (pos, param, f body)
-         | Arrow (pos, explicitness, {domain, codomain}) =>
-            Arrow (pos, explicitness, {domain = f domain, codomain = f codomain})
+         | Arrow (pos, arrow, {domain, codomain}) =>
+            Arrow (pos, arrow, {domain = f domain, codomain = f codomain})
          | Record (pos, row) => Record (pos, f row)
          | RowExt (pos, {field = (label, fieldt), ext}) =>
             RowExt (pos, {field = (label, f fieldt), ext = f ext})
@@ -201,8 +211,8 @@ structure FType :> FAST_TYPE = struct
 
     fun concrCata (alg as {forAll, arrow, record, rowExt, emptyRow, typ, svar, callTFn, uset, prim}) =
         fn ForAll (pos, param, body) => forAll (pos, param, concrCata alg body)
-         | Arrow (pos, explicitness, {domain, codomain}) =>
-            arrow (pos, explicitness, {domain = concrCata alg domain, codomain = concrCata alg codomain})
+         | Arrow (pos, arr, {domain, codomain}) =>
+            arrow (pos, arr, {domain = concrCata alg domain, codomain = concrCata alg codomain})
          | Record (pos, row) => record (pos, concrCata alg row)
          | RowExt (pos, {field = (label, fieldt), ext}) =>
             rowExt (pos, {field = (label, concrCata alg fieldt), ext = concrCata alg ext})
@@ -317,6 +327,8 @@ signature CLOSED_FAST_TYPE = sig
     type def = FType.def
     type tfn_sig = FType.tfn_sig
 
+    type arrow = FType.arrow
+
     datatype concr' = datatype FType.concr
     datatype abs' = datatype FType.abs
     datatype co' = datatype FType.co
@@ -328,6 +340,7 @@ signature CLOSED_FAST_TYPE = sig
 
     val kindToDoc: kind -> PPrint.t
     val defToDoc: def -> PPrint.t
+    val arrowDoc: arrow -> PPrint.t
     val svarToDoc: sv -> PPrint.t
     val rowExtTail: concr -> concr
     val unit: Pos.t -> concr

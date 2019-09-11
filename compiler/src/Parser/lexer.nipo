@@ -11,6 +11,7 @@ start tok
                       | 2 => DArrow s
                       | _ => raise Fail "unreachable" %}
     | '-' '>'  {% Arrow o #1 %}
+    | '~' '>'  {% WArrow o #1 %}
     | '|'      {% Bar o #1 %}
     | '&'      {% Amp o #1 %}
     | '.' '.'? {% fn (s, cs, _) =>

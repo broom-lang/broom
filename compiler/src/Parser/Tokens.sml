@@ -13,6 +13,7 @@ structure BroomTokens = struct
         | Pi of Pos.t
         | Eq of Pos.t
         | DArrow of Pos.t
+        | WArrow of Pos.t
         | Arrow of Pos.t
         | Bar of Pos.t
         | Amp of Pos.t
@@ -50,6 +51,7 @@ structure BroomTokens = struct
          | Pi pos => pos
          | Eq pos => pos
          | DArrow pos => pos
+         | WArrow pos => pos
          | Arrow pos => pos
          | Bar pos => pos
          | Amp pos => pos
@@ -97,6 +99,7 @@ structure BroomTokens = struct
          | Pi _ => "pi"
          | Eq _ => "="
          | DArrow _ => "=>"
+         | WArrow _ => "~>"
          | Arrow _ => "->"
          | Bar _ => "|"
          | Amp _ => "&"

@@ -132,7 +132,7 @@ end = struct
                         val env = Env.pushScope env fnScope
 
                         val codomain = elaborate env codomain
-                        val arrow = FType.Arrow (pos, expl, {domain, codomain})
+                        val arrow = FType.Arrow (pos, elaborateArr expl, {domain, codomain})
                     in case typeDefs
                        of [] => arrow
                         | _ => FType.ForAll (pos, Vector.fromList typeDefs, arrow)
@@ -180,6 +180,16 @@ end = struct
         in (defs, t)
         end
 
+    and elaborateArr arr =
+        case arr
+        of Implicit => Implicit
+         | Explicit eff => Explicit (elaborateEff eff)
+
+    and elaborateEff eff =
+        case eff
+        of Cst.Pure => FType.Pure
+         | Cst.Impure => FType.Impure
+
     and declsScope decls =
         let val builder = Bindings.Expr.Builder.new ()
             do Vector.app (fn (name, t) =>
@@ -211,6 +221,7 @@ end = struct
                     of SOME (typeDefs, domain) => (typeDefs, domain)
                      | NONE => (#[], FType.SVar (pos, FType.UVar (Env.freshUv env Predicative)))
                 val def = {var = Name.fresh (), typ = domain}
+                val expl = elaborateArr expl
             in ( let val arrow = FType.Arrow (pos, expl, {domain, codomain})
                  in case typeDefs
                     of #[] => arrow
@@ -307,16 +318,18 @@ end = struct
             (case typ
              of FType.ForAll args => elaborateAsForAll env args expr
               | FType.Arrow (_, expl', {domain, codomain}) =>
-                 if expl = expl'
-                 then let val clauses = elaborateClausesAs env domain
-                                            (fn (env, body) => elaborateExprAs env codomain body)
-                                            clauses
-                          val def = {var = Name.fresh (), typ = domain}
-                      in FTerm.Fn ( pos, def, expl
-                                  , FTerm.Match ( pos, codomain, FTerm.Use (pos, def)
-                                                , clauses ) )
-                      end
-                 else raise Fail "Explicitness mismatch"
+                 let val expl = elaborateArr expl
+                 in if expl = expl'
+                    then let val clauses = elaborateClausesAs env domain
+                                               (fn (env, body) => elaborateExprAs env codomain body)
+                                               clauses
+                             val def = {var = Name.fresh (), typ = domain}
+                         in FTerm.Fn ( pos, def, expl
+                                     , FTerm.Match ( pos, codomain, FTerm.Use (pos, def)
+                                                   , clauses ) )
+                         end
+                    else raise Fail "Explicitness mismatch"
+                 end
               | _ => coerceExprTo env typ expr)
          | CTerm.Match (pos, matchee, clauses) => (* TODO: Exhaustiveness checking: *)
             let val (matcheeTyp, matchee) = elaborateExpr env matchee
@@ -497,7 +510,7 @@ end = struct
                          in coerce (FTerm.App (pos, codomain, {callee, arg})) codomain
                          end
                       | _ => raise Fail "implicit parameter not of type `type`")
-                 | FType.Arrow (_, Explicit, domains) => (callee, domains)
+                 | FType.Arrow (_, Explicit eff, domains) => (callee, domains)
                  | FType.SVar (pos, FType.UVar uv) =>
                     (case Uv.get uv
                      of Left uv =>
@@ -505,7 +518,7 @@ end = struct
                              val codomainUv = TypeVars.Uv.freshSibling (uv, Predicative)
                              val arrow = { domain = FType.SVar (pos, FType.UVar domainUv)
                                          , codomain = FType.SVar (pos, FType.UVar codomainUv) }
-                         in uvSet env (uv, FType.Arrow (pos, Explicit, arrow))
+                         in uvSet env (uv, FType.Arrow (pos, Explicit FType.Pure, arrow))
                           ; (callee, arrow)
                          end
                       | Right typ => coerce callee typ)

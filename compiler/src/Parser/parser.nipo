@@ -5,6 +5,7 @@ open BroomTokens
 structure Term = Cst.Term
 structure Type = Cst.Type
 datatype explicitness = datatype Cst.explicitness
+datatype effect = datatype Cst.effect
 %}
 
 token {%BroomTokens.t%}
@@ -22,6 +23,7 @@ token {%BroomTokens.t%}
     | Eq '='
     | DArrow '=>'
     | Arrow '->'
+    | WArrow '~>'
     | Bar '|'
     | Amp '&'
     | Colon ':'
@@ -47,12 +49,12 @@ start program = stmts {% Vector.fromList stmts %};
 stmt
     = pos 'val' pattern '=' expr {% Term.Val (pos, pattern, expr) %}
     | pos 'fun' Id pats=apat+ '=' expr {% let
-          fun step (pattern, body) = Term.Fn (pos, Explicit, #[{pattern, body}])
+          fun step (pattern, body) = Term.Fn (pos, Explicit Pure, #[{pattern, body}])
           in Term.Val (pos, Term.Def (pos, valOf (toName tokId)), List.foldr step expr pats)
       end %}
     | pos 'type' Id pats=kpat* '=' typ {% let
           fun step ((pos, {var, typ}), body) =
-              Term.Fn (pos, Explicit, #[{pattern = Term.AnnP (pos, {pat = Term.Def (pos, var), typ}), body}])
+              Term.Fn (pos, Explicit Pure, #[{pattern = Term.AnnP (pos, {pat = Term.Def (pos, var), typ}), body}])
           in Term.Val ( pos, Term.Def (pos, valOf (toName tokId))
                       , List.foldr step (Term.Type (pos, typ)) pats )
       end %}
@@ -152,7 +154,7 @@ nestable
     ;
 
 clauses = pattern=paramPattern clauses=( '->' body=expr clauses=('|' explicitClause {% explicitClause %})*
-                                         {% (Explicit, Vector.fromList ({pattern, body} :: clauses)) %}
+                                         {% (Explicit Pure, Vector.fromList ({pattern, body} :: clauses)) %}
                                        | '=>' body=expr clauses=('|' implicitClause {% implicitClause %})*
                                          {% (Implicit, Vector.fromList ({pattern, body} :: clauses)) %} )
                                {% clauses %};
@@ -185,7 +187,7 @@ decl
                             of SOME (ptyp as (_, typ)) => Type.Singleton (pos, Term.Type ptyp)
                              | NONE => Type.TypeT pos
              fun step ((pos, {var, typ}), codomain) =
-                 Type.Pi (pos, {var, typ = SOME typ}, Explicit, codomain)
+                 Type.Pi (pos, {var, typ = SOME typ}, Explicit Pure, codomain)
          in (valOf (toName tokId), List.foldr step codomain pats)
          end %}
     ;
@@ -206,7 +208,8 @@ const
     ;
 
 arr
-    = '->' {% Explicit %}
+    = '->' {% Explicit Pure %}
+    | '~>' {% Explicit Impure %}
     | '=>' {% Implicit %}
     ;
 
