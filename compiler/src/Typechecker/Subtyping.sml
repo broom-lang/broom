@@ -11,6 +11,7 @@ end = struct
     structure Path = TypeVars.Path
     datatype predicativity = datatype TypeVars.predicativity
     datatype explicitness = datatype Cst.explicitness
+    datatype effect = datatype FType.effect
     structure FAst = FlexFAst
     structure FType = FAst.Type
     structure Id = FType.Id
@@ -69,9 +70,8 @@ end = struct
         of SOME f => f expr
          | NONE => expr
 
-    (* FIXME: Effect subtyping: *)
     fun fnCoercion coerceDomain coerceCodomain
-                   ((eff, {domain = _, codomain}), (eff', {domain = domain', codomain = _})) callee =
+                   ((_, {domain = _, codomain}), (eff', {domain = domain', codomain = _})) callee =
         let val pos = FTerm.exprPos callee
             val param = {var = Name.fresh (), typ = domain'}
             val arg = applyCoercion coerceDomain (FTerm.Use (pos, param))
@@ -165,15 +165,26 @@ end = struct
 
     and unify env = coercion Unify env
 
-    (* FIXME: Effect subtyping: *)
     and arrowCoercion intent env currPos
-                      (arrows as ((_, {domain, codomain}), (_, {domain = domain', codomain = codomain'}))) =
-        let val coerceDomain = coercion intent env currPos (domain', domain)
+                      (arrows as ((eff, {domain, codomain}), (eff', {domain = domain', codomain = codomain'}))) =
+        let do subEffect intent env currPos (eff, eff')
+            val coerceDomain = coercion intent env currPos (domain', domain)
             val coerceCodomain = coercion intent env currPos (codomain, codomain')
         in if isSome coerceDomain orelse isSome coerceCodomain
            then SOME (fnCoercion coerceDomain coerceCodomain arrows)
            else NONE
         end
+
+    and subEffect intent env currPos effs =
+        case intent
+        of Coerce () => (case effs
+                         of (Pure, Pure) => ()
+                          | (Pure, Impure) => ()
+                          | (Impure, Pure) => raise Fail "Impure is not a subtype of Pure"
+                          | (Impure, Impure) => ())
+         | Unify => if op= effs
+                    then ()
+                    else raise Fail "Nonequal effects"
 
     and recordCoercion intent env currPos (t, t') (row, row') =
         case rowCoercion intent env currPos (row, row')
