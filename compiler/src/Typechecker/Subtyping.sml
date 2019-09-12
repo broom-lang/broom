@@ -2,6 +2,7 @@ structure Subtyping :> sig
     type coercion = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
    
     val applyCoercion: coercion -> FlexFAst.Term.expr -> FlexFAst.Term.expr
+    val subEffect: TypecheckingEnv.t -> Pos.t -> FlexFAst.Type.effect * FlexFAst.Type.effect -> unit
     val subType: TypecheckingEnv.t -> Pos.t -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
     val unify: TypecheckingEnv.t -> Pos.t -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
 end = struct
@@ -167,7 +168,7 @@ end = struct
 
     and arrowCoercion intent env currPos
                       (arrows as ((eff, {domain, codomain}), (eff', {domain = domain', codomain = codomain'}))) =
-        let do subEffect intent env currPos (eff, eff')
+        let do eqOrSubEffect intent env currPos (eff, eff')
             val coerceDomain = coercion intent env currPos (domain', domain)
             val coerceCodomain = coercion intent env currPos (codomain, codomain')
         in if isSome coerceDomain orelse isSome coerceCodomain
@@ -175,7 +176,7 @@ end = struct
            else NONE
         end
 
-    and subEffect intent env currPos effs =
+    and eqOrSubEffect intent env currPos effs =
         case intent
         of Coerce () => (case effs
                          of (Pure, Pure) => ()
@@ -185,6 +186,8 @@ end = struct
          | Unify => if op= effs
                     then ()
                     else raise Fail "Nonequal effects"
+
+    and subEffect env = eqOrSubEffect (Coerce ()) env
 
     and recordCoercion intent env currPos (t, t') (row, row') =
         case rowCoercion intent env currPos (row, row')

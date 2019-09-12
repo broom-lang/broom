@@ -49,12 +49,12 @@ start program = stmts {% Vector.fromList stmts %};
 stmt
     = pos 'val' pattern '=' expr {% Term.Val (pos, pattern, expr) %}
     | pos 'fun' Id pats=apat+ '=' expr {% let
-          fun step (pattern, body) = Term.Fn (pos, Explicit Pure, #[{pattern, body}])
+          fun step (pattern, body) = Term.Fn (pos, Explicit (), #[{pattern, body}])
           in Term.Val (pos, Term.Def (pos, valOf (toName tokId)), List.foldr step expr pats)
       end %}
     | pos 'type' Id pats=kpat* '=' typ {% let
           fun step ((pos, {var, typ}), body) =
-              Term.Fn (pos, Explicit Pure, #[{pattern = Term.AnnP (pos, {pat = Term.Def (pos, var), typ}), body}])
+              Term.Fn (pos, Explicit (), #[{pattern = Term.AnnP (pos, {pat = Term.Def (pos, var), typ}), body}])
           in Term.Val ( pos, Term.Def (pos, valOf (toName tokId))
                       , List.foldr step (Term.Type (pos, typ)) pats )
       end %}
@@ -154,7 +154,7 @@ nestable
     ;
 
 clauses = pattern=paramPattern clauses=( '->' body=expr clauses=('|' explicitClause {% explicitClause %})*
-                                         {% (Explicit Pure, Vector.fromList ({pattern, body} :: clauses)) %}
+                                         {% (Explicit (), Vector.fromList ({pattern, body} :: clauses)) %}
                                        | '=>' body=expr clauses=('|' implicitClause {% implicitClause %})*
                                          {% (Implicit, Vector.fromList ({pattern, body} :: clauses)) %} )
                                {% clauses %};
@@ -196,6 +196,7 @@ atom
     = pos Id    {% let val name = valOf (toName tokId)
                    in  case Name.toString name (* HACK *)
                        of "unit" => Term.Type (pos, Type.Prim (pos, Type.Prim.Unit))
+                        | "bool" => Term.Type (pos, Type.Prim (pos, Type.Prim.Bool))
                         | "int" => Term.Type (pos, Type.Prim (pos, Type.Prim.I32))
                         | _ => Term.Use (pos, name)
                    end %}

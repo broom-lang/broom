@@ -5,6 +5,7 @@ signature CST = sig
 
     datatype effect = Pure | Impure
 
+    type expl = unit explicitness
     type arrow = effect explicitness
 
     datatype typ
@@ -20,7 +21,7 @@ signature CST = sig
         | Prim of Pos.t * Prim.t
 
     and expr
-        = Fn of Pos.t * arrow * clause vector
+        = Fn of Pos.t * expl * clause vector
         | Let of Pos.t * stmt vector * expr
         | Match of Pos.t * expr * clause vector
         | Record of Pos.t * row
@@ -45,6 +46,7 @@ signature CST = sig
     and clause = {pattern: pat, body: expr}
     and row = {fields: (Name.t * expr) vector, ext: expr option}
 
+    val explDoc: expl -> PPrint.t
     val arrowDoc: arrow -> PPrint.t
 
     structure Type: sig
@@ -87,6 +89,7 @@ structure Cst :> CST = struct
     datatype effect = Pure | Impure
 
     type arrow = effect explicitness
+    type expl = unit explicitness
 
     datatype typ
         = Pi of Pos.t * def * arrow * typ
@@ -101,7 +104,7 @@ structure Cst :> CST = struct
         | Prim of Pos.t * Prim.t
 
     and expr
-        = Fn of Pos.t * arrow * clause vector
+        = Fn of Pos.t * expl * clause vector
         | Let of Pos.t * stmt vector * expr
         | Match of Pos.t * expr * clause vector
         | Record of Pos.t * row
@@ -156,6 +159,10 @@ structure Cst :> CST = struct
          | Explicit Pure => text "->"
          | Explicit Impure => text "~>"
 
+    val explDoc =
+        fn Implicit => arrowDoc Implicit
+         | Explicit () => arrowDoc (Explicit Pure)
+
     val rec typeToDoc =
         fn Pi (_, {var, typ = domain}, arrow, codomain) =>
             text "fun" <+> Name.toDoc var <> annToDoc domain
@@ -190,7 +197,7 @@ structure Cst :> CST = struct
             braces (PPrint.align (clausesToDoc arrow clauses))
          | Match (_, matchee, clauses) =>
             text "match" <+> exprToDoc matchee
-                <+> braces (PPrint.align (clausesToDoc (Explicit Pure) clauses))
+                <+> braces (PPrint.align (clausesToDoc (Explicit ()) clauses))
          | Record (_, row) => braces (rowToDoc row)
          | Module (_, stmts) =>
             text "module"
@@ -217,10 +224,10 @@ structure Cst :> CST = struct
             in fieldsDoc <> extDoc
             end
 
-    and clauseToDoc = fn arrow => fn {pattern, body} =>
-        patToDoc pattern <+> arrowDoc arrow <+> exprToDoc body
-    and clausesToDoc = fn arrow => fn clauses =>
-        PPrint.punctuate newline (Vector.map (clauseToDoc arrow) clauses)
+    and clauseToDoc = fn expl => fn {pattern, body} =>
+        patToDoc pattern <+> explDoc expl <+> exprToDoc body
+    and clausesToDoc = fn expl => fn clauses =>
+        PPrint.punctuate newline (Vector.map (clauseToDoc expl) clauses)
 
     and stmtToDoc =
         fn Val (_, pat, valExpr) =>
