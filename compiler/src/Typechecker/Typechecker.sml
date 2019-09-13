@@ -112,6 +112,7 @@ end = struct
                                                                   kind
                                                                   (Env.universalParams env)
                                           val id' = Bindings.Type.fresh absBindings kind
+                                          (* FIXME: the type needs to be applied to the universal params: *)
                                       in Id.SortedMap.insert (mapping, var, FType.UseT (pos, {var = id', kind}))
                                       end)
                                  Id.SortedMap.empty params
