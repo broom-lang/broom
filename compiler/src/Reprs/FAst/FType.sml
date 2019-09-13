@@ -9,6 +9,7 @@ signature FAST_TYPE = sig
     datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
                   | TypeK of Pos.t
                   | RowK of Pos.t
+                  | CallsiteK of Pos.t
 
     type def = {var: Id.t, kind: kind}
 
@@ -38,6 +39,7 @@ signature FAST_TYPE = sig
     val kindToString: kind -> string
     val defToDoc: def -> PPrint.t
     val arrowDoc: arrow -> PPrint.t
+    val piEffect: 'sv concr -> effect option
     val rowExtTail: 'sv concr -> 'sv concr
     val unit: Pos.t -> 'sv concr
     
@@ -45,6 +47,7 @@ signature FAST_TYPE = sig
         val pos: 'sv concr -> Pos.t
         val toDoc: ('sv -> PPrint.t) -> 'sv concr -> PPrint.t
         val toString: ('sv -> PPrint.t) -> 'sv concr -> string
+        val isSmall: 'sv concr -> bool
         val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv concr -> bool
         val substitute: ('sv concr Id.SortedMap.map -> 'sv -> 'sv concr option)
                         -> 'sv concr Id.SortedMap.map -> 'sv concr -> 'sv concr
@@ -89,6 +92,7 @@ structure FType :> FAST_TYPE = struct
     datatype kind = ArrowK of Pos.t * {domain: kind, codomain: kind}
                   | TypeK of Pos.t
                   | RowK of Pos.t
+                  | CallsiteK of Pos.t
 
     type def = {var: Id.t, kind: kind}
 
@@ -124,6 +128,7 @@ structure FType :> FAST_TYPE = struct
          | RowK _ => text "Row"
          | ArrowK (_, {domain, codomain}) =>
             kindToDoc domain <+> text "->" <+> kindToDoc codomain
+         | CallsiteK _ => text "Callsite"
 
     val kindToString = PPrint.pretty 80 o kindToDoc
 
@@ -267,6 +272,29 @@ structure FType :> FAST_TYPE = struct
             in mapAbsChildren (concrSubstitute svarSubst mapping) t
             end
 
+    val rec smallConcr =
+        fn ForAll (_, params, body) =>
+            Vector.length params = 0 andalso smallConcr body
+         | Arrow (_, _, {domain, codomain}) =>
+            smallConcr domain andalso smallConcr codomain
+         | Record (_, t) => smallConcr t
+         | RowExt (_, {field = (_, fieldt), ext}) =>
+            smallConcr fieldt andalso smallConcr ext
+         | EmptyRow _ => true
+         | Type (_, t) => smallAbs t
+         | CallTFn (_, _, args) => Vector.all smallConcr args
+         | SVar _ | UseT _ | Prim _ => true
+
+    and smallAbs =
+        fn Exists (_, params, body) =>
+            Vector.length params = 0 andalso smallConcr body
+
+    val rec piEffect =
+        fn ForAll (_, _, body) => piEffect body
+         | Arrow (_, Cst.Implicit, {domain = _, codomain}) => piEffect codomain
+         | Arrow (_, Cst.Explicit eff, _) => SOME eff
+         | _ => NONE
+
     val rec rowExtTail =
         fn RowExt (_, {ext, ...}) => rowExtTail ext
          | t => t
@@ -290,6 +318,7 @@ structure FType :> FAST_TYPE = struct
         fun toString svarToDoc = PPrint.pretty 80 o toDoc svarToDoc
         val occurs = concrOccurs
         val substitute = concrSubstitute
+        val isSmall = smallConcr
 
         fun kindOf svarKind =
             fn t as (ForAll _ | Arrow _ | Record _ | Type _ | Prim _)  => TypeK (pos t)
@@ -306,6 +335,7 @@ structure FType :> FAST_TYPE = struct
         fun toString svarToDoc = PPrint.pretty 80 o toDoc svarToDoc
         val occurs = absOccurs
         val substitute = absSubstitute
+        val isSmall = smallAbs
 
         fun concr t = Exists (Concr.pos t, #[], t)
 

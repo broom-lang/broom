@@ -42,6 +42,7 @@ signature FAST_TERM = sig
     val stmtPos: stmt -> Pos.t
     val stmtToDoc: stmt -> PPrint.t
     val stmtsToDoc: stmt vector -> PPrint.t
+    val patPos: pat -> Pos.t
     val programToDoc: program -> PPrint.t
     val typeOf: expr -> Type.concr
 end
@@ -194,6 +195,11 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         fn Val (pos, _, _) => pos
          | Axiom (pos, _, _, _) => pos
          | Expr expr => exprPos expr
+
+    val patPos =
+        fn AnnP (pos, _) => pos
+         | Def (pos, _) => pos
+         | ConstP (pos, _) => pos
 
     fun typeFnToDoc (name, {paramKinds, kind}) =
         text "type" <+> Name.toDoc name <> text ":"

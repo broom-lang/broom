@@ -49,6 +49,7 @@ structure TypecheckingEnv :> sig
         structure Id: ID where type t = FlexFAst.ScopeId.t
 
         type toplevel = { typeFns: Bindings.TypeFn.bindings
+                        , pureCallsite: Name.t
                         , axioms: Bindings.Axiom.bindings
                         , vals: Bindings.Expr.bindings }
 
@@ -76,6 +77,7 @@ structure TypecheckingEnv :> sig
     val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
     val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
 
+    val pureCallsite: t -> Name.t
     val freshAbstract: t -> FlexFAst.Type.Id.t -> FlexFAst.Type.tfn_sig -> Name.t
     val typeFns: t -> (Name.t * FlexFAst.Type.tfn_sig) vector
     val insertAxiom: t -> Name.t -> output_type * output_type -> unit
@@ -106,6 +108,11 @@ end = struct
 
             fun new () = NameHashTable.mkTable (0, Subscript)
             val insert = NameHashTable.insert
+            fun freshAbstract typeFns id kindSig =
+                let val name = "g__" ^ FAst.Type.Id.toString id |> Name.fromString |> Name.freshen
+                in insert typeFns (name, kindSig)
+                 ; name
+                end
             val toVector = Vector.fromList o NameHashTable.listItemsi
         end
 
@@ -171,19 +178,23 @@ end = struct
         structure Id = FAst.ScopeId
 
         type toplevel = { typeFns: Bindings.TypeFn.bindings
+                        , pureCallsite: Name.t
                         , axioms: Bindings.Axiom.bindings
                         , vals: Bindings.Expr.bindings }
 
         fun initialToplevel () =
-            { typeFns = Bindings.TypeFn.new ()
-            , axioms = Bindings.Axiom.new ()
-            , vals = Bindings.Expr.Builder.new () |> Bindings.Expr.Builder.build }
+            let val typeFns = Bindings.TypeFn.new ()
+            in { typeFns
+               , pureCallsite = Bindings.TypeFn.freshAbstract typeFns (FAst.Type.Id.fresh ())
+                                                              {paramKinds = #[], kind = FAst.Type.CallsiteK (Pos.default "<builtin>")}
+               , axioms = Bindings.Axiom.new ()
+               , vals = Bindings.Expr.Builder.new () |> Bindings.Expr.Builder.build }
+            end
+
+        fun pureCallsite ({pureCallsite, ...}: toplevel) = pureCallsite
 
         fun freshAbstract ({typeFns, ...}: toplevel) id kindSig =
-            let val name = "g__" ^ FAst.Type.Id.toString id |> Name.fromString |> Name.freshen
-            in Bindings.TypeFn.insert typeFns (name, kindSig)
-             ; name
-            end
+            Bindings.TypeFn.freshAbstract typeFns id kindSig
 
         fun typeFns ({typeFns, ...}: toplevel) = Bindings.TypeFn.toVector typeFns
 
@@ -264,6 +275,8 @@ end = struct
         case #scopes env
         of scope :: _ => TypeVars.Uv.fresh (Scope.id scope, predicativity)
          | [] => raise Fail "unreachable"
+
+    fun pureCallsite ({toplevel, ...}: t) = Scope.pureCallsite toplevel
 
     fun freshAbstract ({toplevel, ...}: t) id kindSig =
         Scope.freshAbstract toplevel id kindSig

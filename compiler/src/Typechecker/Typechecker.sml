@@ -135,6 +135,12 @@ end = struct
 
                         val codomain = elaborate env codomain
                         val arrow = FType.Arrow (pos, elaborateArr expl, {domain, codomain})
+                        val typeDefs =
+                            if List.null typeDefs andalso FType.Concr.isSmall codomain
+                            then typeDefs
+                            else let val callsite = {var = FType.Id.fresh (), kind = FType.CallsiteK pos}
+                                 in callsite :: typeDefs
+                                 end
                     in case typeDefs
                        of [] => arrow
                         | _ => FType.ForAll (pos, Vector.fromList typeDefs, arrow)
@@ -558,13 +564,22 @@ end = struct
         let fun coerce callee =
                 fn FType.ForAll (_, params, t) =>
                     let val pos = FTerm.exprPos callee
-                        val mapping =
-                            Vector.foldl (fn ({var, kind}, mapping) =>
+                        val (args, mapping) =
+                            Vector.foldl (fn ({var, kind = kind as FType.CallsiteK _}, (args, mapping)) =>
+                                              let val callId =
+                                                      case valOf (FType.piEffect t)
+                                                      of Impure =>
+                                                          Env.freshAbstract env (FType.Id.fresh ()) {paramKinds = #[], kind}
+                                                       | Pure => Env.pureCallsite env
+                                                  val callsite = FType.CallTFn (pos, callId, #[])
+                                              in (callsite :: args, Id.SortedMap.insert (mapping, var, callsite))
+                                              end
+                                           | ({var, kind}, (args, mapping)) =>
                                               let val uv = FType.SVar (pos, FType.UVar (Env.newUv env (Predicative, nameFromId var)))
-                                              in Id.SortedMap.insert (mapping, var, uv)
+                                              in (uv :: args, Id.SortedMap.insert (mapping, var, uv))
                                               end)
-                                         Id.SortedMap.empty params
-                        val args = Id.SortedMap.listItems mapping |> Vector.fromList
+                                         ([], Id.SortedMap.empty) params
+                        val args = args |> List.rev |> Vector.fromList
                         val calleeType = Concr.substitute (Env.hasScope env) mapping t
                     in coerce (FTerm.TApp (pos, calleeType, {callee, args})) calleeType
                     end

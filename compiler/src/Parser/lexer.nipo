@@ -32,31 +32,32 @@ start tok
 
     | '@' constituent+ {% fn (s, cs, e) => Meta (s, Name.fromString (String.extract (cs, 1, NONE)), e) %}
 
-    | constituent+ {% fn (s, cs, e) =>
-                         case cs
-                         of "val" => Val s
-                          | "type" => Type s
-                          | "pi" => Pi s
-                          | "begin" => Begin s
-                          | "do" => Do s
-                          | "return" => Return s
-                          | "module" => Module s
-                          | "interface" => Interface s
-                          | "fun" => Fun s
-                          | "match" => Match s
-                          | "end" => End s
-                          | "True" => Bool (s, true)
-                          | "False" => Bool (s, false)
-                          | _ =>
-                             if String.isPrefix "__" cs
-                             then Intrinsic (s, String.extract (cs, 2, NONE), e)
-                             else Id (s, Name.fromString cs, e) %}
+    | firstConstituent constituent* {% fn (s, cs, e) =>
+                                       case cs
+                                       of "val" => Val s
+                                        | "type" => Type s
+                                        | "pi" => Pi s
+                                        | "begin" => Begin s
+                                        | "do" => Do s
+                                        | "return" => Return s
+                                        | "module" => Module s
+                                        | "interface" => Interface s
+                                        | "fun" => Fun s
+                                        | "match" => Match s
+                                        | "end" => End s
+                                        | "True" => Bool (s, true)
+                                        | "False" => Bool (s, false)
+                                        | _ =>
+                                           if String.isPrefix "__" cs
+                                           then Intrinsic (s, String.extract (cs, 2, NONE), e)
+                                           else Id (s, Name.fromString cs, e) %}
 
     # TODO: String and char literals
 
     | [[:digit:]]+ {% fn (s, cs, e) => Int (s, valOf (Int.fromString cs), e) %};
 
-constituent = [[:alpha:]] | '_' ;
+firstConstituent = [[:alpha:]] | '_' ;
+constituent = firstConstituent | [[:digit:]] ;
 
 whitespace ws = [[:space:]]* ;
 
