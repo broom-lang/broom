@@ -106,7 +106,12 @@ end = struct
             let val (_, absBindings) = valOf (Env.nearestExists env)
                 val mapping =
                     Vector.foldl (fn ({var, kind}, mapping) =>
-                                      let val id' = Bindings.Type.fresh absBindings kind
+                                      let val kind = Vector.foldr (fn ({var = _, kind = argKind}, kind) =>
+                                                                       FType.ArrowK (pos, { domain = argKind
+                                                                                          , codomain = kind }))
+                                                                  kind
+                                                                  (Env.universalParams env)
+                                          val id' = Bindings.Type.fresh absBindings kind
                                       in Id.SortedMap.insert (mapping, var, FType.UseT (pos, {var = id', kind}))
                                       end)
                                  Id.SortedMap.empty params
