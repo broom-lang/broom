@@ -173,8 +173,12 @@ end = struct
                                             ^ "does not denote type at " ^ Pos.toString (CTerm.exprPos pathExpr)))
                         | _ => raise Fail "Impure type path expression"
                     end
-                 | CType.TypeT pos => (* FIXME: universalParams lifting (?): *)
-                    let val kind = FType.TypeK pos
+                 | CType.TypeT pos =>
+                    let val kind = Vector.foldr (fn ({var = _, kind = argKind}, kind) =>
+                                                     FType.ArrowK (pos, { domain = argKind
+                                                                        , codomain = kind }))
+                                                (FType.TypeK pos)
+                                                (Env.universalParams env)
                         val var = Bindings.Type.fresh absBindings kind
                     in FType.Type (pos, concr (FType.UseT (pos, {var, kind})))
                     end
