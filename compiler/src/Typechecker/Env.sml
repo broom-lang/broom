@@ -72,7 +72,7 @@ structure TypecheckingEnv :> sig
     val hasScope: t -> Scope.Id.t -> bool
 
     val findType: t -> FType.Id.t -> Bindings.Type.binding option
-    val bigLambdaParams: t -> FlexFAst.Type.def vector
+    val universalParams: t -> FlexFAst.Type.def vector
     val nearestExists: t -> (Scope.Id.t * Bindings.Type.bindings) option
     val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
     val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
@@ -220,6 +220,12 @@ end = struct
                   | InterfaceScope (id, _) => id
                   | Marker id => id
 
+        val rec universalParams =
+            fn ForAllScope (_, bindings) =>
+                Vector.fromList (Bindings.Type.defs bindings)
+             | TopScope _ | FnScope _ | PatternScope _ | ExistsScope _
+             | BlockScope _ | InterfaceScope _ | Marker _ => #[]
+
         fun findType scope id =
             case scope
             of ForAllScope (_, bindings) | ExistsScope (_, bindings) => Bindings.Type.find bindings id
@@ -261,7 +267,8 @@ end = struct
         in find (#scopes env)
         end
 
-    fun bigLambdaParams env = #[] (* FIXME *)
+    fun universalParams ({scopes, ...}: t) =
+        Vector.concat (List.map Scope.universalParams scopes)
 
     fun nearestExists ({scopes, ...}: t) =
         List.some (fn Scope.ExistsScope scope => SOME scope | _ => NONE) scopes

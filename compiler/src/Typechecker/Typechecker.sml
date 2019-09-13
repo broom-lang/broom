@@ -173,7 +173,7 @@ end = struct
                                             ^ "does not denote type at " ^ Pos.toString (CTerm.exprPos pathExpr)))
                         | _ => raise Fail "Impure type path expression"
                     end
-                 | CType.TypeT pos =>
+                 | CType.TypeT pos => (* FIXME: universalParams lifting (?): *)
                     let val kind = FType.TypeK pos
                         val var = Bindings.Type.fresh absBindings kind
                     in FType.Type (pos, concr (FType.UseT (pos, {var, kind})))
@@ -468,7 +468,7 @@ end = struct
         end
 
     and instantiateExistential env (Exists (pos, params: FType.def vector, body)): concr * concr vector = 
-        let val typeFnArgDefs = Env.bigLambdaParams env
+        let val typeFnArgDefs = Env.universalParams env
             val typeFnArgs = Vector.map (fn def => FType.UseT (pos, def)) typeFnArgDefs
             val paramKinds = Vector.map #kind typeFnArgDefs
             val typeFns = Vector.map (fn {var, kind} => Env.freshAbstract env var {paramKinds, kind})
