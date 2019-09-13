@@ -30,7 +30,7 @@ end = struct
          | SVar (pos, UVar uv) => (case TypeVars.Uv.get uv
                                    of Right t => concrToF t
                                     | Left _ => Prim (pos, FFType.Prim.Unit))
-         | SVar (_, Path path) => (case TypeVars.Path.get (Fn.constantly false) path (* FIXME *)
+         | SVar (_, Path path) => (case TypeVars.Path.get (Fn.constantly false) path
                                    of Right (t, _) => concrToF t
                                     | Left (t, _) => concrToF t)
 
@@ -81,7 +81,14 @@ end = struct
 
     and stmtToF =
         fn Val (pos, {var, typ}, expr) => FFTerm.Val (pos, {var, typ = concrToF typ}, exprToF expr)
-         | Axiom (pos, name, l, r) => FFTerm.Axiom (pos, name, concrToF l, concrToF r)
+         | Axiom (pos, name, l, r) =>
+            let val r = case r
+                        of SVar (_, Path path) => (case TypeVars.Path.get (Fn.constantly true) path
+                                                   of Right (t, _) => concrToF t
+                                                    | Left (t, _) => concrToF t)
+                         | _ => concrToF r
+            in FFTerm.Axiom (pos, name, concrToF l, r)
+            end
          | Expr expr => FFTerm.Expr (exprToF expr)
 
     fun programToF {typeFns, axioms, stmts} =

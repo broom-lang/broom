@@ -514,14 +514,11 @@ end = struct
                 val env' = Env.pushScope env (Scope.Marker scopeId)
                 val pos = CTerm.exprPos expr
                 val axiomStmts =
-                    Vector.map (fn FAst.Type.SVar (_, FType.Path path) =>
+                    Vector.map (fn t as FAst.Type.SVar (_, FType.Path path) =>
                                     let val name = Name.freshen (Name.fromString "coImpl")
                                         do Path.addScope (path, scopeId, name)
                                         val (face, _) = Either.unwrapLeft (Path.get (Env.hasScope env) path)
-                                        val impl = case Path.get (Env.hasScope env') path
-                                                   of Either.Left (face, _) => face
-                                                    | Either.Right (impl, _) => impl
-                                    in FTerm.Axiom (pos, name, face, impl)
+                                    in FTerm.Axiom (pos, name, face, t)
                                     end)    
                                paths
                 val (eff, expr) = elaborateExprAs env' implType expr
