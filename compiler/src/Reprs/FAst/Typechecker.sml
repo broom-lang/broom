@@ -116,7 +116,7 @@ end = struct
                                   | NONE => raise Fail ("Out of scope: g__" ^ Id.toString var'))
               | NONE => raise Fail ("Out of scope: g__" ^ Id.toString var))
          | (Prim (_, p), Prim (_, p')) => p = p' (* HACK? *)
-         | _ => raise Fail (FFType.Concr.toString t ^ " /= " ^ FFType.Concr.toString t')
+         | _ => false
     
     and absEq env =
         fn (Exists (_, params, body), Exists (_, params', body')) => 
@@ -127,9 +127,11 @@ end = struct
             in eq env (body, body')
             end
 
-    fun checkEq env ts = if eq env ts
-                         then ()
-                         else raise Fail (FFType.concrToString (#1 ts) ^ " != " ^ FFType.concrToString (#2 ts))
+    fun checkEq currPos env ts =
+        if eq env ts
+        then ()
+        else raise Fail ( FFType.concrToString (#1 ts) ^ " != " ^ FFType.concrToString (#2 ts)
+                        ^ " in " ^ Pos.toString currPos )
 
     fun checkCo env =
         fn Refl t => (t, t)
@@ -174,7 +176,7 @@ end = struct
             fun checkRowField ((label, field), row) =
                 RowExt (pos, {field = (label, check env field), ext = row})
             val t = Record (pos, Vector.foldr checkRowField recordRow fields)
-        in checkEq env (typ, t)
+        in checkEq pos env (typ, t)
          ; typ
         end
 
@@ -190,21 +192,21 @@ end = struct
                     else RowExt (pos, {field = (label', fieldt), ext = override ((label, field), ext)})
                  | _ => raise Fail ("Tried to override missing field " ^ Name.toString label)
             val t = Record (pos, Vector.foldr override recordRow fields)
-        in checkEq env (typ, t)
+        in checkEq pos env (typ, t)
          ; typ
         end
 
-    and checkApp env (_, typ, {callee, arg}) =
+    and checkApp env (pos, typ, {callee, arg}) =
         case check env callee
         of Arrow (_, _, {domain, codomain}) =>
             let val argType = check env arg
-            in checkEq env (argType, domain)
-             ; checkEq env (codomain, typ)
+            in checkEq pos env (argType, domain)
+             ; checkEq pos env (codomain, typ)
              ; typ
             end
          | t => raise Fail ("Uncallable: " ^ FFTerm.exprToString callee ^ ": " ^ FFType.concrToString t)
 
-    and checkTApp env (_, typ, {callee, args}) =
+    and checkTApp env (pos, typ, {callee, args}) =
         case check env callee
         of ForAll (_, params, body) =>
             let do if Vector.length args = Vector.length params then () else raise Fail "argument count"
@@ -217,17 +219,17 @@ end = struct
                                                 Id.SortedMap.insert (mapping, var, arg))
                                            Id.SortedMap.empty pargs
                 val typ' = FFType.Concr.substitute (Fn.constantly false) mapping body
-            in checkEq env (typ', typ)
+            in checkEq pos env (typ', typ)
              ; typ
             end
          | t => raise Fail ("Nonuniversal: " ^ FFTerm.exprToString callee ^ ": " ^ FFType.concrToString t)
 
-    and checkField env (_, typ, expr, label) =
+    and checkField env (pos, typ, expr, label) =
         case check env expr
         of t as Record (_, row) =>
             (case rowLabelType row label
              of SOME fieldt => 
-                 ( checkEq env (fieldt, typ)
+                 ( checkEq pos env (fieldt, typ)
                  ; fieldt )
               | NONE => raise Fail ("Record " ^ FFTerm.exprToString expr ^ ": " ^ FFType.concrToString t
                                     ^ " does not have field " ^ Name.toString label))
@@ -239,10 +241,10 @@ end = struct
          ; check env body
         end
 
-    and checkMatch env (_, typ, matchee, clauses) =
+    and checkMatch env (pos, typ, matchee, clauses) =
         let val matcheeTyp = check env matchee
             val clauseTypes = Vector.map (checkClause env matcheeTyp) clauses
-        in Vector.app (fn clauseTyp => checkEq env (clauseTyp, typ)) clauseTypes
+        in Vector.app (fn clauseTyp => checkEq pos env (clauseTyp, typ)) clauseTypes
          ; typ
         end
 
@@ -254,13 +256,13 @@ end = struct
     and checkPattern env matcheeTyp =
         fn AnnP (_, {pat, typ}) => raise Fail "unimplemented"
          | Def (_, name) => Env.insert (env, name, matcheeTyp)
-         | ConstP (pos, c) => (checkEq env (Prim (pos, Const.typeOf c), matcheeTyp); env)
+         | ConstP (pos, c) => (checkEq pos env (Prim (pos, Const.typeOf c), matcheeTyp); env)
 
-    and checkCast env (_, typ, expr, co) =
+    and checkCast env (pos, typ, expr, co) =
         let val exprT = check env expr
             val (fromT, toT) = checkCo env co
-        in checkEq env (exprT, fromT)
-         ; checkEq env (toT, typ)
+        in checkEq pos env (exprT, fromT)
+         ; checkEq pos env (toT, typ)
          ; typ
         end
 
@@ -268,14 +270,14 @@ end = struct
         let val t = case Env.find (env, var)
                     of SOME t => t
                      | NONE => raise Fail ("Out of scope: " ^ Name.toString var ^ " at " ^ Pos.toString pos)
-        in checkEq env (typ, t)
+        in checkEq pos env (typ, t)
          ; typ
         end
 
     and checkStmt env =
-        fn Val (_, {typ, ...}, expr) =>
+        fn Val (pos, {typ, ...}, expr) =>
             let val exprType = check env expr
-            in checkEq env (exprType, typ)
+            in checkEq pos env (exprType, typ)
             end
          | Axiom _ => () (* TODO: Some checks here (see F_c paper) *)
          | Expr expr => ignore (check env expr)
