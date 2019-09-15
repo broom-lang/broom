@@ -141,6 +141,7 @@ end = struct
 
                         val codomain = elaborate env codomain
                         val arrow = FType.Arrow (pos, elaborateArr expl, {domain, codomain})
+                        (* TODO: No callsite when `Implicit`: *)
                         val typeDefs =
                             if List.null typeDefs andalso FType.Concr.isSmall codomain
                             then typeDefs
@@ -186,6 +187,7 @@ end = struct
                                                 (FType.TypeK pos)
                                                 (Env.universalParams env)
                         val var = Bindings.Type.fresh absBindings kind
+                        (* FIXME: Apply type to `universalParams`: *)
                     in FType.Type (pos, concr (FType.UseT (pos, {var, kind})))
                     end
                  | CType.Singleton (_, expr) =>
@@ -246,6 +248,7 @@ end = struct
     and elaborateExpr (env: Env.t) (expr: CTerm.expr): effect * concr * FTerm.expr =
         case expr
         of CTerm.Fn (pos, expl, clauses) => (* TODO: Exhaustiveness checking: *)
+            (* FIXME: Enforce that for implicit fn:s domain = type *)
             let val codomain = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
                 val (eff, domain, clauses) =
                     elaborateClauses env (fn (env, body) => elaborateExprAs env codomain body) clauses
@@ -604,7 +607,7 @@ end = struct
                      of Left uv =>
                          let val domainUv = TypeVars.Uv.freshSibling (uv, Predicative)
                              val codomainUv = TypeVars.Uv.freshSibling (uv, Predicative)
-                             val eff = Pure
+                             val eff = Impure
                              val arrow = { domain = FType.SVar (pos, FType.UVar domainUv)
                                          , codomain = FType.SVar (pos, FType.UVar codomainUv) }
                          in uvSet env (uv, FType.Arrow (pos, Explicit eff, arrow))

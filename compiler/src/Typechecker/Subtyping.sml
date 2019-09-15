@@ -126,6 +126,7 @@ end = struct
             in SOME (fn expr => FTerm.Fn (currPos, def, Implicit, applyCoercion coerceCodomain expr))
             end
          | (Arrow (_, Implicit, {domain, codomain}), super) =>
+            (* FIXME: coercion from `codomain` <: `super` *)
             (case domain
              of FType.Type (_, domain) =>
                  let val arg = FTerm.Type (currPos, domain)
