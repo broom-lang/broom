@@ -64,7 +64,7 @@ end = struct
         end
 
     type coercion = (FTerm.expr -> FTerm.expr) option
-    type field_coercion = Name.t * concr * (FTerm.expr -> FTerm.expr)
+    type field_coercion = Name.t * (concr * concr) * (FTerm.expr -> FTerm.expr)
 
     fun applyCoercion (coerce: coercion) expr =
         case coerce
@@ -198,8 +198,8 @@ end = struct
                       let val tmpName = Name.fresh ()
                           val tmpDef = {var = tmpName, typ = t}
                           val tmpUse = FTerm.Use (currPos, tmpDef)
-                          fun emitField (label, fieldt, coerceField) =
-                              (label, coerceField (FTerm.Field (currPos, fieldt, tmpUse, label)))
+                          fun emitField (label, (origFieldt, _), coerceField) =
+                              (label, coerceField (FTerm.Field (currPos, origFieldt, tmpUse, label)))
                       in FTerm.Let ( currPos, #[FTerm.Val (currPos, tmpDef, expr)]
                                    , FTerm.Override ( currPos
                                                     , t'
@@ -214,7 +214,7 @@ end = struct
                         val coerceField = coercion intent env currPos (fieldt, fieldt')
                         val coerceExt = subExts (ext, ext')
                     in case coerceField
-                       of SOME coerceField => (label, fieldt', coerceField) :: coerceExt
+                       of SOME coerceField => (label, (fieldt, fieldt'), coerceField) :: coerceExt
                         | NONE => coerceExt
                     end
                  | rows => (coercion intent env currPos rows; [])
