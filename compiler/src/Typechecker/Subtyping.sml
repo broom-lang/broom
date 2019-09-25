@@ -106,20 +106,20 @@ end = struct
              of Coerce () =>
                  skolemize env universal (fn (env, params, body) =>
                      Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
-                                (subType env currPos (sub, body))
+                                (coercion (Coerce ()) env currPos (sub, body))
                  )
-              | Unify => raise TypeError (NonUnifiable (currPos, concr sub, concr super)))
+              | Unify => raise TypeError (NonUnifiable (currPos, concr sub, concr super, NONE)))
          | (sub as ForAll universal, super) =>
             (case intent
              of Coerce () =>
                  instantiate env universal (fn (env, args, body) =>
                      Option.map (fn coerce => fn expr => coerce (FTerm.TApp (currPos, body, {callee = expr, args})))
-                                (subType env currPos (body, super))
+                                (coercion (Coerce ()) env currPos (body, super))
                  )
               | Unify =>
                  (case super
                   of ForAll universal' => raise Fail "unimplemented"
-                   | _ => raise TypeError (NonUnifiable (currPos, concr sub, concr super))))
+                   | _ => raise TypeError (NonUnifiable (currPos, concr sub, concr super, NONE))))
          | (sub, Arrow (_, Implicit, {domain, codomain})) =>
             let val def = {var = Name.fresh (), typ = domain}
                 val coerceCodomain = coercion intent env currPos (sub, codomain)
@@ -144,7 +144,7 @@ end = struct
          | (sub as Prim (_, p), super as Prim (_, p')) =>
             primCoercion intent currPos (p, p') (sub, super)
          | (Type (pos, Exists (_, #[], t)), Type (_, sup as Exists (_, #[], t'))) =>
-            ( unify env currPos (t, t')
+            ( coercion Unify env currPos (t, t')
             ; SOME (fn _ => FTerm.Type (pos, sup)))
          | (sub as CallTFn call, super as CallTFn call') =>
             tFnAppCoercion intent env currPos (call, call') (sub, super)
@@ -154,18 +154,24 @@ end = struct
             then if idInScope env var
                  then NONE
                  else raise Fail ("Opaque type out of scope: " ^ Concr.toString super)
-            else raise TypeError (error intent (currPos, concr sub, concr super))
+            else raise TypeError (error intent (currPos, concr sub, concr super, NONE))
          | (SVar (_, UVar uv), super as SVar (_, UVar uv')) =>
             uvsCoercion intent env currPos super (uv, uv')
          | (SVar (_, UVar uv), super) => uvCoercion env currPos (direct Up intent) uv super
          | (sub, SVar (_, UVar uv)) => uvCoercion env currPos (direct Down intent) uv sub
          | (SVar (_, Path path), super) => pathCoercion intent Up env currPos path super
          | (sub, SVar (_, Path path)) => pathCoercion intent Down env currPos path sub
-         | (sub, super) => raise TypeError (NonSubType (currPos, concr sub, concr super))
+         | (sub, super) => raise TypeError (NonSubType (currPos, concr sub, concr super, NONE))
 
-    and subType env = coercion (Coerce ()) env
+    and subType env currPos (typs as (sub, super)) =
+        coercion (Coerce ()) env currPos typs
+        handle TypeError cause =>
+                raise TypeError (NonSubType (currPos, concr sub, concr super, SOME cause))
 
-    and unify env = coercion Unify env
+    and unify env currPos (typs as (l, r)) =
+        coercion Unify env currPos typs
+        handle TypeError cause =>
+                raise TypeError (NonUnifiable (currPos, concr l, concr r, SOME cause))
 
     and arrowCoercion intent env currPos
                       (arrows as ((eff, {domain, codomain}), (eff', {domain = domain', codomain = codomain'}))) =
@@ -234,14 +240,14 @@ end = struct
     and primCoercion intent currPos (p, p') (sub, super) =
         if p = p'
         then NONE
-        else raise TypeError (error intent (currPos, concr sub, concr super))
+        else raise TypeError (error intent (currPos, concr sub, concr super, NONE))
 
     and tFnAppCoercion intent env currPos ((_, callee, args), (_, callee', args')) (t, t') =
         if callee = callee'
-        then ( Vector.app (ignore o unify env currPos) (Vector.zip (args, args'))
-             ; Vector.app (ignore o unify env currPos) (Vector.zip (args', args))
+        then ( Vector.app (ignore o coercion Unify env currPos) (Vector.zip (args, args'))
+             ; Vector.app (ignore o coercion Unify env currPos) (Vector.zip (args', args))
              ; NONE ) (* Since both callee and args have to unify, coercion is always no-op. *)
-        else raise TypeError (error intent (currPos, concr t, concr t'))
+        else raise TypeError (error intent (currPos, concr t, concr t', NONE))
 
     and pathCoercion intent y env currPos path t =
         case Path.get (Env.hasScope env) path
@@ -290,9 +296,9 @@ end = struct
         of Left uv => assign env (intent, uv, t)
          | Right t' =>
             (case intent
-             of Coerce Up => subType env currPos (t', t)
-              | Coerce Down => subType env currPos (t, t')
-              | Unify => unify env currPos (t, t'))
+             of Coerce Up => coercion (Coerce ()) env currPos (t', t)
+              | Coerce Down => coercion (Coerce ()) env currPos (t, t')
+              | Unify => coercion Unify env currPos (t, t'))
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
     and assign (env: Env.t) (y, uv: (Scope.Id.t, concr) TypeVars.uv, t: concr): coercion =

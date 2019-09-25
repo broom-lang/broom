@@ -1,6 +1,6 @@
 signature TYPE_ERROR = sig
-    datatype t = NonSubType of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs
-               | NonUnifiable of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs
+    datatype t = NonSubType of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
+               | NonUnifiable of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
                | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.t * Name.t
@@ -21,8 +21,8 @@ structure TypeError :> TYPE_ERROR = struct
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
 
-    datatype t = NonSubType of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs
-               | NonUnifiable of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs
+    datatype t = NonSubType of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
+               | NonUnifiable of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
                | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.t * Name.t
@@ -33,12 +33,16 @@ structure TypeError :> TYPE_ERROR = struct
 
     fun toDoc err =
         let val (pos, details) = case err
-                                 of NonSubType (pos, typ, superTyp) =>
+                                 of NonSubType (pos, typ, superTyp, cause) =>
                                      ( pos
-                                     , Abs.toDoc typ <+> text "is not a subtype of" <+> Abs.toDoc superTyp )
-                                  | NonUnifiable (pos, lt, rt) =>
+                                     , Abs.toDoc typ <+> text "is not a subtype of" <+> Abs.toDoc superTyp
+                                           <> Option.mapOr (fn cause => PPrint.newline <> text "because" <+> toDoc cause)
+                                                           PPrint.empty cause )
+                                  | NonUnifiable (pos, lt, rt, cause) =>
                                      ( pos
-                                     , Abs.toDoc lt <+> text "does not unify with" <+> Abs.toDoc rt )
+                                     , Abs.toDoc lt <+> text "does not unify with" <+> Abs.toDoc rt
+                                           <> Option.mapOr (fn cause => PPrint.newline <> text "because" <+> toDoc cause)
+                                                           PPrint.empty cause )
                                   | UnCallable (expr, typ) =>
                                      ( FTerm.exprPos expr
                                      , text "Value" <+> FTerm.exprToDoc expr
