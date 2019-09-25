@@ -22,6 +22,7 @@ signature FAST_TYPE = sig
         | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
         | EmptyRow of Pos.t
         | Type of Pos.t * 'sv abs
+        | App of Pos.t * {callee: 'sv concr, arg: 'sv concr}
         | CallTFn of Pos.t * Name.t * 'sv concr vector
         | UseT of Pos.t * def
         | SVar of Pos.t * 'sv
@@ -75,8 +76,10 @@ structure FType :> FAST_TYPE = struct
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
     val op<|> = PPrint.<|>
+    val comma = PPrint.comma
     val space = PPrint.space
     val newline = PPrint.newline
+    val parens = PPrint.parens
     val brackets = PPrint.brackets
     val braces = PPrint.braces
     val align = PPrint.align
@@ -105,6 +108,7 @@ structure FType :> FAST_TYPE = struct
         | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
         | EmptyRow of Pos.t
         | Type of Pos.t * 'sv abs
+        | App of Pos.t * {callee: 'sv concr, arg: 'sv concr}
         | CallTFn of Pos.t * Name.t * 'sv concr vector
         | UseT of Pos.t * def
         | SVar of Pos.t * 'sv
@@ -159,8 +163,9 @@ structure FType :> FAST_TYPE = struct
                     end
                  | EmptyRow _ => text "(||)"
                  | Type (_, t) => brackets (text "=" <+> absToDoc svarToDoc t)
+                 | App (_, {callee, arg}) => concrToDoc callee <+> concrToDoc arg
                  | CallTFn (_, f, args) =>
-                    Name.toDoc f <+> PPrint.punctuate space (Vector.map concrToDoc args)
+                    Name.toDoc f <> parens (PPrint.punctuate (comma <> space) (Vector.map concrToDoc args))
                  | SVar (_, sv) => svarToDoc sv
                  | UseT (_, {var, kind = _}) => idToDoc var
                  | Prim (_, p) => Prim.toDoc p
@@ -208,13 +213,14 @@ structure FType :> FAST_TYPE = struct
          | Record (pos, row) => Record (pos, f row)
          | RowExt (pos, {field = (label, fieldt), ext}) =>
             RowExt (pos, {field = (label, f fieldt), ext = f ext})
+         | App (pos, {callee, arg}) => App (pos, {callee = f callee, arg = f arg})
          | CallTFn (pos, name, args) => CallTFn (pos, name, Vector.map f args)
          | t as (EmptyRow _ | Type _ | SVar _ | UseT _ | Prim _) => t
 
     fun mapAbsChildren f =
         fn Exists (pos, params, t) => Exists (pos, params, f t)
 
-    fun concrCata (alg as {forAll, arrow, record, rowExt, emptyRow, typ, svar, callTFn, uset, prim}) =
+    fun concrCata (alg as {forAll, arrow, record, rowExt, emptyRow, typ, svar, app, callTFn, uset, prim}) =
         fn ForAll (pos, param, body) => forAll (pos, param, concrCata alg body)
          | Arrow (pos, arr, {domain, codomain}) =>
             arrow (pos, arr, {domain = concrCata alg domain, codomain = concrCata alg codomain})
@@ -224,6 +230,8 @@ structure FType :> FAST_TYPE = struct
          | EmptyRow args => emptyRow args
          | Type args => typ args
          | SVar args => svar args
+         | App (pos, {callee, arg}) =>
+            app (pos, {callee = concrCata alg callee, arg = concrCata alg arg})
          | CallTFn (pos, name, args) => callTFn (pos, name, Vector.map (concrCata alg) args)
          | UseT args => uset args
          | Prim args => prim args
@@ -238,6 +246,7 @@ structure FType :> FAST_TYPE = struct
                                            , emptyRow = Fn.constantly false
                                            , typ = fn (_, t) => absOccurs svarOcc sv t
                                            , svar = fn (_, sv') => svarOcc sv sv'
+                                           , app = fn (_, {callee, arg}) => callee orelse arg
                                            , callTFn = fn (_, _, args) => Vector.exists Fn.identity args
                                            , uset = Fn.constantly false
                                            , prim = Fn.constantly false }
@@ -255,7 +264,7 @@ structure FType :> FAST_TYPE = struct
                                                    mapping params
                     in mapConcrChildren (subst mapping) t
                     end
-                 | t as (Arrow _ | Record _ | RowExt _ | EmptyRow _ | CallTFn _ | Prim _) =>
+                 | t as (Arrow _ | Record _ | RowExt _ | EmptyRow _ | App _ | CallTFn _ | Prim _) =>
                     mapConcrChildren (subst mapping) t
                  | Type (pos, t) => Type (pos, absSubstitute svarSubst mapping t)
                  | t as UseT (_, {var, ...}) => getOpt (Id.SortedMap.find (mapping, var), t)
@@ -282,6 +291,7 @@ structure FType :> FAST_TYPE = struct
             smallConcr fieldt andalso smallConcr ext
          | EmptyRow _ => true
          | Type (_, t) => smallAbs t
+         | App (_, {callee, arg}) => smallConcr callee andalso smallConcr arg
          | CallTFn (_, _, args) => Vector.all smallConcr args
          | SVar _ | UseT _ | Prim _ => true
 
@@ -309,6 +319,7 @@ structure FType :> FAST_TYPE = struct
              | RowExt (pos, _) => pos
              | EmptyRow pos => pos
              | Type (pos, _) => pos
+             | App (pos, _) => pos
              | CallTFn (pos, _, _) => pos
              | SVar (pos, _) => pos
              | UseT (pos, _) => pos

@@ -181,14 +181,16 @@ end = struct
                         | _ => raise Fail "Impure type path expression"
                     end
                  | CType.TypeT pos =>
-                    let val kind = Vector.foldr (fn ({var = _, kind = argKind}, kind) =>
+                    let val args = Env.universalParams env
+                        val kind = Vector.foldr (fn ({var = _, kind = argKind}, kind) =>
                                                      FType.ArrowK (pos, { domain = argKind
                                                                         , codomain = kind }))
-                                                (FType.TypeK pos)
-                                                (Env.universalParams env)
+                                                (FType.TypeK pos) args
                         val var = Bindings.Type.fresh absBindings kind
-                        (* FIXME: Apply type to `universalParams`: *)
-                    in FType.Type (pos, concr (FType.UseT (pos, {var, kind})))
+                        val app = Vector.foldl (fn (def, callee) =>
+                                                    FType.App (pos, {callee, arg = FType.UseT (pos, def)}))
+                                               (FType.UseT (pos, {var, kind})) args
+                    in FType.Type (pos, concr app)
                     end
                  | CType.Singleton (_, expr) =>
                     (case elaborateExpr env expr
