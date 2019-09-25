@@ -33,14 +33,14 @@ end = struct
             {vals = NameSortedMap.insert (vals, name, t), types, typeFns, coercions}
         fun insertType ({vals, types, typeFns, coercions}, id, entry) =
             {vals, types = Id.SortedMap.insert (types, id, entry), typeFns, coercions}
-        fun insertType ({vals, types, typeFns, coercions}, name, tfkind) =
+        fun insertTypeFn ({vals, types, typeFns, coercions}, name, tfkind) =
             {vals, types, typeFns = NameSortedMap.insert (typeFns, name, tfkind), coercions}
         fun insertCo ({vals, types, typeFns, coercions}, name, l, r) =
             {vals, types, typeFns, coercions = NameSortedMap.insert (coercions, name, (l, r))}
 
         fun find ({vals, ...}: t, name) = NameSortedMap.find (vals, name)
         fun findType ({types, ...}: t, id) = Id.SortedMap.find (types, id)
-        fun findType ({typeFns, ...}: t, id) = NameSortedMap.find (typeFns, id)
+        fun findTypeFn ({typeFns, ...}: t, id) = NameSortedMap.find (typeFns, id)
         fun findCo ({coercions, ...}: t, name) = NameSortedMap.find (coercions, name)
     end
 
