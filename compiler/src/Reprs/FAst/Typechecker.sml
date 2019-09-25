@@ -94,6 +94,7 @@ end = struct
         fn (ArrowK _, ArrowK _) => raise Fail "unimplemented"
          | (TypeK _, TypeK _) => true
          | (RowK _, RowK _) => true
+         | (CallsiteK _, CallsiteK _) => true
          | _ => false
 
     fun checkKindEq kinds = if kindEq kinds
