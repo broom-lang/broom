@@ -51,7 +51,7 @@ signature FAST_TYPE = sig
         val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv concr -> bool
         val substitute: ('sv concr Id.SortedMap.map -> 'sv -> 'sv concr option)
                         -> 'sv concr Id.SortedMap.map -> 'sv concr -> 'sv concr
-        val kindOf: (Pos.t * 'sv -> kind) -> 'sv concr -> kind
+        val kindOf: (Pos.t * 'sv -> kind) -> (Name.t -> tfn_sig) -> 'sv concr -> kind
     end
 
     structure Abs: sig
@@ -62,7 +62,7 @@ signature FAST_TYPE = sig
         val concr: 'sv concr -> 'sv abs
         val substitute: ('sv concr Id.SortedMap.map -> 'sv -> 'sv concr option)
                         -> 'sv concr Id.SortedMap.map -> 'sv abs -> 'sv abs
-        val kindOf: (Pos.t * 'sv -> kind) -> 'sv abs -> kind
+        val kindOf: (Pos.t * 'sv -> kind) -> (Name.t -> tfn_sig) -> 'sv abs -> kind
     end
 
     structure Co: sig
@@ -320,9 +320,10 @@ structure FType :> FAST_TYPE = struct
         val substitute = concrSubstitute
         val isSmall = smallConcr
 
-        fun kindOf svarKind =
+        fun kindOf svarKind (typeFnKind: Name.t -> tfn_sig) =
             fn t as (ForAll _ | Arrow _ | Record _ | Type _ | Prim _)  => TypeK (pos t)
              | t as (RowExt _ | EmptyRow _) => RowK (pos t)
+             | CallTFn (_, callee, #[]) => #kind (typeFnKind callee)
              | UseT (_, {kind, ...}) => kind
              | SVar args => svarKind args
     end
@@ -339,8 +340,8 @@ structure FType :> FAST_TYPE = struct
 
         fun concr t = Exists (Concr.pos t, #[], t)
 
-        fun kindOf svarKind =
-            fn Exists (_, _, t) => Concr.kindOf svarKind t
+        fun kindOf svarKind typeFnKind =
+            fn Exists (_, _, t) => Concr.kindOf svarKind typeFnKind t
     end
 
     structure Co = struct

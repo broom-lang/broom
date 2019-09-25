@@ -13,27 +13,34 @@ end = struct
         val empty: t
         val insert: t * Name.t * FFType.concr -> t
         val insertType: t * Id.t * (Id.t * FFType.kind) -> t
+        val insertTypeFn: t * Name.t * FFType.tfn_sig -> t
         val find: t * Name.t -> FFType.concr option
         val findType: t * Id.t -> (Id.t * FFType.kind) option
+        val findTypeFn: t * Name.t -> FFType.tfn_sig option
         val insertCo: t * Name.t * FFType.concr * FFType.concr -> t
         val findCo: t * Name.t -> (FFType.concr * FFType.concr) option
     end = struct
         type t = { vals: FFType.concr NameSortedMap.map
                  , types: (Id.t * FFType.kind) Id.SortedMap.map
+                 , typeFns: FFType.tfn_sig NameSortedMap.map
                  , coercions: (FFType.concr * FFType.concr) NameSortedMap.map }
 
         val empty =
-            {vals = NameSortedMap.empty, types = Id.SortedMap.empty, coercions = NameSortedMap.empty}
+            { vals = NameSortedMap.empty, types = Id.SortedMap.empty
+            , typeFns = NameSortedMap.empty, coercions = NameSortedMap.empty }
 
-        fun insert ({vals, types, coercions}, name, t) =
-            {vals = NameSortedMap.insert (vals, name, t), types, coercions}
-        fun insertType ({vals, types, coercions}, id, entry) =
-            {vals, types = Id.SortedMap.insert (types, id, entry), coercions}
-        fun insertCo ({vals, types, coercions}, name, l, r) =
-            {vals, types, coercions = NameSortedMap.insert (coercions, name, (l, r))}
+        fun insert ({vals, types, typeFns, coercions}, name, t) =
+            {vals = NameSortedMap.insert (vals, name, t), types, typeFns, coercions}
+        fun insertType ({vals, types, typeFns, coercions}, id, entry) =
+            {vals, types = Id.SortedMap.insert (types, id, entry), typeFns, coercions}
+        fun insertType ({vals, types, typeFns, coercions}, name, tfkind) =
+            {vals, types, typeFns = NameSortedMap.insert (typeFns, name, tfkind), coercions}
+        fun insertCo ({vals, types, typeFns, coercions}, name, l, r) =
+            {vals, types, typeFns, coercions = NameSortedMap.insert (coercions, name, (l, r))}
 
         fun find ({vals, ...}: t, name) = NameSortedMap.find (vals, name)
         fun findType ({types, ...}: t, id) = Id.SortedMap.find (types, id)
+        fun findType ({typeFns, ...}: t, id) = NameSortedMap.find (typeFns, id)
         fun findCo ({coercions, ...}: t, name) = NameSortedMap.find (coercions, name)
     end
 
@@ -74,6 +81,14 @@ end = struct
             else rowLabelType ext label
          | EmptyRow _ => NONE
          | _ => raise Fail ("Not a row type: " ^ FType.Concr.toString row)
+
+    fun kindOf env =
+        let fun findTypeFnExn name =
+                case Env.findTypeFn (env, name)
+                of SOME tfkind => tfkind
+                 | NONE => raise Fail ("Unbound type function " ^ Name.toString name)
+        in FFType.Concr.kindOf findTypeFnExn
+        end
 
     val rec kindEq =
         fn (ArrowK _, ArrowK _) => raise Fail "unimplemented"
@@ -212,7 +227,7 @@ end = struct
             let do if Vector.length args = Vector.length params then () else raise Fail "argument count"
                 val pargs = Vector.zip (params, args)
                 
-                fun checkArg ({var = _, kind}, arg) = checkKindEq (FFType.Concr.kindOf arg, kind)
+                fun checkArg ({var = _, kind}, arg) = checkKindEq (kindOf env arg, kind)
                 do Vector.app checkArg pargs
 
                 val mapping = Vector.foldl (fn (({var, ...}, arg), mapping) =>
