@@ -106,14 +106,16 @@ end = struct
             let val (_, absBindings) = valOf (Env.nearestExists env)
                 val mapping =
                     Vector.foldl (fn ({var, kind}, mapping) =>
-                                      let val kind = Vector.foldr (fn ({var = _, kind = argKind}, kind) =>
+                                      let val args = Env.universalParams env
+                                          val kind = Vector.foldr (fn ({var = _, kind = argKind}, kind) =>
                                                                        FType.ArrowK (pos, { domain = argKind
                                                                                           , codomain = kind }))
-                                                                  kind
-                                                                  (Env.universalParams env)
-                                          val id' = Bindings.Type.fresh absBindings kind
-                                          (* FIXME: the type needs to be applied to the universal params: *)
-                                      in Id.SortedMap.insert (mapping, var, FType.UseT (pos, {var = id', kind}))
+                                                                  kind args
+                                          val var = Bindings.Type.fresh absBindings kind
+                                          val app = Vector.foldl (fn (def, callee) =>
+                                                                      FType.App (pos, {callee, arg = FType.UseT (pos, def)}))
+                                                                 (FType.UseT (pos, {var, kind})) args
+                                      in Id.SortedMap.insert (mapping, var, app)
                                       end)
                                  Id.SortedMap.empty params
             in Concr.substitute (Env.hasScope env) mapping body
@@ -129,25 +131,26 @@ end = struct
 
             fun elaborate env =
                 fn CType.Pi (pos, {var, typ = domain}, expl, codomain) =>
-                    let val (typeDefs, domain) =
+                    let val (nonCallsiteTypeDefs, domain) =
                             case domain
                             of SOME domain => elaborateType env domain
                              | NONE => ([], FType.SVar (pos, FType.UVar (Env.freshUv env Predicative)))
+                        val callsite = {var = FType.Id.fresh (), kind = FType.CallsiteK pos}
+                        val typeDefs = callsite :: nonCallsiteTypeDefs
 
                         val env = Env.pushScope env (Scope.ForAllScope ( Scope.Id.fresh ()
-                                                                       , typeDefs |> Vector.fromList |> Bindings.Type.fromDefs ))
+                                                                       , typeDefs
+                                                                         |> Vector.fromList
+                                                                         |> Bindings.Type.fromDefs ))
                         val fnScope = Scope.FnScope (Scope.Id.fresh (), var, Visited (domain, NONE))
                         val env = Env.pushScope env fnScope
 
                         val codomain = elaborate env codomain
                         val arrow = FType.Arrow (pos, elaborateArr expl, {domain, codomain})
-                        (* TODO: No callsite when `Implicit`: *)
-                        val typeDefs =
-                            if List.null typeDefs andalso FType.Concr.isSmall codomain
-                            then typeDefs
-                            else let val callsite = {var = FType.Id.fresh (), kind = FType.CallsiteK pos}
-                                 in callsite :: typeDefs
-                                 end
+                        (* TODO: No callsite when `Implicit`: *) 
+                        val typeDefs = if List.null nonCallsiteTypeDefs andalso FType.Concr.isSmall codomain
+                                       then nonCallsiteTypeDefs
+                                       else typeDefs
                     in case typeDefs
                        of [] => arrow
                         | _ => FType.ForAll (pos, Vector.fromList typeDefs, arrow)
