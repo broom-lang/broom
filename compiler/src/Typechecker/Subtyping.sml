@@ -166,12 +166,14 @@ end = struct
     and subType env currPos (typs as (sub, super)) =
         coercion (Coerce ()) env currPos typs
         handle TypeError cause =>
-                raise TypeError (NonSubType (currPos, concr sub, concr super, SOME cause))
+                ( Env.error env (NonSubType (currPos, concr sub, concr super, SOME cause))
+                ; NONE )
 
     and unify env currPos (typs as (l, r)) =
         coercion Unify env currPos typs
         handle TypeError cause =>
-                raise TypeError (NonUnifiable (currPos, concr l, concr r, SOME cause))
+                ( Env.error env (NonUnifiable (currPos, concr l, concr r, SOME cause))
+                ; NONE )
 
     and arrowCoercion intent env currPos
                       (arrows as ((eff, {domain, codomain}), (eff', {domain = domain', codomain = codomain'}))) =

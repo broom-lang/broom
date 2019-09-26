@@ -327,6 +327,6 @@ end = struct
 
     fun error ({errors, ...}: t) err = errors := err :: (!errors)
 
-    val errors: t -> TypeError.t list = op! o #errors
+    val errors: t -> TypeError.t list = List.rev o op! o #errors
 end
 

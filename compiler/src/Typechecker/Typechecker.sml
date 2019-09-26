@@ -1,5 +1,7 @@
 structure Typechecker :> sig
-    val elaborateProgram: TypecheckingEnv.t -> Cst.Term.stmt vector -> FlexFAst.Term.program * TypecheckingEnv.t
+    val elaborateProgram: TypecheckingEnv.t -> Cst.Term.stmt vector
+        -> ( FlexFAst.Term.program * TypecheckingEnv.t * TypeError.t list
+           , FlexFAst.Term.program * TypecheckingEnv.t ) Either.t
 end = struct
     val op|> = Fn.|>
     datatype either = datatype Either.t
@@ -337,7 +339,8 @@ end = struct
          | CTerm.Use (pos, name) =>
             let val typ = case lookupValType expr name env
                           of SOME typ => typ
-                           | NONE => raise TypeError (UnboundVal (pos, name))
+                           | NONE => ( Env.error env (UnboundVal (pos, name))
+                                     ; FType.SVar (pos, FType.UVar (Env.freshUv env Predicative)) )
                 val def = {var = name, typ}
             in (Pure, typ, FTerm.Use (pos, def))
             end
@@ -619,7 +622,10 @@ end = struct
                           ; (callee, eff, arrow)
                          end
                       | Right typ => coerce callee typ)
-                 | _ => raise TypeError (UnCallable (callee, typ))
+                 | _ => ( Env.error env (UnCallable (callee, typ))
+                        ; (callee, Impure, { domain = FType.SVar ( FTerm.exprPos callee
+                                                                 , FType.UVar (Env.freshUv env Predicative) )
+                                           , codomain = typ }) )
         in coerce callee typ
         end
    
@@ -647,7 +653,8 @@ end = struct
                                    in uvSet env (uv, typ)
                                     ; (expr, fieldType)
                                    end)
-                 | _ => raise TypeError (UnDottable (expr, typ))
+                 | _ => ( Env.error env (UnDottable (expr, typ))
+                        ; (expr, FType.SVar (FTerm.exprPos expr, FType.UVar (Env.freshUv env Predicative))) )
             and coerceRow expr =
                 fn FType.RowExt (_, {field = (label', fieldt), ext}) =>
                     if label' = label
@@ -664,7 +671,9 @@ end = struct
             val program = { typeFns = Env.typeFns env
                           , axioms = Env.axioms env
                           , stmts }
-        in (program, env)
+        in case Env.errors env
+           of [] => Right (program, env)
+            | errors => Left (program, env, errors)
         end
 end
 
