@@ -87,6 +87,9 @@ structure TypecheckingEnv :> sig
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
     val updateExpr: Pos.t -> t -> Name.t
                   -> (Bindings.Expr.binding_state -> Bindings.Expr.binding_state) -> unit
+
+    val error: t -> TypeError.t -> unit
+    val errors: t -> TypeError.t list
 end = struct
     open TypeError
     structure FAst = FlexFAst
@@ -241,10 +244,11 @@ end = struct
 
     type t = { toplevel: Scope.toplevel
              , scopeIds: Scope.Id.t list
-             , scopes: Scope.t list }
+             , scopes: Scope.t list
+             , errors: TypeError.t list ref }
     
     fun initial (id, toplevel) =
-        {toplevel, scopeIds = [id], scopes = [Scope.TopScope (id, toplevel)]}
+        {toplevel, scopeIds = [id], scopes = [Scope.TopScope (id, toplevel)], errors = ref []}
 
     fun default () = initial (Scope.Id.fresh (), Scope.initialToplevel ())
 
@@ -253,8 +257,8 @@ end = struct
         of scope :: _ => SOME scope
          | [] => NONE
 
-    fun pushScope {scopeIds, scopes, toplevel} scope =
-        {scopes = scope :: scopes, scopeIds = Scope.id scope :: scopeIds, toplevel}
+    fun pushScope {scopeIds, scopes, toplevel, errors} scope =
+        {scopes = scope :: scopes, scopeIds = Scope.id scope :: scopeIds, toplevel, errors}
 
     fun hasScope (env: t) id =
         List.exists (fn id' => id' = id) (#scopeIds env)
@@ -296,10 +300,10 @@ end = struct
 
     fun findExprClosure (env: t) name =
         let val rec find =
-                fn env as {scopes = scope :: scopes, scopeIds = _ :: scopeIds, toplevel} =>
+                fn env as {scopes = scope :: scopes, scopeIds = _ :: scopeIds, toplevel, errors} =>
                     (case Scope.findExpr scope name
                      of SOME b => SOME (b, env)
-                      | NONE => find {scopes, scopeIds, toplevel})
+                      | NONE => find {scopes, scopeIds, toplevel, errors})
                  | {scopes = [], scopeIds = [], ...} => NONE
         in find env
         end
@@ -320,5 +324,9 @@ end = struct
                  | [] =>  raise TypeError (UnboundVal (pos, name))
         in update (#scopes env)
         end
+
+    fun error ({errors, ...}: t) err = errors := err :: (!errors)
+
+    val errors: t -> TypeError.t list = op! o #errors
 end
 
