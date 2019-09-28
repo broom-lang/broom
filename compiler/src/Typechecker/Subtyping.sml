@@ -167,13 +167,25 @@ end = struct
         coercion (Coerce ()) env currPos typs
         handle TypeError cause =>
                 ( Env.error env (NonSubType (currPos, concr sub, concr super, SOME cause))
-                ; NONE )
+                ; SOME (fn expr =>
+                            let val pos = FTerm.exprPos expr
+                                val def = {var = Name.fresh (), typ = super}
+                            in FTerm.Let ( FTerm.exprPos expr
+                                         , #[FTerm.Val (pos, def, expr)]
+                                         , FTerm.Use (pos, def) )
+                            end) )
 
     and unify env currPos (typs as (l, r)) =
         coercion Unify env currPos typs
         handle TypeError cause =>
                 ( Env.error env (NonUnifiable (currPos, concr l, concr r, SOME cause))
-                ; NONE )
+                ; SOME (fn expr =>
+                            let val pos = FTerm.exprPos expr
+                                val def = {var = Name.fresh (), typ = r}
+                            in FTerm.Let ( FTerm.exprPos expr
+                                         , #[FTerm.Val (pos, def, expr)]
+                                         , FTerm.Use (pos, def) )
+                            end) )
 
     and arrowCoercion intent env currPos
                       (arrows as ((eff, {domain, codomain}), (eff', {domain = domain', codomain = codomain'}))) =

@@ -25,7 +25,7 @@ structure FlexFAst = struct
             fn Path path =>
                 (case TypeVars.Path.get (Fn.constantly false) path
                  of Either.Right (t, _) => concrToDoc t
-                  | Either.Left (t, _) => concrToDoc t)
+                  | Either.Left (t, _) => text "^^" <> concrToDoc t)
              | OVar ov => Name.toDoc (TypeVars.Ov.name ov)
              | UVar uv =>
                 (case TypeVars.Uv.get uv

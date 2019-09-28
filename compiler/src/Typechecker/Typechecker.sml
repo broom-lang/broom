@@ -113,10 +113,10 @@ end = struct
                                                                        FType.ArrowK (pos, { domain = argKind
                                                                                           , codomain = kind }))
                                                                   kind args
-                                          val var = Bindings.Type.fresh absBindings kind
+                                          val var' = Bindings.Type.fresh absBindings kind
                                           val app = Vector.foldl (fn (def, callee) =>
                                                                       FType.App (pos, {callee, arg = FType.UseT (pos, def)}))
-                                                                 (FType.UseT (pos, {var, kind})) args
+                                                                 (FType.UseT (pos, {var = var', kind})) args
                                       in Id.SortedMap.insert (mapping, var, app)
                                       end)
                                  Id.SortedMap.empty params
