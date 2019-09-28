@@ -35,7 +35,7 @@ itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.brm)))
 %.test: %.brm $(BROOM)
 	@expected_err=$(addsuffix .err, $(basename $<)); \
 	if [ -f $$expected_err ]; then \
-          ./$(BROOM) build --lint $< 2>&1 >/dev/null | diff $$expected_err -; \
+          ./$(BROOM) build $< 2>&1 >/dev/null | diff $$expected_err -; \
         else \
 	  ./$(BROOM) build --lint $< 2>&1 | diff /dev/null -; \
         fi
