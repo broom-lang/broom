@@ -232,7 +232,7 @@ end = struct
         fun findType scope id =
             case scope
             of ForAllScope (_, bindings) | ExistsScope (_, bindings) => Bindings.Type.find bindings id
-             | FnScope _ | PatternScope _ | BlockScope _ | InterfaceScope _ | Marker _ => NONE
+             | TopScope _ | FnScope _ | PatternScope _ | BlockScope _ | InterfaceScope _ | Marker _ => NONE
 
         fun findExpr scope name =
             case scope

@@ -122,6 +122,9 @@ end = struct
               | NONE => false)
          | (EmptyRow _, EmptyRow _) => true
          | (FType.Type (_, t), FType.Type (_, t')) => absEq env (t, t')
+         | (FType.App (_, {callee, args}), FType.App (_, {callee = callee', args = args'})) =>
+            eq env (callee, callee')
+            andalso Vector.all (eq env) (Vector.zip (args, args'))
          | (CallTFn (_, callee, args), CallTFn (_, callee', args')) =>
             callee = callee'
             andalso Vector.all (eq env) (Vector.zip (args, args'))

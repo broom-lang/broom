@@ -22,6 +22,8 @@ end = struct
          | RowExt (pos, {field = (label, fieldt), ext}) =>
             RowExt (pos, {field = (label, concrToF fieldt), ext = concrToF ext})
          | EmptyRow pos => EmptyRow pos
+         | FFType.App (pos, {callee, args}) =>
+            FFType.App (pos, {callee = concrToF callee, args = Vector.map concrToF args})
          | CallTFn (pos, f, args) =>
             CallTFn (pos, f, Vector.map concrToF args)
          | FFType.Type (pos, typ) => FFType.Type (pos, absToF typ)
