@@ -22,7 +22,7 @@ signature FAST_TYPE = sig
         | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
         | EmptyRow of Pos.t
         | Type of Pos.t * 'sv abs
-        | App of Pos.t * {callee: 'sv concr, arg: 'sv concr}
+        | App of Pos.t * {callee: 'sv concr, args: 'sv concr vector}
         | CallTFn of Pos.t * Name.t * 'sv concr vector
         | UseT of Pos.t * def
         | SVar of Pos.t * 'sv
@@ -43,11 +43,13 @@ signature FAST_TYPE = sig
     val piEffect: 'sv concr -> effect option
     val rowExtTail: 'sv concr -> 'sv concr
     val unit: Pos.t -> 'sv concr
+    val app : Pos.t * {callee: 'sv concr, args: 'sv concr vector} -> 'sv concr
     
     structure Concr: sig
         val pos: 'sv concr -> Pos.t
         val toDoc: ('sv -> PPrint.t) -> 'sv concr -> PPrint.t
         val toString: ('sv -> PPrint.t) -> 'sv concr -> string
+        val mapChildren : ('sv concr -> 'sv concr) -> 'sv concr -> 'sv concr
         val isSmall: 'sv concr -> bool
         val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv concr -> bool
         val substitute: ('sv concr Id.SortedMap.map -> 'sv -> 'sv concr option)
@@ -59,6 +61,7 @@ signature FAST_TYPE = sig
         val pos: 'sv abs -> Pos.t
         val toDoc: ('sv -> PPrint.t) -> 'sv abs -> PPrint.t
         val toString: ('sv -> PPrint.t) -> 'sv abs -> string
+        val mapChildren : ('sv concr -> 'sv concr) -> 'sv abs -> 'sv abs
         val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv abs -> bool
         val concr: 'sv concr -> 'sv abs
         val substitute: ('sv concr Id.SortedMap.map -> 'sv -> 'sv concr option)
@@ -108,7 +111,7 @@ structure FType :> FAST_TYPE = struct
         | RowExt of Pos.t * {field: Name.t * 'sv concr, ext: 'sv concr}
         | EmptyRow of Pos.t
         | Type of Pos.t * 'sv abs
-        | App of Pos.t * {callee: 'sv concr, arg: 'sv concr}
+        | App of Pos.t * {callee: 'sv concr, args: 'sv concr vector}
         | CallTFn of Pos.t * Name.t * 'sv concr vector
         | UseT of Pos.t * def
         | SVar of Pos.t * 'sv
@@ -163,7 +166,8 @@ structure FType :> FAST_TYPE = struct
                     end
                  | EmptyRow _ => text "(||)"
                  | Type (_, t) => brackets (text "=" <+> absToDoc svarToDoc t)
-                 | App (_, {callee, arg}) => concrToDoc callee <+> concrToDoc arg
+                 | App (_, {callee, args}) =>
+                    concrToDoc callee <+> PPrint.punctuate PPrint.space (Vector.map concrToDoc args)
                  | CallTFn (_, f, args) =>
                     Name.toDoc f <> parens (PPrint.punctuate (comma <> space) (Vector.map concrToDoc args))
                  | SVar (_, sv) => svarToDoc sv
@@ -213,7 +217,7 @@ structure FType :> FAST_TYPE = struct
          | Record (pos, row) => Record (pos, f row)
          | RowExt (pos, {field = (label, fieldt), ext}) =>
             RowExt (pos, {field = (label, f fieldt), ext = f ext})
-         | App (pos, {callee, arg}) => App (pos, {callee = f callee, arg = f arg})
+         | App (pos, {callee, args}) => App (pos, {callee = f callee, args = Vector.map f args})
          | CallTFn (pos, name, args) => CallTFn (pos, name, Vector.map f args)
          | t as (EmptyRow _ | Type _ | SVar _ | UseT _ | Prim _) => t
 
@@ -230,8 +234,8 @@ structure FType :> FAST_TYPE = struct
          | EmptyRow args => emptyRow args
          | Type args => typ args
          | SVar args => svar args
-         | App (pos, {callee, arg}) =>
-            app (pos, {callee = concrCata alg callee, arg = concrCata alg arg})
+         | App (pos, {callee, args}) =>
+            app (pos, {callee = concrCata alg callee, args = Vector.map (concrCata alg) args})
          | CallTFn (pos, name, args) => callTFn (pos, name, Vector.map (concrCata alg) args)
          | UseT args => uset args
          | Prim args => prim args
@@ -246,7 +250,8 @@ structure FType :> FAST_TYPE = struct
                                            , emptyRow = Fn.constantly false
                                            , typ = fn (_, t) => absOccurs svarOcc sv t
                                            , svar = fn (_, sv') => svarOcc sv sv'
-                                           , app = fn (_, {callee, arg}) => callee orelse arg
+                                           , app = fn (_, {callee, args}) =>
+                                              callee orelse Vector.exists Fn.identity args
                                            , callTFn = fn (_, _, args) => Vector.exists Fn.identity args
                                            , uset = Fn.constantly false
                                            , prim = Fn.constantly false }
@@ -291,7 +296,7 @@ structure FType :> FAST_TYPE = struct
             smallConcr fieldt andalso smallConcr ext
          | EmptyRow _ => true
          | Type (_, t) => smallAbs t
-         | App (_, {callee, arg}) => smallConcr callee andalso smallConcr arg
+         | App (_, {callee, args}) => smallConcr callee andalso Vector.all smallConcr args
          | CallTFn (_, _, args) => Vector.all smallConcr args
          | SVar _ | UseT _ | Prim _ => true
 
@@ -311,6 +316,10 @@ structure FType :> FAST_TYPE = struct
 
     fun unit pos = Prim (pos, Prim.Unit)
 
+    val app = (* HACK *)
+        fn (_, {callee, args = #[]}) => callee
+         | args => App args
+
     structure Concr = struct
         val pos =
             fn ForAll (pos, _, _) => pos
@@ -327,6 +336,7 @@ structure FType :> FAST_TYPE = struct
 
         val toDoc = concrToDoc
         fun toString svarToDoc = PPrint.pretty 80 o toDoc svarToDoc
+        val mapChildren = mapConcrChildren
         val occurs = concrOccurs
         val substitute = concrSubstitute
         val isSmall = smallConcr
@@ -345,6 +355,7 @@ structure FType :> FAST_TYPE = struct
 
         val toDoc = absToDoc
         fun toString svarToDoc = PPrint.pretty 80 o toDoc svarToDoc
+        val mapChildren = mapAbsChildren
         val occurs = absOccurs
         val substitute = absSubstitute
         val isSmall = smallAbs

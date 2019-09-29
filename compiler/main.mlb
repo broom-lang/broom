@@ -42,9 +42,11 @@ local
            src/Reprs/FAst/FTerm.sml
            src/Reprs/FAst/FAst.sml
            src/Reprs/FAst/Eval.sml
-           
            src/Typechecker/TypeError.sml
+
            src/Typechecker/Env.sml
+           src/Reprs/FAst/FlexEnvironmentals.sml
+
            src/Typechecker/Subtyping.sml
            src/Typechecker/Typechecker.sml
            src/Typechecker/ExitTypechecker.sml
