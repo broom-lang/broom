@@ -14,7 +14,8 @@ end = struct
     structure Id = FType.Id
     datatype concr = datatype FType.concr
 
-    (* FIXME: `unifyArg` fails with OutsideScope. This fn needs to push `ForAllScope`:s. *)
+    (* FIXME: `unifyArg` fails with OutsideScope. This fn needs to push `ForAllScope`:s.
+              Even that is not sufficient because the uv scope > the UseT scope! *)
     fun concrSubstitutePath hasScope unifyArg mapping =
         let fun subst mapping =
                 fn t as ForAll (_, params, _) =>
