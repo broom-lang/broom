@@ -4,6 +4,7 @@ signature TYPE_ERROR = sig
                | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.t * Name.t
+               | OutsideScope of Pos.t * Name.t
                | MissingField of Pos.t * FlexFAst.Type.concr * Name.t
                | Occurs of FlexFAst.Type.concr * FlexFAst.Type.abs
    
@@ -26,6 +27,7 @@ structure TypeError :> TYPE_ERROR = struct
                | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.t * Name.t
+               | OutsideScope of Pos.t * Name.t
                | MissingField of Pos.t * FlexFAst.Type.concr * Name.t
                | Occurs of FlexFAst.Type.concr * FlexFAst.Type.abs
     
@@ -52,6 +54,7 @@ structure TypeError :> TYPE_ERROR = struct
                                      , text "Value" <+> FTerm.exprToDoc expr
                                            <+> text "of type" <+> Concr.toDoc typ <+> text "is not a record or module." )
                                   | UnboundVal (pos, name) => (pos, text "Unbound variable" <+> Name.toDoc name <> text ".")
+                                  | OutsideScope (pos, name) => (pos, text "Type out of scope" <+> Name.toDoc name <> text ".")
                                   | MissingField (pos, typ, label) =>
                                      ( pos
                                      , Concr.toDoc typ <+> text "does not have field"

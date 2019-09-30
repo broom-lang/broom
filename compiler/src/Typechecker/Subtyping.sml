@@ -153,7 +153,7 @@ end = struct
             if var = var'
             then if idInScope env var
                  then NONE
-                 else raise Fail ("Opaque type out of scope: " ^ Concr.toString super)
+                 else raise TypeError (OutsideScope (currPos, Name.fromString ("g__" ^ Id.toString var)))
             else raise TypeError (error intent (currPos, concr sub, concr super, NONE))
          | (SVar (_, UVar uv), super as SVar (_, UVar uv')) =>
             uvsCoercion intent env currPos super (uv, uv')
@@ -326,14 +326,15 @@ end = struct
          | Arrow (pos, Explicit eff, domains) => doAssignArrow env y uv pos eff domains
          | RowExt _ | EmptyRow _ | Record _ | CallTFn _ | Prim _ | Type _ => uvSet env (uv, t)
          | UseT (_, {var, ...}) => 
-            if idInScope env var
-            then uvSet env (uv, t)
-            else raise Fail ( "Opaque type out of scope: g__" ^ Id.toString var
-                            ^ " in " ^ Pos.toString currPos ^ "\n")
+            ( uvSet env (uv, t)
+            ; if idInScope env var
+              then NONE
+              else raise TypeError (OutsideScope (currPos, Name.fromString ("g__" ^ Id.toString var))) )
          | SVar (_, OVar ov) =>
-            if Env.hasScope env (TypeVars.Ov.scope ov)
-            then uvSet env (uv, t)
-            else raise Fail ("Opaque type out of scope: " ^ Name.toString (TypeVars.Ov.name ov))
+            ( uvSet env (uv, t)
+            ; if Env.hasScope env (TypeVars.Ov.scope ov)
+              then NONE
+              else raise TypeError (OutsideScope (currPos, TypeVars.Ov.name ov)) )
          | SVar (_, UVar uv') =>
             (case Uv.get uv'
              of Left _ => uvSet env (uv, t)
