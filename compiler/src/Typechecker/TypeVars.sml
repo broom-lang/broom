@@ -157,16 +157,6 @@ end = struct
 
         val face: ('scope, 't) path -> 't = #face
 
-        fun get inScope {face, impl = ref {scope, typ, coercion}} =
-            case scope
-            of SOME scope =>
-                if inScope scope
-                then case typ
-                     of SOME t => Either.Right (t, valOf coercion)
-                      | NONE => Either.Left (face, coercion)
-                else Either.Left (face, NONE)
-             | NONE => Either.Left (face, NONE)
-
         fun get inScope {face, impls} =
             case List.find (inScope o #1) (!impls)
             of SOME (_, {typ = SOME t, coercion}) => Either.Right (t, valOf coercion)
