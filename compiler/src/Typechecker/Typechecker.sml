@@ -492,26 +492,14 @@ end = struct
         let val paths = Vector.map (fn {var, kind} =>
                                         let val typeFnName = Env.freshAbstract env var {paramKinds = #[], kind}
                                             val typeFn = FType.CallTFn (pos, typeFnName, #[])
-                                            val args =
-                                                let fun argsFromDomains args =
-                                                        fn FType.ArrowK (_, {domain, codomain}) =>
-                                                            let val uv = Env.freshUv env Predicative
-                                                                val arg = FType.SVar (pos, FType.UVar uv)
-                                                            in argsFromDomains (arg :: args) codomain
-                                                            end
-                                                         | _ => Vector.fromList (List.rev args)
-                                                in argsFromDomains [] kind
-                                                end
-                                            val face = FType.App (pos, {callee =typeFn, args})
-                                        in FAst.Type.SVar (pos, FType.Path (Path.new face))
+                                        in FAst.Type.SVar (pos, FType.Path (Path.new typeFn))
                                         end)
                                    params
            
             val mapping = (params, paths)
                         |> Vector.zipWith (fn ({var, ...}, path) => (var, path))
                         |> Id.SortedMap.fromVector
-            val implType = FlexEnvironmentals.Concr.substitutePath (Env.hasScope env) (ignore o unify env pos)
-                                                                   mapping body
+            val implType = Concr.substitute (Env.hasScope env) mapping body
         in (implType, paths)
         end
 
