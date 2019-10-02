@@ -36,9 +36,11 @@ local
                src/Parser/Parser.sml
            end
 
-           src/Typechecker/TypeVars.sml
+           src/Typechecker/ScopeId.sml
+
            src/Reprs/FAst/FType.sml
            src/Reprs/FAst/FTerm.sml
+           src/Typechecker/TypeVars.sml
            src/Reprs/FAst/FAst.sml
            src/Reprs/FAst/Eval.sml
            src/Typechecker/TypeError.sml

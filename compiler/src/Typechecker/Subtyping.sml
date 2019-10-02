@@ -315,7 +315,7 @@ end = struct
               | Unify => coercion Unify env currPos (t, t'))
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
-    and assign (env: Env.t) currPos (y, uv: (Scope.Id.t, concr) TypeVars.uv, t: concr): coercion =
+    and assign (env: Env.t) currPos (y, uv: concr TypeVars.uv, t: concr): coercion =
         if Concr.occurs (Env.hasScope env) uv t
         then raise TypeError (Occurs (SVar (Concr.pos t, UVar uv), concr t))
         else doAssign env currPos y (uv, t)

@@ -1,5 +1,5 @@
 structure FlexFAst = struct
-    structure ScopeId = Id(struct end)
+    structure ScopeId = ScopeId
 
     val text = PPrint.text
     val op<> = PPrint.<>
@@ -16,9 +16,9 @@ structure FlexFAst = struct
         withtype concr = sv FType.concr
         and abs = sv FType.abs
         and co = sv FType.co
-        and ov = (ScopeId.t, kind) TypeVars.ov
-        and uv = (ScopeId.t, sv FType.concr) TypeVars.uv
-        and path = (ScopeId.t, sv FType.concr) TypeVars.path
+        and ov = TypeVars.ov
+        and uv = sv FType.concr TypeVars.uv
+        and path = sv FType.concr TypeVars.path
 
         val rec concrToDoc = fn t => FType.Concr.toDoc svarToDoc t
         and svarToDoc =

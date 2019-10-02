@@ -1,68 +1,75 @@
 structure TypeVars :> sig
+    type kind = FType.kind
+
     datatype predicativity = Predicative | Impredicative
 
     exception SetPrivate of Name.t
     exception Reset
 
-    type ('scope, 'kind) ov
-    type ('scope, 't) uv
-    type ('scope, 't) path
+    type ov
 
     structure Ov: sig
-        val new: 'scope * predicativity * Name.t * 'kind -> ('scope, 'kind) ov
-        val scope: ('scope, 'kind) ov -> 'scope
-        val name: ('scope, 'kind) ov -> Name.t
+        val new: ScopeId.t * predicativity * Name.t * kind -> ov
+        val scope: ov -> ScopeId.t
+        val name: ov -> Name.t
     end
+
+    type 't uv
 
     structure Uv: sig
-        val new: 'scope * predicativity * Name.t -> ('scope, 't) uv
-        val fresh: 'scope * predicativity -> ('scope, 't) uv
-        val freshSibling: ('scope, 't) uv * predicativity -> ('scope, 't) uv
-        val get: ('scope, 't) uv -> (('scope, 't) uv, 't) Either.t
-        val set: ('t -> ('scope, 't) uv option) (* Try to unwrap another uv from provided 't. *)
-                 -> ('scope * 'scope -> order) (* scope ordering to preserve scoping invariants *)
-                 -> ('scope -> bool) (* Is the required scope available? *)
-                 -> ('scope, 't) uv * 't -> unit
-        val eq: ('scope, 't) uv * ('scope, 't) uv -> bool
-        val name: ('scope, 't) uv -> Name.t
+        val new: ScopeId.t * predicativity * Name.t -> 't uv
+        val fresh: ScopeId.t * predicativity -> 't uv
+        val freshSibling: 't uv * predicativity -> 't uv
+        val get: 't uv -> ('t uv, 't) Either.t
+        val set: ('t -> 't uv option) (* Try to unwrap another uv from provided 't. *)
+                 -> (ScopeId.t * ScopeId.t -> order) (* scope ordering to preserve scoping invariants *)
+                 -> (ScopeId.t -> bool) (* Is the required scope available? *)
+                 -> 't uv * 't -> unit
+        val eq: 't uv * 't uv -> bool
+        val name: 't uv -> Name.t
     end
 
+    type 't path
+
     structure Path: sig
-        val new: 't -> ('scope, 't) path
-        val face: ('scope, 't) path -> 't
-        val get: ('scope -> bool) (* Is the required coercion available? *)
-                 -> ('scope, 't) path -> ('t * Name.t option, 't * Name.t) Either.t
-        val addScope: ('scope, 't) path * 'scope * Name.t -> unit
+        val new: 't -> 't path
+        val face: 't path -> 't
+        val get: (ScopeId.t -> bool) (* Is the required coercion available? *)
+                 -> 't path -> ('t * Name.t option, 't * Name.t) Either.t
+        val addScope: 't path * ScopeId.t * Name.t -> unit
         val set: ('t -> Name.t)
-                 -> ('scope -> bool) (* Is the required coercion available? *)
-                 -> ('scope, 't) path * 't -> unit
-        val eq: ('scope, 't) path * ('scope, 't) path -> bool
+                 -> (ScopeId.t -> bool) (* Is the required coercion available? *)
+                 -> 't path * 't -> unit
+        val eq: 't path * 't path -> bool
     end
 end = struct
+    type kind = FType.kind
+
     datatype predicativity = Predicative | Impredicative
 
     exception SetPrivate of Name.t
     exception Reset
 
-    type 'scope meta = { name: Name.t
-                       , scope: 'scope
-                       , predicativity: predicativity }
+    type meta =
+        { name: Name.t
+        , scope: ScopeId.t
+        , predicativity: predicativity }
 
-    type ('scope, 'kind) ov = {meta: 'scope meta, kind: 'kind}
-
-    datatype ('scope, 't) link
-        = Link of ('scope, 't) uv
-        | Root of {meta: 'scope meta, typ: 't option ref, rank: int ref}
-    withtype ('scope, 't) uv = ('scope, 't) link ref
+    type ov = {meta: meta, kind: kind}
 
     structure Ov = struct
         fun new (scope, predicativity, name, kind) =
             {meta = {name, scope, predicativity}, kind}
 
-        fun scope ({meta = {scope, ...}, ...}: ('scope, 'kind) ov) = scope
+        fun scope ({meta = {scope, ...}, ...}: ov) = scope
 
-        fun name ({meta = {name, ...}, ...}: ('scope, 'kind) ov) = name
+        fun name ({meta = {name, ...}, ...}: ov) = name
     end
+
+    datatype 't link
+        = Link of 't uv
+        | Root of {meta: meta, typ: 't option ref, rank: int ref}
+    withtype 't uv = 't link ref
 
     structure Uv = struct
         fun new (scope, predicativity, name) =
@@ -148,14 +155,14 @@ end = struct
         fun name uv = #name (#meta (root uv))
     end
 
-    type ('scope, 't) impl = {typ: 't option, coercion: Name.t option}
+    type 't impl = {typ: 't option, coercion: Name.t option}
 
-    type ('scope, 't) path = {face: 't, impls: ('scope * ('scope, 't) impl) list ref}
+    type 't path = {face: 't, impls: (ScopeId.t * 't impl) list ref}
 
     structure Path = struct
         fun new face = {face, impls = ref []}
 
-        val face: ('scope, 't) path -> 't = #face
+        val face: 't path -> 't = #face
 
         fun get inScope {face, impls} =
             case List.find (inScope o #1) (!impls)
@@ -178,7 +185,7 @@ end = struct
             in impls := loop (!impls)
             end
 
-        fun eq ({impls, ...}: ('scope, 't) path, {impls = impls', ...}: ('scope, 't) path) =
+        fun eq ({impls, ...}: 't path, {impls = impls', ...}: 't path) =
             impls = impls'
    end
 end
