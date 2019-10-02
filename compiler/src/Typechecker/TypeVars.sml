@@ -55,10 +55,6 @@ end = struct
         | Root of {meta: 'scope meta, typ: 't option ref, rank: int ref}
     withtype ('scope, 't) uv = ('scope, 't) link ref
 
-    type ('scope, 't) path =
-        { face: 't
-        , impls: ('scope * {typ: 't option, coercion: Name.t option}) list ref }
-
     structure Ov = struct
         fun new (scope, predicativity, name, kind) =
             {meta = {name, scope, predicativity}, kind}
@@ -151,6 +147,10 @@ end = struct
 
         fun name uv = #name (#meta (root uv))
     end
+
+    type ('scope, 't) impl = {typ: 't option, coercion: Name.t option}
+
+    type ('scope, 't) path = {face: 't, impls: ('scope * ('scope, 't) impl) list ref}
 
     structure Path = struct
         fun new face = {face, impls = ref []}
