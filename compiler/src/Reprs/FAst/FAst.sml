@@ -24,7 +24,7 @@ structure FlexFAst = struct
         and svarToDoc =
             fn Path path =>
                 (case TypeVars.Path.get (Fn.constantly false) path
-                 of Either.Right (t, _) => concrToDoc t
+                 of Either.Right ((_, t), _) => concrToDoc t
                   | Either.Left (t, _) => text "^^" <> PPrint.parens (concrToDoc t))
              | OVar ov => Name.toDoc (TypeVars.Ov.name ov)
              | UVar uv =>
@@ -43,7 +43,7 @@ structure FlexFAst = struct
                 fn Path path =>
                     (case TypeVars.Path.get hasScope path
                      of Either.Left (t, _) => occurs hasScope uv t
-                      | Either.Right (t, _) => occurs hasScope uv t)
+                      | Either.Right ((_, t), _) => occurs hasScope uv t)
                  | OVar _ => false
                  | UVar uv' => (case TypeVars.Uv.get uv'
                                 of Either.Left uv' => TypeVars.Uv.eq (uv, uv')
@@ -62,7 +62,7 @@ structure FlexFAst = struct
                 fn Path path =>
                     (case TypeVars.Path.get hasScope path
                      of Either.Left _ => NONE (* path faces are always CallTFn:s with OVar args *)
-                      | Either.Right (t, _) => SOME (substitute hasScope kv t))
+                      | Either.Right ((_, t), _) => SOME (substitute hasScope kv t))
                  | OVar _ => NONE
                  | UVar uv => (case TypeVars.Uv.get uv
                                of Either.Left _ => NONE

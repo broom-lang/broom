@@ -146,6 +146,14 @@ end = struct
          | (Type (pos, Exists (_, #[], t)), Type (_, sup as Exists (_, #[], t'))) =>
             ( coercion Unify env currPos (t, t')
             ; SOME (fn _ => FTerm.Type (pos, sup)))
+         | (App (_, {callee = SVar (_, Path path), args}), super) =>
+            pathCoercion intent Up env currPos (path, args) super
+         | (sub, App (_, {callee = SVar (_, Path path), args})) =>
+            pathCoercion intent Down env currPos (path, args) sub
+         | (App (_, {callee, args}), App (_, {callee = callee', args = args'})) =>
+            ( ignore (coercion intent env currPos (callee, callee'))
+            ; Vector.app (ignore o coercion intent env currPos) (Vector.zip (args, args'))
+            ; NONE )
          | (sub as CallTFn call, super as CallTFn call') =>
             tFnAppCoercion intent env currPos (call, call') (sub, super)
          | (sub as UseT (_, {var, ...}), super as UseT (_, {var = var', ...})) =>
@@ -159,8 +167,8 @@ end = struct
             uvsCoercion intent env currPos super (uv, uv')
          | (SVar (_, UVar uv), super) => uvCoercion env currPos (direct Up intent) uv super
          | (sub, SVar (_, UVar uv)) => uvCoercion env currPos (direct Down intent) uv sub
-         | (SVar (_, Path path), super) => pathCoercion intent Up env currPos path super
-         | (sub, SVar (_, Path path)) => pathCoercion intent Down env currPos path sub
+         | (SVar (_, Path path), super) => pathCoercion intent Up env currPos (path, #[]) super
+         | (sub, SVar (_, Path path)) => pathCoercion intent Down env currPos (path, #[]) sub
          | (sub, super) => raise TypeError (NonSubType (currPos, concr sub, concr super, NONE))
 
     and subType env currPos (typs as (sub, super)) =
@@ -263,23 +271,27 @@ end = struct
              ; NONE ) (* Since both callee and args have to unify, coercion is always no-op. *)
         else raise TypeError (error intent (currPos, concr t, concr t', NONE))
 
-    and pathCoercion intent y env currPos path t =
+    and pathCoercion intent y env currPos (path, args) t =
         case Path.get (Env.hasScope env) path
         of Left (face, NONE) => (* Impl not visible => <:/~ face: *)
-            coercion intent env currPos (case y
-                                         of Up => (face, t)
-                                          | Down => (t, face))
+            let val pos = Concr.pos face
+                val face = App (pos, {callee = face, args})
+            in coercion intent env currPos (case y
+                                            of Up => (face , t)
+                                             | Down => (t, face))
+            end
          | Left (face, SOME coercionDef) => (* Impl visible and unset => define: *)
             (* FIXME: enforce predicativity: *)
             if Concr.pathOccurs path t
             then raise TypeError (Occurs (face, concr t))
-            else let val resT = case y
+            else let val args = Vector.map (fn UseT (_, def) => def) args
+                     val resT = case y
                                 of Up => t
                                  | Down => face
-                 in pathSet env (path, t)
+                 in pathSet env (path, (args, t))
                   ; SOME (makePathCoercion y resT coercionDef)
                  end
-         | Right (typ, coercionDef) => (* Impl visible and set => <:/~ impl and wrap/unwrap: *)
+         | Right ((_, typ), coercionDef) => (* Impl visible and set => <:/~ impl and wrap/unwrap: *)
             let val resT = case y
                            of Up => t
                             | Down => Path.face path

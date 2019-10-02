@@ -33,7 +33,7 @@ end = struct
                                    of Right t => concrToF t
                                     | Left _ => Prim (pos, FFType.Prim.Unit))
          | SVar (_, Path path) => (case TypeVars.Path.get (Fn.constantly false) path
-                                   of Right (t, _) => concrToF t
+                                   of Right ((_, t), _) => concrToF t
                                     | Left (t, _) => concrToF t)
 
     and absToF: FlexFAst.Type.abs -> FFType.abs =
@@ -85,9 +85,10 @@ end = struct
         fn Val (pos, {var, typ}, expr) => FFTerm.Val (pos, {var, typ = concrToF typ}, exprToF expr)
          | Axiom (pos, name, l, r) =>
             let val r = case r
-                        of SVar (_, Path path) => (case TypeVars.Path.get (Fn.constantly true) path
-                                                   of Right (t, _) => concrToF t
-                                                    | Left (t, _) => concrToF t)
+                        of SVar (_, Path path) =>
+                            (case TypeVars.Path.get (Fn.constantly true) path
+                             of Right ((defs, t), _) => concrToF (ForAll (pos, defs, t))
+                              | Left (t, _) => concrToF t)
                          | _ => concrToF r
             in FFTerm.Axiom (pos, name, concrToF l, r)
             end

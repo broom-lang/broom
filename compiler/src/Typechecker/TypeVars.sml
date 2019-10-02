@@ -35,11 +35,11 @@ structure TypeVars :> sig
         val new: 't -> 't path
         val face: 't path -> 't
         val get: (ScopeId.t -> bool) (* Is the required coercion available? *)
-                 -> 't path -> ('t * Name.t option, 't * Name.t) Either.t
+                 -> 't path -> ('t * Name.t option, (FType.def vector * 't) * Name.t) Either.t
         val addScope: 't path * ScopeId.t * Name.t -> unit
         val set: ('t -> Name.t)
                  -> (ScopeId.t -> bool) (* Is the required coercion available? *)
-                 -> 't path * 't -> unit
+                 -> 't path * (FType.def vector * 't) -> unit
         val eq: 't path * 't path -> bool
     end
 end = struct
@@ -155,7 +155,7 @@ end = struct
         fun name uv = #name (#meta (root uv))
     end
 
-    type 't impl = {typ: 't option, coercion: Name.t option}
+    type 't impl = {typ: (FType.def vector * 't) option, coercion: Name.t option}
 
     type 't path = {face: 't, impls: (ScopeId.t * 't impl) list ref}
 
@@ -164,16 +164,16 @@ end = struct
 
         val face: 't path -> 't = #face
 
-        fun get inScope {face, impls} =
+        fun get inScope ({face, impls}: 't path) =
             case List.find (inScope o #1) (!impls)
             of SOME (_, {typ = SOME t, coercion}) => Either.Right (t, valOf coercion)
              | SOME (_, {typ = NONE, coercion}) => Either.Left (face, coercion)
              | NONE => Either.Left (face, NONE)
 
-        fun addScope ({face, impls}, scope, coercion) =
+        fun addScope ({face, impls}: 't path, scope, coercion) =
             impls := (scope, {typ = NONE, coercion = SOME coercion}) :: !impls
 
-        fun set faceName inScope ({face, impls}, t) =
+        fun set faceName inScope ({face, impls}: 't path, t) =
             let val rec loop =
                     fn (scope, impl as {typ, coercion}) :: impls =>
                         if inScope scope
