@@ -1,1 +1,2 @@
-TypeError in test/integration/generative.brm at 18:9: g__1110 is not a subtype of g__1212.
+TypeError in test/integration/generative.brm at 18:19: ^^(g__113()) I32 g__1210() is not a subtype of ^^(g__113()) I32 g__1312()
+because TypeError in test/integration/generative.brm at 18:19: g__1210() is not a subtype of g__1312()
