@@ -518,17 +518,28 @@ end = struct
             end
          | expr =>
             let val scopeId = Scope.Id.fresh ()
-                val env' = Env.pushScope env (Scope.Marker scopeId)
+                val env = Env.pushScope env (Scope.Marker scopeId)
                 val pos = CTerm.exprPos expr
+                val coercionNames = Vector.map (fn FAst.Type.SVar (_, FType.Path path) =>
+                                                    let val name = Name.freshen (Name.fromString "coImpl")
+                                                        do Path.addScope (path, scopeId, name)
+                                                    in name
+                                                    end)
+                                               paths
+                val (eff, expr) = elaborateExprAs env implType expr
                 val axiomStmts =
-                    Vector.map (fn t as FAst.Type.SVar (_, FType.Path path) =>
-                                    let val name = Name.freshen (Name.fromString "coImpl")
-                                        do Path.addScope (path, scopeId, name)
-                                        val (face, _) = Either.unwrapLeft (Path.get (Env.hasScope env) path)
-                                    in FTerm.Axiom (pos, name, face, t)
-                                    end)    
-                               paths
-                val (eff, expr) = elaborateExprAs env' implType expr
+                    Vector.zipWith (fn (FAst.Type.SVar (_, FType.Path path), name) =>
+                                        let val face = Path.face path
+                                            val ((params, t), _) = Either.unwrap (Path.get (Env.hasScope env) path)
+                                            val args = Vector.map (fn def => FType.UseT (pos, def)) params
+                                        in case params
+                                           of #[] => FTerm.Axiom (pos, name, face, t)
+                                            | _ =>
+                                               FTerm.Axiom ( pos, name
+                                                           , FType.ForAll (pos, params, FType.App (pos, {callee = face, args}))
+                                                           , FType.ForAll (pos, params, t) )
+                                        end)    
+                                   (paths, coercionNames)
             in (eff, FTerm.Let (pos, axiomStmts, expr))
             end
 
