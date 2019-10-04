@@ -532,12 +532,9 @@ end = struct
                                         let val face = Path.face path
                                             val ((params, t), _) = Either.unwrap (Path.get (Env.hasScope env) path)
                                             val args = Vector.map (fn def => FType.UseT (pos, def)) params
-                                        in case params
-                                           of #[] => FTerm.Axiom (pos, name, face, t)
-                                            | _ =>
-                                               FTerm.Axiom ( pos, name
-                                                           , FType.ForAll (pos, params, FType.App (pos, {callee = face, args}))
-                                                           , FType.ForAll (pos, params, t) )
+                                        in FTerm.Axiom ( pos, name
+                                                       , FType.ForAll (pos, params, FType.app (pos, {callee = face, args}))
+                                                       , FType.ForAll (pos, params, t) )
                                         end)    
                                    (paths, coercionNames)
             in (eff, FTerm.Let (pos, axiomStmts, expr))

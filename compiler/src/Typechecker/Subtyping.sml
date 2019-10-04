@@ -284,30 +284,34 @@ end = struct
             (* FIXME: enforce predicativity: *)
             if Concr.pathOccurs path t
             then raise TypeError (Occurs (face, concr t))
-            else let val args = Vector.map (fn UseT (_, def) => def) args
+            else let val params = Vector.map (fn UseT (_, def) => def) args
                      val resT = case y
                                 of Up => t
-                                 | Down => face
-                 in pathSet env (path, (args, t))
-                  ; SOME (makePathCoercion y resT coercionDef)
+                                 | Down => (case args (* HACK *)
+                                            of #[] => face
+                                             | _ => FType.App (currPos, {callee = face, args}))
+                 in pathSet env (path, (params, t))
+                  ; SOME (makePathCoercion y resT coercionDef args)
                  end
          | Right ((_, typ), coercionDef) => (* Impl visible and set => <:/~ impl and wrap/unwrap: *)
             let val resT = case y
                            of Up => t
-                            | Down => Path.face path
+                            | Down => (case args (* HACK *)
+                                       of #[] => Path.face path
+                                        | _ => FType.App (currPos, {callee = Path.face path, args}))
                 val coerceToImpl = coercion intent env currPos (case y
                                                                 of Up => (typ, t)
                                                                  | Down => (t, typ))
-                val coerceToPath = makePathCoercion y resT coercionDef
+                val coerceToPath = makePathCoercion y resT coercionDef args
             in case coerceToImpl
                of SOME coerceToImpl => SOME (coerceToPath o coerceToImpl)
                 | NONE => SOME coerceToPath
             end
 
-    and makePathCoercion y t coercionDef =
+    and makePathCoercion y t coercionDef args =
         case y
-        of Up => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, UseCo coercionDef))
-         | Down => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, Symm (UseCo coercionDef)))
+        of Up => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, AppCo {callee = UseCo coercionDef, args}))
+         | Down => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, Symm (AppCo {callee = UseCo coercionDef, args})))
 
     and uvsCoercion intent env currPos superTyp (uv, uv') =
         case (Uv.get uv, Uv.get uv')

@@ -6,6 +6,7 @@ end = struct
     structure Id = FType.Id
     structure FFType = FAst.Type
     structure FFTerm = FAst.Term
+    val op|> = Fn.|>
 
     structure Env :> sig
         type t
@@ -155,6 +156,22 @@ end = struct
     fun checkCo env =
         fn Refl t => (t, t)
          | Symm co => Pair.flip (checkCo env co)
+         | AppCo {callee, args} =>
+            (case checkCo env callee
+             of (ForAll (_, defs, l), ForAll (_, defs', r)) =>
+                 ( Vector.zip3With (fn ({kind, ...}, {kind = kind', ...}, arg) =>
+                                        ( checkKindEq (kind, kind')
+                                        ; checkKindEq (kindOf env arg, kind) ))
+                                   (defs, defs', args)
+                 ; let val mapping = (defs, args)
+                                   |> Vector.zipWith (Pair.first #var)
+                                   |> Id.SortedMap.fromVector
+                       val mapping' = (defs', args)
+                                    |> Vector.zipWith (Pair.first #var)
+                                    |> Id.SortedMap.fromVector
+                   in ( FType.Concr.substitute (Fn.constantly false) mapping l
+                      , FType.Concr.substitute (Fn.constantly false) mapping' r )
+                   end ))
          | UseCo name => (case Env.findCo (env, name)
                           of SOME co => co
                            | NONE => raise Fail ("Unbound coercion " ^ Name.toString name))

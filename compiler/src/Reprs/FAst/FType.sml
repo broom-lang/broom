@@ -34,6 +34,7 @@ signature FAST_TYPE = sig
     and 'sv co
         = Refl of 'sv concr
         | Symm of 'sv co
+        | AppCo of {callee: 'sv co, args: 'sv concr vector}
         | UseCo of Name.t (* HACK *)
 
     val kindToDoc: kind -> PPrint.t
@@ -123,6 +124,7 @@ structure FType :> FAST_TYPE = struct
     and 'sv co
         = Refl of 'sv concr
         | Symm of 'sv co
+        | AppCo of {callee: 'sv co, args: 'sv concr vector}
         | UseCo of Name.t
 
     val arrowDoc =
@@ -208,6 +210,9 @@ structure FType :> FAST_TYPE = struct
     and coercionToDoc svarToDoc =
         fn Refl t => concrToDoc svarToDoc t
          | Symm co => text "symm" <+> coercionToDoc svarToDoc co
+         | AppCo {callee, args} =>
+            coercionToDoc svarToDoc callee
+                <+> PPrint.punctuate space (Vector.map (concrToDoc svarToDoc) args)
          | UseCo name => Name.toDoc name
 
     fun mapConcrChildren f =

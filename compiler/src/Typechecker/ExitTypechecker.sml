@@ -42,6 +42,8 @@ end = struct
     and coercionToF: FlexFAst.Type.co -> FFType.co =
         fn Refl t => Refl (concrToF t)
          | Symm co => Symm (coercionToF co)
+         | AppCo {callee, args} =>
+            AppCo {callee = coercionToF callee, args = Vector.map concrToF args}
          | UseCo name => UseCo name
 
     fun axiomToF (name, l, r) = (name, concrToF l, concrToF r)

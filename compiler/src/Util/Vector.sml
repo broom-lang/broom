@@ -27,4 +27,16 @@ structure Vector = struct
         end
 
     fun zip vecs = zipWith Fn.identity vecs
+
+    fun zip3With f (xs, ys, zs) =
+        let val len = Int.min (Int.min (Vector.length xs, Vector.length ys), Vector.length zs)
+            val {update, done, ...} = MLton.Vector.create len
+            fun loop i =
+                if i < len
+                then ( update (i, f (Vector.sub (xs, i), Vector.sub (ys, i), Vector.sub (zs, i)))
+                     ; loop (i + 1) )
+                else ()
+        in loop 0
+         ; done ()
+        end
 end
