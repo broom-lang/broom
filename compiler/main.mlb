@@ -53,6 +53,8 @@ local
            
            src/Reprs/FAst/Typechecker.sml
 
+           src/Passes/WellFounded.sml
+
            src/Parser/parser.sml
        end
     end

@@ -66,4 +66,5 @@ structure NameHashTable = HashTableFn(type hash_key = Name.t
                                       val sameKey = op=)
 
 structure NameSortedMap = BinaryMapFn(Name.OrdKey)
+structure NameSortedSet = BinarySetFn(Name.OrdKey)
 
