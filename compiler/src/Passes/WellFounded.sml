@@ -14,23 +14,25 @@ end = struct
 
     structure Support = NameSortedSet
 
-    datatype value
+    datatype typ
         = Uninitialized
         | Initialized
-        | Closure of Support.set
+        | Closure of typ * Support.set
+        | Scalar
 
     structure Ctx :> sig
         type t
 
         val empty : t
         val pushStmts : t -> stmt vector -> t
-        val initialize : t -> Name.t -> value -> t
+        val initialize : t -> Name.t -> typ -> t
+        val pushParam : t -> Name.t -> typ -> t
 
-        val find : t -> Name.t -> value
+        val find : t -> Name.t -> typ
     end = struct
         structure Bindings = NameSortedMap
 
-        type t = value Bindings.map
+        type t = typ Bindings.map
 
         val empty = Bindings.empty
 
@@ -40,21 +42,41 @@ end = struct
                               Bindings.insert (ctx, var, Uninitialized))
                          ctx stmts
 
-        fun initialize ctx name value = Bindings.insert (ctx, name, value)
+        fun initialize ctx name typ = Bindings.insert (ctx, name, typ)
+
+        val pushParam = initialize
 
         (* `Bindings.lookup` is appropriate since unbound variables are already caught: *)
         fun find ctx name = Bindings.lookup (ctx, name)
     end
 
-    fun checkExpr ctx : expr -> value * Support.set =
+    fun elaborateType ctx =
+        fn FType.Prim _ => Scalar
+
+    fun checkExpr ctx : expr -> typ * Support.set =
         fn Let args => checkLet ctx args
+         | Fn args => checkFn ctx args
+         | App args => checkApp ctx args
          | Use args => checkUse ctx args
 
     and checkLet ctx (_, stmts, body) =
         let val (ctx, stmtsSupport) = checkStmts ctx stmts
-            val (value, bodySupport) = checkExpr ctx body
-        in (value, Support.union (stmtsSupport, bodySupport))
+            val (typ, bodySupport) = checkExpr ctx body
+        in (typ, Support.union (stmtsSupport, bodySupport))
         end
+
+    and checkFn ctx (_, {var = param, typ = paramTyp}, _, body) =
+        let val ctx = Ctx.pushParam ctx param (elaborateType ctx paramTyp)
+        in (Closure (checkExpr ctx body), Support.empty)
+        end
+
+    and checkApp ctx (_, _, {callee, arg}) =
+        case checkExpr ctx callee
+        of (Closure (codomain, bodySupport), calleeSupport) =>
+            let val (_, argSupport) = checkExpr ctx arg
+            in (codomain, Support.union (bodySupport, Support.union (calleeSupport, argSupport)))
+            end
+         | _ => raise Fail "unreachable"
 
     and checkUse ctx (pos, {var, typ = _}) =
         case Ctx.find ctx var
@@ -65,8 +87,8 @@ end = struct
     and checkStmt ctx : stmt -> Ctx.t * Support.set =
         fn Axiom _ => (ctx, Support.empty)
          | Val (_, {var, typ = _}, expr) =>
-            let val (value, support) = checkExpr ctx expr
-            in (Ctx.initialize ctx var value, support)
+            let val (typ, support) = checkExpr ctx expr
+            in (Ctx.initialize ctx var typ, support)
             end
          | Expr expr =>
             let val (_, support) = checkExpr ctx expr
