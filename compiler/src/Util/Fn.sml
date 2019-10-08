@@ -1,6 +1,6 @@
 signature FN = sig
-    val identity: 'a -> 'a
-    val constantly: 'a -> 'b -> 'a
+    val identity : 'a -> 'a
+    val constantly : 'a -> 'b -> 'a
     val |> : 'a * ('a -> 'b) -> 'b
 end
 

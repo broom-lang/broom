@@ -9,8 +9,10 @@ structure WellFounded :> sig
 end = struct
     structure FAst = FixedFAst
     structure FTerm = FAst.Term
+    structure FType = FAst.Type
     datatype expr = datatype FTerm.expr
     datatype stmt = datatype FTerm.stmt
+    val op|> = Fn.|>
 
     structure Support = NameSortedSet
 
@@ -18,6 +20,7 @@ end = struct
         = Uninitialized
         | Initialized
         | Closure of typ * Support.set
+        | ForAll of FType.def vector * typ * Support.set
         | Scalar
 
     structure Ctx :> sig
@@ -37,9 +40,9 @@ end = struct
         val empty = Bindings.empty
 
         fun pushStmts ctx stmts =
-            Vector.foldl (fn (Axiom _, ctx) => ctx
-                           | (Val (_, {var, typ = _}, _), ctx) =>
-                              Bindings.insert (ctx, var, Uninitialized))
+            Vector.foldl (fn (Val (_, {var, typ = _}, _), ctx) =>
+                              Bindings.insert (ctx, var, Uninitialized)
+                           | (Axiom _, ctx) | (Expr _, ctx) => ctx)
                          ctx stmts
 
         fun initialize ctx name typ = Bindings.insert (ctx, name, typ)
@@ -50,14 +53,20 @@ end = struct
         fun find ctx name = Bindings.lookup (ctx, name)
     end
 
+    fun substitute mapping =
+        fn t as Scalar => t
+
     fun elaborateType ctx =
         fn FType.Prim _ => Scalar
 
     fun checkExpr ctx : expr -> typ * Support.set =
         fn Let args => checkLet ctx args
          | Fn args => checkFn ctx args
+         | TFn args => checkTFn ctx args
          | App args => checkApp ctx args
+         | TApp args => checkTApp ctx args
          | Use args => checkUse ctx args
+         | Type _ | Const _ => (Scalar, Support.empty)
 
     and checkLet ctx (_, stmts, body) =
         let val (ctx, stmtsSupport) = checkStmts ctx stmts
@@ -70,6 +79,11 @@ end = struct
         in (Closure (checkExpr ctx body), Support.empty)
         end
 
+    and checkTFn ctx (_, params, body) =
+        let val (codomain, bodySupport) = checkExpr ctx body
+        in (ForAll (params, codomain, bodySupport), Support.empty)
+        end
+
     and checkApp ctx (_, _, {callee, arg}) =
         case checkExpr ctx callee
         of (Closure (codomain, bodySupport), calleeSupport) =>
@@ -78,11 +92,23 @@ end = struct
             end
          | _ => raise Fail "unreachable"
 
+    and checkTApp ctx (_, _, {callee, args}) =
+        case checkExpr ctx callee
+        of (ForAll (params, codomain, bodySupport), calleeSupport) =>
+            let val mapping =
+                    (params, args)
+                    |> Vector.zipWith (fn ({var, ...}, arg) => (var, arg))
+                    |> FType.Id.SortedMap.fromVector
+            in ( substitute mapping codomain
+               , Support.union (calleeSupport, bodySupport) )
+            end
+         | _ => raise Fail "unreachable"
+
     and checkUse ctx (pos, {var, typ = _}) =
         case Ctx.find ctx var
         of Uninitialized => 
             raise Fail ("Uninitialized " ^ Name.toString var ^ " in " ^ Pos.toString pos ^ "\n")
-         | v as Initialized | v as Closure _ => (v, Support.empty)
+         | t => (t, Support.empty)
 
     and checkStmt ctx : stmt -> Ctx.t * Support.set =
         fn Axiom _ => (ctx, Support.empty)
