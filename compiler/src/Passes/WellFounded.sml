@@ -21,6 +21,9 @@ end = struct
         | Initialized
         | Closure of typ * Support.set
         | ForAll of FType.def vector * typ * Support.set
+        | Record of typ
+        | RowExt of {field: Name.t * typ, ext: typ}
+        | EmptyRow
         | Scalar
 
     structure Ctx :> sig
@@ -57,7 +60,13 @@ end = struct
         fn t as Scalar => t
 
     fun elaborateType ctx =
-        fn FType.Prim _ => Scalar
+        fn FType.Record (_, row) => Record (elaborateType ctx row)
+         | FType.RowExt (_, {field = (label, fieldt), ext}) =>
+            RowExt { field = (label, elaborateType ctx fieldt)
+                   , ext = elaborateType ctx ext }
+         | FType.EmptyRow _ => EmptyRow
+         | FType.Type _ | FType.Prim _ => Scalar
+         | t => raise Fail ("unimplemented: " ^ PPrint.pretty 80 (FType.Concr.toDoc t))
 
     fun checkExpr ctx : expr -> typ * Support.set =
         fn Let args => checkLet ctx args
@@ -65,8 +74,10 @@ end = struct
          | TFn args => checkTFn ctx args
          | App args => checkApp ctx args
          | TApp args => checkTApp ctx args
+         | Cast args => checkCast ctx args
          | Use args => checkUse ctx args
          | Type _ | Const _ => (Scalar, Support.empty)
+         | e => raise Fail ("unimplemented: " ^ PPrint.pretty 80 (FTerm.exprToDoc e))
 
     and checkLet ctx (_, stmts, body) =
         let val (ctx, stmtsSupport) = checkStmts ctx stmts
@@ -103,6 +114,11 @@ end = struct
                , Support.union (calleeSupport, bodySupport) )
             end
          | _ => raise Fail "unreachable"
+
+    and checkCast ctx (_, t, expr, _) =
+        let val (_, support) = checkExpr ctx expr
+        in (elaborateType ctx t, support)
+        end
 
     and checkUse ctx (pos, {var, typ = _}) =
         case Ctx.find ctx var
