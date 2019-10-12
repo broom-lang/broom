@@ -61,7 +61,11 @@ end = struct
         fn t as Scalar => t
 
     fun elaborateType ctx =
-        fn FType.Record (_, row) => Record (elaborateType ctx row)
+        fn FType.Arrow (_, _, {domain = _, codomain}) =>
+            (* TODO: Quantification over support of box domain. *)
+            (* FIXME: `Support.empty`?! *)
+            Closure (elaborateType ctx codomain, Support.empty)
+         | FType.Record (_, row) => Record (elaborateType ctx row)
          | FType.RowExt (_, {field = (label, fieldt), ext}) =>
             RowExt { field = (label, elaborateType ctx fieldt)
                    , ext = elaborateType ctx ext }
@@ -76,6 +80,9 @@ end = struct
          | App args => checkApp ctx args
          | TApp args => checkTApp ctx args
          | Match args => checkMatch ctx args
+         | Extend args => checkExtend ctx args
+         | Override args => checkOverride ctx args
+         | Field args => checkField ctx args
          | Cast args => checkCast ctx args
          | Use args => checkUse ctx args
          | Type _ | Const _ => (Scalar, Support.empty)
@@ -141,6 +148,36 @@ end = struct
         fn Def (_, {var, typ}) => Ctx.pushParam ctx var (elaborateType ctx typ)
          | ConstP _ => ctx
          | pat => raise Fail ("unimplemented: " ^ PPrint.pretty 80 (FTerm.patternToDoc pat))
+
+    and checkExtend ctx (_, t, fields, ext) =
+        let val fieldsSupport =
+                Vector.foldl (fn ((label, fielde), support) =>
+                                  let val (_, fieldSupport) = checkExpr ctx fielde
+                                  in Support.union (support, fieldSupport)
+                                  end)
+                             Support.empty fields
+            val extSupport =
+                case ext
+                of SOME ext => #2 (checkExpr ctx ext)
+                 | NONE => Support.empty
+        in (elaborateType ctx t, Support.union (fieldsSupport, extSupport))
+        end
+
+    and checkOverride ctx (_, t, fields, ext) =
+        let val fieldsSupport =
+                Vector.foldl (fn ((label, fielde), support) =>
+                                  let val (_, fieldSupport) = checkExpr ctx fielde
+                                  in Support.union (support, fieldSupport)
+                                  end)
+                             Support.empty fields
+            val extSupport = #2 (checkExpr ctx ext)
+        in (elaborateType ctx t, Support.union (fieldsSupport, extSupport))
+        end
+
+    and checkField ctx (_, t, expr, label) =
+        let val (_, support) = checkExpr ctx expr
+        in (elaborateType ctx t, support)
+        end
 
     and checkCast ctx (_, t, expr, _) =
         let val (_, support) = checkExpr ctx expr
