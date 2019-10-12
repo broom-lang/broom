@@ -458,13 +458,13 @@ end = struct
                 val typeDefs = Vector.fromList typeDefs
                 val env = Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), Bindings.Type.fromDefs typeDefs))
                 val env = Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), name, Visited (t, NONE)))
-            in ((typeDefs, t), FTerm.Def (pos', name), env)
+            in ((typeDefs, t), FTerm.Def (pos', {var = name, typ = t}), env)
             end
          | CTerm.Def (pos, name) =>
             let val scopeId = Scope.Id.fresh ()
                 val t = FType.SVar (pos, FType.UVar (TypeVars.Uv.fresh (scopeId, Predicative)))
                 val env = Env.pushScope env (Scope.PatternScope (scopeId, name, Visited (t, NONE)))
-            in ((#[], t), FTerm.Def (pos, name), env)
+            in ((#[], t), FTerm.Def (pos, {var = name, typ = t}), env)
             end
          | CTerm.ConstP (pos, c) =>
             let val cTyp = FType.Prim (pos, Const.typeOf c)
@@ -474,7 +474,7 @@ end = struct
     and elaboratePatternAs env t =
         fn CTerm.AnnP (pos, {pat, typ}) => raise Fail "unimplemented"
          | CTerm.Def (pos, name) =>
-            ( FTerm.Def (pos, name)
+            ( FTerm.Def (pos, {var = name, typ = t})
             , Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), name, Visited (t, NONE))) )
          | CTerm.ConstP (pos, c) =>
             let val cTyp = FType.Prim (pos, Const.typeOf c)

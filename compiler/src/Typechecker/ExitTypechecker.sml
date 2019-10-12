@@ -80,7 +80,7 @@ end = struct
 
     and patternToF =
         fn AnnP (pos, {pat, typ}) => FFTerm.AnnP (pos, {pat = patternToF pat, typ = concrToF typ})
-         | Def (pos, name) => FFTerm.Def (pos, name)
+         | Def (pos, {var, typ}) => FFTerm.Def (pos, {var, typ = concrToF typ})
          | ConstP (pos, c) => FFTerm.ConstP (pos, c)
 
     and stmtToF =

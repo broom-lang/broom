@@ -27,7 +27,7 @@ signature FAST_TERM = sig
 
     and pat
         = AnnP of Pos.t * {pat: pat, typ: Type.concr}
-        | Def of Pos.t * Name.t
+        | Def of Pos.t * def
         | ConstP of Pos.t * Const.t
 
     withtype clause = {pattern: pat, body: expr}
@@ -43,6 +43,7 @@ signature FAST_TERM = sig
     val stmtToDoc: stmt -> PPrint.t
     val stmtsToDoc: stmt vector -> PPrint.t
     val patPos: pat -> Pos.t
+    val patternToDoc: pat -> PPrint.t
     val programToDoc: program -> PPrint.t
     val typeOf: expr -> Type.concr
 end
@@ -92,7 +93,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     and pat
         = AnnP of Pos.t * {pat: pat, typ: Type.concr}
-        | Def of Pos.t * Name.t
+        | Def of Pos.t * def
         | ConstP of Pos.t * Const.t
 
     withtype clause = {pattern: pat, body: expr}
@@ -186,7 +187,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     and patternToDoc =
         fn AnnP (_, {pat, typ}) => patternToDoc pat <> text ":" <+> Type.Concr.toDoc typ
-         | Def (_, name) => Name.toDoc name
+         | Def (_, def) => defToDoc def
          | ConstP (_, c) => Const.toDoc c
 
     val exprToString = PPrint.pretty 80 o exprToDoc

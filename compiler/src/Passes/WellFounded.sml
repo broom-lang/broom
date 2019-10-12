@@ -12,6 +12,7 @@ end = struct
     structure FType = FAst.Type
     datatype expr = datatype FTerm.expr
     datatype stmt = datatype FTerm.stmt
+    datatype pat = datatype FTerm.pat
     val op|> = Fn.|>
 
     structure Support = NameSortedSet
@@ -65,7 +66,7 @@ end = struct
             RowExt { field = (label, elaborateType ctx fieldt)
                    , ext = elaborateType ctx ext }
          | FType.EmptyRow _ => EmptyRow
-         | FType.Type _ | FType.Prim _ => Scalar
+         | FType.Type _ | FType.Prim _ | FType.UseT _ => Scalar
          | t => raise Fail ("unimplemented: " ^ PPrint.pretty 80 (FType.Concr.toDoc t))
 
     fun checkExpr ctx : expr -> typ * Support.set =
@@ -74,6 +75,7 @@ end = struct
          | TFn args => checkTFn ctx args
          | App args => checkApp ctx args
          | TApp args => checkTApp ctx args
+         | Match args => checkMatch ctx args
          | Cast args => checkCast ctx args
          | Use args => checkUse ctx args
          | Type _ | Const _ => (Scalar, Support.empty)
@@ -115,6 +117,31 @@ end = struct
             end
          | _ => raise Fail "unreachable"
 
+    and checkMatch ctx (_, _, matchee, clauses) =
+        let val (_, matcheeSupport) = checkExpr ctx matchee
+            val (typ, clausesSupport) = checkClauses ctx clauses
+        in (typ, Support.union (matcheeSupport, clausesSupport))
+        end
+
+    and checkClauses ctx clauses =
+        let fun step (clause, (_, support)) =
+                let val (typ, clauseSupport) = checkClause ctx clause
+                in (SOME typ, Support.union (support, clauseSupport))
+                end
+        in case Vector.foldl step (NONE, Support.empty) clauses
+           of (SOME typ, support) => (typ, support)
+        end
+
+    and checkClause ctx {pattern, body} =
+        let val ctx = checkPat ctx pattern
+        in checkExpr ctx body
+        end
+
+    and checkPat ctx =
+        fn Def (_, {var, typ}) => Ctx.pushParam ctx var (elaborateType ctx typ)
+         | ConstP _ => ctx
+         | pat => raise Fail ("unimplemented: " ^ PPrint.pretty 80 (FTerm.patternToDoc pat))
+
     and checkCast ctx (_, t, expr, _) =
         let val (_, support) = checkExpr ctx expr
         in (elaborateType ctx t, support)
@@ -137,6 +164,9 @@ end = struct
             in (ctx, support)
             end
 
+    (* TODO: Check that stmts have no escaping effects when env has uninitialized variables
+             that are not outside the nearest fn contour. (First ensure that this is the right
+             restriction to prevent double initializations in all cases.) *)
     and checkStmts ctx stmts =
         let val ctx = Ctx.pushStmts ctx stmts
         in Vector.foldl (fn (stmt, (ctx, supportAcc)) =>

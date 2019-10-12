@@ -174,8 +174,8 @@ end = struct
             let fun matchClause {pattern, body} =
                     case pattern
                     of AnnP (_, {pat, ...}) => matchClause {pattern = pat, body}
-                     | FTerm.Def (_, name) =>
-                        let val env = PatternScope (env, name, value)
+                     | FTerm.Def (_, {var, ...}) =>
+                        let val env = PatternScope (env, var, value)
                         in eval env cont body
                         end
                      | ConstP (_, c) =>
