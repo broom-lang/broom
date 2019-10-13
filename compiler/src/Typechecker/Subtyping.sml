@@ -53,14 +53,14 @@ end = struct
         end
 
     fun skolemize env (pos, params, body) f =
-        let val params' = Vector.map (fn {kind, var = _} => {var = Id.fresh (), kind}) params
-            val env = Env.pushScope env (Scope.ForAllScope ( Scope.Id.fresh ()
-                                                           , Bindings.Type.fromDefs params' ))
+        let val scopeId = Scope.Id.fresh ()
+            val params' = Vector.map (fn {kind, var = _} => {var = Id.fresh (), kind}) params
+            val env = Env.pushScope env (Scope.ForAllScope (scopeId, Bindings.Type.fromDefs params'))
             val mapping = (params, params')
                         |> Vector.zipWith (fn ({var, ...}, def') => (var, UseT (pos, def')))
                         |> Id.SortedMap.fromVector
             val body = Concr.substitute (Env.hasScope env) mapping body
-        in f (env, params', body)
+        in f (env, scopeId, params', body)
         end
 
     type coercion = (FTerm.expr -> FTerm.expr) option
@@ -74,10 +74,11 @@ end = struct
     fun fnCoercion coerceDomain coerceCodomain
                    ((_, {domain = _, codomain}), (eff', {domain = domain', codomain = _})) callee =
         let val pos = FTerm.exprPos callee
+            val scopeId = ScopeId.fresh ()
             val param = {var = Name.fresh (), typ = domain'}
             val arg = applyCoercion coerceDomain (FTerm.Use (pos, param))
             val body = applyCoercion coerceCodomain (FTerm.App (pos, codomain, {callee, arg}))
-        in FTerm.Fn (pos, param, Explicit eff', body)
+        in FTerm.Fn (pos, scopeId, param, Explicit eff', body)
         end
 
     datatype 'direction intent
@@ -104,8 +105,8 @@ end = struct
         fn (sub, super as ForAll universal) =>
             (case intent
              of Coerce () =>
-                 skolemize env universal (fn (env, params, body) =>
-                     Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
+                 skolemize env universal (fn (env, scopeId, params, body) =>
+                     Option.map (fn coerce => fn expr => FTerm.TFn (currPos, scopeId, params, coerce expr))
                                 (coercion (Coerce ()) env currPos (sub, body))
                  )
               | Unify => raise TypeError (NonUnifiable (currPos, concr sub, concr super, NONE)))
@@ -121,9 +122,10 @@ end = struct
                   of ForAll universal' => raise Fail "unimplemented"
                    | _ => raise TypeError (NonUnifiable (currPos, concr sub, concr super, NONE))))
          | (sub, Arrow (_, Implicit, {domain, codomain})) =>
-            let val def = {var = Name.fresh (), typ = domain}
+            let val scopeId = ScopeId.fresh ()
+                val def = {var = Name.fresh (), typ = domain}
                 val coerceCodomain = coercion intent env currPos (sub, codomain)
-            in SOME (fn expr => FTerm.Fn (currPos, def, Implicit, applyCoercion coerceCodomain expr))
+            in SOME (fn expr => FTerm.Fn (currPos, scopeId, def, Implicit, applyCoercion coerceCodomain expr))
             end
          | (Arrow (_, Implicit, {domain, codomain}), super) =>
             (* FIXME: coercion from `codomain` <: `super` *)
@@ -179,6 +181,7 @@ end = struct
                             let val pos = FTerm.exprPos expr
                                 val def = {var = Name.fresh (), typ = super}
                             in FTerm.Let ( FTerm.exprPos expr
+                                         , ScopeId.fresh ()
                                          , #[FTerm.Val (pos, def, expr)]
                                          , FTerm.Use (pos, def) )
                             end) )
@@ -191,6 +194,7 @@ end = struct
                             let val pos = FTerm.exprPos expr
                                 val def = {var = Name.fresh (), typ = r}
                             in FTerm.Let ( FTerm.exprPos expr
+                                         , ScopeId.fresh ()
                                          , #[FTerm.Val (pos, def, expr)]
                                          , FTerm.Use (pos, def) )
                             end) )
@@ -228,7 +232,8 @@ end = struct
                           val tmpUse = FTerm.Use (currPos, tmpDef)
                           fun emitField (label, (origFieldt, _), coerceField) =
                               (label, coerceField (FTerm.Field (currPos, origFieldt, tmpUse, label)))
-                      in FTerm.Let ( currPos, #[FTerm.Val (currPos, tmpDef, expr)]
+                      in FTerm.Let ( currPos, ScopeId.fresh ()
+                                   , #[FTerm.Val (currPos, tmpDef, expr)]
                                    , FTerm.Override ( currPos
                                                     , t'
                                                     , Vector.map emitField (Vector.fromList fieldCoercions)
@@ -360,8 +365,8 @@ end = struct
     and doAssignUniversal env currPos y uv (universal as (pos, _, _)) =
         case y
         of Coerce Up =>
-            skolemize env universal (fn (env, params, body) =>
-                Option.map (fn coerce => fn expr => FTerm.TFn (pos, params, coerce expr))
+            skolemize env universal (fn (env, scopeId, params, body) =>
+                Option.map (fn coerce => fn expr => FTerm.TFn (pos, scopeId, params, coerce expr))
                            (doAssign env currPos y (uv, body))
             )
          | Coerce Down =>

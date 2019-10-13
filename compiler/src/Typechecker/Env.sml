@@ -61,6 +61,8 @@ structure TypecheckingEnv :> sig
                    | BlockScope of Id.t * Bindings.Expr.bindings
                    | InterfaceScope of Id.t * Bindings.Expr.bindings
                    | Marker of Id.t
+
+        val id : t -> Id.t
     end
 
     type t

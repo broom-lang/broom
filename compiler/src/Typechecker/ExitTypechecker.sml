@@ -49,9 +49,9 @@ end = struct
     fun axiomToF (name, l, r) = (name, concrToF l, concrToF r)
 
     val rec exprToF: FlexFAst.Term.expr -> FFTerm.expr =
-        fn Fn (pos, {var, typ}, expl, body) =>
-            FFTerm.Fn (pos, {var, typ = concrToF typ}, expl, exprToF body)
-         | TFn (pos, param, body) => FFTerm.TFn (pos, param, exprToF body)
+        fn Fn (pos, scopeId, {var, typ}, expl, body) =>
+            FFTerm.Fn (pos, scopeId, {var, typ = concrToF typ}, expl, exprToF body)
+         | TFn (pos, scopeId, param, body) => FFTerm.TFn (pos, scopeId, param, exprToF body)
          | Extend (pos, typ, fields, record) =>
             FFTerm.Extend ( pos, concrToF typ
                           , Vector.map (Pair.second exprToF) fields
@@ -60,8 +60,8 @@ end = struct
             FFTerm.Override ( pos, concrToF typ
                             , Vector.map (Pair.second exprToF) fields
                             , exprToF ext )
-         | Let (pos, stmts, body) =>
-            FFTerm.Let (pos, Vector.map (stmtToF) stmts, exprToF body)
+         | Let (pos, scopeId, stmts, body) =>
+            FFTerm.Let (pos, scopeId, Vector.map (stmtToF) stmts, exprToF body)
          | Match (pos, typ, matchee, clauses) =>
             FFTerm.Match (pos, concrToF typ, exprToF matchee, Vector.map clauseToF clauses)
          | App (pos, typ, {callee, arg}) =>
@@ -80,7 +80,7 @@ end = struct
 
     and patternToF =
         fn AnnP (pos, {pat, typ}) => FFTerm.AnnP (pos, {pat = patternToF pat, typ = concrToF typ})
-         | Def (pos, {var, typ}) => FFTerm.Def (pos, {var, typ = concrToF typ})
+         | Def (pos, scopeId, {var, typ}) => FFTerm.Def (pos, scopeId, {var, typ = concrToF typ})
          | ConstP (pos, c) => FFTerm.ConstP (pos, c)
 
     and stmtToF =

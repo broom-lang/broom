@@ -257,7 +257,7 @@ end = struct
         of CTerm.Fn (pos, expl, clauses) => (* TODO: Exhaustiveness checking: *)
             (* FIXME: Enforce that for implicit fn:s domain = type *)
             let val codomain = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
-                val (eff, domain, clauses) =
+                val (eff, forallScopeId, domain, clauses) =
                     elaborateClauses env (fn (env, body) => elaborateExprAs env codomain body) clauses
                 val (typeDefs, domain) =
                     case domain
@@ -275,20 +275,21 @@ end = struct
                     of #[] => arrow
                      | _ => FType.ForAll (pos, typeDefs, arrow)
                  end
-               , let val f = FTerm.Fn ( pos, def, arr
+               , let val f = FTerm.Fn ( pos, Scope.Id.fresh (), def, arr
                                       , FTerm.Match ( pos, codomain, FTerm.Use (pos, def)
                                                     , clauses ) )
                  in case typeDefs
                     of #[] => f
-                     | _ => FTerm.TFn (pos, typeDefs, f)
+                     | _ => FTerm.TFn (pos, forallScopeId, typeDefs, f)
                  end )
             end
          | CTerm.Let (pos, stmts, body) =>
-            let val env = Env.pushScope env (stmtsScope stmts)
+            let val scope = stmtsScope stmts
+                val env = Env.pushScope env scope
                 val (stmtsEff, stmts) = elaborateStmts env stmts
                 val (bodyEff, typ, body) = elaborateExpr env body
             in ( joinEffs (stmtsEff, bodyEff), typ
-               , FTerm.Let (pos, stmts, body))
+               , FTerm.Let (pos, Scope.id scope, stmts, body))
             end
          | CTerm.Match (pos, _, _) =>
             let val t = FType.SVar (pos, FType.UVar (Env.freshUv env Predicative))
@@ -300,7 +301,8 @@ end = struct
                   will work. It would also avoid an intermediate record in the elaborated code. *)
          | CTerm.Record (pos, fields) => elaborateRecord env pos fields
          | CTerm.Module (pos, stmts) =>
-            let val env = Env.pushScope env (stmtsScope stmts)
+            let val scope = stmtsScope stmts
+                val env = Env.pushScope env scope
                 val (eff, stmts) = elaborateStmts env stmts
                 val defs = Vector.foldr (fn (FTerm.Val (_, def, _), defs) => def :: defs
                                           | (FTerm.Axiom _, defs) | (FTerm.Expr _, defs) => defs)
@@ -312,7 +314,7 @@ end = struct
                                         , Vector.fromList defs
                                               |> Vector.map (fn def as {var, ...} => (var, FTerm.Use (pos, def)))
                                         , NONE )
-            in (eff, typ, FTerm.Let (pos, stmts, body))
+            in (eff, typ, FTerm.Let (pos, Scope.id scope, stmts, body))
             end
          | CTerm.App (pos, {callee, arg}) =>
             (* FIXME: generative behaviour when `callEff` is `Impure`: *)
@@ -389,7 +391,7 @@ end = struct
                             | (Implicit, Impure) => raise Fail "Impure body on implicit function"
                             | (Explicit eff', _) => (subEffect env pos (eff, eff'); expl')
                    in ( Pure
-                      , FTerm.Fn ( pos, def, arr
+                      , FTerm.Fn ( pos, Scope.Id.fresh (), def, arr
                                  , FTerm.Match ( pos, codomain, FTerm.Use (pos, def)
                                                , clauses ) ) )
                    end )
@@ -408,32 +410,34 @@ end = struct
               | _ => coerceExprTo env typ expr)
 
     and elaborateAsForAll env (pos, params, body) expr =
-        let val env = Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), Bindings.Type.fromDefs params))
+        let val scopeId = Scope.Id.fresh ()
+            val env = Env.pushScope env (Scope.ForAllScope (scopeId, Bindings.Type.fromDefs params))
             val (eff, expr) = elaborateExprAs env body expr
-        in (eff, FTerm.TFn (pos, params, expr))
+        in (eff, FTerm.TFn (pos, scopeId, params, expr))
         end
 
     (* Should we start elaboration from more annotated patterns, to enable e.g.
        `{| x -> ... | a: type -> ...}` ? *)
     and elaborateClauses env elaborateBody clauses =
-        let fun elaborateClause ({pattern, body}, (matcheeTyp, eff, clauses)) =
-                let val (matcheeTyp, pattern, env) =
+        let fun elaborateClause ({pattern, body}, (matcheeTyp, eff, forallScopeId, clauses)) =
+                let val (matcheeTyp, pattern, forallScopeId, env) =
                         case matcheeTyp
                         of SOME (typeDefs, matcheeTyp') =>
-                            let val env = Env.pushScope env (Scope.ForAllScope ( Scope.Id.fresh ()
+                            let val scopeId = getOpt (forallScopeId, Scope.Id.fresh ())
+                                val env = Env.pushScope env (Scope.ForAllScope ( scopeId
                                                                                , Bindings.Type.fromDefs typeDefs ))
                                 val (pattern, env) = elaboratePatternAs env matcheeTyp' pattern
-                            in (matcheeTyp, pattern, env)
+                            in (matcheeTyp, pattern, SOME scopeId, env)
                             end
                          | NONE =>
-                            let val (matcheeTyp, pattern, env) = elaboratePattern env pattern
-                            in (SOME matcheeTyp, pattern, env)
+                            let val (matcheeTyp, pattern, forallScopeId, env) = elaboratePattern env pattern
+                            in (SOME matcheeTyp, pattern, forallScopeId, env)
                             end
                     val (bodyEff, body) = elaborateBody (env, body)
-                in (matcheeTyp, joinEffs (eff, bodyEff), {pattern, body} :: clauses)
+                in (matcheeTyp, joinEffs (eff, bodyEff), forallScopeId, {pattern, body} :: clauses)
                 end
-            val (matcheeTyp, eff, clauses) = Vector.foldl elaborateClause (NONE, Pure, []) clauses
-        in (eff, matcheeTyp, Vector.fromList (List.rev clauses))
+            val (matcheeTyp, eff, forallScopeId, clauses) = Vector.foldl elaborateClause (NONE, Pure, NONE, []) clauses
+        in (eff, valOf forallScopeId, matcheeTyp, Vector.fromList (List.rev clauses))
         end
 
     and elaborateClausesAs env matcheeTyp elaborateBody clauses =
@@ -456,26 +460,30 @@ end = struct
         fn CTerm.AnnP (pos, {pat = pat as CTerm.Def (pos', name), typ}) =>
             let val (typeDefs, t) = elaborateType env typ
                 val typeDefs = Vector.fromList typeDefs
-                val env = Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), Bindings.Type.fromDefs typeDefs))
-                val env = Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), name, Visited (t, NONE)))
-            in ((typeDefs, t), FTerm.Def (pos', {var = name, typ = t}), env)
+                val forallScopeId = Scope.Id.fresh ()
+                val env = Env.pushScope env (Scope.ForAllScope (forallScopeId, Bindings.Type.fromDefs typeDefs))
+                val patScopeId = Scope.Id.fresh ()
+                val env = Env.pushScope env (Scope.PatternScope (patScopeId, name, Visited (t, NONE)))
+            in ((typeDefs, t), FTerm.Def (pos', patScopeId, {var = name, typ = t}), SOME forallScopeId, env)
             end
          | CTerm.Def (pos, name) =>
             let val scopeId = Scope.Id.fresh ()
                 val t = FType.SVar (pos, FType.UVar (TypeVars.Uv.fresh (scopeId, Predicative)))
                 val env = Env.pushScope env (Scope.PatternScope (scopeId, name, Visited (t, NONE)))
-            in ((#[], t), FTerm.Def (pos, {var = name, typ = t}), env)
+            in ((#[], t), FTerm.Def (pos, scopeId, {var = name, typ = t}), NONE, env)
             end
          | CTerm.ConstP (pos, c) =>
             let val cTyp = FType.Prim (pos, Const.typeOf c)
-            in ((#[], cTyp), FTerm.ConstP (pos, c), env)
+            in ((#[], cTyp), FTerm.ConstP (pos, c), NONE, env)
             end
 
     and elaboratePatternAs env t =
         fn CTerm.AnnP (pos, {pat, typ}) => raise Fail "unimplemented"
          | CTerm.Def (pos, name) =>
-            ( FTerm.Def (pos, {var = name, typ = t})
-            , Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), name, Visited (t, NONE))) )
+            let val scopeId = Scope.Id.fresh ()
+            in ( FTerm.Def (pos, scopeId, {var = name, typ = t})
+               , Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), name, Visited (t, NONE))) )
+            end
          | CTerm.ConstP (pos, c) =>
             let val cTyp = FType.Prim (pos, Const.typeOf c)
                 val _ = unify env pos (cTyp, t)
@@ -537,7 +545,7 @@ end = struct
                                                        , FType.ForAll (pos, params, t) )
                                         end)    
                                    (paths, coercionNames)
-            in (eff, FTerm.Let (pos, axiomStmts, expr))
+            in (eff, FTerm.Let (pos, scopeId, axiomStmts, expr))
             end
 
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)

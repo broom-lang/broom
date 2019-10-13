@@ -88,18 +88,18 @@ end = struct
          | Type _ | Const _ => (Scalar, Support.empty)
          | e => raise Fail ("unimplemented: " ^ PPrint.pretty 80 (FTerm.exprToDoc e))
 
-    and checkLet ctx (_, stmts, body) =
+    and checkLet ctx (_, scopeId, stmts, body) =
         let val (ctx, stmtsSupport) = checkStmts ctx stmts
             val (typ, bodySupport) = checkExpr ctx body
         in (typ, Support.union (stmtsSupport, bodySupport))
         end
 
-    and checkFn ctx (_, {var = param, typ = paramTyp}, _, body) =
+    and checkFn ctx (_, scopeId, {var = param, typ = paramTyp}, _, body) =
         let val ctx = Ctx.pushParam ctx param (elaborateType ctx paramTyp)
         in (Closure (checkExpr ctx body), Support.empty)
         end
 
-    and checkTFn ctx (_, params, body) =
+    and checkTFn ctx (_, scopeId, params, body) =
         let val (codomain, bodySupport) = checkExpr ctx body
         in (ForAll (params, codomain, bodySupport), Support.empty)
         end
@@ -145,7 +145,7 @@ end = struct
         end
 
     and checkPat ctx =
-        fn Def (_, {var, typ}) => Ctx.pushParam ctx var (elaborateType ctx typ)
+        fn Def (_, scopeId, {var, typ}) => Ctx.pushParam ctx var (elaborateType ctx typ)
          | ConstP _ => ctx
          | pat => raise Fail ("unimplemented: " ^ PPrint.pretty 80 (FTerm.patternToDoc pat))
 
