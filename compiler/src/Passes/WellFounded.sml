@@ -15,8 +15,90 @@ end = struct
     datatype pat = datatype FTerm.pat
     val op|> = Fn.|>
 
+    structure ScopedId :> sig
+        type t = ScopeId.t * Name.t
+    end = struct
+        type t = ScopeId.t * Name.t
+    end
+
+    (* FIXME: Should be a set of ScopedId.t *)
     structure Support = NameSortedSet
 
+    datatype typ = Scalar
+
+    val rec join : typ * typ -> typ * bool =
+        fn _ => raise Fail "unimplemented"
+
+    structure Env :> sig
+        type t
+
+        structure Builder : sig
+            type builder
+            type bindings = typ NameHashTable.hash_table
+
+            val new : unit -> builder
+            val pushScope : builder
+                          -> {parent : ScopeId.t, scope : ScopeId.t * bindings}
+                          -> unit
+            val build : builder -> t
+        end
+
+        (* Join the `typ` at the `ScopedId.t` with the `typ`
+           and return whether the `typ` was changed by the join: *)
+        val refine : t -> ScopedId.t -> typ -> bool
+        val lookup : t -> ScopedId.t -> typ
+    end = struct
+        type bindings = typ NameHashTable.hash_table
+
+        type t = bindings list ScopeId.HashTable.hash_table
+
+        structure Builder = struct
+            type builder = t
+            type bindings = bindings
+
+            fun new () = ScopeId.HashTable.mkTable (0, Subscript)
+
+            fun pushScope builder {parent, scope = (scopeId, bindings)} =
+                let val chain = bindings :: ScopeId.HashTable.lookup builder parent
+                in ScopeId.HashTable.insert builder (scopeId, chain)
+                end
+
+            val build = Fn.identity
+        end
+
+        fun lookup env (scopeId, name) =
+            let val rec get =
+                    fn scope :: scopes =>
+                        (case NameHashTable.find scope name
+                         of SOME typ => typ
+                          | NONE => get scopes)
+                     | [] => raise Fail "unreachable"
+            in get (ScopeId.HashTable.lookup env scopeId)
+            end
+
+        fun update env (scopeId, name) f =
+            let val rec modify =
+                    fn scope :: scopes =>
+                        (case NameHashTable.find scope name
+                         of SOME typ => NameHashTable.insert scope (name, f typ)
+                          | NONE => modify scopes)
+                     | [] => raise Fail "unreachable"
+            in modify (ScopeId.HashTable.lookup env scopeId)
+            end
+
+        fun refine env scopedName typ' =
+            let val changed = ref false
+            in update env scopedName (fn typ =>
+                   let val (joined, change) = join (typ, typ')
+                       do changed := change
+                   in joined
+                   end
+               )
+             ; !changed
+            end
+    end
+
+    (*
     datatype typ
         = Uninitialized
         | Initialized
@@ -216,6 +298,6 @@ end = struct
     fun checkProgram {axioms = _, typeFns = _, stmts} =
         let val (_, support) = checkStmts Ctx.empty stmts
         in Support.isEmpty support
-        end
+        end *)
 end
 
