@@ -52,6 +52,8 @@ signature FAST_TYPE = sig
         val toString: ('sv -> PPrint.t) -> 'sv concr -> string
         val mapChildren : ('sv concr -> 'sv concr) -> 'sv concr -> 'sv concr
         val isSmall: 'sv concr -> bool
+        val rewriteRow : Name.t -> 'sv concr
+                       -> {field: Name.t * 'sv concr, ext: 'sv concr} option
         val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv concr -> bool
         val substitute: ('sv concr Id.SortedMap.map -> 'sv -> 'sv concr option)
                         -> 'sv concr Id.SortedMap.map -> 'sv concr -> 'sv concr
@@ -345,6 +347,18 @@ structure FType :> FAST_TYPE = struct
         val occurs = concrOccurs
         val substitute = concrSubstitute
         val isSmall = smallConcr
+
+        fun rewriteRow label row =
+            let val rec rewrite = 
+                    fn (RowExt (pos, row as {field = (flabel, ftype), ext})) =>
+                        if flabel = label
+                        then SOME row
+                        else Option.map (fn {field, ext} =>
+                                             {field, ext = RowExt (pos, {field = (flabel, ftype), ext})})
+                                        (rewrite ext)
+                     | _ => NONE
+            in rewrite row
+            end
 
         fun kindOf svarKind (typeFnKind: Name.t -> tfn_sig) =
             fn t as (ForAll _ | Arrow _ | Record _ | Type _ | Prim _)  => TypeK (pos t)

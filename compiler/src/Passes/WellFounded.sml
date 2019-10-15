@@ -53,8 +53,45 @@ end = struct
          | FType.SVar _ => raise Fail "unreachable"
          | FType.Prim _ => Scalar
 
+    fun rewriteRow label row =
+        let val rec rewrite = 
+                fn (RowExt (row as {field = (flabel, ftype), ext})) =>
+                    if flabel = label
+                    then SOME row
+                    else Option.map (fn {field, ext} =>
+                                         {field, ext = RowExt {field = (flabel, ftype), ext}})
+                                    (rewrite ext)
+                 | _ => NONE
+        in rewrite row
+        end
+
     val rec join : typ * typ -> typ * bool =
-        fn _ => raise Fail "unimplemented"
+        fn (ForAll (params, body), ForAll (params', body')) =>
+            let val (typ, changed) = join (body, body')
+            in (ForAll (params', typ), changed)
+            end
+         | (Closure (support, codomain), Closure (support', codomain')) =>
+            let val (codomain, codomainChanged) = join (codomain, codomain')
+            in ( Closure (Support.union (support, support'), codomain)
+               , codomainChanged orelse not (Support.equal (support, support')) )
+            end
+         | (Record row, Record row') =>
+            let val (row, changed) = join (row, row')
+            in (Record row, changed)
+            end
+         | (RowExt {field = (label, fieldt), ext}, row' as RowExt _) =>
+            (case rewriteRow label row'
+             of SOME {field = (_, fieldt'), ext = ext'} =>
+                 let val (fieldt, fieldtChanged) = join (fieldt, fieldt')
+                     val (ext, extChanged) = join (ext, ext')
+                 in ( RowExt {field = (label, fieldt), ext}
+                    , fieldtChanged orelse extChanged )
+                 end
+              | NONE => raise Fail "unreachable")
+         | (EmptyRow, EmptyRow) => (EmptyRow, false)
+         | (typ as UseT _, UseT _) => (typ, false)
+         | (typ as Scalar, Scalar) => (typ, false)
+         | _ => raise Fail "unreachable"
 
     structure Env :> sig
         type t

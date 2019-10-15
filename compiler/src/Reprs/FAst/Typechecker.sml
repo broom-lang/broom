@@ -53,6 +53,8 @@ end = struct
     datatype stmt = datatype FAst.Term.stmt
     datatype pat = datatype FAst.Term.pat
 
+    val rewriteRow = FAst.Type.Concr.rewriteRow
+
     fun pushStmts env stmts =
         let fun pushStmt (stmt, env) =
                 case stmt
@@ -60,18 +62,6 @@ end = struct
                  | Axiom (_, name, l, r) => Env.insertCo (env, name, l, r)
                  | Expr _ => env
         in Vector.foldl pushStmt env stmts
-        end
-
-    fun rewriteRow label row =
-        let val rec rewrite = 
-                fn (RowExt (pos, row as {field = (flabel, ftype), ext})) =>
-                    if flabel = label
-                    then SOME row
-                    else Option.map (fn {field, ext} =>
-                                         {field, ext = RowExt (pos, {field = (flabel, ftype), ext})})
-                                    (rewrite ext)
-                 | _ => NONE
-        in rewrite row
         end
 
     fun rowLabelType row label =
