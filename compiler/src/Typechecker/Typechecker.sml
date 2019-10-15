@@ -678,10 +678,12 @@ end = struct
     (* TODO: Prevent boundless deepening of REPL env
              and enable forward decl:s for stmts to be input on later lines. *)
     fun elaborateProgram env stmts =
-        let val env = Env.pushScope env (stmtsScope stmts)
+        let val scope = stmtsScope stmts
+            val env = Env.pushScope env scope
             val (eff, stmts) = elaborateStmts env stmts
             val program = { typeFns = Env.typeFns env
                           , axioms = Env.axioms env
+                          , scope = Scope.id scope
                           , stmts }
         in case Env.errors env
            of [] => Right (program, env)
