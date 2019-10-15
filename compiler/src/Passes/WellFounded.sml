@@ -101,9 +101,9 @@ end = struct
             type bindings = typ NameHashTable.hash_table
 
             val new : unit -> builder
-            val pushScope : builder
-                          -> {parent : ScopeId.t, scope : ScopeId.t * bindings}
+            val pushScope : builder -> {parent : ScopeId.t, scope : ScopeId.t}
                           -> unit
+            val insert : builder -> ScopedId.t -> typ -> unit
             val build : builder -> t
         end
 
@@ -122,10 +122,16 @@ end = struct
 
             fun new () = ScopeId.HashTable.mkTable (0, Subscript)
 
-            fun pushScope builder {parent, scope = (scopeId, bindings)} =
-                let val chain = bindings :: ScopeId.HashTable.lookup builder parent
+            fun pushScope builder {parent, scope = scopeId} =
+                let val chain = NameHashTable.mkTable (0, Subscript) 
+                              :: ScopeId.HashTable.lookup builder parent
                 in ScopeId.HashTable.insert builder (scopeId, chain)
                 end
+
+            fun insert builder (scopeId, name) typ =
+                ScopeId.HashTable.lookup builder scopeId
+                |> List.hd
+                |> (fn bs => NameHashTable.insert bs (name, typ))
 
             val build = Fn.identity
         end
@@ -161,6 +167,61 @@ end = struct
              ; !changed
             end
     end
+
+    fun initialProgramEnv {axioms = _, typeFns = _, scope, stmts} =
+        let val builder = Env.Builder.new ()
+
+            fun insertExpr scopeId =
+                fn Let (_, scopeId', stmts, body) =>
+                    ( insertBlock scopeId scopeId' stmts
+                    ; insertExpr scopeId' body )
+                 | Match (_, _, matchee, clauses) =>
+                    ( insertExpr scopeId matchee
+                    ; Vector.app (fn {pattern, body} =>
+                                      let val scopeId = insertPat scopeId pattern
+                                      in insertExpr scopeId body
+                                      end)
+                                 clauses )
+                 | Fn (_, scopeId', {var, typ}, _, body) =>
+                    ( Env.Builder.pushScope builder {parent = scopeId, scope = scopeId'}
+                    ; Env.Builder.insert builder (scopeId', var) (elaborateType typ)
+                    ; insertExpr scopeId' body )
+                 | TFn (_, _, _, body) => insertExpr scopeId body
+                 | App (_, _, {callee, arg}) =>
+                    ( insertExpr scopeId callee
+                    ; insertExpr scopeId arg )
+                 | TApp (_, _, {callee, args = _}) => insertExpr scopeId callee
+                 | Extend (_, _, fields, ext) =>
+                    ( Vector.app (fn (_, expr) => insertExpr scopeId expr) fields
+                    ; Option.app (insertExpr scopeId) ext )
+                 | Override (_, _, fields, ext) =>
+                    ( Vector.app (fn (_, expr) => insertExpr scopeId expr) fields
+                    ; insertExpr scopeId ext )
+                 | Field (_, _, expr, _) => insertExpr scopeId expr
+                 | Cast (_, _, expr, _) => insertExpr scopeId expr
+                 | Type _ | Use _ | Const _ => ()
+            
+            and insertBlock parentScopeId scopeId stmts =
+                ( Env.Builder.pushScope builder {parent = parentScopeId, scope = scopeId}
+                ; Vector.app (insertStmt scopeId) stmts )
+
+            and insertStmt scopeId =
+                fn Axiom _ => ()
+                 | Val (_, {var, typ}, expr) =>
+                    ( Env.Builder.insert builder (scopeId, var) (elaborateType typ)
+                    ; insertExpr scopeId expr )
+                 | Expr expr => insertExpr scopeId expr
+
+            and insertPat scopeId =
+                fn AnnP (_, {pat, typ = _}) => insertPat scopeId pat
+                 | Def (_, scopeId', {var, typ}) =>
+                    ( Env.Builder.pushScope builder {parent = scopeId, scope = scopeId'}
+                    ; Env.Builder.insert builder (scopeId', var) (elaborateType typ)
+                    ; scopeId' )
+                 | ConstP _ => scopeId
+        in insertBlock scope stmts
+         ; Env.Builder.build builder
+        end
 
     fun checkProgram {axioms = _, typeFns = _, stmts} =
         raise Fail "unimplemented"
