@@ -5,7 +5,9 @@ structure WellFounded :> sig
             where type Type.sv = FixedFAst.Type.sv
     end
 
-    val checkProgram: FAst.Term.program -> bool
+    datatype error = Uninitialized of Pos.t * Name.t
+
+    val checkProgram : FAst.Term.program -> (error, unit) Either.t
 end = struct
     structure FAst = FixedFAst
     structure FTerm = FAst.Term
@@ -21,10 +23,35 @@ end = struct
         type t = ScopeId.t * Name.t
     end
 
+    datatype error = Uninitialized of Pos.t * Name.t
+
     (* FIXME: Should be a set of ScopedId.t *)
     structure Support = NameSortedSet
 
-    datatype typ = Scalar
+    datatype typ
+        = ForAll of FType.def vector * typ
+        | Closure of Support.set * typ
+        | Record of typ
+        | RowExt of {field : Name.t * typ, ext : typ}
+        | EmptyRow
+        | UseT of FType.def
+        | Scalar
+
+    val rec elaborateType : FType.concr -> typ =
+        fn FType.ForAll (_, params, body) => ForAll (params, elaborateType body)
+         | FType.Arrow (_, _, {domain = _, codomain}) =>
+            Closure (Support.empty, elaborateType codomain)
+         | FType.Record (_, row) => Record (elaborateType row)
+         | FType.RowExt (_, {field = (label, fieldt), ext}) =>
+            RowExt { field = (label, elaborateType fieldt)
+                   , ext = elaborateType ext }
+         | FType.EmptyRow _ => EmptyRow
+         | FType.Type _ => Scalar
+         | FType.App _ => Scalar
+         | FType.CallTFn _ => Scalar
+         | FType.UseT (_, def) => UseT def
+         | FType.SVar _ => raise Fail "unreachable"
+         | FType.Prim _ => Scalar
 
     val rec join : typ * typ -> typ * bool =
         fn _ => raise Fail "unimplemented"
@@ -97,6 +124,9 @@ end = struct
              ; !changed
             end
     end
+
+    fun checkProgram {axioms = _, typeFns = _, stmts} =
+        raise Fail "unimplemented"
 
     (*
     datatype typ

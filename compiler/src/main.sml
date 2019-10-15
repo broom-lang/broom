@@ -61,9 +61,9 @@ end = struct
                     ; program )
             val program = ExitTypechecker.programToF program
             val _ = log (PPrint.pretty 80 (FixedFAst.Term.programToDoc program) ^ "\n")
-            val _ = if WellFounded.checkProgram program
-                    then ()
-                    else raise Fail "IllFounded"
+            val _ = case WellFounded.checkProgram program
+                    of Right () => ()
+                     | Left errors => raise Fail "IllFounded"
         in if lint
            then case FAstTypechecker.typecheckProgram program
                 of SOME err => raise Fail "Lint failed"
@@ -83,9 +83,9 @@ end = struct
                                errors
                     ; (program, tenv) )
             val program as {stmts, ...} = ExitTypechecker.programToF program
-            val _ = if WellFounded.checkProgram program
-                    then ()
-                    else raise Fail "IllFounded"
+            val _ = case WellFounded.checkProgram program
+                    of Right () => ()
+                     | Left errors => raise Fail "IllFounded"
         in Vector.app (fn stmt as (Val (_, {var, typ}, _)) =>
                            let val v = FAstEval.interpret venv stmt
                            in print ( Name.toString var ^ " = "
@@ -107,9 +107,9 @@ end = struct
                                errors
                     ; (program, tenv) )
             val program = ExitTypechecker.programToF program
-            val _ = if WellFounded.checkProgram program
-                    then ()
-                    else raise Fail "IllFounded"
+            val _ = case WellFounded.checkProgram program
+                    of Right () => ()
+                     | Left errors => raise Fail "IllFounded"
         in print (PPrint.pretty 80 (FixedFAst.Term.programToDoc program))
          ; tenv
         end
