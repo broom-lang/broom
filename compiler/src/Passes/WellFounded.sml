@@ -225,8 +225,21 @@ end = struct
          ; Env.Builder.build builder
         end
 
+    datatype context = Escaping | Naming
+
     fun checkProgram (program as {axioms = _, typeFns = _, scope = topScopeId, stmts}) =
         let val env = initialProgramEnv program
+            
+            fun checkExpr scopeId ctx =
+                fn App (_, _, {callee, arg}) =>
+                    (case checkExpr scopeId Escaping callee
+                     of (Closure (_, codomain), calleeSupport) =>
+                         (*       ^-- should be empty because context was `Escaping`. *)
+                         let val (_, argSupport) = checkExpr scopeId Escaping arg
+                         in (codomain, Support.union (calleeSupport, argSupport))
+                         end
+                      | _ => raise Fail "unreachable")
+                 | Type _ | Const _ => (Scalar, Support.empty)
         in raise Fail "unimplemented"
         end
 
