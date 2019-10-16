@@ -16,12 +16,17 @@ end = struct
     datatype stmt = datatype FTerm.stmt
     datatype pat = datatype FTerm.pat
     val op|> = Fn.|>
+    val space = PPrint.space
+    val text = PPrint.text
+    val op<> = PPrint.<>
+    val op<+> = PPrint.<+>
 
     structure ScopedId :> sig
         type t = ScopeId.t * Name.t
         type ord_key = t
 
         val compare : t * t -> order
+        val toDoc : t -> PPrint.t
     end = struct
         type t = ScopeId.t * Name.t
         type ord_key = t
@@ -30,24 +35,55 @@ end = struct
             case ScopeId.compare (scopeId, scopeId')
             of EQUAL => Name.compare (name, name')
              | ord => ord
+
+        fun toDoc (scopeId, name) =
+            Name.toDoc name <> text "__" <> text (ScopeId.toString scopeId)
     end
 
     datatype error = ReadUninitialized of Pos.t * Name.t
 
-    structure Support = BinarySetFn(ScopedId)
+    structure Support = struct
+        structure Super = BinarySetFn(ScopedId)
+        open Super
+
+        fun toDoc names =
+            names
+            |> toList
+            |> Vector.fromList
+            |> Vector.map ScopedId.toDoc
+            |> PPrint.punctuate (text "," <> space)
+            |> PPrint.braces
+    end
 
     datatype typ
-        = ForAll of FType.def vector * typ
-        | Closure of Support.set * typ
+        = Closure of Support.set * typ
         | Record of typ
         | RowExt of {field : Name.t * typ, ext : typ}
         | EmptyRow
-        | UseT of FType.def
         | Scalar
         | Unknown
 
+    val rec typToDoc =
+        fn Closure (support, codomain) =>
+            text "_" <+> text "->" <+> Support.toDoc support
+                <+> typToDoc codomain
+         | Record row => PPrint.braces (typToDoc row)
+         | row as RowExt _ | row as EmptyRow => rowToDoc row
+         | Scalar => text "scalar"
+         | Unknown => text "?"
+
+    and rowToDoc =
+        fn RowExt {field = (label, fieldt), ext} =>
+            let val fieldDoc = Name.toDoc label <+> text ":" <+> typToDoc fieldt
+            in case ext
+               of EmptyRow => fieldDoc
+                | _ => fieldDoc <> text "," <+> rowToDoc ext
+            end
+         | EmptyRow => PPrint.empty
+         | row => typToDoc row
+
     val rec elaborateType : FType.concr -> typ =
-        fn FType.ForAll (_, params, body) => ForAll (params, elaborateType body)
+        fn FType.ForAll (_, _, body) => elaborateType body
          | FType.Arrow (_, _, {domain = _, codomain}) =>
             Closure (Support.empty, elaborateType codomain)
          | FType.Record (_, row) => Record (elaborateType row)
@@ -58,13 +94,13 @@ end = struct
          | FType.Type _ => Scalar
          | FType.App _ => Scalar
          | FType.CallTFn _ => Scalar
-         | FType.UseT (_, def) => UseT def
+         | FType.UseT _ => Scalar
          | FType.SVar _ => raise Fail "unreachable"
          | FType.Prim _ => Scalar
 
     fun rewriteRow label row =
         let val rec rewrite = 
-                fn (RowExt (row as {field = (flabel, ftype), ext})) =>
+                fn RowExt (row as {field = (flabel, ftype), ext}) =>
                     if flabel = label
                     then SOME row
                     else Option.map (fn {field, ext} =>
@@ -74,12 +110,24 @@ end = struct
         in rewrite row
         end
 
+    fun withField row field = RowExt {field, ext = row}
+
+    fun whereField row (field as (label, _)) =
+        Option.map (fn {field = _, ext} => withField ext field)
+                   (rewriteRow label row)
+
+    fun rowField row label =
+        let val rec get =
+                fn RowExt {field = (label', fieldt), ext} =>
+                    if label = label'
+                    then SOME fieldt
+                    else get ext
+                 | _ => NONE
+        in get row
+        end
+
     val rec join : typ * typ -> typ * bool =
-        fn (ForAll (params, body), ForAll (params', body')) =>
-            let val (typ, changed) = join (body, body')
-            in (ForAll (params', typ), changed)
-            end
-         | (Closure (support, codomain), Closure (support', codomain')) =>
+        fn (Closure (support, codomain), Closure (support', codomain')) =>
             let val (codomain, codomainChanged) = join (codomain, codomain')
             in ( Closure (Support.union (support, support'), codomain)
                , codomainChanged orelse not (Support.equal (support, support')) )
@@ -98,9 +146,13 @@ end = struct
                  end
               | NONE => raise Fail "unreachable")
          | (EmptyRow, EmptyRow) => (EmptyRow, false)
-         | (typ as UseT _, UseT _) => (typ, false)
          | (typ as Scalar, Scalar) => (typ, false)
-         | _ => raise Fail "unreachable"
+         | (Unknown, Unknown) => (Unknown, false)
+         | (Unknown, typ) => (typ, true)
+         | (typ, Unknown) => (typ, false)
+         | (typ, typ') =>
+            raise Fail (PPrint.pretty 80 ( text "unreachable:"
+                                           <+> typToDoc typ <+> text "V" <+> typToDoc typ' ))
 
     structure Env :> sig
         type t
@@ -302,7 +354,7 @@ end = struct
                                                       | Naming => Delayed
                              in inited stateToAccess frames
                              end
-                     | [] => raise Fail "unreachable"
+                     | [] => raise Fail ("unbound " ^ Name.toString name)
             in inited Instant ini
             end
     end
@@ -350,6 +402,38 @@ end = struct
                          in (Unknown, Support.union (calleeSupport, argSupport))
                          end)
                  | TApp (_, _, {callee, args = _}) => checkExpr scopeId ini ctx callee
+                 | Extend (_, _, fields, ext) =>
+                    let val (Record ext, extSupport) =
+                            case ext
+                            of SOME ext => checkExpr scopeId ini ctx ext
+                             | NONE => (Record EmptyRow, Support.empty)
+                        val (row, support) =
+                            Vector.foldl (fn ((label, expr), (typ, support)) =>
+                                              let val (fieldt, fieldSupport) = checkExpr scopeId ini ctx expr
+                                              in ( withField typ (label, fieldt)
+                                                 , Support.union (support, fieldSupport) )
+                                              end)
+                                         (ext, extSupport) fields
+                    in (Record row, support)
+                    end
+                 | Override (_, _, fields, ext) =>
+                    let val (Record ext, extSupport) = checkExpr scopeId ini ctx ext
+                        val (row, support) =
+                            Vector.foldl (fn ((label, expr), (typ, support)) =>
+                                              let val (fieldt, fieldSupport) = checkExpr scopeId ini ctx expr
+                                              in ( valOf (whereField typ (label, fieldt))
+                                                 , Support.union (support, fieldSupport) )
+                                              end)
+                                         (ext, extSupport) fields
+                    in (Record row, support)
+                    end
+                 | Field (_, _, expr, label) =>
+                    let val (recTyp, support) = checkExpr scopeId ini ctx expr
+                    in ( case recTyp
+                         of RowExt _ => valOf (rowField recTyp label)
+                          | _ => Unknown
+                       , support )
+                    end
                  | Use (pos, {var, ...}) => (* FIXME: release supports from type if `ctx` = `Escaping`: *)
                     (case IniEnv.access ini var
                      of Delayed Initialized | Instant Initialized => (* ok unsupported *)
