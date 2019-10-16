@@ -6,8 +6,10 @@ structure WellFounded :> sig
     end
 
     datatype error = ReadUninitialized of Pos.t * Name.t
+    
+    val errorToDoc : error -> PPrint.t
 
-    val checkProgram : FAst.Term.program -> (error, unit) Either.t
+    val checkProgram : FAst.Term.program -> (error vector, unit) Either.t
 end = struct
     structure FAst = FixedFAst
     structure FTerm = FAst.Term
@@ -41,6 +43,10 @@ end = struct
     end
 
     datatype error = ReadUninitialized of Pos.t * Name.t
+
+    fun errorToDoc (ReadUninitialized (pos, name)) =
+        text "Error: Cannot prove that" <+> Name.toDoc name <+> text "is initialized in"
+            <+> text (Pos.toString pos)
 
     structure Support = struct
         structure Super = BinarySetFn(ScopedId)
@@ -362,6 +368,8 @@ end = struct
     fun checkProgram (program as {axioms = _, typeFns = _, scope = topScopeId, stmts}) =
         let val env = initialProgramEnv program
             val changed = ref false
+            val errors = ref []
+            fun error err = errors := err :: !errors
             
             fun checkExpr scopeId ini ctx =
                 fn Fn (_, scopeId, {var, ...}, _, body) =>
@@ -441,8 +449,8 @@ end = struct
                       | Delayed Uninitialized => (* ok with support *)
                          (Env.lookup env (scopeId, var), Support.singleton (scopeId, var))
                       | Instant Uninitialized => (* error *)
-                         raise Fail ( "uninitialized " ^ Name.toString var
-                                    ^ " in " ^ Pos.toString pos ))
+                         ( error (ReadUninitialized (pos, var))
+                         ; (Env.lookup env (scopeId, var), Support.empty) ))
                  | Cast (_, _, expr, _) => checkExpr scopeId ini ctx expr
                  | Type _ | Const _ => (Scalar, Support.empty)
 
@@ -482,13 +490,16 @@ end = struct
 
             fun iterate stmts =
                 let do changed := false
+                    do errors := []
                     do ignore (checkStmts topScopeId (pushBlock IniEnv.empty stmts) stmts)
                 in if !changed
                    then iterate stmts
                    else ()
                 end
         in iterate stmts
-         ; Either.Right ()
+         ; case !errors
+           of [] => Either.Right ()
+            | errs => Either.Left (Vector.fromList (List.rev errs))
         end
 end
 

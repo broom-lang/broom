@@ -56,14 +56,16 @@ end = struct
            of Right (program, _) =>
                let val program = ExitTypechecker.programToF program
                    val _ = log (PPrint.pretty 80 (FixedFAst.Term.programToDoc program) ^ "\n")
-                   val _ = case WellFounded.checkProgram program
-                           of Right () => ()
-                            | Left errors => raise Fail "IllFounded"
-               in if lint
-                  then case FAstTypechecker.typecheckProgram program
-                       of SOME err => raise Fail "Lint failed"
-                        | NONE => ()
-                  else ()
+               in  case WellFounded.checkProgram program
+                   of Right () =>
+                       if lint
+                       then case FAstTypechecker.typecheckProgram program
+                            of SOME err => raise Fail "Lint failed"
+                             | NONE => ()
+                       else ()
+                    | Left errors =>
+                       Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc)
+                                  errors
                end
             | Left (program, _, errors) =>
                List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc err)))
@@ -77,18 +79,21 @@ end = struct
         in  case Typechecker.elaborateProgram tenv stmts
             of Right (program, tenv) =>
                 let val program as {stmts, ...} = ExitTypechecker.programToF program
-                    val _ = case WellFounded.checkProgram program
-                            of Right () => ()
-                             | Left errors => raise Fail "IllFounded"
-                in Vector.app (fn stmt as (Val (_, {var, typ}, _)) =>
-                                   let val v = FAstEval.interpret venv stmt
-                                   in print ( Name.toString var ^ " = "
-                                            ^ FAstEval.Value.toString v ^ " : "
-                                            ^ FixedFAst.Type.Concr.toString typ ^ "\n" )
-                                   end
-                                | stmt as (Expr _) => ignore (FAstEval.interpret venv stmt))
-                              stmts
-                 ; (tenv, venv)
+                in  case WellFounded.checkProgram program
+                    of Right () =>
+                        ( Vector.app (fn stmt as (Val (_, {var, typ}, _)) =>
+                                         let val v = FAstEval.interpret venv stmt
+                                         in print ( Name.toString var ^ " = "
+                                                  ^ FAstEval.Value.toString v ^ " : "
+                                                  ^ FixedFAst.Type.Concr.toString typ ^ "\n" )
+                                         end
+                                       | stmt as (Expr _) => ignore (FAstEval.interpret venv stmt))
+                                     stmts
+                        ; (tenv, venv) )
+                     | Left errors =>
+                        ( Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc)
+                                     errors
+                        ; (tenv, venv) )
                 end
              | Left (_, _, errors) =>
                 ( List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc err)))
@@ -101,11 +106,14 @@ end = struct
         in  case Typechecker.elaborateProgram tenv stmts
             of Right (program, tenv) =>
                 let val program = ExitTypechecker.programToF program
-                    val _ = case WellFounded.checkProgram program
-                            of Right () => ()
-                             | Left errors => raise Fail "IllFounded"
-                in print (PPrint.pretty 80 (FixedFAst.Term.programToDoc program))
-                 ; tenv
+                in  case WellFounded.checkProgram program
+                    of Right () =>
+                        ( print (PPrint.pretty 80 (FixedFAst.Term.programToDoc program))
+                        ; tenv )
+                     | Left errors =>
+                        ( Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc)
+                                     errors
+                        ; tenv )
                 end
              | Left (_, _, errors) =>
                 ( List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc err)))
