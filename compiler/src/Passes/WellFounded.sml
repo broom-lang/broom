@@ -479,7 +479,15 @@ end = struct
             and checkPattern scopeId ini ctx =
                 fn Def (_, scopeId, {var, ...}) => (scopeId, IniEnv.pushMatch ini var)
                  | ConstP _ => (scopeId, ini)
-        in checkStmts topScopeId (pushBlock IniEnv.empty stmts) stmts
+
+            fun iterate stmts =
+                let do changed := false
+                    do ignore (checkStmts topScopeId (pushBlock IniEnv.empty stmts) stmts)
+                in if !changed
+                   then iterate stmts
+                   else ()
+                end
+        in iterate stmts
          ; Either.Right ()
         end
 end
