@@ -290,31 +290,41 @@ end = struct
         let val env = initialProgramEnv program
             val changed = ref false
             
-            fun checkExpr scopeId ctx =
+            fun checkExpr scopeId ini ctx =
                 fn App (_, _, {callee, arg}) =>
-                    (case checkExpr scopeId Escaping callee
+                    (case checkExpr scopeId ini Escaping callee
                      of (Closure (_, codomain), calleeSupport) =>
                          (*       ^-- should be empty because context was `Escaping`. *)
-                         let val (_, argSupport) = checkExpr scopeId Escaping arg
+                         let val (_, argSupport) = checkExpr scopeId ini Escaping arg
                          in (codomain, Support.union (calleeSupport, argSupport))
                          end
                       | _ => raise Fail "unreachable")
                  | Type _ | Const _ => (Scalar, Support.empty)
 
-            and checkStmts scopeId ctx stmts =
-                Vector.foldl (fn (stmt, support) => Support.union (support, checkStmt scopeId ctx stmt))
+            and pushBlock ini stmts =
+                let val names =
+                        Vector.foldl (fn (Axiom _, names) => names
+                                       | (Val (_, {var, ...}, _), names) => var :: names
+                                       | (Expr _, names) => names)
+                                     [] stmts
+                in IniEnv.pushBlock ini names
+                end
+
+            and checkStmts scopeId ini ctx stmts =
+                Vector.foldl (fn (stmt, support) =>
+                                  Support.union (support, checkStmt scopeId ini ctx stmt))
                              Support.empty stmts
 
-            and checkStmt scopeId ctx =
+            and checkStmt scopeId ini ctx =
                 fn Axiom _ => Support.empty
                  | Val (_, {var, typ = _}, expr) =>
-                    let val (typ, support) = checkExpr scopeId Naming expr
+                    let val (typ, support) = checkExpr scopeId ini Naming expr
                         val refineChanged = Env.refine env (scopeId, var) typ
                         do changed := (!changed orelse refineChanged)
                     in support
                     end
-                 | Expr expr => #2 (checkExpr scopeId Escaping expr)
-        in checkStmts topScopeId Escaping stmts
+                 | Expr expr => #2 (checkExpr scopeId ini Escaping expr)
+        in checkStmts topScopeId (pushBlock IniEnv.empty stmts) Escaping stmts
          ; Either.Right ()
         end
 
