@@ -229,6 +229,7 @@ end = struct
 
     fun checkProgram (program as {axioms = _, typeFns = _, scope = topScopeId, stmts}) =
         let val env = initialProgramEnv program
+            val changed = ref false
             
             fun checkExpr scopeId ctx =
                 fn App (_, _, {callee, arg}) =>
@@ -240,7 +241,22 @@ end = struct
                          end
                       | _ => raise Fail "unreachable")
                  | Type _ | Const _ => (Scalar, Support.empty)
-        in raise Fail "unimplemented"
+
+            and checkStmts scopeId ctx stmts =
+                Vector.foldl (fn (stmt, support) => Support.union (support, checkStmt scopeId ctx stmt))
+                             Support.empty stmts
+
+            and checkStmt scopeId ctx =
+                fn Axiom _ => Support.empty
+                 | Val (_, {var, typ = _}, expr) =>
+                    let val (typ, support) = checkExpr scopeId Naming expr
+                        val refineChanged = Env.refine env (scopeId, var) typ
+                        do changed := (!changed orelse refineChanged)
+                    in support
+                    end
+                 | Expr expr => #2 (checkExpr scopeId Escaping expr)
+        in checkStmts topScopeId Escaping stmts
+         ; Either.Right ()
         end
 
     (*
