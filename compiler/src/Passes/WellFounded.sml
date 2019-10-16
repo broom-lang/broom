@@ -44,6 +44,7 @@ end = struct
         | EmptyRow
         | UseT of FType.def
         | Scalar
+        | Unknown
 
     val rec elaborateType : FType.concr -> typ =
         fn FType.ForAll (_, params, body) => ForAll (params, elaborateType body)
@@ -318,6 +319,7 @@ end = struct
                        of Escaping => (Closure (Support.empty, codomain), support)
                         | Naming => (Closure (support, codomain), Support.empty)
                     end
+                 | TFn (_, _, _, body) => checkExpr scopeId ini ctx body
                  | Let (_, scopeId, stmts, body) =>
                     let val ini = pushBlock ini stmts
                         val stmtsSupport = checkStmts scopeId ini stmts
@@ -343,8 +345,12 @@ end = struct
                          let val (_, argSupport) = checkExpr scopeId ini Escaping arg
                          in (codomain, Support.union (calleeSupport, argSupport))
                          end
-                      | _ => raise Fail "unreachable")
-                 | Use (pos, {var, ...}) =>
+                      | (_, calleeSupport) =>
+                         let val (_, argSupport) = checkExpr scopeId ini Escaping arg
+                         in (Unknown, Support.union (calleeSupport, argSupport))
+                         end)
+                 | TApp (_, _, {callee, args = _}) => checkExpr scopeId ini ctx callee
+                 | Use (pos, {var, ...}) => (* FIXME: release supports from type if `ctx` = `Escaping`: *)
                     (case IniEnv.access ini var
                      of Delayed Initialized | Instant Initialized => (* ok unsupported *)
                          (Env.lookup env (scopeId, var), Support.empty)
