@@ -1,0 +1,4 @@
+fun f (n: int) = ans
+val n = f 23
+val ans = 42
+

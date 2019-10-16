@@ -240,6 +240,7 @@ end = struct
             end
     end
 
+    (* TODO: Just initialize everything to `Unknown`. *)
     fun initialProgramEnv {axioms = _, typeFns = _, scope = topScopeId, stmts} =
         let val builder = Env.Builder.new topScopeId
 
