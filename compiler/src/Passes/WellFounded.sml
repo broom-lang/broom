@@ -19,14 +19,22 @@ end = struct
 
     structure ScopedId :> sig
         type t = ScopeId.t * Name.t
+        type ord_key = t
+
+        val compare : t * t -> order
     end = struct
         type t = ScopeId.t * Name.t
+        type ord_key = t
+
+        fun compare ((scopeId, name), (scopeId', name')) =
+            case ScopeId.compare (scopeId, scopeId')
+            of EQUAL => Name.compare (name, name')
+             | ord => ord
     end
 
     datatype error = ReadUninitialized of Pos.t * Name.t
 
-    (* FIXME: Should be a set of ScopedId.t *)
-    structure Support = NameSortedSet
+    structure Support = BinarySetFn(ScopedId)
 
     datatype typ
         = ForAll of FType.def vector * typ
@@ -277,10 +285,14 @@ end = struct
                         (case NameHashTable.find bs name
                          of SOME state => stateToAccess state
                           | NONE => inited stateToAccess frames)
-                     | FnFrame (_, name') :: frames =>
+                     | FnFrame (ctx, name') :: frames =>
                         if name = name'
                         then stateToAccess Initialized
-                        else inited Delayed frames
+                        else let val stateToAccess = case ctx
+                                                     of Escaping => stateToAccess
+                                                      | Naming => Delayed
+                             in inited stateToAccess frames
+                             end
                      | [] => raise Fail "unreachable"
             in inited Instant ini
             end
@@ -291,7 +303,20 @@ end = struct
             val changed = ref false
             
             fun checkExpr scopeId ini ctx =
-                fn App (_, _, {callee, arg}) =>
+                fn Fn (_, scopeId, {var, ...}, _, body) =>
+                    let val ini = IniEnv.pushFn ini ctx var
+                        val (codomain, support) = checkExpr scopeId ini ctx body
+                    in case ctx
+                       of Escaping => (Closure (Support.empty, codomain), support)
+                        | Naming => (Closure (support, codomain), Support.empty)
+                    end
+                 | Let (_, scopeId, stmts, body) =>
+                    let val ini = pushBlock ini stmts
+                        val stmtsSupport = checkStmts scopeId ini stmts
+                        val (typ, bodySupport) = checkExpr scopeId ini ctx body
+                    in (typ, Support.union (stmtsSupport, bodySupport))
+                    end
+                 | App (_, _, {callee, arg}) =>
                     (case checkExpr scopeId ini Escaping callee
                      of (Closure (_, codomain), calleeSupport) =>
                          (*       ^-- should be empty because context was `Escaping`. *)
@@ -299,6 +324,16 @@ end = struct
                          in (codomain, Support.union (calleeSupport, argSupport))
                          end
                       | _ => raise Fail "unreachable")
+                 | Use (pos, {var, ...}) =>
+                    (case IniEnv.access ini var
+                     of Delayed Initialized | Instant Initialized => (* ok unsupported *)
+                         (Env.lookup env (scopeId, var), Support.empty)
+                      | Delayed Uninitialized => (* ok with support *)
+                         (Env.lookup env (scopeId, var), Support.singleton (scopeId, var))
+                      | Instant Uninitialized => (* error *)
+                         raise Fail ( "uninitialized " ^ Name.toString var
+                                    ^ " in " ^ Pos.toString pos ))
+                 | Cast (_, _, expr, _) => checkExpr scopeId ini ctx expr
                  | Type _ | Const _ => (Scalar, Support.empty)
 
             and pushBlock ini stmts =
@@ -310,21 +345,22 @@ end = struct
                 in IniEnv.pushBlock ini names
                 end
 
-            and checkStmts scopeId ini ctx stmts =
+            and checkStmts scopeId ini stmts =
                 Vector.foldl (fn (stmt, support) =>
-                                  Support.union (support, checkStmt scopeId ini ctx stmt))
+                                  Support.union (support, checkStmt scopeId ini stmt))
                              Support.empty stmts
 
-            and checkStmt scopeId ini ctx =
+            and checkStmt scopeId ini =
                 fn Axiom _ => Support.empty
                  | Val (_, {var, typ = _}, expr) =>
                     let val (typ, support) = checkExpr scopeId ini Naming expr
                         val refineChanged = Env.refine env (scopeId, var) typ
                         do changed := (!changed orelse refineChanged)
+                        do IniEnv.initialize ini var
                     in support
                     end
                  | Expr expr => #2 (checkExpr scopeId ini Escaping expr)
-        in checkStmts topScopeId (pushBlock IniEnv.empty stmts) Escaping stmts
+        in checkStmts topScopeId (pushBlock IniEnv.empty stmts) stmts
          ; Either.Right ()
         end
 
