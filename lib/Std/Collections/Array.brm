@@ -8,7 +8,7 @@ type ARRAY = interface
     val set : pi elem => t elem -> key -> elem -> t elem
     val update : pi elem => t elem -> key -> (elem -> elem) -> t elem
 
-    val unfoldl : pi elem elem => size -> (state -> elem * state) -> state -> t elem * state
+    val unfoldl : pi elem state => size -> (state -> elem * state) -> state -> t elem * state
     val unfoldr : pi elem state => size -> (state -> elem * state) -> state -> t elem * state
 
     val foldl : pi elem state => (state -> elem -> state) -> state -> t elem -> state
