@@ -52,66 +52,65 @@ end = struct
             val _ = log (PPrint.pretty 80 (Cst.Term.stmtsToDoc program) ^ "\n")
           
             val _ = log "===\n"
-            val program =
-                case Typechecker.elaborateProgram (TypecheckingEnv.default ()) program
-                of Right (program, _) => program
-                 | Left (program, _, errors) =>
-                    ( List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc err)))
-                               errors
-                    ; program )
-            val program = ExitTypechecker.programToF program
-            val _ = log (PPrint.pretty 80 (FixedFAst.Term.programToDoc program) ^ "\n")
-            val _ = case WellFounded.checkProgram program
-                    of Right () => ()
-                     | Left errors => raise Fail "IllFounded"
-        in if lint
-           then case FAstTypechecker.typecheckProgram program
-                of SOME err => raise Fail "Lint failed"
-                 | NONE => ()
-           else ()
+        in case Typechecker.elaborateProgram (TypecheckingEnv.default ()) program
+           of Right (program, _) =>
+               let val program = ExitTypechecker.programToF program
+                   val _ = log (PPrint.pretty 80 (FixedFAst.Term.programToDoc program) ^ "\n")
+                   val _ = case WellFounded.checkProgram program
+                           of Right () => ()
+                            | Left errors => raise Fail "IllFounded"
+               in if lint
+                  then case FAstTypechecker.typecheckProgram program
+                       of SOME err => raise Fail "Lint failed"
+                        | NONE => ()
+                  else ()
+               end
+            | Left (program, _, errors) =>
+               List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc err)))
+                        errors
         end
 
     val prompt = "broom> "
 
     fun rep (tenv, venv) line =
         let val stmts = Parser.parse (Console (TextIO.openString line))
-            val (program, tenv) =
-                case Typechecker.elaborateProgram tenv stmts
-                of Right res => res
-                 | Left (program, tenv, errors) =>
-                    ( List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc err)))
-                               errors
-                    ; (program, tenv) )
-            val program as {stmts, ...} = ExitTypechecker.programToF program
-            val _ = case WellFounded.checkProgram program
-                    of Right () => ()
-                     | Left errors => raise Fail "IllFounded"
-        in Vector.app (fn stmt as (Val (_, {var, typ}, _)) =>
-                           let val v = FAstEval.interpret venv stmt
-                           in print ( Name.toString var ^ " = "
-                                    ^ FAstEval.Value.toString v ^ " : "
-                                    ^ FixedFAst.Type.Concr.toString typ ^ "\n" )
-                           end
-                        | stmt as (Expr _) => ignore (FAstEval.interpret venv stmt))
-                      stmts
-         ; (tenv, venv)
+        in  case Typechecker.elaborateProgram tenv stmts
+            of Right (program, tenv) =>
+                let val program as {stmts, ...} = ExitTypechecker.programToF program
+                    val _ = case WellFounded.checkProgram program
+                            of Right () => ()
+                             | Left errors => raise Fail "IllFounded"
+                in Vector.app (fn stmt as (Val (_, {var, typ}, _)) =>
+                                   let val v = FAstEval.interpret venv stmt
+                                   in print ( Name.toString var ^ " = "
+                                            ^ FAstEval.Value.toString v ^ " : "
+                                            ^ FixedFAst.Type.Concr.toString typ ^ "\n" )
+                                   end
+                                | stmt as (Expr _) => ignore (FAstEval.interpret venv stmt))
+                              stmts
+                 ; (tenv, venv)
+                end
+             | Left (_, _, errors) =>
+                ( List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc err)))
+                           errors
+                ; (tenv, venv) )
         end
 
     fun rtp tenv line =
         let val stmts = Parser.parse (Console (TextIO.openString line))
-            val (program, tenv) =
-                case Typechecker.elaborateProgram tenv stmts
-                of Right res => res
-                 | Left (program, tenv, errors) =>
-                    ( List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc err)))
-                               errors
-                    ; (program, tenv) )
-            val program = ExitTypechecker.programToF program
-            val _ = case WellFounded.checkProgram program
-                    of Right () => ()
-                     | Left errors => raise Fail "IllFounded"
-        in print (PPrint.pretty 80 (FixedFAst.Term.programToDoc program))
-         ; tenv
+        in  case Typechecker.elaborateProgram tenv stmts
+            of Right (program, tenv) =>
+                let val program = ExitTypechecker.programToF program
+                    val _ = case WellFounded.checkProgram program
+                            of Right () => ()
+                             | Left errors => raise Fail "IllFounded"
+                in print (PPrint.pretty 80 (FixedFAst.Term.programToDoc program))
+                 ; tenv
+                end
+             | Left (_, _, errors) =>
+                ( List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc err)))
+                           errors
+                ; tenv )
         end
 
     fun repl () =
