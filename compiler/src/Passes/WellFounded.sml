@@ -5,7 +5,7 @@ structure WellFounded :> sig
             where type Type.sv = FixedFAst.Type.sv
     end
 
-    datatype error = Uninitialized of Pos.t * Name.t
+    datatype error = ReadUninitialized of Pos.t * Name.t
 
     val checkProgram : FAst.Term.program -> (error, unit) Either.t
 end = struct
@@ -23,7 +23,7 @@ end = struct
         type t = ScopeId.t * Name.t
     end
 
-    datatype error = Uninitialized of Pos.t * Name.t
+    datatype error = ReadUninitialized of Pos.t * Name.t
 
     (* FIXME: Should be a set of ScopedId.t *)
     structure Support = NameSortedSet
@@ -226,6 +226,65 @@ end = struct
         end
 
     datatype context = Escaping | Naming
+
+    datatype state = Uninitialized | Initialized
+
+    datatype access
+        = Instant of state
+        | Delayed of state
+
+    structure IniEnv :> sig
+        type t
+
+        val empty : t
+        val pushBlock : t -> Name.t list -> t
+        val initialize : t -> Name.t -> unit
+        val pushFn : t -> context -> Name.t -> t
+
+        val access : t -> Name.t -> access
+    end = struct
+        datatype frame
+            = BlockFrame of state NameHashTable.hash_table
+            | FnFrame of context * Name.t
+
+        type t = frame list
+
+        val empty = []
+
+        fun pushBlock ini names =
+            let val bindings = NameHashTable.mkTable (0, Subscript)
+                do List.app (fn name => NameHashTable.insert bindings (name, Uninitialized))
+                            names
+            in BlockFrame bindings :: ini
+            end
+
+        fun initialize ini name =
+            let val rec init =
+                    fn BlockFrame bs :: frames =>
+                        if NameHashTable.inDomain bs name
+                        then NameHashTable.insert bs (name, Initialized)
+                        else init frames
+                     | FnFrame _ :: frames => init frames
+                     | [] => raise Fail "unreachable"
+            in init ini
+            end
+
+        fun pushFn ini ctx name = FnFrame (ctx, name) :: ini
+
+        fun access ini name =
+            let fun inited stateToAccess =
+                    fn BlockFrame bs :: frames =>
+                        (case NameHashTable.find bs name
+                         of SOME state => stateToAccess state
+                          | NONE => inited stateToAccess frames)
+                     | FnFrame (_, name') :: frames =>
+                        if name = name'
+                        then stateToAccess Initialized
+                        else inited Delayed frames
+                     | [] => raise Fail "unreachable"
+            in inited Instant ini
+            end
+    end
 
     fun checkProgram (program as {axioms = _, typeFns = _, scope = topScopeId, stmts}) =
         let val env = initialProgramEnv program
