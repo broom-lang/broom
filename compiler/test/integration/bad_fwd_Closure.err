@@ -1,0 +1,1 @@
+Error: Cannot prove that N (via M) is initialized in test/integration/bad_fwd_Closure.brm at 5:9
