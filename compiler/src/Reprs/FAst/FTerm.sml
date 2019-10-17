@@ -222,16 +222,16 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
             <++> newline <> stmtsToDoc stmts
 
     val rec typeOf =
-        fn Fn (pos, _, {typ = domain, ...}, arrow, body) =>
-            Type.Arrow (pos, arrow, {domain, codomain = typeOf body})
-         | TFn (pos, _, params, body) => Type.ForAll (pos, params, typeOf body)
+        fn Fn (_, _, {typ = domain, ...}, arrow, body) =>
+            Type.Arrow (arrow, {domain, codomain = typeOf body})
+         | TFn (_, _, params, body) => Type.ForAll (params, typeOf body)
          | Extend (_, typ, _, _) | Override (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => typ
          | Field (_, typ, _, _) => typ
          | Let (_, _, _, body) => typeOf body
          | Match (_, t, _, _) => t
          | Cast (_, t, _, _) => t
-         | Type (pos, t) => Type.Type (pos, t)
+         | Type (_, t) => Type.Type t
          | Use (_, {typ, ...}) => typ
-         | Const (pos, c) => Type.Prim (pos, Const.typeOf c)
+         | Const (_, c) => Type.Prim (Const.typeOf c)
 end
 

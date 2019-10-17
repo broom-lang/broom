@@ -66,11 +66,11 @@ end = struct
 
     fun rowLabelType row label =
         case row
-        of RowExt (_, {field = (label', fieldt), ext}) =>
+        of RowExt {field = (label', fieldt), ext} =>
             if label' = label
             then SOME fieldt
             else rowLabelType ext label
-         | EmptyRow _ => NONE
+         | EmptyRow => NONE
          | _ => raise Fail ("Not a row type: " ^ FType.Concr.toString row)
 
     fun kindOf env =
@@ -83,9 +83,9 @@ end = struct
 
     val rec kindEq =
         fn (ArrowK _, ArrowK _) => raise Fail "unimplemented"
-         | (TypeK _, TypeK _) => true
-         | (RowK _, RowK _) => true
-         | (CallsiteK _, CallsiteK _) => true
+         | (TypeK, TypeK) => true
+         | (RowK, RowK) => true
+         | (CallsiteK, CallsiteK) => true
          | _ => false
 
     fun checkKindEq kinds = if kindEq kinds
@@ -94,42 +94,42 @@ end = struct
 
     fun eq env (t, t') =
         case (t, t')
-        of (ForAll (_, params, body), ForAll (_, params', body')) =>
+        of (ForAll (params, body), ForAll (params', body')) =>
             let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
                                        env params
                 val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
                                        env params'
             in eq env (body, body')
             end
-         | (Arrow (_, expl, {domain, codomain}), Arrow (_, expl', {domain = domain', codomain = codomain'})) =>
+         | (Arrow (expl, {domain, codomain}), Arrow (expl', {domain = domain', codomain = codomain'})) =>
             expl = expl'
             andalso eq env (domain, domain')
             andalso eq env (codomain, codomain')
-         | (Record (_, row), Record (_, row')) => eq env (row, row')
-         | (RowExt (_, {field = (label, fieldt), ext}), row' as RowExt _) =>
+         | (Record row, Record row') => eq env (row, row')
+         | (RowExt {field = (label, fieldt), ext}, row' as RowExt _) =>
             (case rewriteRow label row'
              of SOME {field = (_, fieldt'), ext = ext'} =>
                  eq env (fieldt, fieldt') andalso eq env (ext, ext')
               | NONE => false)
-         | (EmptyRow _, EmptyRow _) => true
-         | (FType.Type (_, t), FType.Type (_, t')) => absEq env (t, t')
-         | (FType.App (_, {callee, args}), FType.App (_, {callee = callee', args = args'})) =>
+         | (EmptyRow, EmptyRow) => true
+         | (FType.Type t, FType.Type t') => absEq env (t, t')
+         | (FType.App {callee, args}, FType.App {callee = callee', args = args'}) =>
             eq env (callee, callee')
             andalso Vector.all (eq env) (Vector.zip (args, args'))
-         | (CallTFn (_, callee, args), CallTFn (_, callee', args')) =>
+         | (CallTFn (callee, args), CallTFn (callee', args')) =>
             callee = callee'
             andalso Vector.all (eq env) (Vector.zip (args, args'))
-         | (UseT (_, {var, ...}), UseT (_, {var = var', ...})) =>
+         | (UseT {var, ...}, UseT {var = var', ...}) =>
             (case Env.findType (env, var)
              of SOME (id, _) => (case Env.findType (env, var')
                                  of SOME (id', _) => id = id'
                                   | NONE => raise Fail ("Out of scope: g__" ^ Id.toString var'))
               | NONE => raise Fail ("Out of scope: g__" ^ Id.toString var))
-         | (Prim (_, p), Prim (_, p')) => p = p' (* HACK? *)
+         | (Prim p, Prim p') => p = p' (* HACK? *)
          | _ => false
     
     and absEq env =
-        fn (Exists (_, params, body), Exists (_, params', body')) => 
+        fn (Exists (params, body), Exists (params', body')) => 
             let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
                                        env params
                 val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
@@ -148,7 +148,7 @@ end = struct
          | Symm co => Pair.flip (checkCo env co)
          | AppCo {callee, args} =>
             (case checkCo env callee
-             of (ForAll (_, defs, l), ForAll (_, defs', r)) =>
+             of (ForAll (defs, l), ForAll (defs', r)) =>
                  ( Vector.zip3With (fn ({kind, ...}, {kind = kind', ...}, arg) =>
                                         ( checkKindEq (kind, kind')
                                         ; checkKindEq (kindOf env arg, kind) ))
@@ -178,53 +178,53 @@ end = struct
          | Match match => checkMatch env match
          | Cast cast => checkCast env cast
          | Use use => checkUse env use
-         | Type (pos, t) => FFType.Type (pos, t)
-         | Const (pos, c) => Prim (pos, Const.typeOf c)
+         | Type (_, t) => FFType.Type t
+         | Const (_, c) => Prim (Const.typeOf c)
 
     and checkFn env (pos, _, {var = param, typ = domain}, expl, body) =
         let val env = Env.insert (env, param, domain)
-        in Arrow (pos, expl, {domain, codomain = check env body})
+        in Arrow (expl, {domain, codomain = check env body})
         end
 
     and checkTFn env (pos, _, params, body) =
         let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
                                    env params
-        in ForAll (pos, params, check env body)
+        in ForAll (params, check env body)
         end
 
     and checkExtend env (pos, typ, fields, orec) =
         let val recordRow = case orec
                             of SOME record =>
                                 (case check env record
-                                 of Record (_, row) => row
+                                 of Record row => row
                                   | t => raise Fail ("Not a record: " ^ FFTerm.exprToString record ^ ": " ^ FFType.concrToString t))
-                             | NONE => EmptyRow pos
+                             | NONE => EmptyRow
             fun checkRowField ((label, field), row) =
-                RowExt (pos, {field = (label, check env field), ext = row})
-            val t = Record (pos, Vector.foldr checkRowField recordRow fields)
+                RowExt {field = (label, check env field), ext = row}
+            val t = Record (Vector.foldr checkRowField recordRow fields)
         in checkEq pos env (typ, t)
          ; typ
         end
 
     and checkOverride env (pos, typ, fields, original) =
         let val recordRow = case check env original
-                            of Record (_, row) => row
+                            of Record row => row
                              | t => raise Fail ("Not a record: " ^ FFTerm.exprToString original ^ ": " ^ FFType.Concr.toString t)
             fun override ((label, field), row) =
                 case row
-                of RowExt (pos, {field = (label', fieldt), ext}) =>
+                of RowExt {field = (label', fieldt), ext} =>
                     if label = label'
-                    then RowExt (pos, {field = (label, check env field), ext})
-                    else RowExt (pos, {field = (label', fieldt), ext = override ((label, field), ext)})
+                    then RowExt {field = (label, check env field), ext}
+                    else RowExt {field = (label', fieldt), ext = override ((label, field), ext)}
                  | _ => raise Fail ("Tried to override missing field " ^ Name.toString label)
-            val t = Record (pos, Vector.foldr override recordRow fields)
+            val t = Record (Vector.foldr override recordRow fields)
         in checkEq pos env (typ, t)
          ; typ
         end
 
     and checkApp env (pos, typ, {callee, arg}) =
         case check env callee
-        of Arrow (_, _, {domain, codomain}) =>
+        of Arrow (_, {domain, codomain}) =>
             let val argType = check env arg
             in checkEq pos env (argType, domain)
              ; checkEq pos env (codomain, typ)
@@ -234,7 +234,7 @@ end = struct
 
     and checkTApp env (pos, typ, {callee, args}) =
         case check env callee
-        of ForAll (_, params, body) =>
+        of ForAll (params, body) =>
             let do if Vector.length args = Vector.length params then () else raise Fail "argument count"
                 val pargs = Vector.zip (params, args)
                 
@@ -252,7 +252,7 @@ end = struct
 
     and checkField env (pos, typ, expr, label) =
         case check env expr
-        of t as Record (_, row) =>
+        of t as Record row =>
             (case rowLabelType row label
              of SOME fieldt => 
                  ( checkEq pos env (fieldt, typ)
@@ -282,7 +282,7 @@ end = struct
     and checkPattern env matcheeTyp =
         fn AnnP (_, {pat, typ}) => raise Fail "unimplemented"
          | Def (_, _, {var, typ}) => Env.insert (env, var, typ)
-         | ConstP (pos, c) => (checkEq pos env (Prim (pos, Const.typeOf c), matcheeTyp); env)
+         | ConstP (pos, c) => (checkEq pos env (Prim (Const.typeOf c), matcheeTyp); env)
 
     and checkCast env (pos, typ, expr, co) =
         let val exprT = check env expr

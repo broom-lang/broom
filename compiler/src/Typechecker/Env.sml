@@ -191,7 +191,7 @@ end = struct
             let val typeFns = Bindings.TypeFn.new ()
             in { typeFns
                , pureCallsite = Bindings.TypeFn.freshAbstract typeFns (FAst.Type.Id.fresh ())
-                                                              {paramKinds = #[], kind = FAst.Type.CallsiteK (Pos.default "<builtin>")}
+                                                              {paramKinds = #[], kind = FAst.Type.CallsiteK}
                , axioms = Bindings.Axiom.new ()
                , vals = Bindings.Expr.Builder.new () |> Bindings.Expr.Builder.build }
             end

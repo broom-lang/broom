@@ -69,7 +69,7 @@ structure FlexFAst = struct
                                 | Either.Right t => SOME (substitute hasScope kv t))
 
             val tryToUv =
-                fn SVar (_, UVar uv) => SOME uv
+                fn SVar (UVar uv) => SOME uv
                  | _ => NONE
         end
 

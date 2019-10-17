@@ -6,7 +6,7 @@ signature TYPE_ERROR = sig
                | UnboundVal of Pos.t * Name.t
                | OutsideScope of Pos.t * Name.t
                | MissingField of Pos.t * FlexFAst.Type.concr * Name.t
-               | Occurs of FlexFAst.Type.concr * FlexFAst.Type.abs
+               | Occurs of Pos.t * FlexFAst.Type.concr * FlexFAst.Type.abs
    
     exception TypeError of t
 
@@ -29,7 +29,7 @@ structure TypeError :> TYPE_ERROR = struct
                | UnboundVal of Pos.t * Name.t
                | OutsideScope of Pos.t * Name.t
                | MissingField of Pos.t * FlexFAst.Type.concr * Name.t
-               | Occurs of FlexFAst.Type.concr * FlexFAst.Type.abs
+               | Occurs of Pos.t * FlexFAst.Type.concr * FlexFAst.Type.abs
     
     exception TypeError of t
 
@@ -59,8 +59,8 @@ structure TypeError :> TYPE_ERROR = struct
                                      ( pos
                                      , Concr.toDoc typ <+> text "does not have field"
                                            <+> Name.toDoc label)
-                                  | Occurs (v, t) =>
-                                     ( Abs.pos t
+                                  | Occurs (pos, v, t) =>
+                                     ( pos
                                      , text "Occurs check: unifying" <+> Concr.toDoc v
                                            <+> text "with" <+> Abs.toDoc t <+> text "would create infinite type." )
         in text "TypeError in" <+> text (Pos.toString pos) <> text ":" <+> details

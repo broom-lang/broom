@@ -15,29 +15,29 @@ end = struct
     datatype either = datatype Either.t
 
     val rec concrToF: FlexFAst.Type.concr -> FFType.concr =
-        fn ForAll (pos, param, body) => ForAll (pos, param, concrToF body)
-         | Arrow (pos, expl, {domain, codomain}) =>
-            Arrow (pos, expl, {domain = concrToF domain, codomain = concrToF codomain})
-         | Record (pos, row) => Record (pos, concrToF row)
-         | RowExt (pos, {field = (label, fieldt), ext}) =>
-            RowExt (pos, {field = (label, concrToF fieldt), ext = concrToF ext})
-         | EmptyRow pos => EmptyRow pos
-         | FFType.App (pos, {callee, args}) =>
-            FFType.App (pos, {callee = concrToF callee, args = Vector.map concrToF args})
-         | CallTFn (pos, f, args) =>
-            CallTFn (pos, f, Vector.map concrToF args)
-         | FFType.Type (pos, typ) => FFType.Type (pos, absToF typ)
-         | UseT (pos, def) => UseT (pos, def)
-         | Prim (pos, p) => Prim (pos, p)
-         | SVar (pos, UVar uv) => (case TypeVars.Uv.get uv
-                                   of Right t => concrToF t
-                                    | Left _ => Prim (pos, FFType.Prim.Unit))
-         | SVar (_, Path path) => (case TypeVars.Path.get (Fn.constantly false) path
-                                   of Right ((_, t), _) => concrToF t
-                                    | Left (t, _) => concrToF t)
+        fn ForAll (param, body) => ForAll (param, concrToF body)
+         | Arrow (expl, {domain, codomain}) =>
+            Arrow (expl, {domain = concrToF domain, codomain = concrToF codomain})
+         | Record row => Record (concrToF row)
+         | RowExt {field = (label, fieldt), ext} =>
+            RowExt {field = (label, concrToF fieldt), ext = concrToF ext}
+         | EmptyRow => EmptyRow
+         | FFType.App {callee, args} =>
+            FFType.App {callee = concrToF callee, args = Vector.map concrToF args}
+         | CallTFn (f, args) =>
+            CallTFn (f, Vector.map concrToF args)
+         | FFType.Type typ => FFType.Type (absToF typ)
+         | UseT def => UseT def
+         | Prim p => Prim p
+         | SVar (UVar uv) => (case TypeVars.Uv.get uv
+                              of Right t => concrToF t
+                               | Left _ => Prim (FFType.Prim.Unit))
+         | SVar (Path path) => (case TypeVars.Path.get (Fn.constantly false) path
+                                of Right ((_, t), _) => concrToF t
+                                 | Left (t, _) => concrToF t)
 
     and absToF: FlexFAst.Type.abs -> FFType.abs =
-        fn Exists (pos, params, body) => Exists (pos, params, concrToF body)
+        fn Exists (params, body) => Exists (params, concrToF body)
 
     and coercionToF: FlexFAst.Type.co -> FFType.co =
         fn Refl t => Refl (concrToF t)

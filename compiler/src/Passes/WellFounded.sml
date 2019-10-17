@@ -92,14 +92,14 @@ end = struct
          | row => typToDoc row
 
     val rec elaborateType : FType.concr -> typ =
-        fn FType.ForAll (_, _, body) => elaborateType body
-         | FType.Arrow (_, _, {domain = _, codomain}) =>
+        fn FType.ForAll (_, body) => elaborateType body
+         | FType.Arrow (_, {domain = _, codomain}) =>
             Closure (Support.empty, elaborateType codomain)
-         | FType.Record (_, row) => Record (elaborateType row)
-         | FType.RowExt (_, {field = (label, fieldt), ext}) =>
+         | FType.Record row => Record (elaborateType row)
+         | FType.RowExt {field = (label, fieldt), ext} =>
             RowExt { field = (label, elaborateType fieldt)
                    , ext = elaborateType ext }
-         | FType.EmptyRow _ => EmptyRow
+         | FType.EmptyRow => EmptyRow
          | FType.Type _ => Scalar
          | FType.App _ => Scalar
          | FType.CallTFn _ => Scalar
