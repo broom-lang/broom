@@ -5,7 +5,7 @@ structure WellFounded :> sig
             where type Type.sv = FixedFAst.Type.sv
     end
 
-    datatype error = ReadUninitialized of Pos.t * Name.t
+    datatype error = ReadUninitialized of Pos.t * Name.t option * Name.t
     
     val errorToDoc : error -> PPrint.t
 
@@ -42,11 +42,14 @@ end = struct
             Name.toDoc name <> text "__" <> text (ScopeId.toString scopeId)
     end
 
-    datatype error = ReadUninitialized of Pos.t * Name.t
+    datatype error = ReadUninitialized of Pos.t * Name.t option * Name.t
 
-    fun errorToDoc (ReadUninitialized (pos, name)) =
-        text "Error: Cannot prove that" <+> Name.toDoc name <+> text "is initialized in"
-            <+> text (Pos.toString pos)
+    fun errorToDoc (ReadUninitialized (pos, via, name)) =
+        text "Error: Cannot prove that" <+> Name.toDoc name
+            <+> (case via
+                 of SOME via => PPrint.parens (text "via" <+> Name.toDoc via) <> PPrint.space
+                  | NONE => PPrint.empty)
+            <> text "is initialized in" <+> text (Pos.toString pos)
 
     structure Support = struct
         structure Super = BinarySetFn(ScopedId)
@@ -131,6 +134,22 @@ end = struct
                  | _ => NONE
         in get row
         end
+
+    val rec accessTyp : typ -> typ * Support.set =
+        fn Closure (support, codomain) =>
+            let val (codomain, codomainSupport) = accessTyp codomain
+            in ( Closure (Support.empty, codomain)
+               , Support.union (support, codomainSupport) )
+            end
+         | Record row => Pair.first Record (accessTyp row)
+         | RowExt {field = (label, fieldt), ext} =>
+            let val (fieldt, fieldSupport) = accessTyp fieldt
+                val (ext, extSupport) = accessTyp ext
+            in ( RowExt {field = (label, fieldt), ext}
+               , Support.union (fieldSupport, extSupport) )
+            end
+         | typ as EmptyRow | typ as Scalar | typ as Unknown =>
+            (typ, Support.empty)
 
     val rec join : typ * typ -> typ * bool =
         fn (Closure (support, codomain), Closure (support', codomain')) =>
@@ -443,15 +462,33 @@ end = struct
                           | _ => Unknown
                        , support )
                     end
-                 | Use (pos, {var, ...}) => (* FIXME: release supports from type if `ctx` = `Escaping`: *)
-                    (case IniEnv.access ini var
-                     of Delayed Initialized | Instant Initialized => (* ok unsupported *)
-                         (Env.lookup env (scopeId, var), Support.empty)
-                      | Delayed Uninitialized => (* ok with support *)
-                         (Env.lookup env (scopeId, var), Support.singleton (scopeId, var))
-                      | Instant Uninitialized => (* error *)
-                         ( error (ReadUninitialized (pos, var))
-                         ; (Env.lookup env (scopeId, var), Support.empty) ))
+                 | Use (pos, {var, ...}) =>
+                    let fun access ini via (scopedName as (_, name): ScopedId.t) =
+                            case IniEnv.access ini name (* FIXME *)
+                            of Delayed Initialized | Instant Initialized => (* ok unsupported: *)
+                                Support.empty
+                             | Delayed Uninitialized => (* ok with support: *)
+                                Support.singleton scopedName
+                             | Instant Uninitialized => (* error: *)
+                                ( error (ReadUninitialized (pos, via, #2 scopedName))
+                                ; Support.empty ) (* support won't help, so claim not to need any *)
+
+                        val immediateSupport = access ini NONE (scopeId, var)
+                        val (typ, transitiveSupport) =
+                            case ctx
+                            of Escaping => (* access transitively: *)
+                                let val (typ, typSupport) = accessTyp (Env.lookup env (scopeId, var))
+                                    val support =
+                                        Support.foldl (fn (scopedName, support) =>
+                                                           Support.union ( support
+                                                                         , access ini (SOME var) scopedName ))
+                                                      Support.empty typSupport
+                                in (typ, support)
+                                end
+                             | Naming => (* delayed propagation of support though type: *)
+                                (Env.lookup env (scopeId, var), Support.empty)
+                    in (typ, Support.union (immediateSupport, transitiveSupport))
+                    end
                  | Cast (_, _, expr, _) => checkExpr scopeId ini ctx expr
                  | Type _ | Const _ => (Scalar, Support.empty)
 
