@@ -3,52 +3,53 @@ signature FAST_TERM = sig
 
     type arrow = Type.arrow
 
-    type def = {pos: Pos.t, id: DefId.t, var: Name.t, typ: Type.concr}
+    type def = {pos: Pos.span, id: DefId.t, var: Name.t, typ: Type.concr}
 
     datatype expr
-        = Fn of Pos.t * def * arrow * expr
-        | TFn of Pos.t * Type.def vector * expr
-        | Extend of Pos.t * Type.concr * (Name.t * expr) vector * expr option
-        | Override of Pos.t * Type.concr * (Name.t * expr) vector * expr
-        | App of Pos.t * Type.concr * {callee: expr, arg: expr}
-        | TApp of Pos.t * Type.concr * {callee: expr, args: Type.concr vector}
-        | Field of Pos.t * Type.concr * expr * Name.t
-        | Let of Pos.t * stmt vector * expr
-        | Match of Pos.t * Type.concr * expr * clause vector
-        | Cast of Pos.t * Type.concr * expr * Type.co
-        | Type of Pos.t * Type.abs
-        | Use of Pos.t * def
-        | Const of Pos.t * Const.t
+        = Fn of Pos.span * def * arrow * expr
+        | TFn of Pos.span * Type.def vector * expr
+        | Extend of Pos.span * Type.concr * (Name.t * expr) vector * expr option
+        | Override of Pos.span * Type.concr * (Name.t * expr) vector * expr
+        | App of Pos.span * Type.concr * {callee: expr, arg: expr}
+        | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector}
+        | Field of Pos.span * Type.concr * expr * Name.t
+        | Let of Pos.span * stmt vector * expr
+        | Match of Pos.span * Type.concr * expr * clause vector
+        | Cast of Pos.span * Type.concr * expr * Type.co
+        | Type of Pos.span * Type.abs
+        | Use of Pos.span * def
+        | Const of Pos.span * Const.t
 
     and stmt
-        = Val of Pos.t * def * expr
-        | Axiom of Pos.t * Name.t * Type.concr * Type.concr
+        = Val of Pos.span * def * expr
+        | Axiom of Pos.span * Name.t * Type.concr * Type.concr
         | Expr of expr
 
     and pat
-        = AnnP of Pos.t * {pat: pat, typ: Type.concr}
-        | Def of Pos.t * def
-        | ConstP of Pos.t * Const.t
+        = AnnP of Pos.span * {pat: pat, typ: Type.concr}
+        | Def of Pos.span * def
+        | ConstP of Pos.span * Const.t
 
     withtype clause = {pattern: pat, body: expr}
 
     type program = { typeFns: (Name.t * Type.tfn_sig) vector
                    , axioms: (Name.t * Type.concr * Type.concr) vector
                    , scope: ScopeId.t
-                   , stmts: stmt vector }
+                   , stmts: stmt vector
+                   , sourcemap: Pos.sourcemap }
    
-    val updateDefTyp : {pos: Pos.t, id: DefId.t, var: Name.t, typ: 't} -> ('t -> 'u)
-                     -> {pos: Pos.t, id: DefId.t, var: Name.t, typ: 'u}
-    val setDefTyp : {pos: Pos.t, id: DefId.t, var: Name.t, typ: 't} -> 'u
-                  -> {pos: Pos.t, id: DefId.t, var: Name.t, typ: 'u}
+    val updateDefTyp : {pos: Pos.span, id: DefId.t, var: Name.t, typ: 't} -> ('t -> 'u)
+                     -> {pos: Pos.span, id: DefId.t, var: Name.t, typ: 'u}
+    val setDefTyp : {pos: Pos.span, id: DefId.t, var: Name.t, typ: 't} -> 'u
+                  -> {pos: Pos.span, id: DefId.t, var: Name.t, typ: 'u}
     val defToDoc : def -> PPrint.t
-    val exprPos: expr -> Pos.t
+    val exprPos: expr -> Pos.span
     val exprToDoc: expr -> PPrint.t
     val exprToString: expr -> string
-    val stmtPos: stmt -> Pos.t
+    val stmtPos: stmt -> Pos.span
     val stmtToDoc: stmt -> PPrint.t
     val stmtsToDoc: stmt vector -> PPrint.t
-    val patPos: pat -> Pos.t
+    val patPos: pat -> Pos.span
     val patternToDoc: pat -> PPrint.t
     val programToDoc: program -> PPrint.t
     val typeOf: expr -> Type.concr
@@ -75,32 +76,32 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     type arrow = Type.arrow
 
-    type def = {pos: Pos.t, id: DefId.t, var: Name.t, typ: Type.concr}
+    type def = {pos: Pos.span, id: DefId.t, var: Name.t, typ: Type.concr}
 
     datatype expr
-        = Fn of Pos.t * def * arrow * expr
-        | TFn of Pos.t * Type.def vector * expr
-        | Extend of Pos.t * Type.concr  * (Name.t * expr) vector * expr option
-        | Override of Pos.t * Type.concr * (Name.t * expr) vector * expr
-        | App of Pos.t * Type.concr * {callee: expr, arg: expr}
-        | TApp of Pos.t * Type.concr * {callee: expr, args: Type.concr vector}
-        | Field of Pos.t * Type.concr * expr * Name.t
-        | Let of Pos.t * stmt vector * expr
-        | Match of Pos.t * Type.concr * expr * clause vector
-        | Cast of Pos.t * Type.concr * expr * Type.co
-        | Type of Pos.t * Type.abs
-        | Use of Pos.t * def
-        | Const of Pos.t * Const.t
+        = Fn of Pos.span * def * arrow * expr
+        | TFn of Pos.span * Type.def vector * expr
+        | Extend of Pos.span * Type.concr  * (Name.t * expr) vector * expr option
+        | Override of Pos.span * Type.concr * (Name.t * expr) vector * expr
+        | App of Pos.span * Type.concr * {callee: expr, arg: expr}
+        | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector}
+        | Field of Pos.span * Type.concr * expr * Name.t
+        | Let of Pos.span * stmt vector * expr
+        | Match of Pos.span * Type.concr * expr * clause vector
+        | Cast of Pos.span * Type.concr * expr * Type.co
+        | Type of Pos.span * Type.abs
+        | Use of Pos.span * def
+        | Const of Pos.span * Const.t
 
     and stmt
-        = Val of Pos.t * def * expr
-        | Axiom of Pos.t * Name.t * Type.concr * Type.concr
+        = Val of Pos.span * def * expr
+        | Axiom of Pos.span * Name.t * Type.concr * Type.concr
         | Expr of expr
 
     and pat
-        = AnnP of Pos.t * {pat: pat, typ: Type.concr}
-        | Def of Pos.t * def
-        | ConstP of Pos.t * Const.t
+        = AnnP of Pos.span * {pat: pat, typ: Type.concr}
+        | Def of Pos.span * def
+        | ConstP of Pos.span * Const.t
 
     withtype clause = {pattern: pat, body: expr}
 
@@ -122,7 +123,8 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
     type program = { typeFns: (Name.t * Type.tfn_sig) vector
                    , axioms: (Name.t * Type.concr * Type.concr) vector
                    , scope: ScopeId.t
-                   , stmts: stmt vector }
+                   , stmts: stmt vector
+                   , sourcemap: Pos.sourcemap }
 
     fun updateDefTyp {pos, id, var, typ} f = {pos, id, var, typ = f typ}
     fun setDefTyp def typ' = updateDefTyp def (Fn.constantly typ')
@@ -225,7 +227,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         text "axiom" <+> Name.toDoc name <> text ":"
             <+> Type.Concr.toDoc l <+> text "~" <+> Type.Concr.toDoc r
 
-    fun programToDoc {typeFns, axioms, scope = _, stmts} =
+    fun programToDoc {typeFns, axioms, scope = _, stmts, sourcemap = _} =
         punctuate (newline <> newline) (Vector.map typeFnToDoc typeFns)
             <++> newline <> punctuate (newline <> newline) (Vector.map axiomToDoc axioms)
             <++> newline <> stmtsToDoc stmts

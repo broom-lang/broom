@@ -100,7 +100,8 @@ end = struct
                      | (Visiting args, env) =>
                         let val pos = CTerm.exprPos expr
                         in case valOf (Env.innermostScope env)
-                           of Scope.InterfaceScope _ => raise Fail ("Type cycle at " ^ Pos.toString pos)
+                           of Scope.InterfaceScope _ =>
+                               raise Fail ("Type cycle at " ^ Pos.spanToString (Env.sourcemap env) pos)
                             | _ => cyclicBindingType pos env name args
                         end
                      | (Typed (def, _), _) => FTerm.updateDefTyp def #1
@@ -187,7 +188,8 @@ end = struct
                            (case t
                             of FType.Type t => reAbstract env t
                              | _ => raise Fail ("Type path " ^ CTerm.exprToString pathExpr
-                                            ^ "does not denote type at " ^ Pos.toString (CTerm.exprPos pathExpr)))
+                                            ^ "does not denote type at "
+                                            ^ Pos.spanToString (Env.sourcemap env) (CTerm.exprPos pathExpr)))
                         | _ => raise Fail "Impure type path expression"
                     end
                  | CType.TypeT pos =>
@@ -211,7 +213,8 @@ end = struct
                 ( name
                 , case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
                   of Unvisited args => #typ (unvisitedBindingType (CType.pos t) env name args)
-                   | Visiting _ => raise Fail ("Type cycle at " ^ Pos.toString (CType.pos t))
+                   | Visiting _ =>
+                      raise Fail ("Type cycle at " ^ Pos.spanToString (Env.sourcemap env) (CType.pos t))
                    | Typed ({typ = (typ, _), ...}, _) | Visited ({typ, ...}, _) => typ )
 
             val t = elaborate env t
@@ -696,7 +699,8 @@ end = struct
             val program = { typeFns = Env.typeFns env
                           , axioms = Env.axioms env
                           , scope = Scope.id scope
-                          , stmts }
+                          , stmts
+                          , sourcemap = Env.sourcemap env }
         in case Env.errors env
            of [] => Right (program, env)
             | errors => Left (program, env, errors)

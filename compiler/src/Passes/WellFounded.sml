@@ -5,9 +5,9 @@ structure WellFounded :> sig
             where type Type.sv = FixedFAst.Type.sv
     end
 
-    datatype error = ReadUninitialized of Pos.t * Name.t option * Name.t
+    datatype error = ReadUninitialized of Pos.span * Name.t option * Name.t
     
-    val errorToDoc : error -> PPrint.t
+    val errorToDoc : Pos.sourcemap -> error -> PPrint.t
 
     val checkProgram : FAst.Term.program -> (error vector, unit) Either.t
 end = struct
@@ -23,14 +23,14 @@ end = struct
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
 
-    datatype error = ReadUninitialized of Pos.t * Name.t option * Name.t
+    datatype error = ReadUninitialized of Pos.span * Name.t option * Name.t
 
-    fun errorToDoc (ReadUninitialized (pos, via, name)) =
+    fun errorToDoc sourcemap (ReadUninitialized (pos, via, name)) =
         text "Error: Cannot prove that" <+> Name.toDoc name
             <+> (case via
                  of SOME via => PPrint.parens (text "via" <+> Name.toDoc via) <> PPrint.space
                   | NONE => PPrint.empty)
-            <> text "is initialized in" <+> text (Pos.toString pos)
+            <> text "is initialized in" <+> text (Pos.spanToString sourcemap pos)
 
     structure Def :> sig
         type t = FTerm.def
@@ -224,7 +224,7 @@ end = struct
     end
 
     (* TODO: Just initialize everything to `Unknown`. *)
-    fun initialProgramEnv {axioms = _, typeFns = _, scope = topScopeId, stmts} =
+    fun initialProgramEnv {axioms = _, typeFns = _, scope = topScopeId, stmts, sourcemap} =
         let val builder = Env.Builder.new topScopeId
 
             val rec insertExpr =
@@ -344,7 +344,7 @@ end = struct
             end
     end
 
-    fun checkProgram (program as {axioms = _, typeFns = _, scope = topScopeId, stmts}) =
+    fun checkProgram (program as {axioms = _, typeFns = _, scope = topScopeId, stmts, sourcemap}) =
         let val env = initialProgramEnv program
             val changed = ref false
             val errors = ref []

@@ -91,10 +91,11 @@ end = struct
          | Axiom (pos, name, l, r) => FFTerm.Axiom (pos, name, concrToF l, concrToF r)
          | Expr expr => FFTerm.Expr (exprToF expr)
 
-    fun programToF {typeFns, axioms, scope, stmts} =
+    fun programToF {typeFns, axioms, scope, stmts, sourcemap} =
         { typeFns = typeFns
         , axioms = Vector.map axiomToF axioms
         , scope
-        , stmts = Vector.map stmtToF stmts }
+        , stmts = Vector.map stmtToF stmts
+        , sourcemap }
 end
 

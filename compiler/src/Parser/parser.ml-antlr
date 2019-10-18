@@ -1,0 +1,42 @@
+%name Broom;
+
+%defs (
+    structure Term = Cst.Term
+);
+
+%tokens
+    : VAL ("val")
+    | DO ("do")
+    | EQ ("=")
+    | ID of Name.t
+    | INT of int
+    ;
+
+%start program;
+
+program : stmts ;
+
+stmts : stmt* => (Vector.fromList stmt);
+
+stmt
+    : "val" pattern "=" expr => (Term.Val (FULL_SPAN, pattern, expr))
+    | "do" expr              => (Term.Expr expr)
+    ;
+
+expr
+    : atom
+    ;
+
+pattern
+    : ID => (Term.Def (FULL_SPAN, ID))
+    ;
+
+atom
+    : ID    => (Term.Use (FULL_SPAN, ID))
+    | const => (Term.Const (FULL_SPAN, const))
+    ;
+
+const
+    : INT => (Const.Int INT)
+    ;
+

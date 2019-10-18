@@ -27,7 +27,7 @@ structure TypecheckingEnv :> sig
         end
 
         structure Expr: sig
-            type 'typ def = {pos: Pos.t, id: DefId.t, var: Name.t, typ: 'typ}
+            type 'typ def = {pos: Pos.span, id: DefId.t, var: Name.t, typ: 'typ}
 
             datatype binding_state
                 = Unvisited of input_type option def * input_expr option
@@ -69,8 +69,8 @@ structure TypecheckingEnv :> sig
 
     type t
 
-    val default: unit -> t
-    val initial: Scope.Id.t * Scope.toplevel -> t
+    val default: Pos.sourcemap -> t
+    val initial: Pos.sourcemap -> Scope.Id.t * Scope.toplevel -> t
     val innermostScope: t -> Scope.t option
     val pushScope: t -> Scope.t -> t
     val hasScope: t -> Scope.Id.t -> bool
@@ -89,9 +89,10 @@ structure TypecheckingEnv :> sig
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
-    val updateExpr: Pos.t -> t -> Name.t
+    val updateExpr: Pos.span -> t -> Name.t
                   -> (Bindings.Expr.binding_state -> Bindings.Expr.binding_state) -> unit
 
+    val sourcemap : t -> Pos.sourcemap
     val error: t -> TypeError.t -> unit
     val errors: t -> TypeError.t list
 end = struct
@@ -161,7 +162,7 @@ end = struct
         end
 
         structure Expr = struct
-            type 'typ def = {pos: Pos.t, id: DefId.t, var: Name.t, typ: 'typ}
+            type 'typ def = {pos: Pos.span, id: DefId.t, var: Name.t, typ: 'typ}
 
             datatype binding_state
                 = Unvisited of input_type option def * input_expr option
@@ -251,20 +252,23 @@ end = struct
     type t = { toplevel: Scope.toplevel
              , scopeIds: Scope.Id.t list
              , scopes: Scope.t list
+             , sourcemap: Pos.sourcemap
              , errors: TypeError.t list ref }
     
-    fun initial (id, toplevel) =
-        {toplevel, scopeIds = [id], scopes = [Scope.TopScope (id, toplevel)], errors = ref []}
+    fun initial sourcemap (id, toplevel) =
+        { toplevel, scopeIds = [id], scopes = [Scope.TopScope (id, toplevel)]
+        , sourcemap, errors = ref []}
 
-    fun default () = initial (Scope.Id.fresh (), Scope.initialToplevel ())
+    fun default sourcemap = initial sourcemap (Scope.Id.fresh (), Scope.initialToplevel ())
 
     fun innermostScope ({scopes, ...}: t) =
         case scopes
         of scope :: _ => SOME scope
          | [] => NONE
 
-    fun pushScope {scopeIds, scopes, toplevel, errors} scope =
-        {scopes = scope :: scopes, scopeIds = Scope.id scope :: scopeIds, toplevel, errors}
+    fun pushScope {scopeIds, scopes, toplevel, sourcemap, errors} scope =
+        { scopes = scope :: scopes, scopeIds = Scope.id scope :: scopeIds, toplevel
+        , sourcemap, errors }
 
     fun hasScope (env: t) id =
         List.exists (fn id' => id' = id) (#scopeIds env)
@@ -306,10 +310,10 @@ end = struct
 
     fun findExprClosure (env: t) name =
         let val rec find =
-                fn env as {scopes = scope :: scopes, scopeIds = _ :: scopeIds, toplevel, errors} =>
+                fn env as {scopes = scope :: scopes, scopeIds = _ :: scopeIds, toplevel, sourcemap, errors} =>
                     (case Scope.findExpr scope name
                      of SOME b => SOME (b, env)
-                      | NONE => find {scopes, scopeIds, toplevel, errors})
+                      | NONE => find {scopes, scopeIds, toplevel, sourcemap, errors})
                  | {scopes = [], scopeIds = [], ...} => NONE
         in find env
         end
@@ -330,6 +334,8 @@ end = struct
                  | [] =>  raise TypeError (UnboundVal (pos, name))
         in update (#scopes env)
         end
+
+    val sourcemap: t -> Pos.sourcemap = #sourcemap
 
     fun error ({errors, ...}: t) err = errors := err :: (!errors)
 

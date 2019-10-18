@@ -1,0 +1,11 @@
+%name BroomLexer;
+
+%defs (
+    structure Tokens = BroomTokens
+    type lex_result = Tokens.token
+    fun eof () = Tokens.EOF
+);
+
+val    => (Tokens.VAL);
+[0-9]+ => (Tokens.INT (valOf (Int.fromString yytext)));
+

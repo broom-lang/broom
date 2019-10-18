@@ -1,40 +1,25 @@
 structure Parser : sig
-    datatype input
-        = File of TextIO.instream * string
-        | Console of TextIO.instream
+    type input = {instream: TextIO.instream, sourcemap: Pos.sourcemap}
 
-    val parse: input -> Cst.Term.stmt vector
+    type repair = BroomTokens.token AntlrRepair.repair
+    val repairToString : Pos.sourcemap -> repair -> string
+
+    val parse: input -> ( Cst.Term.stmt vector option * repair list
+                        , Cst.Term.stmt vector ) Either.t
 end = struct
-    (* TODO: Move this boilerplate to Nipo lib: *)
-    structure TextIOInput = NipoStreamIOInput(struct
-        structure IOStream = TextIO.StreamIO
-        structure Token = CharToken
-    end)
+    structure BroomParser = BroomParseFn(BroomLexer)
 
-    structure LexerTextInput = LexerInput(TextIOInput)
-    structure Lexer = BroomLexer(struct
-        structure Input = LexerTextInput
-        structure Token = BroomTokens
-    end)
-    structure TokenStream = NipoLexedInput(Lexer)
+    type input = {instream: TextIO.instream, sourcemap: Pos.sourcemap}
+        
+    type repair = BroomTokens.token AntlrRepair.repair
 
-    structure BroomParser = BroomParser(TokenStream)
+    val repairToString = AntlrRepair.repairToString BroomTokens.toString
 
-    fun lexstreamFromInStream instream filename = let
-        val input = TextIO.getInstream instream
-        val input = TextIOInput.fromInstream input
-        val input = LexerTextInput.fromInner (input, Pos.default filename)
-        in TokenStream.tokenize input
-    end
-
-    datatype input
-        = File of TextIO.instream * string
-        | Console of TextIO.instream
-
-    fun printError (msg, pos, _) =
-        TextIO.output(TextIO.stdOut, "Error, line " ^ (Pos.toString pos) ^ ", " ^ msg ^ "\n")
-
-    val parse =
-        fn File (instream, filename) => BroomParser.start__program (lexstreamFromInStream instream filename)
-         | Console instream => BroomParser.start__program (lexstreamFromInStream instream "STDIN")
+    fun parse {instream, sourcemap} =
+        let val tokenStream = BroomLexer.streamifyInstream instream
+            val lex = BroomLexer.lex sourcemap
+        in  case BroomParser.parse lex tokenStream
+            of (SOME stmts, _, []) => Either.Right stmts
+             | (optStmts, _, repairs) => Either.Left (optStmts, repairs)
+        end
 end

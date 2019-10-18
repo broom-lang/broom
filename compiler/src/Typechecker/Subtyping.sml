@@ -2,9 +2,9 @@ structure Subtyping :> sig
     type coercion = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
    
     val applyCoercion: coercion -> FlexFAst.Term.expr -> FlexFAst.Term.expr
-    val subEffect: TypecheckingEnv.t -> Pos.t -> FlexFAst.Type.effect * FlexFAst.Type.effect -> unit
-    val subType: TypecheckingEnv.t -> Pos.t -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
-    val unify: TypecheckingEnv.t -> Pos.t -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
+    val subEffect: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.effect * FlexFAst.Type.effect -> unit
+    val subType: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
+    val unify: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
 end = struct
     val op|> = Fn.|>
     datatype either = datatype Either.t

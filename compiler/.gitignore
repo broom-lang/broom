@@ -1,4 +1,4 @@
-src/Parser/Lexer.sml
-src/Parser/Parser.sml
+src/Parser/lexer.ml-ulex.sml
+src/Parser/parser.ml-antlr.sml
 broom
 

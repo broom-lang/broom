@@ -34,8 +34,10 @@ end = struct
                         Build { debug = isSome (CLIParser.Flaggeds.find (flaggeds, "debug"))
                               , lint = isSome (CLIParser.Flaggeds.find (flaggeds, "lint"))
                               , input = case positionals
-                                        of [] => Console TextIO.stdIn
-                                         | [filename] => File (TextIO.openIn filename, filename)
+                                        of [] => { instream = TextIO.stdIn
+                                                 , sourcemap = Pos.mkSourcemap () }
+                                         | [filename] => { instream = TextIO.openIn filename
+                                                         , sourcemap = Pos.mkSourcemap' filename }
                                          | _ => raise Fail "Multiple input files unimplemented" }
                      | ("repl", _, _) => Repl
                      | (cmd, _, _) => raise Fail ("Unreachable code; unknown subcommand " ^ cmd))
@@ -45,79 +47,98 @@ end = struct
 
     fun logger debug str = if debug then TextIO.output (TextIO.stdOut, str) else ()
 
-    fun build {debug, lint, input} =
+    fun build {debug, lint, input = input as {sourcemap, instream = _}} =
         let val log = logger debug
             
             val program = Parser.parse input
-            val _ = log (PPrint.pretty 80 (Cst.Term.stmtsToDoc program) ^ "\n")
-          
-            val _ = log "===\n"
-        in case Typechecker.elaborateProgram (TypecheckingEnv.default ()) program
-           of Right (program, _) =>
-               let val program = ExitTypechecker.programToF program
-                   val _ = log (PPrint.pretty 80 (FixedFAst.Term.programToDoc program) ^ "\n")
-               in  case WellFounded.checkProgram program
-                   of Right () =>
-                       if lint
-                       then case FAstTypechecker.typecheckProgram program
-                            of SOME err => raise Fail "Lint failed"
-                             | NONE => ()
-                       else ()
-                    | Left errors =>
-                       Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc)
-                                  errors
-               end
-            | Left (program, _, errors) =>
-               List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc err)))
-                        errors
+        in  case Parser.parse input
+            of Right program =>
+                let val _ = log (PPrint.pretty 80 (Cst.Term.stmtsToDoc program) ^ "\n")
+                    val _ = log "===\n"
+                in case Typechecker.elaborateProgram (TypecheckingEnv.default sourcemap) program
+                   of Right (program, _) =>
+                       let val program = ExitTypechecker.programToF program
+                           val _ = log (PPrint.pretty 80 (FixedFAst.Term.programToDoc program) ^ "\n")
+                       in  case WellFounded.checkProgram program
+                           of Right () =>
+                               if lint
+                               then case FAstTypechecker.typecheckProgram program
+                                    of SOME err => raise Fail "Lint failed"
+                                     | NONE => ()
+                               else ()
+                            | Left errors =>
+                               Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc sourcemap)
+                                          errors
+                       end
+                    | Left (program, _, errors) =>
+                       List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc sourcemap err)))
+                                errors
+                end
+             | Left (_, repairs) =>
+                List.app (fn repair => printErr (Parser.repairToString sourcemap repair ^ "\n"))
+                         repairs
         end
 
     val prompt = "broom> "
 
     fun rep (tenv, venv) line =
-        let val stmts = Parser.parse (Console (TextIO.openString line))
-        in  case Typechecker.elaborateProgram tenv stmts
-            of Right (program, tenv) =>
-                let val program as {stmts, ...} = ExitTypechecker.programToF program
-                in  case WellFounded.checkProgram program
-                    of Right () =>
-                        ( Vector.app (fn stmt as (Val (_, {var, typ, ...}, _)) =>
-                                         let val v = FAstEval.interpret venv stmt
-                                         in print ( Name.toString var ^ " = "
-                                                  ^ FAstEval.Value.toString v ^ " : "
-                                                  ^ FixedFAst.Type.Concr.toString typ ^ "\n" )
-                                         end
-                                       | stmt as (Expr _) => ignore (FAstEval.interpret venv stmt))
-                                     stmts
-                        ; (tenv, venv) )
-                     | Left errors =>
-                        ( Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc)
-                                     errors
-                        ; (tenv, venv) )
-                end
-             | Left (_, _, errors) =>
-                ( List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc err)))
-                           errors
+        let val input as {sourcemap, ...} =
+                {instream = TextIO.openString line, sourcemap = Pos.mkSourcemap ()}
+        in  case Parser.parse input
+            of Right stmts =>
+                (case Typechecker.elaborateProgram tenv stmts
+                 of Right (program, tenv) =>
+                     let val program as {stmts, ...} = ExitTypechecker.programToF program
+                     in  case WellFounded.checkProgram program
+                         of Right () =>
+                             ( Vector.app (fn stmt as (Val (_, {var, typ, ...}, _)) =>
+                                              let val v = FAstEval.interpret venv stmt
+                                              in print ( Name.toString var ^ " = "
+                                                       ^ FAstEval.Value.toString v ^ " : "
+                                                       ^ FixedFAst.Type.Concr.toString typ ^ "\n" )
+                                              end
+                                            | stmt as (Expr _) => ignore (FAstEval.interpret venv stmt))
+                                          stmts
+                             ; (tenv, venv) )
+                          | Left errors =>
+                             ( Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc sourcemap)
+                                          errors
+                             ; (tenv, venv) )
+                     end
+                  | Left (_, _, errors) =>
+                     ( List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc sourcemap err)))
+                                errors
+                     ; (tenv, venv) ))
+             | Left (_, repairs) =>
+                ( List.app (fn repair => printErr (Parser.repairToString sourcemap repair ^ "\n"))
+                           repairs
                 ; (tenv, venv) )
         end
 
     fun rtp tenv line =
-        let val stmts = Parser.parse (Console (TextIO.openString line))
-        in  case Typechecker.elaborateProgram tenv stmts
-            of Right (program, tenv) =>
-                let val program = ExitTypechecker.programToF program
-                in  case WellFounded.checkProgram program
-                    of Right () =>
-                        ( print (PPrint.pretty 80 (FixedFAst.Term.programToDoc program))
-                        ; tenv )
-                     | Left errors =>
-                        ( Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc)
-                                     errors
-                        ; tenv )
-                end
-             | Left (_, _, errors) =>
-                ( List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc err)))
-                           errors
+        let val input as {sourcemap, ...} =
+                {instream = TextIO.openString line, sourcemap = Pos.mkSourcemap ()}
+        in  case Parser.parse input
+            of Right stmts =>
+                (case Typechecker.elaborateProgram tenv stmts
+                 of Right (program, tenv) =>
+                     let val program = ExitTypechecker.programToF program
+                     in  case WellFounded.checkProgram program
+                         of Right () =>
+                             ( print (PPrint.pretty 80 (FixedFAst.Term.programToDoc program))
+                             ; tenv )
+                          | Left errors =>
+                             ( Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc sourcemap)
+                                          errors
+                             ; tenv )
+                     end
+                  | Left (_, _, errors) =>
+                     ( List.app (fn err => printErr (PPrint.pretty 80 (TypeError.toDoc sourcemap err)))
+                                errors
+                     ; tenv ))
+             | Left (_, repairs) =>
+                ( List.app (fn repair => printErr (Parser.repairToString sourcemap repair ^ "\n"))
+                           repairs
                 ; tenv )
         end
 
@@ -140,7 +161,7 @@ end = struct
                                 ; loop tenv venv ) *))
                     | NONE => ()
                 end
-        in loop (TypecheckingEnv.default ()) (FAstEval.newToplevel ())
+        in loop (TypecheckingEnv.default (AntlrStreamPos.mkSourcemap ())) (FAstEval.newToplevel ())
         end
 
     fun main args =
@@ -149,9 +170,7 @@ end = struct
             (case cmd
              of Build args => 
                  ( build args
-                 ; case #input args
-                   of File (instream, _) => TextIO.closeIn instream
-                    | Console _ => () )
+                 ; TextIO.closeIn (#instream (#input args)) )
               | Repl => repl ())
          | Either.Left errors => List.app (fn error => print (error ^ ".\n")) errors
 end

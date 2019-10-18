@@ -1,15 +1,14 @@
 NIPO = ../deps/nipo/src/nipo
-BROOM = broom
-
+BROOM = broom 
 .PHONY: dev
 dev: $(BROOM)
 
-$(BROOM): main.mlb src/Parser/Lexer.sml src/Parser/Parser.sml \
+$(BROOM): main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
            $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
 	mlton -const 'Exn.keepHistory true' -output $(BROOM) main.mlb
 
 .PHONY: prod
-prod: main.mlb src/Parser/Lexer.sml src/Parser/Parser.sml \
+prod: main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
       $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
 	mlton -output $(BROOM) main.mlb
 
@@ -19,8 +18,14 @@ src/Parser/Lexer.sml: src/Parser/lexer.nipo
 src/Parser/Parser.sml: src/Parser/parser.nipo
 	$(NIPO) $< > $@
 
+%.ml-antlr.sml: %.ml-antlr
+	ml-antlr $<
+
+%.ml-ulex.sml: %.ml-ulex
+	ml-ulex $<
+
 .PHONY: check
-check: main.mlb src/Parser/Lexer.sml src/Parser/Parser.sml \
+check: main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
       $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
 	mlton -stop tc main.mlb
 
@@ -42,5 +47,5 @@ itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.brm)))
 
 .PHONY: clean
 clean:
-	rm -rf src/Parser/Lexer.sml src/Parser/Parser.sml $(BROOM)
+	rm -rf src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml $(BROOM)
 

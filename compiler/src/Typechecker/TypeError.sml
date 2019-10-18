@@ -1,16 +1,16 @@
 signature TYPE_ERROR = sig
-    datatype t = NonSubType of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
-               | NonUnifiable of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
+    datatype t = NonSubType of Pos.span * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
+               | NonUnifiable of Pos.span * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
                | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
-               | UnboundVal of Pos.t * Name.t
-               | OutsideScope of Pos.t * Name.t
-               | MissingField of Pos.t * FlexFAst.Type.concr * Name.t
-               | Occurs of Pos.t * FlexFAst.Type.concr * FlexFAst.Type.abs
+               | UnboundVal of Pos.span * Name.t
+               | OutsideScope of Pos.span * Name.t
+               | MissingField of Pos.span * FlexFAst.Type.concr * Name.t
+               | Occurs of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.abs
    
     exception TypeError of t
 
-    val toDoc: t -> PPrint.t
+    val toDoc: Pos.sourcemap -> t -> PPrint.t
 end
 
 structure TypeError :> TYPE_ERROR = struct
@@ -22,28 +22,28 @@ structure TypeError :> TYPE_ERROR = struct
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
 
-    datatype t = NonSubType of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
-               | NonUnifiable of Pos.t * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
+    datatype t = NonSubType of Pos.span * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
+               | NonUnifiable of Pos.span * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
                | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
-               | UnboundVal of Pos.t * Name.t
-               | OutsideScope of Pos.t * Name.t
-               | MissingField of Pos.t * FlexFAst.Type.concr * Name.t
-               | Occurs of Pos.t * FlexFAst.Type.concr * FlexFAst.Type.abs
+               | UnboundVal of Pos.span * Name.t
+               | OutsideScope of Pos.span * Name.t
+               | MissingField of Pos.span * FlexFAst.Type.concr * Name.t
+               | Occurs of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.abs
     
     exception TypeError of t
 
-    fun toDoc err =
+    fun toDoc sourcemap err =
         let val (pos, details) = case err
                                  of NonSubType (pos, typ, superTyp, cause) =>
                                      ( pos
                                      , Abs.toDoc typ <+> text "is not a subtype of" <+> Abs.toDoc superTyp
-                                           <> Option.mapOr (fn cause => PPrint.newline <> text "because" <+> toDoc cause)
+                                           <> Option.mapOr (fn cause => PPrint.newline <> text "because" <+> toDoc sourcemap cause)
                                                            PPrint.empty cause )
                                   | NonUnifiable (pos, lt, rt, cause) =>
                                      ( pos
                                      , Abs.toDoc lt <+> text "does not unify with" <+> Abs.toDoc rt
-                                           <> Option.mapOr (fn cause => PPrint.newline <> text "because" <+> toDoc cause)
+                                           <> Option.mapOr (fn cause => PPrint.newline <> text "because" <+> toDoc sourcemap cause)
                                                            PPrint.empty cause )
                                   | UnCallable (expr, typ) =>
                                      ( FTerm.exprPos expr
@@ -63,7 +63,7 @@ structure TypeError :> TYPE_ERROR = struct
                                      ( pos
                                      , text "Occurs check: unifying" <+> Concr.toDoc v
                                            <+> text "with" <+> Abs.toDoc t <+> text "would create infinite type." )
-        in text "TypeError in" <+> text (Pos.toString pos) <> text ":" <+> details
+        in text "TypeError in" <+> text (Pos.spanToString sourcemap pos) <> text ":" <+> details
         end
 end
 

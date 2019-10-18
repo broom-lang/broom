@@ -11,38 +11,45 @@ end = struct
     structure Env :> sig
         type t
 
-        val empty: t
+        val empty: Pos.sourcemap -> t
         val insert: t * Name.t * FFType.concr -> t
         val insertType: t * Id.t * (Id.t * FFType.kind) -> t
         val insertTypeFn: t * Name.t * FFType.tfn_sig -> t
+
         val find: t * Name.t -> FFType.concr option
         val findType: t * Id.t -> (Id.t * FFType.kind) option
         val findTypeFn: t * Name.t -> FFType.tfn_sig option
         val insertCo: t * Name.t * FFType.concr * FFType.concr -> t
         val findCo: t * Name.t -> (FFType.concr * FFType.concr) option
+
+        val sourcemap : t -> Pos.sourcemap
     end = struct
         type t = { vals: FFType.concr NameSortedMap.map
                  , types: (Id.t * FFType.kind) Id.SortedMap.map
                  , typeFns: FFType.tfn_sig NameSortedMap.map
-                 , coercions: (FFType.concr * FFType.concr) NameSortedMap.map }
+                 , coercions: (FFType.concr * FFType.concr) NameSortedMap.map
+                 , sourcemap: Pos.sourcemap }
 
-        val empty =
+        fun empty sourcemap =
             { vals = NameSortedMap.empty, types = Id.SortedMap.empty
-            , typeFns = NameSortedMap.empty, coercions = NameSortedMap.empty }
+            , typeFns = NameSortedMap.empty, coercions = NameSortedMap.empty
+            , sourcemap }
 
-        fun insert ({vals, types, typeFns, coercions}, name, t) =
-            {vals = NameSortedMap.insert (vals, name, t), types, typeFns, coercions}
-        fun insertType ({vals, types, typeFns, coercions}, id, entry) =
-            {vals, types = Id.SortedMap.insert (types, id, entry), typeFns, coercions}
-        fun insertTypeFn ({vals, types, typeFns, coercions}, name, tfkind) =
-            {vals, types, typeFns = NameSortedMap.insert (typeFns, name, tfkind), coercions}
-        fun insertCo ({vals, types, typeFns, coercions}, name, l, r) =
-            {vals, types, typeFns, coercions = NameSortedMap.insert (coercions, name, (l, r))}
+        fun insert ({vals, types, typeFns, coercions, sourcemap}, name, t) =
+            {vals = NameSortedMap.insert (vals, name, t), types, typeFns, coercions, sourcemap}
+        fun insertType ({vals, types, typeFns, coercions, sourcemap}, id, entry) =
+            {vals, types = Id.SortedMap.insert (types, id, entry), typeFns, coercions, sourcemap}
+        fun insertTypeFn ({vals, types, typeFns, coercions, sourcemap}, name, tfkind) =
+            {vals, types, typeFns = NameSortedMap.insert (typeFns, name, tfkind), coercions, sourcemap}
+        fun insertCo ({vals, types, typeFns, coercions, sourcemap}, name, l, r) =
+            {vals, types, typeFns, coercions = NameSortedMap.insert (coercions, name, (l, r)), sourcemap}
 
         fun find ({vals, ...}: t, name) = NameSortedMap.find (vals, name)
         fun findType ({types, ...}: t, id) = Id.SortedMap.find (types, id)
         fun findTypeFn ({typeFns, ...}: t, id) = NameSortedMap.find (typeFns, id)
         fun findCo ({coercions, ...}: t, name) = NameSortedMap.find (coercions, name)
+
+        val sourcemap: t -> Pos.sourcemap = #sourcemap
     end
 
     datatype kind = datatype FAst.Type.kind
@@ -141,7 +148,7 @@ end = struct
         if eq env ts
         then ()
         else raise Fail ( FFType.concrToString (#1 ts) ^ " != " ^ FFType.concrToString (#2 ts)
-                        ^ " in " ^ Pos.toString currPos )
+                        ^ " in " ^ Pos.spanToString (Env.sourcemap env) currPos )
 
     fun checkCo env =
         fn Refl t => (t, t)
@@ -295,7 +302,8 @@ end = struct
     and checkUse env (pos, {pos = _, id = _, var, typ}) =
         let val t = case Env.find (env, var)
                     of SOME t => t
-                     | NONE => raise Fail ("Out of scope: " ^ Name.toString var ^ " at " ^ Pos.toString pos)
+                     | NONE => raise Fail ( "Out of scope: " ^ Name.toString var ^ " at "
+                                          ^ Pos.spanToString (Env.sourcemap env) pos )
         in checkEq pos env (typ, t)
          ; typ
         end
@@ -308,9 +316,9 @@ end = struct
          | Axiom _ => () (* TODO: Some checks here (see F_c paper) *)
          | Expr expr => ignore (check env expr)
 
-    fun typecheckProgram {typeFns, axioms, scope = _, stmts} =
+    fun typecheckProgram {typeFns, axioms, scope = _, stmts, sourcemap} =
         let val env = Vector.foldl (fn ((name, kindSig), env) => Env.insertTypeFn (env, name, kindSig))
-                                   Env.empty typeFns
+                                   (Env.empty sourcemap) typeFns
             val env = Vector.foldl (fn ((name, l, r), env) => Env.insertCo (env, name, l, r))
                                    env axioms
             val env = pushStmts env stmts

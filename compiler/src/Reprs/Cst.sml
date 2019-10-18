@@ -9,38 +9,38 @@ signature CST = sig
     type arrow = effect explicitness
 
     datatype typ
-        = Pi of Pos.t * def * arrow * typ
-        | RecordT of Pos.t * typ
-        | RowExt of Pos.t * {fields: (Name.t * typ) vector, ext: typ}
-        | EmptyRow of Pos.t
-        | Interface of Pos.t * (Pos.t * Name.t * typ) vector
-        | WildRow of Pos.t
-        | Singleton of Pos.t * expr
-        | TypeT of Pos.t
+        = Pi of Pos.span * def * arrow * typ
+        | RecordT of Pos.span * typ
+        | RowExt of Pos.span * {fields: (Name.t * typ) vector, ext: typ}
+        | EmptyRow of Pos.span
+        | Interface of Pos.span * (Pos.span * Name.t * typ) vector
+        | WildRow of Pos.span
+        | Singleton of Pos.span * expr
+        | TypeT of Pos.span
         | Path of expr
-        | Prim of Pos.t * Prim.t
+        | Prim of Pos.span * Prim.t
 
     and expr
-        = Fn of Pos.t * expl * clause vector
-        | Let of Pos.t * stmt vector * expr
-        | Match of Pos.t * expr * clause vector
-        | Record of Pos.t * row
-        | Module of Pos.t * stmt vector
-        | App of Pos.t * {callee: expr, arg: expr}
-        | Field of Pos.t * expr * Name.t
-        | Ann of Pos.t * expr * typ
-        | Type of Pos.t * typ
-        | Use of Pos.t * Name.t
-        | Const of Pos.t * Const.t
+        = Fn of Pos.span * expl * clause vector
+        | Let of Pos.span * stmt vector * expr
+        | Match of Pos.span * expr * clause vector
+        | Record of Pos.span * row
+        | Module of Pos.span * stmt vector
+        | App of Pos.span * {callee: expr, arg: expr}
+        | Field of Pos.span * expr * Name.t
+        | Ann of Pos.span * expr * typ
+        | Type of Pos.span * typ
+        | Use of Pos.span * Name.t
+        | Const of Pos.span * Const.t
 
     and stmt
-        = Val of Pos.t * pat * expr
+        = Val of Pos.span * pat * expr
         | Expr of expr
 
     and pat
-        = AnnP of Pos.t * {pat: pat, typ: typ}
-        | Def of Pos.t * Name.t
-        | ConstP of Pos.t * Const.t
+        = AnnP of Pos.span * {pat: pat, typ: typ}
+        | Def of Pos.span * Name.t
+        | ConstP of Pos.span * Const.t
 
     withtype def = {var: Name.t, typ: typ option}
     and clause = {pattern: pat, body: expr}
@@ -54,7 +54,7 @@ signature CST = sig
 
         datatype typ = datatype typ
 
-        val pos: typ -> Pos.t
+        val pos: typ -> Pos.span
         val toDoc: typ -> PPrint.t
     end
 
@@ -65,7 +65,7 @@ signature CST = sig
         type def = def
         type row = row
 
-        val exprPos: expr -> Pos.t
+        val exprPos: expr -> Pos.span
         val exprToDoc: expr -> PPrint.t
         val exprToString: expr -> string
         val stmtToDoc: stmt -> PPrint.t
@@ -92,38 +92,38 @@ structure Cst :> CST = struct
     type expl = unit explicitness
 
     datatype typ
-        = Pi of Pos.t * def * arrow * typ
-        | RecordT of Pos.t * typ
-        | RowExt of Pos.t * {fields: (Name.t * typ) vector, ext: typ}
-        | EmptyRow of Pos.t
-        | Interface of Pos.t * (Pos.t * Name.t * typ) vector
-        | WildRow of Pos.t
-        | Singleton of Pos.t * expr
-        | TypeT of Pos.t
+        = Pi of Pos.span * def * arrow * typ
+        | RecordT of Pos.span * typ
+        | RowExt of Pos.span * {fields: (Name.t * typ) vector, ext: typ}
+        | EmptyRow of Pos.span
+        | Interface of Pos.span * (Pos.span * Name.t * typ) vector
+        | WildRow of Pos.span
+        | Singleton of Pos.span * expr
+        | TypeT of Pos.span
         | Path of expr
-        | Prim of Pos.t * Prim.t
+        | Prim of Pos.span * Prim.t
 
     and expr
-        = Fn of Pos.t * expl * clause vector
-        | Let of Pos.t * stmt vector * expr
-        | Match of Pos.t * expr * clause vector
-        | Record of Pos.t * row
-        | Module of Pos.t * stmt vector
-        | App of Pos.t * {callee: expr, arg: expr}
-        | Field of Pos.t * expr * Name.t
-        | Ann of Pos.t * expr * typ
-        | Type of Pos.t * typ
-        | Use of Pos.t * Name.t
-        | Const of Pos.t * Const.t
+        = Fn of Pos.span * expl * clause vector
+        | Let of Pos.span * stmt vector * expr
+        | Match of Pos.span * expr * clause vector
+        | Record of Pos.span * row
+        | Module of Pos.span * stmt vector
+        | App of Pos.span * {callee: expr, arg: expr}
+        | Field of Pos.span * expr * Name.t
+        | Ann of Pos.span * expr * typ
+        | Type of Pos.span * typ
+        | Use of Pos.span * Name.t
+        | Const of Pos.span * Const.t
 
     and stmt
-        = Val of Pos.t * pat * expr
+        = Val of Pos.span * pat * expr
         | Expr of expr
 
     and pat
-        = AnnP of Pos.t * {pat: pat, typ: typ}
-        | Def of Pos.t * Name.t
-        | ConstP of Pos.t * Const.t
+        = AnnP of Pos.span * {pat: pat, typ: typ}
+        | Def of Pos.span * Name.t
+        | ConstP of Pos.span * Const.t
 
     withtype def = {var: Name.t, typ: typ option}
     and clause = {pattern: pat, body: expr}
