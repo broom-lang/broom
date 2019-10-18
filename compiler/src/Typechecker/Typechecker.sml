@@ -285,12 +285,12 @@ end = struct
                     of #[] => arrow
                      | _ => FType.ForAll (typeDefs, arrow)
                  end
-               , let val f = FTerm.Fn ( pos, Scope.Id.fresh (), def, arr
+               , let val f = FTerm.Fn ( pos, def, arr
                                       , FTerm.Match ( pos, codomain, FTerm.Use (pos, def)
                                                     , clauses ) )
                  in case typeDefs
                     of #[] => f
-                     | _ => FTerm.TFn (pos, forallScopeId, typeDefs, f)
+                     | _ => FTerm.TFn (pos, typeDefs, f)
                  end )
             end
          | CTerm.Let (pos, stmts, body) =>
@@ -299,7 +299,7 @@ end = struct
                 val (stmtsEff, stmts) = elaborateStmts env stmts
                 val (bodyEff, typ, body) = elaborateExpr env body
             in ( joinEffs (stmtsEff, bodyEff), typ
-               , FTerm.Let (pos, Scope.id scope, stmts, body))
+               , FTerm.Let (pos, stmts, body))
             end
          | CTerm.Match (pos, _, _) =>
             let val t = FType.SVar (FType.UVar (Env.freshUv env Predicative))
@@ -324,7 +324,7 @@ end = struct
                                         , Vector.fromList defs
                                               |> Vector.map (fn def as {var, ...} => (var, FTerm.Use (pos, def)))
                                         , NONE )
-            in (eff, typ, FTerm.Let (pos, Scope.id scope, stmts, body))
+            in (eff, typ, FTerm.Let (pos, stmts, body))
             end
          | CTerm.App (pos, {callee, arg}) =>
             (* FIXME: generative behaviour when `callEff` is `Impure`: *)
@@ -401,7 +401,7 @@ end = struct
                             | (Implicit, Impure) => raise Fail "Impure body on implicit function"
                             | (Explicit eff', _) => (subEffect env pos (eff, eff'); expl')
                    in ( Pure
-                      , FTerm.Fn ( pos, Scope.Id.fresh (), def, arr
+                      , FTerm.Fn ( pos, def, arr
                                  , FTerm.Match ( pos, codomain, FTerm.Use (pos, def)
                                                , clauses ) ) )
                    end )
@@ -423,7 +423,7 @@ end = struct
         let val scopeId = Scope.Id.fresh ()
             val env = Env.pushScope env (Scope.ForAllScope (scopeId, Bindings.Type.fromDefs params))
             val (eff, expr) = elaborateExprAs env body expr
-        in (eff, FTerm.TFn (FTerm.exprPos expr, scopeId, params, expr))
+        in (eff, FTerm.TFn (FTerm.exprPos expr, params, expr))
         end
 
     (* Should we start elaboration from more annotated patterns, to enable e.g.
@@ -475,14 +475,14 @@ end = struct
                 val env = Env.pushScope env (Scope.ForAllScope (forallScopeId, Bindings.Type.fromDefs typeDefs))
                 val patScopeId = Scope.Id.fresh ()
                 val env = Env.pushScope env (Scope.PatternScope (patScopeId, name, Visited (def, NONE)))
-            in ((typeDefs, t), FTerm.Def (pos', patScopeId, def), SOME forallScopeId, env)
+            in ((typeDefs, t), FTerm.Def (pos', def), SOME forallScopeId, env)
             end
          | CTerm.Def (pos, name) =>
             let val scopeId = Scope.Id.fresh ()
                 val t = FType.SVar (FType.UVar (TypeVars.Uv.fresh (scopeId, Predicative)))
                 val def = {pos, id = DefId.fresh (), var = name, typ = t}
                 val env = Env.pushScope env (Scope.PatternScope (scopeId, name, Visited (def, NONE)))
-            in ((#[], t), FTerm.Def (pos, scopeId, def), NONE, env)
+            in ((#[], t), FTerm.Def (pos, def), NONE, env)
             end
          | CTerm.ConstP (pos, c) =>
             let val cTyp = FType.Prim (Const.typeOf c)
@@ -494,7 +494,7 @@ end = struct
          | CTerm.Def (pos, name) =>
             let val scopeId = Scope.Id.fresh ()
                 val def = {pos, id = DefId.fresh (), var = name, typ = t}
-            in ( FTerm.Def (pos, scopeId, def)
+            in ( FTerm.Def (pos, def)
                , Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), name, Visited (def, NONE))) )
             end
          | CTerm.ConstP (pos, c) =>
@@ -558,7 +558,7 @@ end = struct
                                                        , FType.ForAll (params, t) )
                                         end)    
                                    (paths, coercionNames)
-            in (eff, FTerm.Let (pos, scopeId, axiomStmts, expr))
+            in (eff, FTerm.Let (pos, axiomStmts, expr))
             end
 
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)

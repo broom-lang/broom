@@ -78,7 +78,7 @@ end = struct
             val param = {pos, id = DefId.fresh (), var = Name.fresh (), typ = domain'}
             val arg = applyCoercion coerceDomain (FTerm.Use (pos, param))
             val body = applyCoercion coerceCodomain (FTerm.App (pos, codomain, {callee, arg}))
-        in FTerm.Fn (pos, scopeId, param, Explicit eff', body)
+        in FTerm.Fn (pos, param, Explicit eff', body)
         end
 
     datatype 'direction intent
@@ -106,7 +106,7 @@ end = struct
             (case intent
              of Coerce () =>
                  skolemize env universal (fn (env, scopeId, params, body) =>
-                     Option.map (fn coerce => fn expr => FTerm.TFn (currPos, scopeId, params, coerce expr))
+                     Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
                                 (coercion (Coerce ()) env currPos (sub, body))
                  )
               | Unify => raise TypeError (NonUnifiable (currPos, concr sub, concr super, NONE)))
@@ -125,7 +125,7 @@ end = struct
             let val scopeId = ScopeId.fresh ()
                 val def = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
                 val coerceCodomain = coercion intent env currPos (sub, codomain)
-            in SOME (fn expr => FTerm.Fn (currPos, scopeId, def, Implicit, applyCoercion coerceCodomain expr))
+            in SOME (fn expr => FTerm.Fn (currPos, def, Implicit, applyCoercion coerceCodomain expr))
             end
          | (Arrow (Implicit, {domain, codomain}), super) =>
             (* FIXME: coercion from `codomain` <: `super` *)
@@ -181,7 +181,6 @@ end = struct
                             let val pos = FTerm.exprPos expr
                                 val def = {pos, id = DefId.fresh (), var = Name.fresh (), typ = super}
                             in FTerm.Let ( FTerm.exprPos expr
-                                         , ScopeId.fresh ()
                                          , #[FTerm.Val (pos, def, expr)]
                                          , FTerm.Use (pos, def) )
                             end) )
@@ -194,7 +193,6 @@ end = struct
                             let val pos = FTerm.exprPos expr
                                 val def = {pos, id = DefId.fresh (), var = Name.fresh (), typ = r}
                             in FTerm.Let ( FTerm.exprPos expr
-                                         , ScopeId.fresh ()
                                          , #[FTerm.Val (pos, def, expr)]
                                          , FTerm.Use (pos, def) )
                             end) )
@@ -231,7 +229,7 @@ end = struct
                           val tmpUse = FTerm.Use (currPos, tmpDef)
                           fun emitField (label, (origFieldt, _), coerceField) =
                               (label, coerceField (FTerm.Field (currPos, origFieldt, tmpUse, label)))
-                      in FTerm.Let ( currPos, ScopeId.fresh ()
+                      in FTerm.Let ( currPos
                                    , #[FTerm.Val (currPos, tmpDef, expr)]
                                    , FTerm.Override ( currPos
                                                     , t'
@@ -364,7 +362,7 @@ end = struct
         case y
         of Coerce Up =>
             skolemize env universal (fn (env, scopeId, params, body) =>
-                Option.map (fn coerce => fn expr => FTerm.TFn (currPos, scopeId, params, coerce expr))
+                Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
                            (doAssign env currPos y (uv, body))
             )
          | Coerce Down =>

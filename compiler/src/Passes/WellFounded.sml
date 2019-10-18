@@ -227,49 +227,47 @@ end = struct
     fun initialProgramEnv {axioms = _, typeFns = _, scope = topScopeId, stmts} =
         let val builder = Env.Builder.new topScopeId
 
-            fun insertExpr scopeId =
-                fn Let (_, scopeId', stmts, body) =>
-                    ( Vector.app (insertStmt scopeId') stmts
-                    ; insertExpr scopeId' body )
+            val rec insertExpr =
+                fn Let (_, stmts, body) =>
+                    ( Vector.app insertStmt stmts
+                    ; insertExpr body )
                  | Match (_, _, matchee, clauses) =>
-                    ( insertExpr scopeId matchee
+                    ( insertExpr matchee
                     ; Vector.app (fn {pattern, body} =>
-                                      let val scopeId = insertPat scopeId pattern
-                                      in insertExpr scopeId body
-                                      end)
+                                      ( insertPat pattern
+                                      ; insertExpr body ))
                                  clauses )
-                 | Fn (_, scopeId', {id, typ, ...}, _, body) =>
+                 | Fn (_, {id, typ, ...}, _, body) =>
                     ( Env.Builder.insert builder id (elaborateType typ)
-                    ; insertExpr scopeId' body )
-                 | TFn (_, _, _, body) => insertExpr scopeId body
+                    ; insertExpr body )
+                 | TFn (_, _, body) => insertExpr body
                  | App (_, _, {callee, arg}) =>
-                    ( insertExpr scopeId callee
-                    ; insertExpr scopeId arg )
-                 | TApp (_, _, {callee, args = _}) => insertExpr scopeId callee
+                    ( insertExpr callee
+                    ; insertExpr arg )
+                 | TApp (_, _, {callee, args = _}) => insertExpr callee
                  | Extend (_, _, fields, ext) =>
-                    ( Vector.app (fn (_, expr) => insertExpr scopeId expr) fields
-                    ; Option.app (insertExpr scopeId) ext )
+                    ( Vector.app (fn (_, expr) => insertExpr expr) fields
+                    ; Option.app insertExpr ext )
                  | Override (_, _, fields, ext) =>
-                    ( Vector.app (fn (_, expr) => insertExpr scopeId expr) fields
-                    ; insertExpr scopeId ext )
-                 | Field (_, _, expr, _) => insertExpr scopeId expr
-                 | Cast (_, _, expr, _) => insertExpr scopeId expr
+                    ( Vector.app (fn (_, expr) => insertExpr expr) fields
+                    ; insertExpr ext )
+                 | Field (_, _, expr, _) => insertExpr expr
+                 | Cast (_, _, expr, _) => insertExpr expr
                  | Type _ | Use _ | Const _ => ()
             
-            and insertStmt scopeId =
+            and insertStmt =
                 fn Axiom _ => ()
                  | Val (_, {id, typ, ...}, expr) =>
                     ( Env.Builder.insert builder id (elaborateType typ)
-                    ; insertExpr scopeId expr )
-                 | Expr expr => insertExpr scopeId expr
+                    ; insertExpr expr )
+                 | Expr expr => insertExpr expr
 
-            and insertPat scopeId =
-                fn AnnP (_, {pat, typ = _}) => insertPat scopeId pat
-                 | Def (_, scopeId', {id, typ, ...}) =>
-                    ( Env.Builder.insert builder id (elaborateType typ)
-                    ; scopeId' )
-                 | ConstP _ => scopeId
-        in Vector.app (insertStmt topScopeId) stmts
+            and insertPat =
+                fn AnnP (_, {pat, typ = _}) => insertPat pat
+                 | Def (_, {id, typ, ...}) =>
+                    Env.Builder.insert builder id (elaborateType typ)
+                 | ConstP _ => ()
+        in Vector.app insertStmt stmts
          ; Env.Builder.build builder
         end
 
@@ -352,27 +350,27 @@ end = struct
             val errors = ref []
             fun error err = errors := err :: !errors
             
-            fun checkExpr scopeId ini ctx =
-                fn Fn (_, scopeId, {id, ...}, _, body) =>
+            fun checkExpr ini ctx =
+                fn Fn (_, {id, ...}, _, body) =>
                     let val ini = IniEnv.pushFn ini ctx id
-                        val (codomain, support) = checkExpr scopeId ini ctx body
+                        val (codomain, support) = checkExpr ini ctx body
                     in case ctx
                        of Escaping => (Closure (Support.empty, codomain), support)
                         | Naming => (Closure (support, codomain), Support.empty)
                     end
-                 | TFn (_, _, _, body) => checkExpr scopeId ini ctx body
-                 | Let (_, scopeId, stmts, body) =>
+                 | TFn (_, _, body) => checkExpr ini ctx body
+                 | Let (_, stmts, body) =>
                     let val ini = pushBlock ini stmts
-                        val stmtsSupport = checkStmts scopeId ini stmts
-                        val (typ, bodySupport) = checkExpr scopeId ini ctx body
+                        val stmtsSupport = checkStmts ini stmts
+                        val (typ, bodySupport) = checkExpr ini ctx body
                     in (typ, Support.union (stmtsSupport, bodySupport))
                     end
                  | Match (_, _, matchee, clauses) =>
-                    let val (_, matcheeSupport) = checkExpr scopeId ini ctx matchee
+                    let val (_, matcheeSupport) = checkExpr ini ctx matchee
                         val (SOME clausesTyp, clausesSupport) =
                             Vector.foldl (fn (clause, (_, support)) =>
                                               let val (clauseTyp, clauseSupport) =
-                                                      checkClause scopeId ini ctx clause
+                                                      checkClause ini ctx clause
                                               in ( SOME clauseTyp
                                                  , Support.union (support, clauseSupport) )
                                               end)
@@ -380,25 +378,25 @@ end = struct
                     in (clausesTyp, Support.union (matcheeSupport, clausesSupport))
                     end
                  | App (_, _, {callee, arg}) =>
-                    (case checkExpr scopeId ini Escaping callee
+                    (case checkExpr ini Escaping callee
                      of (Closure (_, codomain), calleeSupport) =>
                          (*       ^-- should be empty because context was `Escaping`. *)
-                         let val (_, argSupport) = checkExpr scopeId ini Escaping arg
+                         let val (_, argSupport) = checkExpr ini Escaping arg
                          in (codomain, Support.union (calleeSupport, argSupport))
                          end
                       | (_, calleeSupport) =>
-                         let val (_, argSupport) = checkExpr scopeId ini Escaping arg
+                         let val (_, argSupport) = checkExpr ini Escaping arg
                          in (Unknown, Support.union (calleeSupport, argSupport))
                          end)
-                 | TApp (_, _, {callee, args = _}) => checkExpr scopeId ini ctx callee
+                 | TApp (_, _, {callee, args = _}) => checkExpr ini ctx callee
                  | Extend (_, _, fields, ext) =>
                     let val (Record ext, extSupport) =
                             case ext
-                            of SOME ext => checkExpr scopeId ini ctx ext
+                            of SOME ext => checkExpr ini ctx ext
                              | NONE => (Record EmptyRow, Support.empty)
                         val (row, support) =
                             Vector.foldl (fn ((label, expr), (typ, support)) =>
-                                              let val (fieldt, fieldSupport) = checkExpr scopeId ini ctx expr
+                                              let val (fieldt, fieldSupport) = checkExpr ini ctx expr
                                               in ( withField typ (label, fieldt)
                                                  , Support.union (support, fieldSupport) )
                                               end)
@@ -406,10 +404,10 @@ end = struct
                     in (Record row, support)
                     end
                  | Override (_, _, fields, ext) =>
-                    let val (Record ext, extSupport) = checkExpr scopeId ini ctx ext
+                    let val (Record ext, extSupport) = checkExpr ini ctx ext
                         val (row, support) =
                             Vector.foldl (fn ((label, expr), (typ, support)) =>
-                                              let val (fieldt, fieldSupport) = checkExpr scopeId ini ctx expr
+                                              let val (fieldt, fieldSupport) = checkExpr ini ctx expr
                                               in ( valOf (whereField typ (label, fieldt))
                                                  , Support.union (support, fieldSupport) )
                                               end)
@@ -417,7 +415,7 @@ end = struct
                     in (Record row, support)
                     end
                  | Field (_, _, expr, label) =>
-                    let val (recTyp, support) = checkExpr scopeId ini ctx expr
+                    let val (recTyp, support) = checkExpr ini ctx expr
                     in ( case recTyp
                          of RowExt _ => valOf (rowField recTyp label)
                           | _ => Unknown
@@ -450,7 +448,7 @@ end = struct
                                 (Env.lookup env id, Support.empty)
                     in (typ, Support.union (immediateSupport, transitiveSupport))
                     end
-                 | Cast (_, _, expr, _) => checkExpr scopeId ini ctx expr
+                 | Cast (_, _, expr, _) => checkExpr ini ctx expr
                  | Type _ | Const _ => (Scalar, Support.empty)
 
             and pushBlock ini stmts =
@@ -462,35 +460,35 @@ end = struct
                 in IniEnv.pushBlock ini ids
                 end
 
-            and checkStmts scopeId ini stmts =
+            and checkStmts ini stmts =
                 Vector.foldl (fn (stmt, support) =>
-                                  Support.union (support, checkStmt scopeId ini stmt))
+                                  Support.union (support, checkStmt ini stmt))
                              Support.empty stmts
 
-            and checkStmt scopeId ini =
+            and checkStmt ini =
                 fn Axiom _ => Support.empty
                  | Val (_, {id, typ = _, ...}, expr) =>
-                    let val (typ, support) = checkExpr scopeId ini Naming expr
+                    let val (typ, support) = checkExpr ini Naming expr
                         val refineChanged = Env.refine env id typ
                         do changed := (!changed orelse refineChanged)
                         do IniEnv.initialize ini id
                     in support
                     end
-                 | Expr expr => #2 (checkExpr scopeId ini Escaping expr)
+                 | Expr expr => #2 (checkExpr ini Escaping expr)
 
-            and checkClause scopeId ini ctx {pattern, body} =
-                let val (scopeId, ini) = checkPattern scopeId ini ctx pattern
-                in checkExpr scopeId ini ctx body
+            and checkClause ini ctx {pattern, body} =
+                let val ini = checkPattern ini ctx pattern
+                in checkExpr ini ctx body
                 end
 
-            and checkPattern scopeId ini ctx =
-                fn Def (_, scopeId, {id, ...}) => (scopeId, IniEnv.pushMatch ini id)
-                 | ConstP _ => (scopeId, ini)
+            and checkPattern ini ctx =
+                fn Def (_, {id, ...}) => IniEnv.pushMatch ini id
+                 | ConstP _ => ini
 
             fun iterate stmts =
                 let do changed := false
                     do errors := []
-                    do ignore (checkStmts topScopeId (pushBlock IniEnv.empty stmts) stmts)
+                    do ignore (checkStmts (pushBlock IniEnv.empty stmts) stmts)
                 in if !changed
                    then iterate stmts
                    else ()

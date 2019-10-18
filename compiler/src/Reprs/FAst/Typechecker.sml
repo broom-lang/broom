@@ -181,12 +181,12 @@ end = struct
          | Type (_, t) => FFType.Type t
          | Const (_, c) => Prim (Const.typeOf c)
 
-    and checkFn env (pos, _, {pos = _, id = _, var = param, typ = domain}, expl, body) =
+    and checkFn env (pos, {pos = _, id = _, var = param, typ = domain}, expl, body) =
         let val env = Env.insert (env, param, domain)
         in Arrow (expl, {domain, codomain = check env body})
         end
 
-    and checkTFn env (pos, _, params, body) =
+    and checkTFn env (pos, params, body) =
         let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
                                    env params
         in ForAll (params, check env body)
@@ -261,7 +261,7 @@ end = struct
                                     ^ " does not have field " ^ Name.toString label))
          | t => raise Fail ("Not a record: " ^ FFTerm.exprToString expr ^ ": " ^ FFType.concrToString t)
 
-    and checkLet env (_, _, stmts, body) =
+    and checkLet env (_, stmts, body) =
         let val env = pushStmts env stmts
         in Vector.app (checkStmt env) stmts
          ; check env body
@@ -281,7 +281,7 @@ end = struct
 
     and checkPattern env matcheeTyp =
         fn AnnP (_, {pat, typ}) => raise Fail "unimplemented"
-         | Def (_, _, {pos = _, id, var, typ}) => Env.insert (env, var, typ)
+         | Def (_, {pos = _, id, var, typ}) => Env.insert (env, var, typ)
          | ConstP (pos, c) => (checkEq pos env (Prim (Const.typeOf c), matcheeTyp); env)
 
     and checkCast env (pos, typ, expr, co) =

@@ -116,11 +116,11 @@ end = struct
          | Const.Bool b => Bool b
 
     fun eval env cont =
-        fn Fn (_, _, {var, ...}, _, body) => continue cont (Closure (env, var, body))
-         | TFn (_, _, _, body) => continue cont (Thunk (env, body))
+        fn Fn (_, {var, ...}, _, body) => continue cont (Closure (env, var, body))
+         | TFn (_, _, body) => continue cont (Thunk (env, body))
          | App (_, _, {callee, arg}) => eval env (Callee (env, arg) :: cont) callee
          | TApp (_, _, {callee, ...}) => eval env (Forcee :: cont) callee
-         | Let (_, _, stmts, body) =>
+         | Let (_, stmts, body) =>
             (case Vector.uncons stmts
              of SOME (stmt, stmts) =>
                  let val env = enterBlock env
@@ -174,7 +174,7 @@ end = struct
             let fun matchClause {pattern, body} =
                     case pattern
                     of AnnP (_, {pat, ...}) => matchClause {pattern = pat, body}
-                     | FTerm.Def (_, _, {var, ...}) =>
+                     | FTerm.Def (_, {var, ...}) =>
                         let val env = PatternScope (env, var, value)
                         in eval env cont body
                         end
