@@ -36,7 +36,11 @@ signature FAST_TERM = sig
                    , axioms: (Name.t * Type.concr * Type.concr) vector
                    , scope: ScopeId.t
                    , stmts: stmt vector }
-
+   
+    val updateDefTyp : {pos: Pos.t, id: DefId.t, var: Name.t, typ: 't} -> ('t -> 'u)
+                     -> {pos: Pos.t, id: DefId.t, var: Name.t, typ: 'u}
+    val setDefTyp : {pos: Pos.t, id: DefId.t, var: Name.t, typ: 't} -> 'u
+                  -> {pos: Pos.t, id: DefId.t, var: Name.t, typ: 'u}
     val exprPos: expr -> Pos.t
     val exprToDoc: expr -> PPrint.t
     val exprToString: expr -> string
@@ -118,6 +122,9 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
                    , axioms: (Name.t * Type.concr * Type.concr) vector
                    , scope: ScopeId.t
                    , stmts: stmt vector }
+
+    fun updateDefTyp {pos, id, var, typ} f = {pos, id, var, typ = f typ}
+    fun setDefTyp def typ' = updateDefTyp def (Fn.constantly typ')
 
    fun defToDoc {pos = _, id = _, var, typ} =
        Name.toDoc var <> text ":" <+> Type.Concr.toDoc typ

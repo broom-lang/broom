@@ -47,32 +47,27 @@ end = struct
                 of (def as {typ = SOME t, ...}, oexpr) =>
                     (case elaborateType env t
                      of ([], t) =>
-                         let val def = {pos = #pos def, id = #id def, var = #var def, typ = t}
-                         in (def, Typed ({pos = #pos def, id = #id def, var = #var def, typ = (t, NONE)}, oexpr))
-                         end
+                         (FTerm.setDefTyp def t, Typed (FTerm.setDefTyp def (t, NONE), oexpr))
                       | (defs, t) =>
                          (case valOf (Env.innermostScope env)
                           of Scope.InterfaceScope _ =>
                               let val abst = Exists (Vector.fromList defs, t)
                                   val t = reAbstract env abst (* OPTIMIZE *)
-                                  val def = {pos = #pos def, id = #id def, var = #var def, typ = t}
-                              in (def, Typed ({pos = #pos def, id = #id def, var = #var def, typ = (t, NONE)}, oexpr))
+                              in (FTerm.setDefTyp def t, Typed (FTerm.setDefTyp def (t, NONE), oexpr))
                               end
                            | _ =>
                               let val (t, paths) =
                                       instantiateExistential env (Exists (Vector.fromList defs, t))
-                                  val def = {pos = #pos def, id = #id def, var = #var def, typ = t}
-                              in (def, Typed ({pos = #pos def, id = #id def, var = #var def, typ = (t, SOME paths)}, oexpr))
+                              in (FTerm.setDefTyp def t, Typed (FTerm.setDefTyp def (t, SOME paths), oexpr))
                               end))
                  | (def as {typ = NONE, ...}, SOME expr) =>
                     let val (eff, t, expr) = elaborateExpr env expr (* FIXME: use `eff` *)
-                        val def = {pos = #pos def, id = #id def, var = #var def, typ = t}
+                        val def = FTerm.setDefTyp def t
                     in (def, Visited (def, SOME (eff, expr)))
                     end
                  | (def as {typ = NONE, ...}, oexpr as NONE) =>
                     let val t = FType.SVar (FType.UVar (Env.freshUv env Predicative))
-                        val def = {pos = #pos def, id = #id def, var = #var def, typ = t}
-                    in (def, Typed ({pos = #pos def, id = #id def, var = #var def, typ = (t, NONE)}, oexpr))
+                    in (FTerm.setDefTyp def t, Typed (FTerm.setDefTyp def (t, NONE), oexpr))
                     end
         in case valOf (Env.findExpr env name)
            of Unvisited _ => raise Fail "unreachable" (* State is at 'least' `Visiting`. *)
@@ -82,7 +77,7 @@ end = struct
             | Typed ({typ = (usageTyp, NONE), ...}, _) | Visited ({typ = usageTyp, ...}, _) =>
                (* We must have found a cycle and used `cyclicBindingType`. *)
                ( ignore (subType env pos (#typ def, usageTyp))
-               ; {pos = #pos def, id = #id def, var = #var def, typ = usageTyp} )
+               ; FTerm.setDefTyp def usageTyp )
             | Typed ({typ = (_, SOME _), ...}, _) => raise Fail "unreachable"
         end
       
@@ -90,11 +85,9 @@ end = struct
        this to insert a unification variable, inferring a monomorphic type. *)
     and cyclicBindingType pos env name (def, oexpr) : FTerm.def =
         let val t = FType.SVar (FType.UVar (Env.freshUv env Predicative))
-            val def = {pos = #pos def, id = #id def, var = #var def, typ = t}
-        in Env.updateExpr pos env name (Fn.constantly (Typed ( { pos = #pos def, id = #id def
-                                                               , var = #var def, typ = (t, NONE)}
+        in Env.updateExpr pos env name (Fn.constantly (Typed ( FTerm.setDefTyp def (t, NONE)
                                                              , oexpr )))
-         ; def
+         ; FTerm.setDefTyp def t
         end
 
     (* Get the type of the variable `name`, referenced at `pos`, from `env` by either
@@ -110,7 +103,7 @@ end = struct
                            of Scope.InterfaceScope _ => raise Fail ("Type cycle at " ^ Pos.toString pos)
                             | _ => cyclicBindingType pos env name args
                         end
-                     | (Typed (def, _), _) => {pos = #pos def, id = #id def, var = #var def, typ = #1 (#typ def)}
+                     | (Typed (def, _), _) => FTerm.updateDefTyp def #1
                      | (Visited (def, _), _) => def)
                    (Env.findExprClosure env name)
 
