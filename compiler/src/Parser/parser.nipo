@@ -181,14 +181,14 @@ rowExt
 rowField = Id ':' typ {% (valOf (toName tokId), typ) %};
 
 decl
-    = 'val' Id ':' typ {% (valOf (toName tokId), typ) %}
+    = pos 'val' Id ':' typ {% (pos, valOf (toName tokId), typ) %}
     | pos 'type' Id pats=kpat* typ=('=' pos typ {% (pos, typ) %})?
       {% let val codomain = case typ
                             of SOME (ptyp as (_, typ)) => Type.Singleton (pos, Term.Type ptyp)
                              | NONE => Type.TypeT pos
              fun step ((pos, {var, typ}), codomain) =
                  Type.Pi (pos, {var, typ = SOME typ}, Explicit Pure, codomain)
-         in (valOf (toName tokId), List.foldr step codomain pats)
+         in (pos, valOf (toName tokId), List.foldr step codomain pats)
          end %}
     ;
 

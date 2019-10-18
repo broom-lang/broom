@@ -13,7 +13,7 @@ signature CST = sig
         | RecordT of Pos.t * typ
         | RowExt of Pos.t * {fields: (Name.t * typ) vector, ext: typ}
         | EmptyRow of Pos.t
-        | Interface of Pos.t * (Name.t * typ) vector
+        | Interface of Pos.t * (Pos.t * Name.t * typ) vector
         | WildRow of Pos.t
         | Singleton of Pos.t * expr
         | TypeT of Pos.t
@@ -96,7 +96,7 @@ structure Cst :> CST = struct
         | RecordT of Pos.t * typ
         | RowExt of Pos.t * {fields: (Name.t * typ) vector, ext: typ}
         | EmptyRow of Pos.t
-        | Interface of Pos.t * (Name.t * typ) vector
+        | Interface of Pos.t * (Pos.t * Name.t * typ) vector
         | WildRow of Pos.t
         | Singleton of Pos.t * expr
         | TypeT of Pos.t
@@ -177,7 +177,7 @@ structure Cst :> CST = struct
             end
          | EmptyRow _ => text "(||)"
          | Interface (_, decls) =>
-            let fun declToDoc (label, t) = text "val" <+> Name.toDoc label <+> text ":" <+> typeToDoc t
+            let fun declToDoc (_, label, t) = text "val" <+> Name.toDoc label <+> text ":" <+> typeToDoc t
             in text "interface"
                    <> (PPrint.nest 4 (newline <> PPrint.punctuate newline (Vector.map declToDoc decls)))
                    <++> text "end"

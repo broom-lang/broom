@@ -40,51 +40,61 @@ end = struct
 
 (* Looking up statement/declaration types *)
 
-    fun unvisitedBindingType pos env name args =
+    fun unvisitedBindingType pos env name args : FTerm.def =
         let do Env.updateExpr pos env name (Fn.constantly (Visiting args)) (* Mark binding 'grey'. *)
-            val (t, binding') =
+            val (def, binding') =
                 case args
-                of (SOME t, oexpr) =>
+                of (def as {typ = SOME t, ...}, oexpr) =>
                     (case elaborateType env t
-                     of ([], t) => (t, Typed (t, NONE, oexpr))
+                     of ([], t) =>
+                         let val def = {pos = #pos def, id = #id def, var = #var def, typ = t}
+                         in (def, Typed ({pos = #pos def, id = #id def, var = #var def, typ = (t, NONE)}, oexpr))
+                         end
                       | (defs, t) =>
                          (case valOf (Env.innermostScope env)
                           of Scope.InterfaceScope _ =>
                               let val abst = Exists (Vector.fromList defs, t)
                                   val t = reAbstract env abst (* OPTIMIZE *)
-                              in (t, Typed (t, NONE, oexpr))
+                                  val def = {pos = #pos def, id = #id def, var = #var def, typ = t}
+                              in (def, Typed ({pos = #pos def, id = #id def, var = #var def, typ = (t, NONE)}, oexpr))
                               end
                            | _ =>
                               let val (t, paths) =
                                       instantiateExistential env (Exists (Vector.fromList defs, t))
-                              in (t, Typed (t, SOME paths, oexpr))
+                                  val def = {pos = #pos def, id = #id def, var = #var def, typ = t}
+                              in (def, Typed ({pos = #pos def, id = #id def, var = #var def, typ = (t, SOME paths)}, oexpr))
                               end))
-                 | (NONE, SOME expr) =>
+                 | (def as {typ = NONE, ...}, SOME expr) =>
                     let val (eff, t, expr) = elaborateExpr env expr (* FIXME: use `eff` *)
-                    in (t, Visited (t, SOME (eff, expr)))
+                        val def = {pos = #pos def, id = #id def, var = #var def, typ = t}
+                    in (def, Visited (def, SOME (eff, expr)))
                     end
-                 | (NONE, oexpr as NONE) =>
+                 | (def as {typ = NONE, ...}, oexpr as NONE) =>
                     let val t = FType.SVar (FType.UVar (Env.freshUv env Predicative))
-                    in (t, Typed (t, NONE, oexpr))
+                        val def = {pos = #pos def, id = #id def, var = #var def, typ = t}
+                    in (def, Typed ({pos = #pos def, id = #id def, var = #var def, typ = (t, NONE)}, oexpr))
                     end
         in case valOf (Env.findExpr env name)
            of Unvisited _ => raise Fail "unreachable" (* State is at 'least' `Visiting`. *)
             | Visiting _ =>
                ( Env.updateExpr pos env name (Fn.constantly binding')
-               ; t )
-            | Typed (usageTyp, NONE, _) | Visited (usageTyp, _) =>
+               ; def )
+            | Typed ({typ = (usageTyp, NONE), ...}, _) | Visited ({typ = usageTyp, ...}, _) =>
                (* We must have found a cycle and used `cyclicBindingType`. *)
-               ( ignore (subType env pos (t, usageTyp))
-               ; usageTyp )
-            | Typed (_, SOME _, _) => raise Fail "unreachable"
+               ( ignore (subType env pos (#typ def, usageTyp))
+               ; {pos = #pos def, id = #id def, var = #var def, typ = usageTyp} )
+            | Typed ({typ = (_, SOME _), ...}, _) => raise Fail "unreachable"
         end
       
     (* In case we encounter a recursive reference to `name` not broken by type annotations we call
        this to insert a unification variable, inferring a monomorphic type. *)
-    and cyclicBindingType pos env name (_, oexpr) =
+    and cyclicBindingType pos env name (def, oexpr) : FTerm.def =
         let val t = FType.SVar (FType.UVar (Env.freshUv env Predicative))
-        in Env.updateExpr pos env name (Fn.constantly (Typed (t, NONE, oexpr)))
-         ; t
+            val def = {pos = #pos def, id = #id def, var = #var def, typ = t}
+        in Env.updateExpr pos env name (Fn.constantly (Typed ( { pos = #pos def, id = #id def
+                                                               , var = #var def, typ = (t, NONE)}
+                                                             , oexpr )))
+         ; def
         end
 
     (* Get the type of the variable `name`, referenced at `pos`, from `env` by either
@@ -92,7 +102,7 @@ end = struct
        - elaborating the expression bound to the variable (if available)
        - returning a fresh unification variable (if neither type annotation nor bound expression
          is available or if a cycle is encountered) *)
-    and lookupValType expr name env: concr option =
+    and lookupValType expr name env : FTerm.def option =
         Option.map (fn (Unvisited args, env) => unvisitedBindingType (CTerm.exprPos expr) env name args
                      | (Visiting args, env) =>
                         let val pos = CTerm.exprPos expr
@@ -100,7 +110,8 @@ end = struct
                            of Scope.InterfaceScope _ => raise Fail ("Type cycle at " ^ Pos.toString pos)
                             | _ => cyclicBindingType pos env name args
                         end
-                     | (Typed (t, _, _) | Visited (t, _), _) => t)
+                     | (Typed (def, _), _) => {pos = #pos def, id = #id def, var = #var def, typ = #1 (#typ def)}
+                     | (Visited (def, _), _) => def)
                    (Env.findExprClosure env name)
 
     and reAbstract env =
@@ -144,7 +155,8 @@ end = struct
                                                                        , typeDefs
                                                                          |> Vector.fromList
                                                                          |> Bindings.Type.fromDefs ))
-                        val fnScope = Scope.FnScope (Scope.Id.fresh (), var, Visited (domain, NONE))
+                        val def = {pos = pos, id = DefId.fresh (), var, typ = domain}
+                        val fnScope = Scope.FnScope (Scope.Id.fresh (), var, Visited (def, NONE))
                         val env = Env.pushScope env fnScope
 
                         val codomain = elaborate env codomain
@@ -202,12 +214,12 @@ end = struct
                       | _ => raise Fail "Impure singleton type expression")
                  | CType.Prim (pos, p) => FType.Prim p
 
-            and elaborateDecl env (name, t) =
+            and elaborateDecl env (_, name, _) =
                 ( name
                 , case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
-                  of Unvisited args => unvisitedBindingType (CType.pos t) env name args
+                  of Unvisited args => #typ (unvisitedBindingType (CType.pos t) env name args)
                    | Visiting _ => raise Fail ("Type cycle at " ^ Pos.toString (CType.pos t))
-                   | Typed (t, _, _) | Visited (t, _) => t )
+                   | Typed ({typ = (typ, _), ...}, _) | Visited ({typ, ...}, _) => typ )
 
             val t = elaborate env t
             val defs = Bindings.Type.defs absBindings
@@ -233,18 +245,24 @@ end = struct
 
     and declsScope decls =
         let val builder = Bindings.Expr.Builder.new ()
-            do Vector.app (fn (name, t) =>
-                                Bindings.Expr.Builder.insert builder name (Unvisited (SOME t, NONE)))
+            do Vector.app (fn (pos, var, t) =>
+                               let val def = {pos, id = DefId.fresh (), var, typ = SOME t}
+                               in Bindings.Expr.Builder.insert builder var (Unvisited (def, NONE))
+                               end)
                           decls
         in Scope.InterfaceScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
         end
 
     and stmtsScope stmts =
         let val builder = Bindings.Expr.Builder.new ()
-            do Vector.app (fn CTerm.Val (_, CTerm.Def (_, name), expr) =>
-                               Bindings.Expr.Builder.insert builder name (Unvisited (NONE, SOME expr))
-                            | CTerm.Val (_, CTerm.AnnP (_, {pat = CTerm.Def (_, name), typ}), expr) =>
-                               Bindings.Expr.Builder.insert builder name (Unvisited (SOME typ, SOME expr))
+            do Vector.app (fn CTerm.Val (_, CTerm.Def (pos, name), expr) =>
+                               let val def = {pos, id = DefId.fresh (), var = name, typ = NONE}
+                               in Bindings.Expr.Builder.insert builder name (Unvisited (def, SOME expr))
+                               end
+                            | CTerm.Val (_, CTerm.AnnP (_, {pat = CTerm.Def (pos, name), typ}), expr) =>
+                               let val def = {pos, id = DefId.fresh (), var = name, typ = SOME typ}
+                               in Bindings.Expr.Builder.insert builder name (Unvisited (def, SOME expr))
+                               end
                             | CTerm.Expr _ => ())
                           stmts
         in Scope.BlockScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
@@ -338,13 +356,12 @@ end = struct
             in (Pure, FType.Type t, FTerm.Type (pos, t))
             end
          | CTerm.Use (pos, name) =>
-            (* FIXME: Get the whole `def` from env so that `pos` and `id` are correct: *)
-            let val typ = case lookupValType expr name env
-                          of SOME typ => typ
+            let val def = case lookupValType expr name env
+                          of SOME def => def
                            | NONE => ( Env.error env (UnboundVal (pos, name))
-                                     ; FType.SVar (FType.UVar (Env.freshUv env Predicative)) )
-                val def = {pos, id = DefId.fresh (), var = name, typ}
-            in (Pure, typ, FTerm.Use (pos, def))
+                                     ; { pos, id = DefId.fresh (), var = name
+                                       , typ = FType.SVar (FType.UVar (Env.freshUv env Predicative)) } )
+            in (Pure, #typ def, FTerm.Use (pos, def))
             end
          | CTerm.Const (pos, c) =>
             (Pure, FType.Prim (Const.typeOf c), FTerm.Const (pos, c))
@@ -464,14 +481,14 @@ end = struct
                 val forallScopeId = Scope.Id.fresh ()
                 val env = Env.pushScope env (Scope.ForAllScope (forallScopeId, Bindings.Type.fromDefs typeDefs))
                 val patScopeId = Scope.Id.fresh ()
-                val env = Env.pushScope env (Scope.PatternScope (patScopeId, name, Visited (t, NONE)))
+                val env = Env.pushScope env (Scope.PatternScope (patScopeId, name, Visited (def, NONE)))
             in ((typeDefs, t), FTerm.Def (pos', patScopeId, def), SOME forallScopeId, env)
             end
          | CTerm.Def (pos, name) =>
             let val scopeId = Scope.Id.fresh ()
                 val t = FType.SVar (FType.UVar (TypeVars.Uv.fresh (scopeId, Predicative)))
                 val def = {pos, id = DefId.fresh (), var = name, typ = t}
-                val env = Env.pushScope env (Scope.PatternScope (scopeId, name, Visited (t, NONE)))
+                val env = Env.pushScope env (Scope.PatternScope (scopeId, name, Visited (def, NONE)))
             in ((#[], t), FTerm.Def (pos, scopeId, def), NONE, env)
             end
          | CTerm.ConstP (pos, c) =>
@@ -483,8 +500,9 @@ end = struct
         fn CTerm.AnnP (pos, {pat, typ}) => raise Fail "unimplemented"
          | CTerm.Def (pos, name) =>
             let val scopeId = Scope.Id.fresh ()
-            in ( FTerm.Def (pos, scopeId, {pos, id = DefId.fresh (), var = name, typ = t})
-               , Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), name, Visited (t, NONE))) )
+                val def = {pos, id = DefId.fresh (), var = name, typ = t}
+            in ( FTerm.Def (pos, scopeId, def)
+               , Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), name, Visited (def, NONE))) )
             end
          | CTerm.ConstP (pos, c) =>
             let val cTyp = FType.Prim (Const.typeOf c)
@@ -574,16 +592,16 @@ end = struct
                     fn CTerm.Def (_, name) => name
                      | CTerm.AnnP (_, {pat, ...}) => patName pat
                 val name = patName pat
-                val t = valOf (lookupValType expr name env) (* `name` is in `env` by construction *)
+                val {typ = t, ...} = valOf (lookupValType expr name env) (* `name` is in `env` by construction *)
                 val (eff, expr) =
                     case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
                     of Unvisited _ | Visiting _ => raise Fail "unreachable" (* Not possible after `lookupValType`. *)
-                     | Typed (_, ctx, SOME expr) =>
+                     | Typed ({typ = (_, ctx), ...}, SOME expr) =>
                         (case ctx
                          of SOME namedPaths => elaborateAsExistsInst env (t, namedPaths) expr
                           | NONE => elaborateExprAs env t expr)
                      | Visited (_, SOME effxpr) => effxpr
-                     | Typed (_, _, NONE) | Visited (_, NONE) => raise Fail "unreachable"
+                     | Typed (_, NONE) | Visited (_, NONE) => raise Fail "unreachable"
             in (eff, FTerm.Val (pos, {pos, id = DefId.fresh (), var = name, typ = t}, expr))
             end
          | CTerm.Expr expr =>

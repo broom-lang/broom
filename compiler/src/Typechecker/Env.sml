@@ -27,11 +27,13 @@ structure TypecheckingEnv :> sig
         end
 
         structure Expr: sig
+            type 'typ def = {pos: Pos.t, id: DefId.t, var: Name.t, typ: 'typ}
+
             datatype binding_state
-                = Unvisited of input_type option * input_expr option
-                | Visiting of input_type option * input_expr option
-                | Typed of output_type * abs_ctx option * input_expr option
-                | Visited of output_type * (effect * output_expr) option
+                = Unvisited of input_type option def * input_expr option
+                | Visiting of input_type option def * input_expr option
+                | Typed of (output_type * abs_ctx option) def * input_expr option
+                | Visited of output_type def * (effect * output_expr) option
 
             type bindings
 
@@ -159,11 +161,13 @@ end = struct
         end
 
         structure Expr = struct
+            type 'typ def = {pos: Pos.t, id: DefId.t, var: Name.t, typ: 'typ}
+
             datatype binding_state
-                = Unvisited of input_type option * input_expr option
-                | Visiting of input_type option * input_expr option
-                | Typed of output_type * abs_ctx option * input_expr option
-                | Visited of output_type * (effect * output_expr) option
+                = Unvisited of input_type option def * input_expr option
+                | Visiting of input_type option def * input_expr option
+                | Typed of (output_type * abs_ctx option) def * input_expr option
+                | Visited of output_type def * (effect * output_expr) option
 
             type bindings = binding_state NameHashTable.hash_table
 
