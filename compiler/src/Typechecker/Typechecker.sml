@@ -585,7 +585,7 @@ end = struct
                     fn CTerm.Def (_, name) => name
                      | CTerm.AnnP (_, {pat, ...}) => patName pat
                 val name = patName pat
-                val {typ = t, ...} = valOf (lookupValType expr name env) (* `name` is in `env` by construction *)
+                val def as {typ = t, ...} = valOf (lookupValType expr name env) (* `name` is in `env` by construction *)
                 val (eff, expr) =
                     case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
                     of Unvisited _ | Visiting _ => raise Fail "unreachable" (* Not possible after `lookupValType`. *)
@@ -595,7 +595,7 @@ end = struct
                           | NONE => elaborateExprAs env t expr)
                      | Visited (_, SOME effxpr) => effxpr
                      | Typed (_, NONE) | Visited (_, NONE) => raise Fail "unreachable"
-            in (eff, FTerm.Val (pos, {pos, id = DefId.fresh (), var = name, typ = t}, expr))
+            in (eff, FTerm.Val (pos, def, expr))
             end
          | CTerm.Expr expr =>
             let val (eff, expr) = elaborateExprAs env (FType.Prim FType.Prim.Unit) expr

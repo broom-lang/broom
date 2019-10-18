@@ -41,6 +41,7 @@ signature FAST_TERM = sig
                      -> {pos: Pos.t, id: DefId.t, var: Name.t, typ: 'u}
     val setDefTyp : {pos: Pos.t, id: DefId.t, var: Name.t, typ: 't} -> 'u
                   -> {pos: Pos.t, id: DefId.t, var: Name.t, typ: 'u}
+    val defToDoc : def -> PPrint.t
     val exprPos: expr -> Pos.t
     val exprToDoc: expr -> PPrint.t
     val exprToString: expr -> string

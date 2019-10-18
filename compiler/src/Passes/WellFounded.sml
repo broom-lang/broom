@@ -23,25 +23,6 @@ end = struct
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
 
-    structure ScopedId :> sig
-        type t = ScopeId.t * Name.t
-        type ord_key = t
-
-        val compare : t * t -> order
-        val toDoc : t -> PPrint.t
-    end = struct
-        type t = ScopeId.t * Name.t
-        type ord_key = t
-
-        fun compare ((scopeId, name), (scopeId', name')) =
-            case ScopeId.compare (scopeId, scopeId')
-            of EQUAL => Name.compare (name, name')
-             | ord => ord
-
-        fun toDoc (scopeId, name) =
-            Name.toDoc name <> text "__" <> text (ScopeId.toString scopeId)
-    end
-
     datatype error = ReadUninitialized of Pos.t * Name.t option * Name.t
 
     fun errorToDoc (ReadUninitialized (pos, via, name)) =
@@ -51,15 +32,31 @@ end = struct
                   | NONE => PPrint.empty)
             <> text "is initialized in" <+> text (Pos.toString pos)
 
+    structure Def :> sig
+        type t = FTerm.def
+        type ord_key = t
+
+        val toDoc : t -> PPrint.t
+        val compare : t * t -> order
+    end = struct
+        type t = FTerm.def
+        type ord_key = t
+
+        val toDoc = FTerm.defToDoc
+
+        fun compare ({id, ...}: t, {id = id', ...}: t) =
+            DefId.compare (id, id')
+    end
+
     structure Support = struct
-        structure Super = BinarySetFn(ScopedId)
+        structure Super = BinarySetFn(Def)
         open Super
 
         fun toDoc names =
             names
             |> toList
             |> Vector.fromList
-            |> Vector.map ScopedId.toDoc
+            |> Vector.map Def.toDoc
             |> PPrint.punctuate (text "," <> space)
             |> PPrint.braces
     end
@@ -184,72 +181,39 @@ end = struct
 
         structure Builder : sig
             type builder
-            type bindings = typ NameHashTable.hash_table
 
             val new : ScopeId.t -> builder
-            val pushScope : builder -> {parent : ScopeId.t, scope : ScopeId.t}
-                          -> unit
-            val insert : builder -> ScopedId.t -> typ -> unit
+            val insert : builder -> DefId.t -> typ -> unit
             val build : builder -> t
         end
 
         (* Join the `typ` at the `ScopedId.t` with the `typ`
            and return whether the `typ` was changed by the join: *)
-        val refine : t -> ScopedId.t -> typ -> bool
-        val lookup : t -> ScopedId.t -> typ
+        val refine : t -> DefId.t -> typ -> bool
+        val lookup : t -> DefId.t -> typ
     end = struct
-        type bindings = typ NameHashTable.hash_table
-
-        type t = bindings list ScopeId.HashTable.hash_table
+        type t = typ DefId.HashTable.hash_table
 
         structure Builder = struct
             type builder = t
-            type bindings = bindings
 
-            fun new topScopeId =
-                let val builder = ScopeId.HashTable.mkTable (0, Subscript)
-                    val chain = [NameHashTable.mkTable (0, Subscript)]
-                    do ScopeId.HashTable.insert builder (topScopeId, chain)
-                in builder
-                end
+            fun new topScopeId = DefId.HashTable.mkTable (0, Subscript)
 
-            fun pushScope builder {parent, scope = scopeId} =
-                let val chain = NameHashTable.mkTable (0, Subscript) 
-                              :: ScopeId.HashTable.lookup builder parent
-                in ScopeId.HashTable.insert builder (scopeId, chain)
-                end
-
-            fun insert builder (scopeId, name) typ =
-                ScopeId.HashTable.lookup builder scopeId
-                |> List.hd
-                |> (fn bs => NameHashTable.insert bs (name, typ))
+            fun insert builder id typ = DefId.HashTable.insert builder (id, typ)
 
             val build = Fn.identity
         end
 
-        fun lookup env (scopeId, name) =
-            let val rec get =
-                    fn scope :: scopes =>
-                        (case NameHashTable.find scope name
-                         of SOME typ => typ
-                          | NONE => get scopes)
-                     | [] => raise Fail "unreachable"
-            in get (ScopeId.HashTable.lookup env scopeId)
+        val lookup = DefId.HashTable.lookup
+
+        fun update env id f =
+            let val typ = DefId.HashTable.lookup env id
+            in DefId.HashTable.insert env (id, f typ)
             end
 
-        fun update env (scopeId, name) f =
-            let val rec modify =
-                    fn scope :: scopes =>
-                        (case NameHashTable.find scope name
-                         of SOME typ => NameHashTable.insert scope (name, f typ)
-                          | NONE => modify scopes)
-                     | [] => raise Fail "unreachable"
-            in modify (ScopeId.HashTable.lookup env scopeId)
-            end
-
-        fun refine env scopedName typ' =
+        fun refine env id typ' =
             let val changed = ref false
-            in update env scopedName (fn typ =>
+            in update env id (fn typ =>
                    let val (joined, change) = join (typ, typ')
                        do changed := change
                    in joined
@@ -265,8 +229,7 @@ end = struct
 
             fun insertExpr scopeId =
                 fn Let (_, scopeId', stmts, body) =>
-                    ( Env.Builder.pushScope builder {parent = scopeId, scope = scopeId'}
-                    ; Vector.app (insertStmt scopeId') stmts
+                    ( Vector.app (insertStmt scopeId') stmts
                     ; insertExpr scopeId' body )
                  | Match (_, _, matchee, clauses) =>
                     ( insertExpr scopeId matchee
@@ -275,9 +238,8 @@ end = struct
                                       in insertExpr scopeId body
                                       end)
                                  clauses )
-                 | Fn (_, scopeId', {var, typ, ...}, _, body) =>
-                    ( Env.Builder.pushScope builder {parent = scopeId, scope = scopeId'}
-                    ; Env.Builder.insert builder (scopeId', var) (elaborateType typ)
+                 | Fn (_, scopeId', {id, typ, ...}, _, body) =>
+                    ( Env.Builder.insert builder id (elaborateType typ)
                     ; insertExpr scopeId' body )
                  | TFn (_, _, _, body) => insertExpr scopeId body
                  | App (_, _, {callee, arg}) =>
@@ -296,16 +258,15 @@ end = struct
             
             and insertStmt scopeId =
                 fn Axiom _ => ()
-                 | Val (_, {var, typ, ...}, expr) =>
-                    ( Env.Builder.insert builder (scopeId, var) (elaborateType typ)
+                 | Val (_, {id, typ, ...}, expr) =>
+                    ( Env.Builder.insert builder id (elaborateType typ)
                     ; insertExpr scopeId expr )
                  | Expr expr => insertExpr scopeId expr
 
             and insertPat scopeId =
                 fn AnnP (_, {pat, typ = _}) => insertPat scopeId pat
-                 | Def (_, scopeId', {var, typ, ...}) =>
-                    ( Env.Builder.pushScope builder {parent = scopeId, scope = scopeId'}
-                    ; Env.Builder.insert builder (scopeId', var) (elaborateType typ)
+                 | Def (_, scopeId', {id, typ, ...}) =>
+                    ( Env.Builder.insert builder id (elaborateType typ)
                     ; scopeId' )
                  | ConstP _ => scopeId
         in Vector.app (insertStmt topScopeId) stmts
@@ -324,25 +285,25 @@ end = struct
         type t
 
         val empty : t
-        val pushBlock : t -> Name.t list -> t
-        val initialize : t -> Name.t -> unit
-        val pushMatch : t -> Name.t -> t
-        val pushFn : t -> context -> Name.t -> t
+        val pushBlock : t -> DefId.t list -> t
+        val initialize : t -> DefId.t -> unit
+        val pushMatch : t -> DefId.t -> t
+        val pushFn : t -> context -> DefId.t -> t
 
-        val access : t -> Name.t -> access
+        val access : t -> DefId.t -> access
     end = struct
         datatype frame
-            = BlockFrame of state NameHashTable.hash_table
-            | MatchFrame of Name.t
-            | FnFrame of context * Name.t
+            = BlockFrame of state DefId.HashTable.hash_table
+            | MatchFrame of DefId.t
+            | FnFrame of context * DefId.t
 
         type t = frame list
 
         val empty = []
 
         fun pushBlock ini names =
-            let val bindings = NameHashTable.mkTable (0, Subscript)
-                do List.app (fn name => NameHashTable.insert bindings (name, Uninitialized))
+            let val bindings = DefId.HashTable.mkTable (0, Subscript)
+                do List.app (fn name => DefId.HashTable.insert bindings (name, Uninitialized))
                             names
             in BlockFrame bindings :: ini
             end
@@ -350,8 +311,8 @@ end = struct
         fun initialize ini name =
             let val rec init =
                     fn BlockFrame bs :: frames =>
-                        if NameHashTable.inDomain bs name
-                        then NameHashTable.insert bs (name, Initialized)
+                        if DefId.HashTable.inDomain bs name
+                        then DefId.HashTable.insert bs (name, Initialized)
                         else init frames
                      | FnFrame _ :: frames => init frames
                      | [] => raise Fail "unreachable"
@@ -365,7 +326,7 @@ end = struct
         fun access ini name =
             let fun inited stateToAccess =
                     fn BlockFrame bs :: frames =>
-                        (case NameHashTable.find bs name
+                        (case DefId.HashTable.find bs name
                          of SOME state => stateToAccess state
                           | NONE => inited stateToAccess frames)
                      | MatchFrame name' :: frames =>
@@ -380,7 +341,7 @@ end = struct
                                                       | Naming => Delayed
                              in inited stateToAccess frames
                              end
-                     | [] => raise Fail ("unbound " ^ Name.toString name)
+                     | [] => raise Fail "unreachable"
             in inited Instant ini
             end
     end
@@ -392,8 +353,8 @@ end = struct
             fun error err = errors := err :: !errors
             
             fun checkExpr scopeId ini ctx =
-                fn Fn (_, scopeId, {var, ...}, _, body) =>
-                    let val ini = IniEnv.pushFn ini ctx var
+                fn Fn (_, scopeId, {id, ...}, _, body) =>
+                    let val ini = IniEnv.pushFn ini ctx id
                         val (codomain, support) = checkExpr scopeId ini ctx body
                     in case ctx
                        of Escaping => (Closure (Support.empty, codomain), support)
@@ -462,43 +423,43 @@ end = struct
                           | _ => Unknown
                        , support )
                     end
-                 | Use (pos, {var, ...}) =>
-                    let fun access ini via (scopedName as (_, name): ScopedId.t) =
-                            case IniEnv.access ini name (* FIXME *)
+                 | Use (pos, def as {id, var, ...}) =>
+                    let fun access ini via (def as {id, var, ...}) =
+                            case IniEnv.access ini (#id def)
                             of Delayed Initialized | Instant Initialized => (* ok unsupported: *)
                                 Support.empty
                              | Delayed Uninitialized => (* ok with support: *)
-                                Support.singleton scopedName
+                                Support.singleton def
                              | Instant Uninitialized => (* error: *)
-                                ( error (ReadUninitialized (pos, via, #2 scopedName))
+                                ( error (ReadUninitialized (pos, via, #var def))
                                 ; Support.empty ) (* support won't help, so claim not to need any *)
 
-                        val immediateSupport = access ini NONE (scopeId, var)
+                        val immediateSupport = access ini NONE def
                         val (typ, transitiveSupport) =
                             case ctx
                             of Escaping => (* access transitively: *)
-                                let val (typ, typSupport) = accessTyp (Env.lookup env (scopeId, var))
+                                let val (typ, typSupport) = accessTyp (Env.lookup env id)
                                     val support =
-                                        Support.foldl (fn (scopedName, support) =>
+                                        Support.foldl (fn (def, support) =>
                                                            Support.union ( support
-                                                                         , access ini (SOME var) scopedName ))
+                                                                         , access ini (SOME var) def ))
                                                       Support.empty typSupport
                                 in (typ, support)
                                 end
                              | Naming => (* delayed propagation of support though type: *)
-                                (Env.lookup env (scopeId, var), Support.empty)
+                                (Env.lookup env id, Support.empty)
                     in (typ, Support.union (immediateSupport, transitiveSupport))
                     end
                  | Cast (_, _, expr, _) => checkExpr scopeId ini ctx expr
                  | Type _ | Const _ => (Scalar, Support.empty)
 
             and pushBlock ini stmts =
-                let val names =
-                        Vector.foldl (fn (Axiom _, names) => names
-                                       | (Val (_, {var, ...}, _), names) => var :: names
-                                       | (Expr _, names) => names)
+                let val ids =
+                        Vector.foldl (fn (Axiom _, ids) => ids
+                                       | (Val (_, {id, ...}, _), ids) => id :: ids
+                                       | (Expr _, ids) => ids)
                                      [] stmts
-                in IniEnv.pushBlock ini names
+                in IniEnv.pushBlock ini ids
                 end
 
             and checkStmts scopeId ini stmts =
@@ -508,11 +469,11 @@ end = struct
 
             and checkStmt scopeId ini =
                 fn Axiom _ => Support.empty
-                 | Val (_, {var, typ = _, ...}, expr) =>
+                 | Val (_, {id, typ = _, ...}, expr) =>
                     let val (typ, support) = checkExpr scopeId ini Naming expr
-                        val refineChanged = Env.refine env (scopeId, var) typ
+                        val refineChanged = Env.refine env id typ
                         do changed := (!changed orelse refineChanged)
-                        do IniEnv.initialize ini var
+                        do IniEnv.initialize ini id
                     in support
                     end
                  | Expr expr => #2 (checkExpr scopeId ini Escaping expr)
@@ -523,7 +484,7 @@ end = struct
                 end
 
             and checkPattern scopeId ini ctx =
-                fn Def (_, scopeId, {var, ...}) => (scopeId, IniEnv.pushMatch ini var)
+                fn Def (_, scopeId, {id, ...}) => (scopeId, IniEnv.pushMatch ini id)
                  | ConstP _ => (scopeId, ini)
 
             fun iterate stmts =
