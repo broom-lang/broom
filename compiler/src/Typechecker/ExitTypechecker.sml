@@ -49,8 +49,8 @@ end = struct
     fun axiomToF (name, l, r) = (name, concrToF l, concrToF r)
 
     val rec exprToF: FlexFAst.Term.expr -> FFTerm.expr =
-        fn Fn (pos, scopeId, {var, typ}, expl, body) =>
-            FFTerm.Fn (pos, scopeId, {var, typ = concrToF typ}, expl, exprToF body)
+        fn Fn (pos, scopeId, {pos = defPos, id, var, typ}, expl, body) =>
+            FFTerm.Fn (pos, scopeId, {pos = defPos, id, var, typ = concrToF typ}, expl, exprToF body)
          | TFn (pos, scopeId, param, body) => FFTerm.TFn (pos, scopeId, param, exprToF body)
          | Extend (pos, typ, fields, record) =>
             FFTerm.Extend ( pos, concrToF typ
@@ -73,18 +73,21 @@ end = struct
          | Cast (pos, typ, expr, coercion) =>
             FFTerm.Cast (pos, concrToF typ, exprToF expr, coercionToF coercion)
          | Type (pos, typ) => FFTerm.Type (pos, absToF typ)
-         | Use (pos, {var, typ}) => FFTerm.Use (pos, {var, typ = concrToF typ})
+         | Use (pos, {pos = defPos, id, var, typ}) =>
+            FFTerm.Use (pos, {pos = defPos, id, var, typ = concrToF typ})
          | Const (pos, c) => FFTerm.Const (pos, c)
 
     and clauseToF = fn {pattern, body} => {pattern = patternToF pattern, body = exprToF body}
 
     and patternToF =
         fn AnnP (pos, {pat, typ}) => FFTerm.AnnP (pos, {pat = patternToF pat, typ = concrToF typ})
-         | Def (pos, scopeId, {var, typ}) => FFTerm.Def (pos, scopeId, {var, typ = concrToF typ})
+         | Def (pos, scopeId, {pos = defPos, id, var, typ}) =>
+            FFTerm.Def (pos, scopeId, {pos = defPos, id, var, typ = concrToF typ})
          | ConstP (pos, c) => FFTerm.ConstP (pos, c)
 
     and stmtToF =
-        fn Val (pos, {var, typ}, expr) => FFTerm.Val (pos, {var, typ = concrToF typ}, exprToF expr)
+        fn Val (pos, {pos = defPos, id, var, typ}, expr) =>
+            FFTerm.Val (pos, {pos = defPos, id, var, typ = concrToF typ}, exprToF expr)
          | Axiom (pos, name, l, r) => FFTerm.Axiom (pos, name, concrToF l, concrToF r)
          | Expr expr => FFTerm.Expr (exprToF expr)
 

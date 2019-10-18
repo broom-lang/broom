@@ -75,7 +75,7 @@ end = struct
                    ((_, {domain = _, codomain}), (eff', {domain = domain', codomain = _})) callee =
         let val pos = FTerm.exprPos callee
             val scopeId = ScopeId.fresh ()
-            val param = {var = Name.fresh (), typ = domain'}
+            val param = {pos, id = DefId.fresh (), var = Name.fresh (), typ = domain'}
             val arg = applyCoercion coerceDomain (FTerm.Use (pos, param))
             val body = applyCoercion coerceCodomain (FTerm.App (pos, codomain, {callee, arg}))
         in FTerm.Fn (pos, scopeId, param, Explicit eff', body)
@@ -123,7 +123,7 @@ end = struct
                    | _ => raise TypeError (NonUnifiable (currPos, concr sub, concr super, NONE))))
          | (sub, Arrow (Implicit, {domain, codomain})) =>
             let val scopeId = ScopeId.fresh ()
-                val def = {var = Name.fresh (), typ = domain}
+                val def = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
                 val coerceCodomain = coercion intent env currPos (sub, codomain)
             in SOME (fn expr => FTerm.Fn (currPos, scopeId, def, Implicit, applyCoercion coerceCodomain expr))
             end
@@ -179,7 +179,7 @@ end = struct
                 ( Env.error env (NonSubType (currPos, concr sub, concr super, SOME cause))
                 ; SOME (fn expr =>
                             let val pos = FTerm.exprPos expr
-                                val def = {var = Name.fresh (), typ = super}
+                                val def = {pos, id = DefId.fresh (), var = Name.fresh (), typ = super}
                             in FTerm.Let ( FTerm.exprPos expr
                                          , ScopeId.fresh ()
                                          , #[FTerm.Val (pos, def, expr)]
@@ -192,7 +192,7 @@ end = struct
                 ( Env.error env (NonUnifiable (currPos, concr l, concr r, SOME cause))
                 ; SOME (fn expr =>
                             let val pos = FTerm.exprPos expr
-                                val def = {var = Name.fresh (), typ = r}
+                                val def = {pos, id = DefId.fresh (), var = Name.fresh (), typ = r}
                             in FTerm.Let ( FTerm.exprPos expr
                                          , ScopeId.fresh ()
                                          , #[FTerm.Val (pos, def, expr)]
@@ -227,8 +227,7 @@ end = struct
         of [] => NONE
          | fieldCoercions =>
             SOME (fn expr =>
-                      let val tmpName = Name.fresh ()
-                          val tmpDef = {var = tmpName, typ = t}
+                      let val tmpDef = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = t}
                           val tmpUse = FTerm.Use (currPos, tmpDef)
                           fun emitField (label, (origFieldt, _), coerceField) =
                               (label, coerceField (FTerm.Field (currPos, origFieldt, tmpUse, label)))

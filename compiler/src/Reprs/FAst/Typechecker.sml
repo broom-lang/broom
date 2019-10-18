@@ -58,7 +58,7 @@ end = struct
     fun pushStmts env stmts =
         let fun pushStmt (stmt, env) =
                 case stmt
-                of Val (_, {var, typ}, _) => Env.insert (env, var, typ)
+                of Val (_, {var, typ, ...}, _) => Env.insert (env, var, typ)
                  | Axiom (_, name, l, r) => Env.insertCo (env, name, l, r)
                  | Expr _ => env
         in Vector.foldl pushStmt env stmts
@@ -181,7 +181,7 @@ end = struct
          | Type (_, t) => FFType.Type t
          | Const (_, c) => Prim (Const.typeOf c)
 
-    and checkFn env (pos, _, {var = param, typ = domain}, expl, body) =
+    and checkFn env (pos, _, {pos = _, id = _, var = param, typ = domain}, expl, body) =
         let val env = Env.insert (env, param, domain)
         in Arrow (expl, {domain, codomain = check env body})
         end
@@ -281,7 +281,7 @@ end = struct
 
     and checkPattern env matcheeTyp =
         fn AnnP (_, {pat, typ}) => raise Fail "unimplemented"
-         | Def (_, _, {var, typ}) => Env.insert (env, var, typ)
+         | Def (_, _, {pos = _, id, var, typ}) => Env.insert (env, var, typ)
          | ConstP (pos, c) => (checkEq pos env (Prim (Const.typeOf c), matcheeTyp); env)
 
     and checkCast env (pos, typ, expr, co) =
@@ -292,7 +292,7 @@ end = struct
          ; typ
         end
 
-    and checkUse env (pos, {var, typ}) =
+    and checkUse env (pos, {pos = _, id = _, var, typ}) =
         let val t = case Env.find (env, var)
                     of SOME t => t
                      | NONE => raise Fail ("Out of scope: " ^ Name.toString var ^ " at " ^ Pos.toString pos)

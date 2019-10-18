@@ -275,7 +275,7 @@ end = struct
                                       in insertExpr scopeId body
                                       end)
                                  clauses )
-                 | Fn (_, scopeId', {var, typ}, _, body) =>
+                 | Fn (_, scopeId', {var, typ, ...}, _, body) =>
                     ( Env.Builder.pushScope builder {parent = scopeId, scope = scopeId'}
                     ; Env.Builder.insert builder (scopeId', var) (elaborateType typ)
                     ; insertExpr scopeId' body )
@@ -296,14 +296,14 @@ end = struct
             
             and insertStmt scopeId =
                 fn Axiom _ => ()
-                 | Val (_, {var, typ}, expr) =>
+                 | Val (_, {var, typ, ...}, expr) =>
                     ( Env.Builder.insert builder (scopeId, var) (elaborateType typ)
                     ; insertExpr scopeId expr )
                  | Expr expr => insertExpr scopeId expr
 
             and insertPat scopeId =
                 fn AnnP (_, {pat, typ = _}) => insertPat scopeId pat
-                 | Def (_, scopeId', {var, typ}) =>
+                 | Def (_, scopeId', {var, typ, ...}) =>
                     ( Env.Builder.pushScope builder {parent = scopeId, scope = scopeId'}
                     ; Env.Builder.insert builder (scopeId', var) (elaborateType typ)
                     ; scopeId' )
@@ -508,7 +508,7 @@ end = struct
 
             and checkStmt scopeId ini =
                 fn Axiom _ => Support.empty
-                 | Val (_, {var, typ = _}, expr) =>
+                 | Val (_, {var, typ = _, ...}, expr) =>
                     let val (typ, support) = checkExpr scopeId ini Naming expr
                         val refineChanged = Env.refine env (scopeId, var) typ
                         do changed := (!changed orelse refineChanged)

@@ -81,7 +81,7 @@ end = struct
                 let val program as {stmts, ...} = ExitTypechecker.programToF program
                 in  case WellFounded.checkProgram program
                     of Right () =>
-                        ( Vector.app (fn stmt as (Val (_, {var, typ}, _)) =>
+                        ( Vector.app (fn stmt as (Val (_, {var, typ, ...}, _)) =>
                                          let val v = FAstEval.interpret venv stmt
                                          in print ( Name.toString var ^ " = "
                                                   ^ FAstEval.Value.toString v ^ " : "

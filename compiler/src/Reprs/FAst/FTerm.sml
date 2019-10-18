@@ -3,7 +3,7 @@ signature FAST_TERM = sig
 
     type arrow = Type.arrow
 
-    type def = {var: Name.t, typ: Type.concr}
+    type def = {pos: Pos.t, id: DefId.t, var: Name.t, typ: Type.concr}
 
     datatype expr
         = Fn of Pos.t * ScopeId.t * def * arrow * expr
@@ -70,7 +70,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     type arrow = Type.arrow
 
-    type def = {var: Name.t, typ: Type.concr}
+    type def = {pos: Pos.t, id: DefId.t, var: Name.t, typ: Type.concr}
 
     datatype expr
         = Fn of Pos.t * ScopeId.t * def * arrow * expr
@@ -119,7 +119,8 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
                    , scope: ScopeId.t
                    , stmts: stmt vector }
 
-   fun defToDoc {var, typ} = Name.toDoc var <> text ":" <+> Type.Concr.toDoc typ
+   fun defToDoc {pos = _, id = _, var, typ} =
+       Name.toDoc var <> text ":" <+> Type.Concr.toDoc typ
 
    val rec stmtToDoc =
        fn Val (_, def, valExpr) =>

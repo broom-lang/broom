@@ -26,6 +26,7 @@ local
            src/Util/CLIParser.sml
 
            src/Reprs/Util/Name.sml
+           src/Reprs/Util/DefId.sml
            src/Reprs/Util/PrimType.sml
            src/Reprs/Util/Const.sml
            src/Reprs/Cst.sml

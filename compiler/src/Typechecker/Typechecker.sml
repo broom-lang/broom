@@ -262,7 +262,7 @@ end = struct
                     case domain
                     of SOME (typeDefs, domain) => (typeDefs, domain)
                      | NONE => (#[], FType.SVar (FType.UVar (Env.freshUv env Predicative)))
-                val def = {var = Name.fresh (), typ = domain}
+                val def = {pos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
                 val arr =
                     case (expl, eff)
                     of (Implicit, Pure) => Implicit
@@ -306,7 +306,7 @@ end = struct
                 val defs = Vector.foldr (fn (FTerm.Val (_, def, _), defs) => def :: defs
                                           | (FTerm.Axiom _, defs) | (FTerm.Expr _, defs) => defs)
                                         [] stmts
-                val row = List.foldl (fn ({var, typ}, ext) => FType.RowExt {field = (var, typ), ext})
+                val row = List.foldl (fn ({var, typ, ...}, ext) => FType.RowExt {field = (var, typ), ext})
                                      FType.EmptyRow defs
                 val typ = FType.Record row
                 val body = FTerm.Extend ( pos, typ
@@ -338,11 +338,12 @@ end = struct
             in (Pure, FType.Type t, FTerm.Type (pos, t))
             end
          | CTerm.Use (pos, name) =>
+            (* FIXME: Get the whole `def` from env so that `pos` and `id` are correct: *)
             let val typ = case lookupValType expr name env
                           of SOME typ => typ
                            | NONE => ( Env.error env (UnboundVal (pos, name))
                                      ; FType.SVar (FType.UVar (Env.freshUv env Predicative)) )
-                val def = {var = name, typ}
+                val def = {pos, id = DefId.fresh (), var = name, typ}
             in (Pure, typ, FTerm.Use (pos, def))
             end
          | CTerm.Const (pos, c) =>
@@ -383,7 +384,7 @@ end = struct
                            elaborateClausesAs env domain
                                (fn (env, body) => elaborateExprAs env codomain body)
                                clauses
-                       val def = {var = Name.fresh (), typ = domain}
+                       val def = {pos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
                        val arr =
                            case (expl', eff)
                            of (Implicit, Pure) => Implicit
@@ -458,18 +459,20 @@ end = struct
     and elaboratePattern env =
         fn CTerm.AnnP (pos, {pat = pat as CTerm.Def (pos', name), typ}) =>
             let val (typeDefs, t) = elaborateType env typ
+                val def = {pos, id = DefId.fresh (), var = name, typ = t}
                 val typeDefs = Vector.fromList typeDefs
                 val forallScopeId = Scope.Id.fresh ()
                 val env = Env.pushScope env (Scope.ForAllScope (forallScopeId, Bindings.Type.fromDefs typeDefs))
                 val patScopeId = Scope.Id.fresh ()
                 val env = Env.pushScope env (Scope.PatternScope (patScopeId, name, Visited (t, NONE)))
-            in ((typeDefs, t), FTerm.Def (pos', patScopeId, {var = name, typ = t}), SOME forallScopeId, env)
+            in ((typeDefs, t), FTerm.Def (pos', patScopeId, def), SOME forallScopeId, env)
             end
          | CTerm.Def (pos, name) =>
             let val scopeId = Scope.Id.fresh ()
                 val t = FType.SVar (FType.UVar (TypeVars.Uv.fresh (scopeId, Predicative)))
+                val def = {pos, id = DefId.fresh (), var = name, typ = t}
                 val env = Env.pushScope env (Scope.PatternScope (scopeId, name, Visited (t, NONE)))
-            in ((#[], t), FTerm.Def (pos, scopeId, {var = name, typ = t}), NONE, env)
+            in ((#[], t), FTerm.Def (pos, scopeId, def), NONE, env)
             end
          | CTerm.ConstP (pos, c) =>
             let val cTyp = FType.Prim (Const.typeOf c)
@@ -480,7 +483,7 @@ end = struct
         fn CTerm.AnnP (pos, {pat, typ}) => raise Fail "unimplemented"
          | CTerm.Def (pos, name) =>
             let val scopeId = Scope.Id.fresh ()
-            in ( FTerm.Def (pos, scopeId, {var = name, typ = t})
+            in ( FTerm.Def (pos, scopeId, {pos, id = DefId.fresh (), var = name, typ = t})
                , Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), name, Visited (t, NONE))) )
             end
          | CTerm.ConstP (pos, c) =>
@@ -581,7 +584,7 @@ end = struct
                           | NONE => elaborateExprAs env t expr)
                      | Visited (_, SOME effxpr) => effxpr
                      | Typed (_, _, NONE) | Visited (_, NONE) => raise Fail "unreachable"
-            in (eff, FTerm.Val (pos, {var = name, typ = t}, expr))
+            in (eff, FTerm.Val (pos, {pos, id = DefId.fresh (), var = name, typ = t}, expr))
             end
          | CTerm.Expr expr =>
             let val (eff, expr) = elaborateExprAs env (FType.Prim FType.Prim.Unit) expr
