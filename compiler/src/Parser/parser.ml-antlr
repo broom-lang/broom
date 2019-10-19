@@ -4,6 +4,7 @@
     structure Term = Cst.Term
     structure Type = Cst.Type
     datatype explicitness = datatype Cst.explicitness
+    datatype effect = datatype Cst.effect
 );
 
 %tokens
@@ -55,18 +56,18 @@ stmts : stmt* => (Vector.fromList stmt);
 
 stmt
     : "val" pattern "=" expr => (Term.Val (FULL_SPAN, pattern, expr))
-    | "fun" var pats=(apat => ((apat_SPAN, apat)))+ "=" expr => (
+    | "fun" ID pats=(apat => ((apat_SPAN, apat)))+ "=" expr => (
           let fun step ((pos, pattern), body) =
                   Term.Fn (pos, Explicit (), #[{pattern, body}])
-          in Term.Val (FULL_SPAN, Term.Def (var_SPAN, var), List.foldr step expr pats)
+          in Term.Val (FULL_SPAN, Term.Def (ID_SPAN, ID), List.foldr step expr pats)
           end
       )
-    | "type" var pats=(kpat => ((kpat_SPAN, kpat)))* "=" typ => (
-          let fun step ((pos, {var, typ}), body) =
+    | "type" ID pats=(kpat => ((kpat_SPAN, kpat)))* "=" typ => (
+          let fun step ((pos, {var = ID, typ}), body) =
                   Term.Fn ( pos, Explicit ()
-                          , #[{pattern = Term.AnnP (pos, { pat = Term.Def (pos, var), typ})
+                          , #[{pattern = Term.AnnP (pos, { pat = Term.Def (pos, ID), typ})
                                                          , body }])
-          in Term.Val (FULL_SPAN, Term.Def (var_SPAN, var), List.foldr step (Term.Type (typ_SPAN, typ)) pats)
+          in Term.Val (FULL_SPAN, Term.Def (ID_SPAN, ID), List.foldr step (Term.Type (typ_SPAN, typ)) pats)
           end
       )
     | ";" expr => (Term.Expr expr)
@@ -75,11 +76,52 @@ stmt
 (* # Expressions *)
 
 expr
+    : ascription
+    | "type" => (Term.Type (TYPE_SPAN, Type.TypeT TYPE_SPAN))
+    ;
+
+ascription : arrow typ=(":" typ)? => (
+        case typ
+        of SOME typ => Term.Ann (FULL_SPAN, arrow, typ)
+         | NONE => arrow
+    );
+
+arrow
+    : "pi" piParam arr body=arrow => (Term.Type (FULL_SPAN, Type.Pi (FULL_SPAN, piParam, arr, Type.Path body)))
+    | binapp codomain=(arr arrow)? => (
+          case codomain
+          of SOME (arr, cd) =>
+              let val def = {var = Name.fresh (), typ = SOME (Type.Path binapp)}
+              in Term.Type (FULL_SPAN, Type.Pi (FULL_SPAN, def, arr, Type.Path cd))
+              end
+           | NONE => binapp
+      )
+    ;
+
+arr
+    : "->" => (Explicit Pure)
+    | "~>" => (Explicit Impure)
+    | "=>" => (Implicit)
+    ;
+
+binapp : app ;
+
+app : select selects=(select => (select_SPAN, select))* => (
+        List.foldl (fn ((pos, arg), callee) => Term.App (pos, {callee, arg}))
+                   select selects
+    );
+
+select : nestable fields=("." ID => ((ID_SPAN, ID)))* => (
+        List.foldl (fn ((pos, field), r) => Term.Field (pos, r, field))
+                   nestable fields
+    );
+
+nestable
     : atom
     ;
 
 atom
-    : var   => (Term.Use (var_SPAN, var))
+    : ID   => (Term.Use (ID_SPAN, ID))
     | const => (Term.Const (const_SPAN, const))
     ;
 
@@ -91,22 +133,27 @@ pattern
 
 apat
     : "(" pattern ")"
-    | var => (Term.Def (var_SPAN, var))
+    | ID => (Term.Def (ID_SPAN, ID))
     | const => (Term.ConstP (const_SPAN, const))
     ;
 
+piParam : ID typ=(":" nonArrowTyp)? => ({var = ID, typ});
+
 kpat
-    : var                 => ({var, typ = Type.TypeT FULL_SPAN})
-    | "(" var ":" typ ")" => ({var, typ})
+    : ID                 => ({var = ID, typ = Type.TypeT FULL_SPAN})
+    | "(" ID ":" typ ")" => ({var = ID, typ})
     ;
 
 (* # Types *)
 
 typ : expr => (Type.Path expr);
 
-(* # Atoms (for exprs and patterns) *)
+nonArrowTyp
+    : binapp => (Type.Path binapp)
+    | "type" => (Type.TypeT TYPE_SPAN)
+    ;
 
-var : ID => (ID);
+(* # Constants *)
 
 const
     : INT  => (Const.Int INT)
