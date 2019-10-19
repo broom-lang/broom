@@ -13,7 +13,7 @@ Currently can't run any useful programs, but this is what it will be like:
     - Both 'generative' (SML) and 'applicative' (OCaml) functors
 * Remove ML limitations around recursion
     - Recursive modules
-* First-class modules à la 1ML
+* First-class modules à la 1ML
     - Also subsumes e.g. higher-ranked types
 * (Modular) implicits for ad-hoc polymorphism
 * Row-typed records (and modules, since they are the same)
