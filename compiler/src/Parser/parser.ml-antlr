@@ -2,6 +2,8 @@
 
 %defs (
     structure Term = Cst.Term
+    structure Type = Cst.Type
+    datatype explicitness = datatype Cst.explicitness
 );
 
 %tokens
@@ -41,31 +43,73 @@
     | BOOL of bool
     ;
 
+(* # Program *)
+
 %start program;
 
 program : stmts ;
+
+(* # Statements *)
 
 stmts : stmt* => (Vector.fromList stmt);
 
 stmt
     : "val" pattern "=" expr => (Term.Val (FULL_SPAN, pattern, expr))
-    | "do" expr              => (Term.Expr expr)
+    | "fun" var pats=(apat => ((apat_SPAN, apat)))+ "=" expr => (
+          let fun step ((pos, pattern), body) =
+                  Term.Fn (pos, Explicit (), #[{pattern, body}])
+          in Term.Val (FULL_SPAN, Term.Def (var_SPAN, var), List.foldr step expr pats)
+          end
+      )
+    | "type" var pats=(kpat => ((kpat_SPAN, kpat)))* "=" typ => (
+          let fun step ((pos, {var, typ}), body) =
+                  Term.Fn ( pos, Explicit ()
+                          , #[{pattern = Term.AnnP (pos, { pat = Term.Def (pos, var), typ})
+                                                         , body }])
+          in Term.Val (FULL_SPAN, Term.Def (var_SPAN, var), List.foldr step (Term.Type (typ_SPAN, typ)) pats)
+          end
+      )
+    | ";" expr => (Term.Expr expr)
     ;
+
+(* # Expressions *)
 
 expr
     : atom
     ;
 
-pattern
-    : ID => (Term.Def (FULL_SPAN, ID))
+atom
+    : var   => (Term.Use (var_SPAN, var))
+    | const => (Term.Const (const_SPAN, const))
     ;
 
-atom
-    : ID    => (Term.Use (FULL_SPAN, ID))
-    | const => (Term.Const (FULL_SPAN, const))
+(* # Patterns *)
+
+pattern
+    : apat
     ;
+
+apat
+    : "(" pattern ")"
+    | var => (Term.Def (var_SPAN, var))
+    | const => (Term.ConstP (const_SPAN, const))
+    ;
+
+kpat
+    : var                 => ({var, typ = Type.TypeT FULL_SPAN})
+    | "(" var ":" typ ")" => ({var, typ})
+    ;
+
+(* # Types *)
+
+typ : expr => (Type.Path expr);
+
+(* # Atoms (for exprs and patterns) *)
+
+var : ID => (ID);
 
 const
-    : INT => (Const.Int INT)
+    : INT  => (Const.Int INT)
+    | BOOL => (Const.Bool BOOL)
     ;
 
