@@ -7,8 +7,29 @@
 %tokens
     : VAL ("val")
     | DO ("do")
+
+    | DARROW ("=>")
     | EQ ("=")
+    | ARROW ("->")
+    | WARROW ("~>")
+    | BAR ("|")
+    | AMP ("&")
+    | DDOT ("..")
+    | DOT (".")
+    | COMMA (",")
+    | COLON (":")
+    | SEMI (";")
+
+    | LPAREN ("(")
+    | RPAREN (")")
+    | LBRACKET ("[")
+    | RBRACKET ("]")
+    | LBRACE ("{")
+    | RBRACE ("}")
+
+    | META of Name.t
     | ID of Name.t
+
     | INT of int
     ;
 

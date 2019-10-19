@@ -6,14 +6,37 @@
     fun eof () = Tokens.EOF
 );
 
+%let alpha = [a-zA-Z];
+%let digit = [0-9];
+%let firstConstituent = {alpha} | _;
+%let constituent = {firstConstituent} | {digit};
+
 val => (Tokens.VAL);
 do  => (Tokens.DO);
 
-"=" => (Tokens.EQ);
+"=>" => (Tokens.DARROW);
+"="  => (Tokens.EQ);
+"->" => (Tokens.ARROW);
+"~>" => (Tokens.WARROW);
+"|"  => (Tokens.BAR);
+"&"  => (Tokens.AMP);
+".." => (Tokens.DDOT);
+"."  => (Tokens.DOT);
+","  => (Tokens.COMMA);
+:    => (Tokens.COLON);
+";"  => (Tokens.SEMI);
 
-[a-zA-Z]+ => (Tokens.ID (Name.fromString yytext));
+"(" => (Tokens.LPAREN);
+")" => (Tokens.RPAREN);
+"[" => (Tokens.LBRACKET);
+"]" => (Tokens.RBRACKET);
+"{" => (Tokens.LBRACE);
+"}" => (Tokens.RBRACE);
 
-[0-9]+ => (Tokens.INT (valOf (Int.fromString yytext)));
+@ {constituent}+ => (Tokens.META (Name.fromString (String.extract (yytext, 1, NONE))));
+{firstConstituent} {constituent}* => (Tokens.ID (Name.fromString yytext));
+
+{digit}+ => (Tokens.INT (valOf (Int.fromString yytext)));
 
 " " | \n | \r | \t => (continue ());
 
