@@ -122,6 +122,7 @@ nestable
           in Term.Fn (FULL_SPAN, explicitness, clauses)
           end
       )
+    | "{" exprRow "}" => (Term.Record (FULL_SPAN, exprRow))
     | atom
     ;
 
@@ -138,6 +139,21 @@ clausesTail
 
 explicitClause : "|" pattern=paramPattern "->" body=expr => ({pattern, body});
 implicitClause : "|" pattern=paramPattern "=>" body=expr => ({pattern, body});
+
+exprRow : fields=(exprRowField ("," exprRowField)*)? ext=exprRowExt? => (
+        { fields = case fields
+                   of SOME (field, fields) => Vector.fromList (field :: fields)
+                    | NONE => #[]
+        , ext }
+    );
+
+exprRowField : ID expr=("=" expr)? => (
+        case expr
+        of SOME expr => (ID, expr)
+         | NONE => (ID, Term.Use (ID_SPAN, ID))
+    );
+
+exprRowExt : ".." expr ;
 
 atom
     : ID   => (Term.Use (ID_SPAN, ID))
