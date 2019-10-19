@@ -6,6 +6,14 @@
     fun eof () = Tokens.EOF
 );
 
-val    => (Tokens.VAL);
+val => (Tokens.VAL);
+do  => (Tokens.DO);
+
+"=" => (Tokens.EQ);
+
+[a-zA-Z]+ => (Tokens.ID (Name.fromString yytext));
+
 [0-9]+ => (Tokens.INT (valOf (Int.fromString yytext)));
+
+" " | \n | \r | \t => (continue ());
 

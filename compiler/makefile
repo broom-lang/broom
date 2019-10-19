@@ -22,7 +22,7 @@ src/Parser/Parser.sml: src/Parser/parser.nipo
 	ml-antlr $<
 
 %.ml-ulex.sml: %.ml-ulex
-	ml-ulex $<
+	ml-ulex --strict-sml $<
 
 .PHONY: check
 check: main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
