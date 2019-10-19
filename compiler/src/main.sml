@@ -49,8 +49,6 @@ end = struct
 
     fun build {debug, lint, input = input as {sourcemap, instream = _}} =
         let val log = logger debug
-            
-            val program = Parser.parse input
         in  case Parser.parse input
             of Right program =>
                 let val _ = log (PPrint.pretty 80 (Cst.Term.stmtsToDoc program) ^ "\n")
