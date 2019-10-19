@@ -139,6 +139,7 @@ nestable
           in Term.Fn (FULL_SPAN, explicitness, clauses)
           end
       )
+    | "interface" decl* "end" => (Term.Type (FULL_SPAN, Type.Interface (FULL_SPAN, Vector.fromList decl)))
     | "{" exprRow "}" => (Term.Record (FULL_SPAN, exprRow))
     | "{" typRow "}"  => (Term.Type (FULL_SPAN, Type.RecordT (FULL_SPAN, typRow)))
     | atom
@@ -221,6 +222,22 @@ piParam : ID typ=(":" nonArrowTyp)? => ({var = ID, typ});
 kpat
     : ID                 => ({var = ID, typ = Type.TypeT FULL_SPAN})
     | "(" ID ":" typ ")" => ({var = ID, typ})
+    ;
+
+(* # Declarations *)
+
+decl
+    : "val" ID ":" typ => ((FULL_SPAN, ID, typ))
+    | "type" ID pats=(kpat => ((kpat_SPAN, kpat)))* typ=("=" typ => ((typ_SPAN, typ)))? => (
+          let fun step ((pos, {var, typ}), codomain) =
+                  Type.Pi (pos, {var, typ = SOME typ}, Explicit Pure, codomain)
+              val codomain =
+                  case typ
+                  of SOME (ptyp as (pos, typ)) => Type.Singleton (pos, Term.Type ptyp)
+                   | NONE => Type.TypeT FULL_SPAN
+          in (FULL_SPAN, ID, List.foldr step codomain pats)
+          end
+      )
     ;
 
 (* # Types *)
