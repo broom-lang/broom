@@ -11,8 +11,15 @@
 %let firstConstituent = {alpha} | _;
 %let constituent = {firstConstituent} | {digit};
 
-val => (Tokens.VAL);
-do  => (Tokens.DO);
+val       => (Tokens.VAL);
+fun       => (Tokens.FUN);
+type      => (Tokens.TYPE);
+pi        => (Tokens.PI);
+do        => (Tokens.DO);
+module    => (Tokens.MODULE);
+interface => (Tokens.INTERFACE);
+match     => (Tokens.MATCH);
+end       => (Tokens.END);
 
 "=>" => (Tokens.DARROW);
 "="  => (Tokens.EQ);
@@ -33,10 +40,12 @@ do  => (Tokens.DO);
 "{" => (Tokens.LBRACE);
 "}" => (Tokens.RBRACE);
 
-@ {constituent}+ => (Tokens.META (Name.fromString (String.extract (yytext, 1, NONE))));
-{firstConstituent} {constituent}* => (Tokens.ID (Name.fromString yytext));
-
 {digit}+ => (Tokens.INT (valOf (Int.fromString yytext)));
+True     => (Tokens.BOOL true);
+False    => (Tokens.BOOL false);
+
+@ {constituent}+                  => (Tokens.META (Name.fromString (String.extract (yytext, 1, NONE))));
+{firstConstituent} {constituent}* => (Tokens.ID (Name.fromString yytext));
 
 " " | \n | \r | \t => (continue ());
 

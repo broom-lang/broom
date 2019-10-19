@@ -6,7 +6,14 @@
 
 %tokens
     : VAL ("val")
+    | FUN ("fun")
+    | TYPE ("type")
+    | PI ("pi")
     | DO ("do")
+    | MODULE ("module")
+    | INTERFACE ("interface")
+    | MATCH ("match")
+    | END ("end")
 
     | DARROW ("=>")
     | EQ ("=")
@@ -31,6 +38,7 @@
     | ID of Name.t
 
     | INT of int
+    | BOOL of bool
     ;
 
 %start program;
