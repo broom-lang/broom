@@ -134,14 +134,16 @@ nestable
     | "match" select "{" clauses=explicitClause+ "}" =>
           (Term.Match (FULL_SPAN, select, Vector.fromList clauses))
     | "module" stmts "end" => (Term.Module (FULL_SPAN, stmts))
+    | "interface" decl* "end" => (Term.Type (FULL_SPAN, Type.Interface (FULL_SPAN, Vector.fromList decl)))
     | "{" clauses "}" => (
           let val (explicitness, clauses) = clauses
           in Term.Fn (FULL_SPAN, explicitness, clauses)
           end
       )
-    | "interface" decl* "end" => (Term.Type (FULL_SPAN, Type.Interface (FULL_SPAN, Vector.fromList decl)))
-    | "{" exprRow "}" => (Term.Record (FULL_SPAN, exprRow))
-    | "{" typRow "}"  => (Term.Type (FULL_SPAN, Type.RecordT (FULL_SPAN, typRow)))
+    | "{" exprRow "}"  => (Term.Record (FULL_SPAN, exprRow))
+    | "{" typRow "}"   => (Term.Type (FULL_SPAN, Type.RecordT (FULL_SPAN, typRow)))
+    | "(" "=" expr ")" => (Term.Type (FULL_SPAN, Type.Singleton (FULL_SPAN, expr)))
+    | "(" expr ")"
     | atom
     ;
 
@@ -201,9 +203,11 @@ atom
 
 (* # Patterns *)
 
-pattern
-    : apat
-    ;
+pattern : apat typ=(":" typ)? => (
+        case typ
+        of SOME typ => Term.AnnP (FULL_SPAN, {pat = apat, typ})
+         | NONE => apat
+    );
 
 paramPattern : apat typ=(":" nonArrowTyp)? => (
         case typ

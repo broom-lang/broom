@@ -220,7 +220,7 @@ piParam = Id typ=(':' nonArrowTyp {% nonArrowTyp %})? {% {var = valOf (toName to
 
 pattern
     = pos apat typ=(':' typ {% typ %})? {% case typ
-                                           of SOME typ => Term.AnnP (pos, {pat = apat, typ})
+                                           of SOME typ => Term.AnnP (FULL_SPAN, {pat = apat, typ})
                                             | NONE => apat %}
     ;
 
