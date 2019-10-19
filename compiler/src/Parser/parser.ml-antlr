@@ -123,6 +123,7 @@ nestable
           end
       )
     | "{" exprRow "}" => (Term.Record (FULL_SPAN, exprRow))
+    | "{" typRow "}"  => (Term.Type (FULL_SPAN, Type.RecordT (FULL_SPAN, typRow)))
     | atom
     ;
 
@@ -154,6 +155,26 @@ exprRowField : ID expr=("=" expr)? => (
     );
 
 exprRowExt : ".." expr ;
+
+typRow
+    : fields=(typRowField ("," typRowField)*) ext=typRowExt? => (
+          Type.RowExt (FULL_SPAN, { fields = let val (field, fields) = fields
+                                             in Vector.fromList (field :: fields)
+                                             end
+                                  , ext = case ext
+                                          of SOME ext => ext
+                                           | NONE => Type.EmptyRow ext_SPAN })
+      )
+    | typRowExt
+    | ":"       => (Type.EmptyRow FULL_SPAN)
+    ;
+
+typRowField : ID ":" typ ;
+
+typRowExt
+    : "&" typ
+    | "&"     => (Type.WildRow FULL_SPAN)
+    ;
 
 atom
     : ID   => (Term.Use (ID_SPAN, ID))
