@@ -4,10 +4,6 @@ local
     $(SML_LIB)/smlnj-lib/Util/smlnj-lib.mlb
     $(SML_LIB)/mllpt-lib/mllpt-lib.mlb
 
-    ann "forceUsed" in
-        ../deps/nipo/lib/all.mlb
-    end
-
     ann "warnUnused true"
     in ann "allowSuccessorML true"
        in

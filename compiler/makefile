@@ -1,4 +1,3 @@
-NIPO = ../deps/nipo/src/nipo
 BROOM = broom 
 .PHONY: dev
 dev: $(BROOM)
@@ -12,22 +11,16 @@ prod: main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
       $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
 	mlton -output $(BROOM) main.mlb
 
-src/Parser/Lexer.sml: src/Parser/lexer.nipo
-	$(NIPO) $< > $@
-
-src/Parser/Parser.sml: src/Parser/parser.nipo
-	$(NIPO) $< > $@
+.PHONY: check
+check: main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
+      $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
+	mlton -stop tc main.mlb
 
 %.ml-antlr.sml: %.ml-antlr
 	ml-antlr $<
 
 %.ml-ulex.sml: %.ml-ulex
 	ml-ulex --strict-sml $<
-
-.PHONY: check
-check: main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
-      $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
-	mlton -stop tc main.mlb
 
 .PHONY: itest
 itest: itests
