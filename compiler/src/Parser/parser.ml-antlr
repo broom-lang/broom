@@ -117,8 +117,27 @@ select : nestable fields=("." ID => ((ID_SPAN, ID)))* => (
     );
 
 nestable
-    : atom
+    : "{" clauses "}" => (
+          let val (explicitness, clauses) = clauses
+          in Term.Fn (FULL_SPAN, explicitness, clauses)
+          end
+      )
+    | atom
     ;
+
+clauses : "|" pattern=paramPattern clausesTail => (
+        let val (explicitness, body, clauses) = clausesTail
+        in (explicitness, Vector.fromList ({pattern, body} :: clauses))
+        end
+    );
+
+clausesTail
+    : "->" body=expr clauses=explicitClause* => ((Explicit (), body, clauses))
+    | "=>" body=expr clauses=implicitClause* => ((Implicit, body, clauses))
+    ;
+
+explicitClause : "|" pattern=paramPattern "->" body=expr => ({pattern, body});
+implicitClause : "|" pattern=paramPattern "=>" body=expr => ({pattern, body});
 
 atom
     : ID   => (Term.Use (ID_SPAN, ID))
@@ -130,6 +149,12 @@ atom
 pattern
     : apat
     ;
+
+paramPattern : apat typ=(":" nonArrowTyp)? => (
+        case typ
+        of SOME typ => Term.AnnP (FULL_SPAN, {pat = apat, typ})
+         | NONE => apat
+    );
 
 apat
     : "(" pattern ")"
