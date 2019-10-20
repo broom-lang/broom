@@ -176,17 +176,18 @@ end = struct
             raise Fail (PPrint.pretty 80 ( text "unreachable:"
                                            <+> typToDoc typ <+> text "V" <+> typToDoc typ' ))
 
+    datatype context = Escaping | Naming
+
+    datatype state = Uninitialized | Initialized
+
+    datatype access
+        = Instant of state
+        | Delayed of state
+
     structure Env :> sig
         type t
 
-        structure Builder : sig
-            type builder
-
-            val new : ScopeId.t -> builder
-            val insert : builder -> DefId.t -> typ -> unit
-            val build : builder -> t
-        end
-
+        val new : unit -> t
         (* Join the `typ` at the `ScopedId.t` with the `typ`
            and return whether the `typ` was changed by the join: *)
         val refine : t -> DefId.t -> typ -> bool
@@ -194,20 +195,15 @@ end = struct
     end = struct
         type t = typ DefId.HashTable.hash_table
 
-        structure Builder = struct
-            type builder = t
+        fun new () = DefId.HashTable.mkTable (0, Subscript)
 
-            fun new topScopeId = DefId.HashTable.mkTable (0, Subscript)
-
-            fun insert builder id typ = DefId.HashTable.insert builder (id, typ)
-
-            val build = Fn.identity
-        end
-
-        val lookup = DefId.HashTable.lookup
+        fun lookup env id =
+            case DefId.HashTable.find env id
+            of SOME typ => typ
+             | NONE => Unknown
 
         fun update env id f =
-            let val typ = DefId.HashTable.lookup env id
+            let val typ = lookup env id
             in DefId.HashTable.insert env (id, f typ)
             end
 
@@ -222,62 +218,6 @@ end = struct
              ; !changed
             end
     end
-
-    (* TODO: Just initialize everything to `Unknown`. *)
-    fun initialProgramEnv {axioms = _, typeFns = _, scope = topScopeId, stmts, sourcemap} =
-        let val builder = Env.Builder.new topScopeId
-
-            val rec insertExpr =
-                fn Let (_, stmts, body) =>
-                    ( Vector.app insertStmt stmts
-                    ; insertExpr body )
-                 | Match (_, _, matchee, clauses) =>
-                    ( insertExpr matchee
-                    ; Vector.app (fn {pattern, body} =>
-                                      ( insertPat pattern
-                                      ; insertExpr body ))
-                                 clauses )
-                 | Fn (_, {id, typ, ...}, _, body) =>
-                    ( Env.Builder.insert builder id (elaborateType typ)
-                    ; insertExpr body )
-                 | TFn (_, _, body) => insertExpr body
-                 | App (_, _, {callee, arg}) =>
-                    ( insertExpr callee
-                    ; insertExpr arg )
-                 | TApp (_, _, {callee, args = _}) => insertExpr callee
-                 | Extend (_, _, fields, ext) =>
-                    ( Vector.app (fn (_, expr) => insertExpr expr) fields
-                    ; Option.app insertExpr ext )
-                 | Override (_, _, fields, ext) =>
-                    ( Vector.app (fn (_, expr) => insertExpr expr) fields
-                    ; insertExpr ext )
-                 | Field (_, _, expr, _) => insertExpr expr
-                 | Cast (_, _, expr, _) => insertExpr expr
-                 | Type _ | Use _ | Const _ => ()
-            
-            and insertStmt =
-                fn Axiom _ => ()
-                 | Val (_, {id, typ, ...}, expr) =>
-                    ( Env.Builder.insert builder id (elaborateType typ)
-                    ; insertExpr expr )
-                 | Expr expr => insertExpr expr
-
-            and insertPat =
-                fn AnnP (_, {pat, typ = _}) => insertPat pat
-                 | Def (_, {id, typ, ...}) =>
-                    Env.Builder.insert builder id (elaborateType typ)
-                 | ConstP _ => ()
-        in Vector.app insertStmt stmts
-         ; Env.Builder.build builder
-        end
-
-    datatype context = Escaping | Naming
-
-    datatype state = Uninitialized | Initialized
-
-    datatype access
-        = Instant of state
-        | Delayed of state
 
     structure IniEnv :> sig
         type t
@@ -345,7 +285,7 @@ end = struct
     end
 
     fun checkProgram (program as {axioms = _, typeFns = _, scope = topScopeId, stmts, sourcemap}) =
-        let val env = initialProgramEnv program
+        let val env = Env.new ()
             val changed = ref false
             val errors = ref []
             fun error err = errors := err :: !errors
