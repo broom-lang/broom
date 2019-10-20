@@ -287,8 +287,7 @@ end = struct
         end
 
     and checkPattern env matcheeTyp =
-        fn AnnP (_, {pat, typ}) => raise Fail "unimplemented"
-         | Def (_, {pos = _, id, var, typ}) => Env.insert (env, var, typ)
+        fn Def (_, {pos = _, id, var, typ}) => Env.insert (env, var, typ)
          | ConstP (pos, c) => (checkEq pos env (Prim (Const.typeOf c), matcheeTyp); env)
 
     and checkCast env (pos, typ, expr, co) =
