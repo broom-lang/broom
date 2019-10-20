@@ -47,5 +47,6 @@ False    => (Tokens.BOOL false);
 @ {constituent}+                  => (Tokens.META (Name.fromString (String.extract (yytext, 1, NONE))));
 {firstConstituent} {constituent}* => (Tokens.ID (Name.fromString yytext));
 
+# [^\n]*           => (continue ());
 " " | \n | \r | \t => (continue ());
 
