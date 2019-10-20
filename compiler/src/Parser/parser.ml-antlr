@@ -87,7 +87,11 @@ ascription : arrow typ=(":" typ)? => (
     );
 
 arrow
-    : "pi" piParam arr body=arrow => (Term.Type (FULL_SPAN, Type.Pi (FULL_SPAN, piParam, arr, Type.Path body)))
+    : "pi" params=(piParam => ((piParam_SPAN, piParam)))+ arr body=arrow => (
+        let fun step ((pos, param), body) = Type.Pi (pos, param, arr, body)
+        in Term.Type (FULL_SPAN, List.foldr step (Type.Path body) params)
+        end
+      )
     | binapp codomain=(arr arrow)? => (
           case codomain
           of SOME (arr, cd) =>
@@ -227,7 +231,10 @@ apat
     | const => (Term.ConstP (const_SPAN, const))
     ;
 
-piParam : ID typ=(":" nonArrowTyp)? => ({var = ID, typ});
+piParam
+    : ID                 => ({var = ID, typ = NONE})
+    | "(" ID ":" typ ")" => ({var = ID, typ = SOME typ})
+    ;
 
 kpat
     : ID                 => ({var = ID, typ = Type.TypeT FULL_SPAN})
