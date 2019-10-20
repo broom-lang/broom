@@ -8,8 +8,10 @@ type ARRAY = interface
     val set : pi elem => t elem -> key -> elem -> t elem
     val update : pi elem => t elem -> key -> (elem -> elem) -> t elem
 
-    val unfoldl : pi elem state => size -> (state -> elem * state) -> state -> t elem * state
-    val unfoldr : pi elem state => size -> (state -> elem * state) -> state -> t elem * state
+    val unfoldl : pi elem state => size -> (state -> {elem : elem, state : state}) -> state
+        -> {array : t elem, state : state}
+    val unfoldr : pi elem state => size -> (state -> {elem : elem, state : state}) -> state
+        -> {array : t elem, state : state}
 
     val foldl : pi elem state => (state -> elem -> state) -> state -> t elem -> state
     val foldr : pi elem state => (elem -> state -> state) -> state -> t elem -> state
@@ -52,8 +54,8 @@ val Array : ARRAY = module
         fun loop state = {
             | i when i > 0 -> do
                 val i' = i - 1
-                val (v, state') = f state
-                ; Builder.set builder i' v
+                val {elem, state = state'} = f state
+                ; Builder.set builder i' elem
                 ; loop state' i'
             end
             | _ -> Builder.build builder
@@ -65,8 +67,8 @@ val Array : ARRAY = module
         val builder = Builder.new len
         fun loop state = {
             | i when i < len -> do
-                val (v, state') = f state
-                ; Builder.set builder i v
+                val {elem, state = state'} = f state
+                ; Builder.set builder i elem 
                 ; loop state' (i + 1)
             end
             | _ -> Builder.build builder
