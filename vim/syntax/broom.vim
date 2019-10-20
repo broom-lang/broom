@@ -2,7 +2,7 @@ if exists('b:current_syntax')
     finish
 endif
 
-syntax keyword broomKeyword module interface do end val fun type pi match when
+syntax keyword broomKeyword module interface extends do end val fun type pi match when
 highlight default link broomKeyword Keyword
 
 syntax match broomColon ":"
@@ -13,6 +13,8 @@ syntax match broomArrow "->"
 highlight default link broomArrow Operator
 syntax match broomDArrow "=>"
 highlight default link broomDArrow Operator
+syntax match broomBar "|"
+highlight default link broomBar Operator
 
 syntax match broomMacro '@\w\+'
 highlight default link broomMacro PreProc

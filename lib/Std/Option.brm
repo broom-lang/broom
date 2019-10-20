@@ -1,0 +1,43 @@
+type OPTION = interface
+    extends @enum interface
+        type t a
+
+        val Some : pi a => a -> t a
+        val None : pi a => t a
+    end
+
+    val pure : pi a => t a
+    val map : pi a b => (a -> b) -> t a -> t b
+    val apply : pi a b => t (a -> b) -> t a -> t b
+    val flatMap : pi a b => (a -> t b) -> t a -> t b
+end
+
+val Option : OPTION = module
+    extends @enum module
+        type t a
+
+        val Some : pi a => a -> t a
+        val None : pi a => t a
+    end
+
+    val pure = Some
+
+    fun map f = {
+        | Some v -> Some (f v)
+        | None -> None
+    }
+
+    val apply = {
+        | Some f -> {
+            | Some v -> Some (f v)
+            | None -> None
+        }
+        | None -> Fn.const None
+    }
+
+    fun flatMap f = {
+        | Some v -> f v
+        | None -> None
+    }
+end
+
