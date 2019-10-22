@@ -5,9 +5,9 @@ Written in Standard ML / MLton.
 # Dependencies
 
 In addition to MLton, the ml-lpt tools `ml-ulex` and `ml-antlr` are required to
-build. The easiest way to obtain thoMLton has other virtues to make up for not coming with ml-lpt).
-in addition to MLton! We do have an issue for building with just SML/NJ, but
-MLton has other virtues to make up for not coming with ml-lpt).
+build. The easiest way to obtain those is to install SML/NJ (yes, in addition
+to MLton! We do have an issue for building with just SML/NJ, but MLton has
+other virtues to make up for not coming with ml-lpt).
 
 # Building
 
