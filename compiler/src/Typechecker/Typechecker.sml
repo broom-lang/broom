@@ -49,7 +49,7 @@ end = struct
                      of ([], t) =>
                          (FTerm.setDefTyp def t, Typed (FTerm.setDefTyp def (t, NONE), oexpr))
                       | (defs, t) =>
-                         (case valOf (Env.innermostScope env)
+                         (case Env.innermostScope env
                           of Scope.InterfaceScope _ =>
                               let val abst = Exists (Vector.fromList defs, t)
                                   val t = reAbstract env abst (* OPTIMIZE *)
@@ -99,7 +99,7 @@ end = struct
         Option.map (fn (Unvisited args, env) => unvisitedBindingType (CTerm.exprPos expr) env name args
                      | (Visiting args, env) =>
                         let val pos = CTerm.exprPos expr
-                        in case valOf (Env.innermostScope env)
+                        in case Env.innermostScope env
                            of Scope.InterfaceScope _ =>
                                raise Fail ("Type cycle at " ^ Pos.spanToString (Env.sourcemap env) pos)
                             | _ => cyclicBindingType pos env name args

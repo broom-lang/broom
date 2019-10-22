@@ -71,7 +71,7 @@ structure TypecheckingEnv :> sig
 
     val default: Pos.sourcemap -> t
     val initial: Pos.sourcemap -> Scope.Id.t * Scope.toplevel -> t
-    val innermostScope: t -> Scope.t option
+    val innermostScope: t -> Scope.t
     val pushScope: t -> Scope.t -> t
     val hasScope: t -> Scope.Id.t -> bool
 
@@ -261,10 +261,7 @@ end = struct
 
     fun default sourcemap = initial sourcemap (Scope.Id.fresh (), Scope.initialToplevel ())
 
-    fun innermostScope ({scopes, ...}: t) =
-        case scopes
-        of scope :: _ => SOME scope
-         | [] => NONE
+    fun innermostScope ({scopes, ...}: t) = hd scopes
 
     fun pushScope {scopeIds, scopes, toplevel, sourcemap, errors} scope =
         { scopes = scope :: scopes, scopeIds = Scope.id scope :: scopeIds, toplevel
