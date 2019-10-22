@@ -34,16 +34,31 @@ val p = {x = 17, y = 23} # {{} with x = 17 with y = 23}
 val p3d = {p with z = 0}
 ```
 
+```
+# Approximately
+{_ with x = _} : forall (r \ x) a => {r} -> a -> {r with x : a}
+```
+
 ## Update
 
 ```
 val p' = {p where x = 42}
 ```
 
+```
+# Approximately
+{_ where x = _} : forall (r \ x) a b => {r with x : a} -> b -> {r with x : b}
+```
+
 ## Field Access
 
 ```
 val x = p.x
+```
+
+```
+# Approximately
+_.x : forall (r \ x) a => {r with x : a} -> a
 ```
 
 # Record Patterns
