@@ -1,54 +1,130 @@
-# Interface Operations
+# Record Types
+
+## Empty
 
 ```
-# Literal:
-type TYP = interface type t end
-type INT_TYP = interface type t = int end
+{:}
+```
 
-# Inheritance:
-type DEFAULT = interface extends TYP
-    default: t # Inheritance is nasty but how else can we do this?
+## Extend
+
+```
+type point = {x : f32, y : f32} # {{:} with x : f32 with y : f32}
+type point3d = {point with z : f32}
+```
+
+## Update
+
+```
+type point64 = {point where x : f64, y : f64} # {point where x : f64 where y : f64}
+```
+
+# Records
+
+## Empty
+
+```
+{}
+```
+
+## Extend
+
+```
+val p = {x = 17, y = 23} # {{} with x = 17 with y = 23}
+val p3d = {p with z = 0}
+```
+
+## Update
+
+```
+val p' = {p where x = 42}
+```
+
+## Field Access
+
+```
+val x = p.x
+```
+
+# Record Patterns
+
+## Empty
+
+```
+val {} = {}
+```
+
+## Extend
+
+```
+val {p with z} = p3d # val {p with z = z} = p3d
+# p : point, z : f32
+```
+
+## Update
+
+```
+val {p3d' where z} = p3d # val {p3d' with z = z} = p3d
+# p : point3d, z : f32
+```
+
+# Interfaces
+
+## Empty
+
+```
+type EMPTY = interface end
+```
+
+## Extend
+
+```
+type ZEROABLE = interface
+    type t # val t = type
+    val zero : t
 end
 
-# Refinement:
-type INT_DEFAULT = {DEFAULT where type t = int} # Ambiguous (expr or type?)
-
-# Extension:
-type INT_MONOID = {INT_DEFAULT with mappend: int -> int}
+type BINARYABLE = interface extends Super : ZEROABLE
+    val one : Super.t # `with` semantics
+end
 ```
 
-# Module Operations
+## Update
 
 ```
-# Literal:
-IntTyp: INT_TYP = module type t = int end
+type INT32_ZEROABLE = interface extends ZEROABLE
+    override type t = i32
+    override val zero : i32
+end
+```
 
-# Inheritance:
-IntDefault: INT_DEFAULT = module extends IntTyp
-    default: t = 0 # Unlike interfaces, we could do without inheritance by `default: IntTyp.t`
-    # `override` could be used to get the `where` instead of `with` semantics on a given field.
+# Modules
+
+## Empty
+
+```
+val Empty = module end
+```
+
+## Extend
+
+```
+val Int32 = module
+    type t = i32 # val t = type i32
+    val zero = 0i32
 end
 
-# Extension:
-IntAddMonoid: INT_MONOID = {IntDefault with mappend = (+)}
-
-# Refinement (overwrite of functional update):
-IntMulMonoid: INT_MONOID = {IntAddMonoid where default <- (+ 1), mappend = (*)}
-
-# Selection:
-zero = IntAddMonoid.mappend IntAddMonoid.default IntAddMonoid.default
-one = IntMulMonoid.mappend IntMulMonoid.default IntMulMonoid.default
+val IntOne32 = module extends Super = Int32
+    val one = Super.zero + 1 # `with` semantics
+end
 ```
 
-# Record Types and Values
+## Update
 
 ```
-empty: {:} = {}
-
-point: {x: int, y: int} = {empty with x = 5, y = 8}
-
-# Row polymorphism:
-getX: forall a (r \ x) => {r with x: a} -> a = {|r -> r.x}
-dropX: forall a (r \ x) => {r with x: a} -> {r} = {|r -> }
+val Int64 = module extends Int32
+    override type t = i64 # `where` semantics
+    override val one = 0i64
+end
 ```
 
