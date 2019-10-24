@@ -1,1 +1,5 @@
-val n = match True {| True -> 23 | False -> 42}
+val n = match True
+    | True -> 23
+    | False -> 42
+end
+

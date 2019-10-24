@@ -4,7 +4,7 @@ type DEFAULT = interface
 end
 
 val Dyfault: DEFAULT =
-    match True {
+    match True
         | True -> module
             type t = int
             val default = 0
@@ -13,5 +13,5 @@ val Dyfault: DEFAULT =
             type t = {:}
             val default = {}
         end
-    }
+    end
 

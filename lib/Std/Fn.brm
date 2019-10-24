@@ -6,6 +6,6 @@ end
 val Fn = module
     fun id x = x
 
-    fun const v = {| _ => v}
+    fun const v = fn _ => v end
 end
 

@@ -13,8 +13,10 @@
     | TYPE ("type")
     | PI ("pi")
     | DO ("do")
+    | BEGIN ("begin")
     | MODULE ("module")
     | INTERFACE ("interface")
+    | FN ("fn")
     | MATCH ("match")
     | END ("end")
 
@@ -70,7 +72,7 @@ stmt
           in Term.Val (FULL_SPAN, Term.Def (ID_SPAN, ID), List.foldr step (Term.Type (typ_SPAN, typ)) pats)
           end
       )
-    | ";" expr => (Term.Expr expr)
+    | "do" expr => (Term.Expr expr) (* TODO: Get rid of `do` via `;` (?) *)
     ;
 
 (* # Expressions *)
@@ -121,7 +123,7 @@ select : nestable fields=("." ID => ((ID_SPAN, ID)))* => (
     );
 
 nestable
-    : "do" stmts "end" => (
+    : "begin" stmts "end" => (
           case stmts
           of #[] => Term.Let (FULL_SPAN, #[], Term.Const (FULL_SPAN, Const.Unit))
            | _ => let val lastIndex = Vector.length stmts - 1
@@ -135,12 +137,12 @@ nestable
                          end
                   end
       )
-    | "match" select "{" clauses=explicitClause+ "}" =>
-          (Term.Match (FULL_SPAN, select, Vector.fromList clauses))
+    | "match" expr clauses=explicitClause+ "end" =>
+          (Term.Match (FULL_SPAN, expr, Vector.fromList clauses))
     | "module" stmts "end" => (Term.Module (FULL_SPAN, stmts))
     | "interface" decl* "end" => (Term.Type (FULL_SPAN, Type.Interface (FULL_SPAN, Vector.fromList decl)))
-    | "{" clauses "}" => (
-          let val (explicitness, clauses) = clauses
+    | "fn" fnClauses "end" => (
+          let val (explicitness, clauses) = fnClauses
           in Term.Fn (FULL_SPAN, explicitness, clauses)
           end
       )
@@ -151,7 +153,7 @@ nestable
     | atom
     ;
 
-clauses : "|" pattern=paramPattern clausesTail => (
+fnClauses : "|"? pattern=paramPattern clausesTail => (
         let val (explicitness, body, clauses) = clausesTail
         in (explicitness, Vector.fromList ({pattern, body} :: clauses))
         end

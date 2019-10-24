@@ -27,10 +27,10 @@ val Array : ARRAY = module
     fun get arr i = __arrayGet arr i
 
     fun set arr i v =
-        unfoldl (count arr) {
+        unfoldl (count arr) fn
             | i' when i' == i -> (v, i' - 1)
             | i' -> (get arr i', i' - 1)
-        }
+        end
 
     fun update arr = set arr i (f (get arr i))
 
@@ -49,50 +49,50 @@ val Array : ARRAY = module
         val build = Fn.id
     end
 
-    fun unfoldl len f state = do
+    fun unfoldl len f state = begin
         val builder = Builder.new len
-        fun loop state = {
-            | i when i > 0 -> do
+        fun loop state = fn
+            | i when i > 0 -> begin
                 val i' = i - 1
                 val {elem, state = state'} = f state
-                ; Builder.set builder i' elem
-                ; loop state' i'
+                do Builder.set builder i' elem
+                do loop state' i'
             end
             | _ -> Builder.build builder
-        }
-        ; loop state len
+        end
+        do loop state len
     end
 
-    fun unfoldr len f state = do
+    fun unfoldr len f state = begin
         val builder = Builder.new len
-        fun loop state = {
-            | i when i < len -> do
+        fun loop state = fn
+            | i when i < len -> begin
                 val {elem, state = state'} = f state
-                ; Builder.set builder i elem 
-                ; loop state' (i + 1)
+                do Builder.set builder i elem 
+                do loop state' (i + 1)
             end
             | _ -> Builder.build builder
-        }
-        ; loop state 0
+        end
+        do loop state 0
     end
 
-    fun foldl f state arr = do
+    fun foldl f state arr = begin
         val len = count arr
-        fun loop state = {
+        fun loop state = fn
             | i when i < len -> loop (f state (get arr i)) (i + 1)
             | _ -> state
-        }
-        ; loop state 0
+        end
+        do loop state 0
     end
 
-    fun foldr f state arr = do
-        fun loop state = {
+    fun foldr f state arr = begin
+        fun loop state = fn
             | i when i > 0 ->
                 i' = i - 1
                 loop (f (get arr i') state) i'
             | _ -> state
-        }
-        ; loop state (count arr)
+        end
+        do loop state (count arr)
     end
 end
 
