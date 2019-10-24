@@ -6,6 +6,7 @@ signature TYPE_ERROR = sig
                | UnboundVal of Pos.span * Name.t
                | OutsideScope of Pos.span * Name.t
                | MissingField of Pos.span * FlexFAst.Type.concr * Name.t
+               | DuplicateBinding of Pos.span * Name.t
                | Occurs of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.abs
    
     exception TypeError of t
@@ -29,6 +30,7 @@ structure TypeError :> TYPE_ERROR = struct
                | UnboundVal of Pos.span * Name.t
                | OutsideScope of Pos.span * Name.t
                | MissingField of Pos.span * FlexFAst.Type.concr * Name.t
+               | DuplicateBinding of Pos.span * Name.t
                | Occurs of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.abs
     
     exception TypeError of t
@@ -59,6 +61,8 @@ structure TypeError :> TYPE_ERROR = struct
                                      ( pos
                                      , Concr.toDoc typ <+> text "does not have field"
                                            <+> Name.toDoc label)
+                                  | DuplicateBinding (pos, name) =>
+                                     (pos, text "Duplicate binding for" <+> Name.toDoc name)
                                   | Occurs (pos, v, t) =>
                                      ( pos
                                      , text "Occurs check: unifying" <+> Concr.toDoc v

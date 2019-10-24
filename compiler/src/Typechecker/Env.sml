@@ -41,7 +41,7 @@ structure TypecheckingEnv :> sig
                 type t
 
                 val new: unit -> t
-                val insert: t -> Name.t -> binding_state -> unit
+                val insert: t -> Pos.span -> Name.t -> binding_state -> unit
                 val build: t -> bindings
             end
         end
@@ -178,7 +178,10 @@ end = struct
                 type t = bindings
 
                 fun new () = NameHashTable.mkTable (0, Subscript)
-                fun insert builder name b = NameHashTable.insert builder (name, b)
+                fun insert builder pos name b =
+                    if NameHashTable.inDomain builder name
+                    then raise TypeError (DuplicateBinding (pos, name))
+                    else NameHashTable.insert builder (name, b)
                 val build = Fn.identity
             end
         end

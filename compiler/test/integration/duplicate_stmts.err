@@ -1,0 +1,1 @@
+TypeError in [test/integration/duplicate_stmts.brm:2.4-2.8]: Duplicate binding for foo

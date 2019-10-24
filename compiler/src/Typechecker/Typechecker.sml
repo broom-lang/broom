@@ -176,7 +176,7 @@ end = struct
                     in FType.UseT {var, kind}
                     end
                  | CType.Interface (pos, decls) =>
-                    let val env = Env.pushScope env (declsScope decls)
+                    let val env = Env.pushScope env (declsScope env decls)
                         val fields = Vector.map (elaborateDecl env) decls
                         fun constructStep (field, ext) = FType.RowExt {field, ext}
                     in FType.Record (Vector.foldr constructStep FType.EmptyRow fields)
@@ -239,25 +239,28 @@ end = struct
          | (Impure, Pure) => Impure
          | (Impure, Impure) => Impure
 
-    and declsScope decls =
+    and declsScope env decls =
         let val builder = Bindings.Expr.Builder.new ()
             do Vector.app (fn (pos, var, t) =>
                                let val def = {pos, id = DefId.fresh (), var, typ = SOME t}
-                               in Bindings.Expr.Builder.insert builder var (Unvisited (def, NONE))
+                               in Bindings.Expr.Builder.insert builder pos var (Unvisited (def, NONE))
+                                  handle TypeError err => Env.error env err
                                end)
                           decls
         in Scope.InterfaceScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
         end
 
-    and stmtsScope stmts =
+    and stmtsScope env stmts =
         let val builder = Bindings.Expr.Builder.new ()
             do Vector.app (fn CTerm.Val (_, CTerm.Def (pos, name), expr) =>
                                let val def = {pos, id = DefId.fresh (), var = name, typ = NONE}
-                               in Bindings.Expr.Builder.insert builder name (Unvisited (def, SOME expr))
+                               in Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
+                                  handle TypeError err => Env.error env err
                                end
                             | CTerm.Val (_, CTerm.AnnP (_, {pat = CTerm.Def (pos, name), typ}), expr) =>
                                let val def = {pos, id = DefId.fresh (), var = name, typ = SOME typ}
-                               in Bindings.Expr.Builder.insert builder name (Unvisited (def, SOME expr))
+                               in Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
+                                  handle TypeError err => Env.error env err
                                end
                             | CTerm.Expr _ => ())
                           stmts
@@ -297,7 +300,7 @@ end = struct
                  end )
             end
          | CTerm.Let (pos, stmts, body) =>
-            let val scope = stmtsScope stmts
+            let val scope = stmtsScope env stmts
                 val env = Env.pushScope env scope
                 val (stmtsEff, stmts) = elaborateStmts env stmts
                 val (bodyEff, typ, body) = elaborateExpr env body
@@ -314,7 +317,7 @@ end = struct
                   will work. It would also avoid an intermediate record in the elaborated code. *)
          | CTerm.Record (pos, fields) => elaborateRecord env pos fields
          | CTerm.Module (pos, stmts) =>
-            let val scope = stmtsScope stmts
+            let val scope = stmtsScope env stmts
                 val env = Env.pushScope env scope
                 val (eff, stmts) = elaborateStmts env stmts
                 val defs = Vector.foldr (fn (FTerm.Val (_, def, _), defs) => def :: defs
@@ -693,7 +696,7 @@ end = struct
     (* TODO: Prevent boundless deepening of REPL env
              and enable forward decl:s for stmts to be input on later lines. *)
     fun elaborateProgram env stmts =
-        let val scope = stmtsScope stmts
+        let val scope = stmtsScope env stmts
             val env = Env.pushScope env scope
             val (eff, stmts) = elaborateStmts env stmts
             val program = { typeFns = Env.typeFns env
