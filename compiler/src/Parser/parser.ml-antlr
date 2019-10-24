@@ -72,7 +72,7 @@ stmt
           in Term.Val (FULL_SPAN, Term.Def (ID_SPAN, ID), List.foldr step (Term.Type (typ_SPAN, typ)) pats)
           end
       )
-    | "do" expr => (Term.Expr expr) (* TODO: Get rid of `do` via `;` (?) *)
+    | "do" expr => (Term.Expr expr)
     ;
 
 (* # Expressions *)
