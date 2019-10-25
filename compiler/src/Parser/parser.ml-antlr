@@ -53,7 +53,7 @@ program : stmts ;
 
 (* # Statements *)
 
-stmts : stmts=(firstStmt restStmts=restStmt*)? => (
+stmts : stmts=(firstStmt restStmts=restStmt* ";"?)? => (
         case stmts
         of SOME (stmt, stmts) => Vector.fromList (stmt :: stmts)
          | NONE => #[]
