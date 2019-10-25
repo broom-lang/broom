@@ -49,50 +49,50 @@ val Array : ARRAY = module
         val build = Fn.id
     end
 
-    fun unfoldl len f state = begin
+    fun unfoldl len f state = do
         val builder = Builder.new len
         fun loop state = fn
-            | i when i > 0 -> begin
+            | i when i > 0 -> do
                 val i' = i - 1
                 val {elem, state = state'} = f state
-                do Builder.set builder i' elem
-                do loop state' i'
+                ; Builder.set builder i' elem;
+                ; loop state' i'
             end
             | _ -> Builder.build builder
         end
-        do loop state len
+        ; loop state len
     end
 
-    fun unfoldr len f state = begin
+    fun unfoldr len f state = do
         val builder = Builder.new len
         fun loop state = fn
-            | i when i < len -> begin
+            | i when i < len -> do
                 val {elem, state = state'} = f state
-                do Builder.set builder i elem 
-                do loop state' (i + 1)
+                ; Builder.set builder i elem 
+                ; loop state' (i + 1)
             end
             | _ -> Builder.build builder
         end
-        do loop state 0
+        ; loop state 0
     end
 
-    fun foldl f state arr = begin
+    fun foldl f state arr = do
         val len = count arr
         fun loop state = fn
             | i when i < len -> loop (f state (get arr i)) (i + 1)
             | _ -> state
         end
-        do loop state 0
+        ; loop state 0
     end
 
-    fun foldr f state arr = begin
+    fun foldr f state arr = do
         fun loop state = fn
             | i when i > 0 ->
                 i' = i - 1
                 loop (f (get arr i') state) i'
             | _ -> state
         end
-        do loop state (count arr)
+        ; loop state (count arr)
     end
 end
 

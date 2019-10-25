@@ -13,7 +13,6 @@
     | TYPE ("type")
     | PI ("pi")
     | DO ("do")
-    | BEGIN ("begin")
     | MODULE ("module")
     | INTERFACE ("interface")
     | FN ("fn")
@@ -54,9 +53,23 @@ program : stmts ;
 
 (* # Statements *)
 
-stmts : stmt* => (Vector.fromList stmt);
+stmts : stmts=(firstStmt restStmts=restStmt*)? => (
+        case stmts
+        of SOME (stmt, stmts) => Vector.fromList (stmt :: stmts)
+         | NONE => #[]
+    );
 
-stmt
+firstStmt
+    : def
+    | expr => (Term.Expr expr)
+    ;
+
+restStmt
+    : ";"? def
+    | ";" expr => (Term.Expr expr)
+    ;
+
+def
     : "val" pattern "=" expr => (Term.Val (FULL_SPAN, pattern, expr))
     | "fun" ID pats=(apat => ((apat_SPAN, apat)))+ "=" expr => (
           let fun step ((pos, pattern), body) =
@@ -72,7 +85,6 @@ stmt
           in Term.Val (FULL_SPAN, Term.Def (ID_SPAN, ID), List.foldr step (Term.Type (typ_SPAN, typ)) pats)
           end
       )
-    | "do" expr => (Term.Expr expr)
     ;
 
 (* # Expressions *)
@@ -123,7 +135,7 @@ select : nestable fields=("." ID => ((ID_SPAN, ID)))* => (
     );
 
 nestable
-    : "begin" stmts "end" => (
+    : "do" stmts "end" => (
           case stmts
           of #[] => Term.Let (FULL_SPAN, #[], Term.Const (FULL_SPAN, Const.Unit))
            | _ => let val lastIndex = Vector.length stmts - 1
