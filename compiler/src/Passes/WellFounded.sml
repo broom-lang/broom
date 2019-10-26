@@ -88,22 +88,6 @@ end = struct
          | EmptyRow => PPrint.empty
          | row => typToDoc row
 
-    val rec elaborateType : FType.concr -> typ =
-        fn FType.ForAll (_, body) => elaborateType body
-         | FType.Arrow (_, {domain = _, codomain}) =>
-            Closure (Support.empty, elaborateType codomain)
-         | FType.Record row => Record (elaborateType row)
-         | FType.RowExt {field = (label, fieldt), ext} =>
-            RowExt { field = (label, elaborateType fieldt)
-                   , ext = elaborateType ext }
-         | FType.EmptyRow => EmptyRow
-         | FType.Type _ => Scalar
-         | FType.App _ => Scalar
-         | FType.CallTFn _ => Scalar
-         | FType.UseT _ => Scalar
-         | FType.SVar _ => raise Fail "unreachable"
-         | FType.Prim _ => Scalar
-
     fun rewriteRow label row =
         let val rec rewrite = 
                 fn RowExt (row as {field = (flabel, ftype), ext}) =>

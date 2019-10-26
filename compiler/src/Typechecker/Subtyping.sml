@@ -239,10 +239,10 @@ end = struct
 
     and rowCoercion intent env currPos (rows: concr * concr): field_coercion list =
         let val rec subExts =
-                fn (row, RowExt {field = (label, fieldt'), ext = ext'}) =>
-                    let val (fieldt, ext) = reorderRow currPos label (FType.rowExtTail ext') row
+                fn (row, RowExt {base = base', field = (label, fieldt')}) =>
+                    let val {base, fieldt} = reorderRow currPos label (FType.rowExtBase base') row
                         val coerceField = coercion intent env currPos (fieldt, fieldt')
-                        val coerceExt = subExts (ext, ext')
+                        val coerceExt = subExts (base, base')
                     in case coerceField
                        of SOME coerceField => (label, (fieldt, fieldt'), coerceField) :: coerceExt
                         | NONE => coerceExt
@@ -251,12 +251,12 @@ end = struct
         in subExts rows
         end
 
-    and reorderRow currPos label (tail: concr): concr -> concr * concr =
-        fn RowExt {field = (label', fieldt'), ext = ext} =>
+    and reorderRow currPos label (tail: concr): concr -> {base: concr, fieldt: concr} =
+        fn RowExt {base, field = (label', fieldt')} =>
             if label = label'
-            then (fieldt', ext)
-            else let val (fieldt, ext) = reorderRow currPos label tail ext
-                 in (fieldt, RowExt {field = (label', fieldt'), ext = ext})
+            then {base, fieldt = fieldt'}
+            else let val {base, fieldt} = reorderRow currPos label tail base
+                 in {base = RowExt {base, field = (label', fieldt')}, fieldt}
                  end
          (* FIXME: `t` is actually row tail, not the type of `expr`. *)
          | t => raise TypeError (MissingField (currPos, t, label))

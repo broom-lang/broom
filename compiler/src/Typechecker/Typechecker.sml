@@ -164,10 +164,10 @@ end = struct
                         | _ => FType.ForAll (Vector.fromList typeDefs, arrow)
                     end
                  | CType.RecordT (pos, row) => FType.Record (elaborate env row)
-                 | CType.RowExt (pos, {fields, ext}) =>
-                    let fun step ((label, t), ext) =
-                            FType.RowExt {field = (label, elaborate env t), ext}
-                    in Vector.foldr step (elaborate env ext) fields
+                 | CType.RowExt (pos, {base, fields}) =>
+                    let fun step ((label, t), base) =
+                            FType.RowExt {base, field = (label, elaborate env t)}
+                    in Vector.foldl step (elaborate env base) fields
                     end
                  | CType.EmptyRow _ => FType.EmptyRow
                  | CType.WildRow _ =>
@@ -178,8 +178,8 @@ end = struct
                  | CType.Interface (pos, decls) =>
                     let val env = Env.pushScope env (declsScope env decls)
                         val fields = Vector.map (elaborateDecl env) decls
-                        fun constructStep (field, ext) = FType.RowExt {field, ext}
-                    in FType.Record (Vector.foldr constructStep FType.EmptyRow fields)
+                        fun constructStep (field, base) = FType.RowExt {base, field}
+                    in FType.Record (Vector.foldl constructStep FType.EmptyRow fields)
                     end
                  | CType.Path pathExpr =>
                     let val (eff, t, _) = elaborateExpr env pathExpr
@@ -323,7 +323,7 @@ end = struct
                 val defs = Vector.foldr (fn (FTerm.Val (_, def, _), defs) => def :: defs
                                           | (FTerm.Axiom _, defs) | (FTerm.Expr _, defs) => defs)
                                         [] stmts
-                val row = List.foldl (fn ({var, typ, ...}, ext) => FType.RowExt {field = (var, typ), ext})
+                val row = List.foldl (fn ({var, typ, ...}, base) => FType.RowExt {base, field = (var, typ)})
                                      FType.EmptyRow defs
                 val typ = FType.Record row
                 val body = FTerm.Extend ( pos, typ
@@ -365,12 +365,12 @@ end = struct
          | CTerm.Const (pos, c) =>
             (Pure, FType.Prim (Const.typeOf c), FTerm.Const (pos, c))
 
-    and elaborateRecord env pos ({fields, ext}: CTerm.row): effect * concr * FTerm.expr =
+    and elaborateRecord env pos ({base, edits}: CTerm.recordFields): effect * concr * FTerm.expr =
         let fun elaborateField ((label, expr), (eff, rowType, fieldExprs)) =
                 let val pos = CTerm.exprPos expr
                     val (fieldEff, fieldt, expr) = elaborateExpr env expr
                 in ( joinEffs (eff, fieldEff)
-                   , FType.RowExt {field = (label, fieldt), ext = rowType}
+                   , FType.RowExt {base = rowType, field = (label, fieldt)}
                    , (label, expr) :: fieldExprs )
                 end
             val (extEff, extType, extExpr) =
@@ -380,7 +380,7 @@ end = struct
                                   of FType.Record row => (extEff, row, SOME ext)
                                end
                  | NONE => (Pure, FType.EmptyRow, NONE)
-            val (fieldsEff, rowType, fieldExprs) = Vector.foldr elaborateField (Pure, extType, []) fields
+            val (fieldsEff, rowType, fieldExprs) = Vector.foldl elaborateField (Pure, extType, []) fields
             val eff = joinEffs (fieldsEff, extEff)
             val typ = FType.Record rowType
         in (extEff, typ, FTerm.Extend (pos, typ, Vector.fromList fieldExprs, extExpr))
@@ -676,9 +676,9 @@ end = struct
                     (case Uv.get uv
                      of Right typ => coerce expr typ
                       | Left uv => let val fieldType = FType.SVar (FType.UVar (Env.freshUv env Predicative))
-                                       val ext = FType.SVar (FType.UVar (Env.freshUv env Predicative))
+                                       val base = FType.SVar (FType.UVar (Env.freshUv env Predicative))
                                        val pos = FTerm.exprPos expr
-                                       val row = FType.RowExt ({field = (label, fieldType), ext})
+                                       val row = FType.RowExt ({base, field = (label, fieldType)})
                                        val typ = FType.Record row
                                    in uvSet env (uv, typ)
                                     ; (expr, fieldType)
@@ -686,10 +686,10 @@ end = struct
                  | _ => ( Env.error env (UnDottable (expr, typ))
                         ; (expr, FType.SVar (FType.UVar (Env.freshUv env Predicative))) )
             and coerceRow expr =
-                fn FType.RowExt ({field = (label', fieldt), ext}) =>
+                fn FType.RowExt ({base, field = (label', fieldt)}) =>
                     if label' = label
                     then (expr, fieldt)
-                    else coerceRow expr ext
+                    else coerceRow expr base
         in coerce expr typ
         end
 

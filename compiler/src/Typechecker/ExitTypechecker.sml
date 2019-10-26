@@ -19,8 +19,8 @@ end = struct
          | Arrow (expl, {domain, codomain}) =>
             Arrow (expl, {domain = concrToF domain, codomain = concrToF codomain})
          | Record row => Record (concrToF row)
-         | RowExt {field = (label, fieldt), ext} =>
-            RowExt {field = (label, concrToF fieldt), ext = concrToF ext}
+         | RowExt {base, field = (label, fieldt)} =>
+            RowExt {base = concrToF base, field = (label, concrToF fieldt)}
          | EmptyRow => EmptyRow
          | FFType.App {callee, args} =>
             FFType.App {callee = concrToF callee, args = Vector.map concrToF args}

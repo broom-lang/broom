@@ -73,10 +73,10 @@ end = struct
 
     fun rowLabelType row label =
         case row
-        of RowExt {field = (label', fieldt), ext} =>
+        of RowExt {base, field = (label', fieldt)} =>
             if label' = label
             then SOME fieldt
-            else rowLabelType ext label
+            else rowLabelType base label
          | EmptyRow => NONE
          | _ => raise Fail ("Not a row type: " ^ FType.Concr.toString row)
 
@@ -113,10 +113,10 @@ end = struct
             andalso eq env (domain, domain')
             andalso eq env (codomain, codomain')
          | (Record row, Record row') => eq env (row, row')
-         | (RowExt {field = (label, fieldt), ext}, row' as RowExt _) =>
+         | (RowExt {base, field = (label, fieldt)}, row' as RowExt _) =>
             (case rewriteRow label row'
-             of SOME {field = (_, fieldt'), ext = ext'} =>
-                 eq env (fieldt, fieldt') andalso eq env (ext, ext')
+             of SOME {base = base', field = (_, fieldt')} =>
+                 eq env (fieldt, fieldt') andalso eq env (base, base')
               | NONE => false)
          | (EmptyRow, EmptyRow) => true
          | (FType.Type t, FType.Type t') => absEq env (t, t')
@@ -207,7 +207,7 @@ end = struct
                                   | t => raise Fail ("Not a record: " ^ FFTerm.exprToString record ^ ": " ^ FFType.concrToString t))
                              | NONE => EmptyRow
             fun checkRowField ((label, field), row) =
-                RowExt {field = (label, check env field), ext = row}
+                RowExt {base = row, field = (label, check env field)}
             val t = Record (Vector.foldr checkRowField recordRow fields)
         in checkEq pos env (typ, t)
          ; typ
@@ -219,10 +219,10 @@ end = struct
                              | t => raise Fail ("Not a record: " ^ FFTerm.exprToString original ^ ": " ^ FFType.Concr.toString t)
             fun override ((label, field), row) =
                 case row
-                of RowExt {field = (label', fieldt), ext} =>
+                of RowExt {base, field = (label', fieldt)} =>
                     if label = label'
-                    then RowExt {field = (label, check env field), ext}
-                    else RowExt {field = (label', fieldt), ext = override ((label, field), ext)}
+                    then RowExt {base, field = (label, check env field)}
+                    else RowExt {base = override ((label, field), base), field = (label', fieldt)}
                  | _ => raise Fail ("Tried to override missing field " ^ Name.toString label)
             val t = Record (Vector.foldr override recordRow fields)
         in checkEq pos env (typ, t)
