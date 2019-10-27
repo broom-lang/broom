@@ -151,6 +151,41 @@ val identity : pi (a : type) => a -> a =
 val n = identity 5
 ```
 
+## Effects
+
+Every expression has an effect row, which is only visible in function types.
+Pure expressions have the empty effect row:
+
+```
+val inc : int -[]-> int = fn n -> n + 1 end
+```
+
+If that is the case the effect annotation can be elided:
+
+```
+val inc : int -> int = fn n -> n + 1 end
+```
+
+Side-effecting expressions have non-empty effect rows, e.g. `println`:
+
+```
+val println : string -[io : IO.t]-> {} =
+    fn s -> print (s <> "\n")
+```
+
+Higher-order functions are often parametric in their effects:
+
+```
+val Array : ARRAY = module
+    ...
+
+    val map : pi a b (e : row) => (a -[e]-> b) -> t a -[e]-> t b
+end
+```
+
+Obviously mapping a function over an array has no effects aside from those from
+calling the callback function, which depend on the particular function.
+
 ## Modules
 
 Modules are blocks that produce records of their bindings instead of the
