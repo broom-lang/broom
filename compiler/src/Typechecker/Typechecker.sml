@@ -366,24 +366,27 @@ end = struct
             (Pure, FType.Prim (Const.typeOf c), FTerm.Const (pos, c))
 
     and elaborateRecord env pos ({base, edits}: CTerm.recordFields): effect * concr * FTerm.expr =
-        let fun elaborateField ((label, expr), (eff, rowType, fieldExprs)) =
-                let val pos = CTerm.exprPos expr
-                    val (fieldEff, fieldt, expr) = elaborateExpr env expr
+        let fun elaborateField ((label, expr), (eff, base, fieldExprs)) =
+                let val (fieldEff, fieldt, expr) = elaborateExpr env expr
                 in ( joinEffs (eff, fieldEff)
-                   , FType.RowExt {base = rowType, field = (label, fieldt)}
+                   , FType.RowExt {base, field = (label, fieldt)}
                    , (label, expr) :: fieldExprs )
                 end
-            val (extEff, extType, extExpr) =
-                case ext
-                of SOME ext => let val (extEff, t, ext) = elaborateExpr env ext
-                               in case t
-                                  of FType.Record row => (extEff, row, SOME ext)
-                               end
+
+            val (baseEff, baseType, baseExpr) =
+                case base
+                of SOME base =>
+                    let val (baseEff, t, base) = elaborateExpr env base
+                    in case t
+                       of FType.Record row => (baseEff, row, SOME base)
+                    end
                  | NONE => (Pure, FType.EmptyRow, NONE)
-            val (fieldsEff, rowType, fieldExprs) = Vector.foldl elaborateField (Pure, extType, []) fields
-            val eff = joinEffs (fieldsEff, extEff)
+            val (fieldsEff, rowType, fieldExprs) =
+                Vector.foldl elaborateField (Pure, baseType, []) edits
+            val eff = joinEffs (baseEff, fieldsEff)
             val typ = FType.Record rowType
-        in (extEff, typ, FTerm.Extend (pos, typ, Vector.fromList fieldExprs, extExpr))
+        in (eff, typ, FTerm.Extend (pos, typ, { base = baseExpr
+                                              , fields = Vector.fromList (List.rev fieldExprs) }))
         end
 
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
