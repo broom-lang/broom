@@ -1,5 +1,7 @@
 # Introduction to Broom
 
+**WIP warning: Things might not currently work as advertised here, or at all.**
+
 ## Definitions
 
 Values can be named with `val`:
@@ -229,4 +231,36 @@ val s = IntSet.union IntSet.empty IntSet'.empty
 Impure module functions are 'generative' as in Standard ML, creating fresh
 types on every call. The majority of module functions should be pure, even more
 so than more usual functions.
+
+## Implicits
+
+Implicits can be used to make the type system fill in some values for you:
+
+```
+type ADD = interface
+    type t
+
+    val (+) : t -> t -> t
+end
+
+implicit val AddInt = Int
+
+val (+) : pi Add : ADD => Add.t -> Add.t -> Add.t
+    = fn Add => fn a -> fn b -> Add.+ a b
+
+val n = 1 + 2 # Inferred to be `AddInt.+ 1 2`
+```
+
+Implicit functions can also be used to provide more complex inference:
+
+```
+implicit fun AddVec3D (?Elem : FIELD) = Vec3D(Elem)
+val vec = Vec3D(Int).zero + Vec3D(Int).zero
+# `val vec = AddVec3D(Int).+ (Vec3D(Int).zero) (Vec3D(Int).zero)`
+```
+
+Implicits are a general mechanism that can be used for other things as well but
+usually we use it like this, to get more inference in generic code instead of
+having to write somewhat tedious and verbose module code to perform various
+dependency injections.
 
