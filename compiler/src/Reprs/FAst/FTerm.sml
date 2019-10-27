@@ -8,8 +8,8 @@ signature FAST_TERM = sig
     datatype expr
         = Fn of Pos.span * def * arrow * expr
         | TFn of Pos.span * Type.def vector * expr
-        | Extend of Pos.span * Type.concr * (Name.t * expr) vector * expr option
-        | Override of Pos.span * Type.concr * (Name.t * expr) vector * expr
+        | EmptyRecord of Pos.span
+        | Record of Pos.span * Type.concr * {base : expr, edits : record_edit vector}
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector}
         | Field of Pos.span * Type.concr * expr * Name.t
@@ -28,6 +28,10 @@ signature FAST_TERM = sig
     and pat
         = Def of Pos.span * def
         | ConstP of Pos.span * Const.t
+
+    and record_edit
+        = With of (Name.t * expr) vector
+        | Where of (Name.t * expr) vector
 
     withtype clause = {pattern: pat, body: expr}
 
@@ -80,8 +84,8 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
     datatype expr
         = Fn of Pos.span * def * arrow * expr
         | TFn of Pos.span * Type.def vector * expr
-        | Extend of Pos.span * Type.concr  * (Name.t * expr) vector * expr option
-        | Override of Pos.span * Type.concr * (Name.t * expr) vector * expr
+        | EmptyRecord of Pos.span
+        | Record of Pos.span * Type.concr * {base : expr, edits : record_edit vector}
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector}
         | Field of Pos.span * Type.concr * expr * Name.t
@@ -101,13 +105,15 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         = Def of Pos.span * def
         | ConstP of Pos.span * Const.t
 
+    and record_edit
+        = With of (Name.t * expr) vector
+        | Where of (Name.t * expr) vector
+
     withtype clause = {pattern: pat, body: expr}
 
     val exprPos =
         fn Fn (pos, _, _, _) => pos
          | TFn (pos, _, _) => pos
-         | Extend (pos, _, _, _) => pos
-         | Override (pos, _, _, _) => pos
          | App (pos, _, _) => pos
          | TApp (pos, _, _) => pos
          | Field (pos, _, _, _) => pos
@@ -153,8 +159,6 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | TFn (_, params, body) =>
            text "/\\" <> PPrint.punctuate space (Vector.map Type.defToDoc params)
                <+> text "=>" <+> exprToDoc body
-        | Extend args => recordToDoc "extending" args
-        | Override (pos, typ, fields, ext) => recordToDoc "overriding" (pos, typ, fields, SOME ext)
         | App (_, _, {callee, arg}) =>
            parens (exprToDoc callee <+> exprToDoc arg)
         | TApp (_, _, {callee, args}) =>
@@ -232,7 +236,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         fn Fn (_, {typ = domain, ...}, arrow, body) =>
             Type.Arrow (arrow, {domain, codomain = typeOf body})
          | TFn (_, params, body) => Type.ForAll (params, typeOf body)
-         | Extend (_, typ, _, _) | Override (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => typ
+         | App (_, typ, _) | TApp (_, typ, _) => typ
          | Field (_, typ, _, _) => typ
          | Let (_, _, body) => typeOf body
          | Match (_, t, _, _) => t

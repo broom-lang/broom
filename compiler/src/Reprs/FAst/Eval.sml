@@ -129,7 +129,7 @@ end = struct
               | NONE => eval env cont body)
          | Match (_, _, matchee, clauses) =>
             eval env (Branches (env, VectorSlice.full clauses) :: cont) matchee
-         | Extend (_, _, fields, ext) =>
+         (*| Extend (_, _, fields, ext) =>
             (case Vector.uncons fields
              of SOME ((label, expr), fields') =>
                  let val record = NameHashTable.mkTable (Vector.length fields, Subscript)
@@ -145,7 +145,7 @@ end = struct
                  let val record = NameHashTable.mkTable (0, Subscript)
                  in eval env (InitField (env, fields', SOME original, record, label) :: cont) expr
                  end
-              | NONE => eval env cont original)
+              | NONE => eval env cont original)*)
          | Field (_, _, expr, label) => eval env (GetField label :: cont) expr
          | Cast (_, _, expr, _) => eval env cont expr
          | Type _ => continue cont Unit

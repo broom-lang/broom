@@ -12,13 +12,14 @@ end = struct
     datatype expr = datatype FlexFAst.Term.expr
     datatype stmt = datatype FlexFAst.Term.stmt
     datatype pat = datatype FlexFAst.Term.pat
+    datatype record_edit = datatype FlexFAst.Term.record_edit
     datatype either = datatype Either.t
 
     val rec concrToF: FlexFAst.Type.concr -> FFType.concr =
         fn ForAll (param, body) => ForAll (param, concrToF body)
          | Arrow (expl, {domain, codomain}) =>
             Arrow (expl, {domain = concrToF domain, codomain = concrToF codomain})
-         | Record row => Record (concrToF row)
+         | FType.Record row => FType.Record (concrToF row)
          | RowExt {base, field = (label, fieldt)} =>
             RowExt {base = concrToF base, field = (label, concrToF fieldt)}
          | EmptyRow => EmptyRow
@@ -52,14 +53,13 @@ end = struct
         fn Fn (pos, {pos = defPos, id, var, typ}, expl, body) =>
             FFTerm.Fn (pos, {pos = defPos, id, var, typ = concrToF typ}, expl, exprToF body)
          | TFn (pos, param, body) => FFTerm.TFn (pos, param, exprToF body)
-         | Extend (pos, typ, fields, record) =>
-            FFTerm.Extend ( pos, concrToF typ
-                          , Vector.map (Pair.second exprToF) fields
-                          , Option.map exprToF record)
-         | Override (pos, typ, fields, ext) =>
-            FFTerm.Override ( pos, concrToF typ
-                            , Vector.map (Pair.second exprToF) fields
-                            , exprToF ext )
+         | Record (pos, typ, {base, edits}) =>
+            let val rec editToF =
+                    fn With fields => FFTerm.With (fieldsToF fields)
+                     | Where fields => FFTerm.Where (fieldsToF fields)
+                and fieldsToF = fn fields => Vector.map (Pair.second exprToF) fields
+            in FFTerm.Record (pos, concrToF typ, {base = exprToF base, edits = Vector.map editToF edits})
+            end
          | Let (pos, stmts, body) =>
             FFTerm.Let (pos, Vector.map (stmtToF) stmts, exprToF body)
          | Match (pos, typ, matchee, clauses) =>

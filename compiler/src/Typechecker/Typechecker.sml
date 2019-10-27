@@ -326,10 +326,11 @@ end = struct
                 val row = List.foldl (fn ({var, typ, ...}, base) => FType.RowExt {base, field = (var, typ)})
                                      FType.EmptyRow defs
                 val typ = FType.Record row
-                val body = FTerm.Extend ( pos, typ
-                                        , Vector.fromList defs
-                                              |> Vector.map (fn def as {var, ...} => (var, FTerm.Use (pos, def)))
-                                        , NONE )
+                val body = FTerm.Record ( pos, typ
+                                        , { base = FTerm.EmptyRecord pos
+                                          , edits = #[FTerm.With
+                                                      (Vector.fromList defs
+                                                       |> Vector.map (fn def as {var, ...} => (var, FTerm.Use (pos, def))))] } )
             in (eff, typ, FTerm.Let (pos, stmts, body))
             end
          | CTerm.App (pos, {callee, arg}) =>
@@ -366,11 +367,36 @@ end = struct
             (Pure, FType.Prim (Const.typeOf c), FTerm.Const (pos, c))
 
     and elaborateRecord env pos ({base, edits}: CTerm.recordFields): effect * concr * FTerm.expr =
-        let fun elaborateField ((label, expr), (eff, base, fieldExprs)) =
+        let fun elaborateEdit (edit, (eff, typ, revEdits)) =
+                case edit
+                of CTerm.With fields =>
+                    let val (fieldsEff, fieldTyps, fieldExprs) = elaborateFields fields
+                    in ( joinEffs (eff, fieldsEff)
+                       , Vector.foldl (fn (field, base) => FType.RowExt {base, field})
+                                      typ fieldTyps
+                       , FTerm.With fieldExprs :: revEdits )
+                    end
+                 | CTerm.Where fields =>
+                    let val (fieldsEff, fieldTyps, fieldExprs) = elaborateFields fields
+                    in ( joinEffs (eff, fieldsEff)
+                       , Vector.foldl (fn (field, row) => rowWith env row field)
+                                      typ fieldTyps
+                       , FTerm.Where fieldExprs :: revEdits )
+                    end
+
+            and elaborateFields fields =
+                let val (eff, typs, exprs) = 
+                        Vector.foldl elaborateField (Pure, [], []) fields
+                in ( eff
+                   , Vector.fromList (List.rev typs)
+                   , Vector.fromList (List.rev exprs) )
+                end
+
+            and elaborateField ((label, expr), (eff, ltyps, lexprs)) =
                 let val (fieldEff, fieldt, expr) = elaborateExpr env expr
                 in ( joinEffs (eff, fieldEff)
-                   , FType.RowExt {base, field = (label, fieldt)}
-                   , (label, expr) :: fieldExprs )
+                   , (label, fieldt) :: ltyps
+                   , (label, expr) :: lexprs )
                 end
 
             val (baseEff, baseType, baseExpr) =
@@ -378,15 +404,15 @@ end = struct
                 of SOME base =>
                     let val (baseEff, t, base) = elaborateExpr env base
                     in case t
-                       of FType.Record row => (baseEff, row, SOME base)
+                       of FType.Record row => (baseEff, row, base)
                     end
-                 | NONE => (Pure, FType.EmptyRow, NONE)
-            val (fieldsEff, rowType, fieldExprs) =
-                Vector.foldl elaborateField (Pure, baseType, []) edits
-            val eff = joinEffs (baseEff, fieldsEff)
+                 | NONE => (Pure, FType.EmptyRow, FTerm.EmptyRecord pos)
+            val (editsEff, rowType, edits) =
+                Vector.foldl elaborateEdit (Pure, baseType, []) edits
+            val eff = joinEffs (baseEff, editsEff)
             val typ = FType.Record rowType
-        in (eff, typ, FTerm.Extend (pos, typ, { base = baseExpr
-                                              , fields = Vector.fromList (List.rev fieldExprs) }))
+        in (eff, typ, FTerm.Record (pos, typ, { base = baseExpr
+                                              , edits = Vector.fromList (List.rev edits) }))
         end
 
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)

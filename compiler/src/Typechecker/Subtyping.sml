@@ -231,10 +231,10 @@ end = struct
                               (label, coerceField (FTerm.Field (currPos, origFieldt, tmpUse, label)))
                       in FTerm.Let ( currPos
                                    , #[FTerm.Val (currPos, tmpDef, expr)]
-                                   , FTerm.Override ( currPos
-                                                    , t'
-                                                    , Vector.map emitField (Vector.fromList fieldCoercions)
-                                                    , tmpUse ) )
+                                   , FTerm.Record ( currPos
+                                                  , t'
+                                                  , { base = tmpUse
+                                                    , edits = #[FTerm.Where (Vector.map emitField (Vector.fromList fieldCoercions))] } ) )
                       end)
 
     and rowCoercion intent env currPos (rows: concr * concr): field_coercion list =
