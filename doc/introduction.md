@@ -228,6 +228,44 @@ Here upcasting the `Point` module to the `DEFAULT` interface hides both the
 implementation of the `Point.t` type as a record and any associated operations
 and values not found in the interface.
 
+### Recursive Modules
+
+Recursion across module boundaries is supported, even with sealing:
+
+```
+type FILE = interface
+    type t
+    val size : t -> int
+end
+
+val File : FILE = module
+    extends @enum module
+        type t
+        val RegularFile : RegularFile.t -> t
+        val Directory : Directory.t -> t
+    end
+
+    val size = fn
+        | RegularFile f -> RegularFile.size f
+        | Directory d -> Directory.size d
+    end
+end
+
+val RegularFile : FILE = module
+    type t = {name : string, size : int}
+
+    fun size (f : t) = f.size
+end
+
+val Directory : FILE = module
+    type t = {name : string, files : Array.t File.t}
+
+    fun size ({_ with files}) =
+        Array.foldl fn total f -> total + File.size f end
+                    0 files
+end
+```
+
 ### Module Functions ('Functors')
 
 Since we have first-class modules and functions, we also have module functions
