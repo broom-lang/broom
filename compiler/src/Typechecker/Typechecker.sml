@@ -323,15 +323,15 @@ end = struct
                 val defs = Vector.foldr (fn (FTerm.Val (_, def, _), defs) => def :: defs
                                           | (FTerm.Axiom _, defs) | (FTerm.Expr _, defs) => defs)
                                         [] stmts
-                val row = List.foldl (fn ({var, typ, ...}, base) => FType.RowExt {base, field = (var, typ)})
-                                     FType.EmptyRow defs
-                val typ = FType.Record row
-                val body = FTerm.Record ( pos, typ
-                                        , { base = FTerm.EmptyRecord pos
-                                          , edits = #[FTerm.With
-                                                      (Vector.fromList defs
-                                                       |> Vector.map (fn def as {var, ...} => (var, FTerm.Use (pos, def))))] } )
-            in (eff, typ, FTerm.Let (pos, stmts, body))
+                val (row, body) =
+                    List.foldl (fn (def as {var, typ, ...}, (baseTyp, baseExpr)) =>
+                                    let val typ = FType.RowExt {base = baseTyp, field = (var, typ)}
+                                        val use = FTerm.Use (pos, def)
+                                    in ( typ
+                                       , FTerm.With (pos, typ, {base = baseExpr, field = (var, use)}) )
+                                    end)
+                               (FType.EmptyRow, FTerm.EmptyRecord pos) defs
+            in (eff, FType.Record row, FTerm.Let (pos, stmts, body))
             end
          | CTerm.App (pos, {callee, arg}) =>
             (* FIXME: generative behaviour when `callEff` is `Impure`: *)
