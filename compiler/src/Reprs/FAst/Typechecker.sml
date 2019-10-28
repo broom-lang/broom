@@ -80,6 +80,14 @@ end = struct
          | EmptyRow => NONE
          | _ => raise Fail ("Not a row type: " ^ FType.Concr.toString row)
 
+    fun rowWhere row (field' as (label', _)) =
+        case row
+        of RowExt {base, field = field as (label, _)} =>
+            if label = label'
+            then RowExt {base, field = field'}
+            else RowExt {base = rowWhere base field', field}
+         | _ => raise Fail ("Tried to override missing field " ^ Name.toString label')
+
     fun kindOf env =
         let fun findTypeFnExn name =
                 case Env.findTypeFn (env, name)
@@ -176,8 +184,8 @@ end = struct
     fun check env =
         fn Fn f => checkFn env f
          | TFn f => checkTFn env f
-         | Extend ext => checkExtend env ext
-         | Override ovr => checkOverride env ovr
+         | With args => checkWith env args
+         | Where args => checkWhere env args
          | App app => checkApp env app
          | TApp app => checkTApp env app
          | Field access => checkField env access
@@ -199,32 +207,16 @@ end = struct
         in ForAll (params, check env body)
         end
 
-    and checkExtend env (pos, typ, fields, orec) =
-        let val recordRow = case orec
-                            of SOME record =>
-                                (case check env record
-                                 of Record row => row
-                                  | t => raise Fail ("Not a record: " ^ FFTerm.exprToString record ^ ": " ^ FFType.concrToString t))
-                             | NONE => EmptyRow
-            fun checkRowField ((label, field), row) =
-                RowExt {base = row, field = (label, check env field)}
-            val t = Record (Vector.foldr checkRowField recordRow fields)
+    and checkWith env (pos, typ, {base, field = (label, fieldExpr)}) =
+        let val Record baseRow = check env base
+            val t = Record (RowExt {base = baseRow, field = (label, check env fieldExpr)})
         in checkEq pos env (typ, t)
          ; typ
         end
 
-    and checkOverride env (pos, typ, fields, original) =
-        let val recordRow = case check env original
-                            of Record row => row
-                             | t => raise Fail ("Not a record: " ^ FFTerm.exprToString original ^ ": " ^ FFType.Concr.toString t)
-            fun override ((label, field), row) =
-                case row
-                of RowExt {base, field = (label', fieldt)} =>
-                    if label = label'
-                    then RowExt {base, field = (label, check env field)}
-                    else RowExt {base = override ((label, field), base), field = (label', fieldt)}
-                 | _ => raise Fail ("Tried to override missing field " ^ Name.toString label)
-            val t = Record (Vector.foldr override recordRow fields)
+    and checkWhere env (pos, typ, {base, field = (label, fieldExpr)}) =
+        let val Record baseRow = check env base
+            val t = Record (rowWhere baseRow (label, check env fieldExpr))
         in checkEq pos env (typ, t)
          ; typ
         end
