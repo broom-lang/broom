@@ -313,30 +313,17 @@ end = struct
                          in (Unknown, Support.union (calleeSupport, argSupport))
                          end)
                  | TApp (_, _, {callee, args = _}) => checkExpr ini ctx callee
-                 | Extend (_, _, fields, ext) =>
-                    let val (Record ext, extSupport) =
-                            case ext
-                            of SOME ext => checkExpr ini ctx ext
-                             | NONE => (Record EmptyRow, Support.empty)
-                        val (row, support) =
-                            Vector.foldl (fn ((label, expr), (typ, support)) =>
-                                              let val (fieldt, fieldSupport) = checkExpr ini ctx expr
-                                              in ( withField typ (label, fieldt)
-                                                 , Support.union (support, fieldSupport) )
-                                              end)
-                                         (ext, extSupport) fields
-                    in (Record row, support)
+                 | With (_, _, {base, field = (label, fieldExpr)}) =>
+                    let val (Record base, baseSupport) = checkExpr ini ctx base
+                        val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
+                    in ( Record (withField base (label, fieldTyp))
+                       , Support.union (baseSupport, fieldSupport) )
                     end
-                 | Override (_, _, fields, ext) =>
-                    let val (Record ext, extSupport) = checkExpr ini ctx ext
-                        val (row, support) =
-                            Vector.foldl (fn ((label, expr), (typ, support)) =>
-                                              let val (fieldt, fieldSupport) = checkExpr ini ctx expr
-                                              in ( valOf (whereField typ (label, fieldt))
-                                                 , Support.union (support, fieldSupport) )
-                                              end)
-                                         (ext, extSupport) fields
-                    in (Record row, support)
+                 | Where (_, _, {base, field = (label, fieldExpr)}) =>
+                    let val (Record base, baseSupport) = checkExpr ini ctx base
+                        val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
+                    in ( Record (whereField base (label, fieldTyp))
+                       , Support.union (baseSupport, fieldSupport) )
                     end
                  | Field (_, _, expr, label) =>
                     let val (recTyp, support) = checkExpr ini ctx expr
