@@ -322,7 +322,7 @@ end = struct
                  | Where (_, _, {base, field = (label, fieldExpr)}) =>
                     let val (Record base, baseSupport) = checkExpr ini ctx base
                         val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
-                    in ( Record (whereField base (label, fieldTyp))
+                    in ( Record (valOf (whereField base (label, fieldTyp)))
                        , Support.union (baseSupport, fieldSupport) )
                     end
                  | Field (_, _, expr, label) =>
