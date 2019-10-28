@@ -19,5 +19,5 @@ Currently can't run any useful programs, but this is what it will be like:
 * Row-typed records (and modules, since they are the same)
 * Row-based effect system à la Koka
 
-See doc/introduction.md for a slightly more detailed exposition.
+See [the intro](doc/introduction.md) for a slightly more detailed exposition.
 
