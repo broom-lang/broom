@@ -9,7 +9,9 @@ signature FAST_TERM = sig
         = Fn of Pos.span * def * arrow * expr
         | TFn of Pos.span * Type.def vector * expr
         | EmptyRecord of Pos.span
-        | Record of Pos.span * Type.concr * {base : expr, edits : record_edit vector}
+        | With of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
+        | Without of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
+        | Where of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector}
         | Field of Pos.span * Type.concr * expr * Name.t
@@ -28,10 +30,6 @@ signature FAST_TERM = sig
     and pat
         = Def of Pos.span * def
         | ConstP of Pos.span * Const.t
-
-    and record_edit
-        = With of (Name.t * expr) vector
-        | Where of (Name.t * expr) vector
 
     withtype clause = {pattern: pat, body: expr}
 
@@ -85,7 +83,9 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         = Fn of Pos.span * def * arrow * expr
         | TFn of Pos.span * Type.def vector * expr
         | EmptyRecord of Pos.span
-        | Record of Pos.span * Type.concr * {base : expr, edits : record_edit vector}
+        | With of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
+        | Without of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
+        | Where of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector}
         | Field of Pos.span * Type.concr * expr * Name.t
@@ -104,10 +104,6 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
     and pat
         = Def of Pos.span * def
         | ConstP of Pos.span * Const.t
-
-    and record_edit
-        = With of (Name.t * expr) vector
-        | Where of (Name.t * expr) vector
 
     withtype clause = {pattern: pat, body: expr}
 

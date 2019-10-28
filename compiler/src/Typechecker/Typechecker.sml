@@ -367,36 +367,26 @@ end = struct
             (Pure, FType.Prim (Const.typeOf c), FTerm.Const (pos, c))
 
     and elaborateRecord env pos ({base, edits}: CTerm.recordFields): effect * concr * FTerm.expr =
-        let fun elaborateEdit (edit, (eff, typ, revEdits)) =
-                case edit
-                of CTerm.With fields =>
-                    let val (fieldsEff, fieldTyps, fieldExprs) = elaborateFields fields
-                    in ( joinEffs (eff, fieldsEff)
-                       , Vector.foldl (fn (field, base) => FType.RowExt {base, field})
-                                      typ fieldTyps
-                       , FTerm.With fieldExprs :: revEdits )
-                    end
-                 | CTerm.Where fields =>
-                    let val (fieldsEff, fieldTyps, fieldExprs) = elaborateFields fields
-                    in ( joinEffs (eff, fieldsEff)
-                       , Vector.foldl (fn (field, row) => rowWith env row field)
-                                      typ fieldTyps
-                       , FTerm.Where fieldExprs :: revEdits )
-                    end
-
-            and elaborateFields fields =
-                let val (eff, typs, exprs) = 
-                        Vector.foldl elaborateField (Pure, [], []) fields
-                in ( eff
-                   , Vector.fromList (List.rev typs)
-                   , Vector.fromList (List.rev exprs) )
+        let fun elaborateField editTyp editExpr ((label, expr), (eff, baseTyp, baseExpr)) =
+                let val (fieldEff, fieldTyp, fieldExpr) = elaborateExpr env expr
+                    val typ = editTyp (baseTyp, (label, fieldTyp))
+                in ( joinEffs (eff, fieldEff)
+                   , typ
+                   , editExpr (typ, baseExpr, (label, fieldExpr)) )
                 end
 
-            and elaborateField ((label, expr), (eff, ltyps, lexprs)) =
-                let val (fieldEff, fieldt, expr) = elaborateExpr env expr
-                in ( joinEffs (eff, fieldEff)
-                   , (label, fieldt) :: ltyps
-                   , (label, expr) :: lexprs )
+            fun elaborateEdit (edit, acc) =
+                let val (editTyp, editExpr, fields) =   
+                        case edit
+                        of CTerm.With fields =>
+                            ( fn (base, field) => FType.RowExt {base, field}
+                            , fn (typ, base, field) => FTerm.With (pos, typ, {base, field})
+                            , fields )
+                         | CTerm.Where fields =>
+                            ( rowWith env
+                            , fn (typ, base, field) => FTerm.Where (pos, typ, {base, field})
+                            , fields )
+                in Vector.foldl (elaborateField editTyp editExpr) acc fields
                 end
 
             val (baseEff, baseType, baseExpr) =
@@ -407,12 +397,9 @@ end = struct
                        of FType.Record row => (baseEff, row, base)
                     end
                  | NONE => (Pure, FType.EmptyRow, FTerm.EmptyRecord pos)
-            val (editsEff, rowType, edits) =
-                Vector.foldl elaborateEdit (Pure, baseType, []) edits
-            val eff = joinEffs (baseEff, editsEff)
-            val typ = FType.Record rowType
-        in (eff, typ, FTerm.Record (pos, typ, { base = baseExpr
-                                              , edits = Vector.fromList (List.rev edits) }))
+            val (eff, rowType, expr) =
+                Vector.foldl elaborateEdit (baseEff, baseType, baseExpr) edits
+        in (eff, FType.Record rowType, expr)
         end
 
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
