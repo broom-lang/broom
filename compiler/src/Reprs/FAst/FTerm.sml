@@ -155,6 +155,13 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | TFn (_, params, body) =>
            text "/\\" <> PPrint.punctuate space (Vector.map Type.defToDoc params)
                <+> text "=>" <+> exprToDoc body
+        | EmptyRecord _ => text "{}"
+        | With (_, _, {base, field = (label, fieldExpr)}) =>
+           braces(exprToDoc base <+> text "with" <+> Name.toDoc label
+                  <+> text "=" <+> exprToDoc fieldExpr)
+        | Where (_, _, {base, field = (label, fieldExpr)}) =>
+           braces(exprToDoc base <+> text "where" <+> Name.toDoc label
+                  <+> text "=" <+> exprToDoc fieldExpr)
         | App (_, _, {callee, arg}) =>
            parens (exprToDoc callee <+> exprToDoc arg)
         | TApp (_, _, {callee, args}) =>

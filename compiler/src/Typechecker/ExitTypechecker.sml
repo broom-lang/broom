@@ -52,6 +52,7 @@ end = struct
         fn Fn (pos, {pos = defPos, id, var, typ}, expl, body) =>
             FFTerm.Fn (pos, {pos = defPos, id, var, typ = concrToF typ}, expl, exprToF body)
          | TFn (pos, param, body) => FFTerm.TFn (pos, param, exprToF body)
+         | EmptyRecord pos => FFTerm.EmptyRecord pos
          | With (pos, typ, {base, field}) =>
             FFTerm.With (pos, concrToF typ, {base = exprToF base, field = Pair.second exprToF field})
          | Where (pos, typ, {base, field}) =>

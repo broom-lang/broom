@@ -386,11 +386,11 @@ end = struct
                 let val (editTyp, editExpr, fields) =   
                         case edit
                         of CTerm.With fields =>
-                            ( fn (base, field) => FType.RowExt {base, field}
+                            ( fn (base, field) => FType.Record (FType.RowExt {base, field})
                             , fn (typ, base, field) => FTerm.With (pos, typ, {base, field})
                             , fields )
                          | CTerm.Where fields =>
-                            ( rowWhere env
+                            ( FType.Record o rowWhere env
                               (* TODO: Subtyping between old and new field value: *)
                             , fn (typ, base, field) => FTerm.Where (pos, typ, {base, field})
                             , fields )

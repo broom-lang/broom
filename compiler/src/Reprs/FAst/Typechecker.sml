@@ -184,6 +184,7 @@ end = struct
     fun check env =
         fn Fn f => checkFn env f
          | TFn f => checkTFn env f
+         | EmptyRecord _ => FFType.Record FFType.EmptyRow
          | With args => checkWith env args
          | Where args => checkWhere env args
          | App app => checkApp env app

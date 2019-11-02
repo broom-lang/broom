@@ -314,13 +314,13 @@ end = struct
                          end)
                  | TApp (_, _, {callee, args = _}) => checkExpr ini ctx callee
                  | With (_, _, {base, field = (label, fieldExpr)}) =>
-                    let val (Record base, baseSupport) = checkExpr ini ctx base
+                    let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
                         val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
                     in ( Record (withField base (label, fieldTyp))
                        , Support.union (baseSupport, fieldSupport) )
                     end
                  | Where (_, _, {base, field = (label, fieldExpr)}) =>
-                    let val (Record base, baseSupport) = checkExpr ini ctx base
+                    let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
                         val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
                     in ( Record (valOf (whereField base (label, fieldTyp)))
                        , Support.union (baseSupport, fieldSupport) )
@@ -360,7 +360,7 @@ end = struct
                     in (typ, Support.union (immediateSupport, transitiveSupport))
                     end
                  | Cast (_, _, expr, _) => checkExpr ini ctx expr
-                 | Type _ | Const _ => (Scalar, Support.empty)
+                 | EmptyRecord _ | Type _ | Const _ => (Scalar, Support.empty)
 
             and pushBlock ini stmts =
                 let val ids =
