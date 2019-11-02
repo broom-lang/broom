@@ -1,11 +1,9 @@
 structure CheckUse :> sig
-    structure FType : CLOSED_FAST_TYPE
-        where type sv = FlexFAst.Type.sv
+    structure FType : CLOSED_FAST_TYPE where type sv = FlexFAst.Type.sv
     structure FTerm : FAST_TERM
         where type expr = FlexFAst.Term.expr
         where type Type.sv = FlexFAst.Type.sv
-    structure Env : TYPECHECKING_ENV
-        where type t = TypecheckingEnv.t
+    structure Env : TYPECHECKING_ENV where type t = TypecheckingEnv.t
 
     val fix : { elaborateType : Env.t -> Cst.Type.typ -> FType.def list * FType.Concr.t
               , reAbstract : Env.t -> FType.Abs.t -> FType.Concr.t
