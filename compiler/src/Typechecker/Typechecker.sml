@@ -332,9 +332,9 @@ end = struct
                                         [] stmts
                 val (row, body) =
                     List.foldl (fn (def as {var, typ, ...}, (baseTyp, baseExpr)) =>
-                                    let val typ = FType.RowExt {base = baseTyp, field = (var, typ)}
+                                    let val row = FType.RowExt {base = baseTyp, field = (var, typ)}
                                         val use = FTerm.Use (pos, def)
-                                    in ( typ
+                                    in ( FType.Record row
                                        , FTerm.With (pos, typ, {base = baseExpr, field = (var, use)}) )
                                     end)
                                (FType.EmptyRow, FTerm.EmptyRecord pos) defs
