@@ -64,7 +64,7 @@ end = struct
         end
 
     type coercion = (FTerm.expr -> FTerm.expr) option
-    type field_coercion = Name.t * (concr * concr) * (FTerm.expr -> FTerm.expr)
+    type field_coercion = (Name.t * concr) * (FTerm.expr -> FTerm.expr) * concr
 
     fun applyCoercion (coerce: coercion) expr =
         case coerce
@@ -227,24 +227,25 @@ end = struct
             SOME (fn expr =>
                       let val tmpDef = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = t}
                           val tmpUse = FTerm.Use (currPos, tmpDef)
-                          fun emitField (label, (origFieldt, _), coerceField) =
+                          fun emitField ((label, origFieldt), coerceField, _) =
                               (label, coerceField (FTerm.Field (currPos, origFieldt, tmpUse, label)))
                       in FTerm.Let ( currPos
                                    , #[FTerm.Val (currPos, tmpDef, expr)]
-                                   , FTerm.Record ( currPos
-                                                  , t'
-                                                  , { base = tmpUse
-                                                    , edits = #[FTerm.Where (Vector.map emitField (Vector.fromList fieldCoercions))] } ) )
+                                   , List.foldl (fn (fieldCoercion as (_, _, row'), base) =>
+                                                     let val typ' = FType.Record row'
+                                                     in FTerm.Where (currPos, typ', {base, field = emitField fieldCoercion})
+                                                     end)
+                                                tmpUse fieldCoercions )
                       end)
 
     and rowCoercion intent env currPos (rows: concr * concr): field_coercion list =
         let val rec subExts =
-                fn (row, RowExt {base = base', field = (label, fieldt')}) =>
+                fn (row, row' as RowExt {base = base', field = (label, fieldt')}) =>
                     let val {base, fieldt} = reorderRow currPos label (FType.rowExtBase base') row
                         val coerceField = coercion intent env currPos (fieldt, fieldt')
                         val coerceExt = subExts (base, base')
                     in case coerceField
-                       of SOME coerceField => (label, (fieldt, fieldt'), coerceField) :: coerceExt
+                       of SOME coerceField => ((label, fieldt), coerceField, row') :: coerceExt
                         | NONE => coerceExt
                     end
                  | rows => (coercion intent env currPos rows; [])

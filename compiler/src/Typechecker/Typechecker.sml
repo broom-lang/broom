@@ -239,6 +239,13 @@ end = struct
          | (Impure, Pure) => Impure
          | (Impure, Impure) => Impure
 
+    and rowWhere env (row, field' as (label', fieldt')) =
+        case row
+        of FType.RowExt {base, field = field as (label, fieldt)} =>
+            if label = label'
+            then FType.RowExt {base, field = (label, fieldt')}
+            else FType.RowExt {base = rowWhere env (row, field'), field}
+
     and declsScope env decls =
         let val builder = Bindings.Expr.Builder.new ()
             do Vector.app (fn (pos, var, t) =>
@@ -383,7 +390,8 @@ end = struct
                             , fn (typ, base, field) => FTerm.With (pos, typ, {base, field})
                             , fields )
                          | CTerm.Where fields =>
-                            ( rowWith env
+                            ( rowWhere env
+                              (* TODO: Subtyping between old and new field value: *)
                             , fn (typ, base, field) => FTerm.Where (pos, typ, {base, field})
                             , fields )
                 in Vector.foldl (elaborateField editTyp editExpr) acc fields
