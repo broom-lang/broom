@@ -98,7 +98,17 @@ record update' is done with the syntactically similar `where`:
 val point' = {point where x = 42}
 ```
 
-(With types `where` has a more specialized function.)
+(To be consistent with the type-level `where`, the new value must be a subtype
+of the old one.)
+
+Existing fields can be removed with `without`:
+
+```
+val point1D: {x : int} = {point without y}
+```
+
+(A combination of `with` and `without` can also be used to emulate `where` but
+without the subtype check.)
 
 Record fields can be read with the familiar dot notation:
 
