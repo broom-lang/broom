@@ -17,7 +17,6 @@ end = struct
     structure CTerm = Cst.Term
     structure FType = FlexFAst.Type
     structure FTerm = FlexFAst.Term
-    datatype predicativity = datatype TypeVars.predicativity
     structure Env = TypecheckingEnv
     structure Scope = Env.Scope
     datatype binding_state = datatype Env.Bindings.Expr.binding_state
@@ -50,7 +49,7 @@ end = struct
                             in (def, Visited (def, SOME (eff, expr)))
                             end
                          | (def as {typ = NONE, ...}, oexpr as NONE) =>
-                            let val t = FType.SVar (FType.UVar (Env.freshUv env Predicative))
+                            let val t = FType.SVar (FType.UVar (Env.freshUv env))
                             in (FTerm.setDefTyp def t, Typed (FTerm.setDefTyp def (t, NONE), oexpr))
                             end
                 in case valOf (Env.findExpr env name)
@@ -68,7 +67,7 @@ end = struct
             (* In case we encounter a recursive reference to `name` not broken by type annotations we call
                this to insert a unification variable, inferring a monomorphic type. *)
             and cyclicBindingType pos env name (def, oexpr) : FTerm.def =
-                let val t = FType.SVar (FType.UVar (Env.freshUv env Predicative))
+                let val t = FType.SVar (FType.UVar (Env.freshUv env))
                 in Env.updateExpr pos env name (Fn.constantly (Typed ( FTerm.setDefTyp def (t, NONE)
                                                                      , oexpr )))
                  ; FTerm.setDefTyp def t

@@ -24,7 +24,6 @@ end = struct
     structure Id = FType.Id
     structure Concr = FType.Concr
     datatype concr = datatype Concr.t
-    datatype predicativity = datatype TypeVars.predicativity
     val concr = FType.Abs.concr
     open TypeError
     structure Env = TypecheckingEnv
@@ -68,7 +67,7 @@ end = struct
                             let val (nonCallsiteTypeDefs, domain) =
                                     case domain
                                     of SOME domain => elaborateType env domain
-                                     | NONE => ([], FType.SVar (FType.UVar (Env.freshUv env Predicative)))
+                                     | NONE => ([], FType.SVar (FType.UVar (Env.freshUv env)))
                                 val callsite = {var = FType.Id.fresh (), kind = FType.CallsiteK}
                                 val typeDefs = callsite :: nonCallsiteTypeDefs
 

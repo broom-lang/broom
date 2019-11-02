@@ -78,8 +78,8 @@ signature TYPECHECKING_ENV = sig
     val findType: t -> FType.Id.t -> Bindings.Type.binding option
     val universalParams: t -> FlexFAst.Type.def vector
     val nearestExists: t -> (Scope.Id.t * Bindings.Type.bindings) option
-    val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
-    val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
+    val newUv: t -> Name.t -> FlexFAst.Type.uv
+    val freshUv: t -> FlexFAst.Type.uv
 
     val pureCallsite: t -> Name.t
     val freshAbstract: t -> FlexFAst.Type.Id.t -> FlexFAst.Type.tfn_sig -> Name.t
@@ -289,14 +289,14 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
     fun nearestExists ({scopes, ...}: t) =
         List.some (fn Scope.ExistsScope scope => SOME scope | _ => NONE) scopes
 
-    fun newUv (env: t) (predicativity, name) =
+    fun newUv (env: t) name =
         case #scopes env
-        of scope :: _ => TypeVars.Uv.new (Scope.id scope, predicativity, name)
+        of scope :: _ => TypeVars.Uv.new (Scope.id scope, name)
          | [] => raise Fail "unreachable"
 
-    fun freshUv (env: t) predicativity =
+    fun freshUv (env: t) =
         case #scopes env
-        of scope :: _ => TypeVars.Uv.fresh (Scope.id scope, predicativity)
+        of scope :: _ => TypeVars.Uv.fresh (Scope.id scope)
          | [] => raise Fail "unreachable"
 
     fun pureCallsite ({toplevel, ...}: t) = Scope.pureCallsite toplevel

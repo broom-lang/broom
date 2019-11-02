@@ -6,7 +6,6 @@ end = struct
     val op|> = Fn.|>
     datatype either = datatype Either.t
     structure Uv = TypeVars.Uv
-    datatype predicativity = datatype TypeVars.predicativity
     structure CTerm = Cst.Term
     structure CType = Cst.Type
     datatype explicitness = datatype Cst.explicitness
@@ -79,13 +78,13 @@ end = struct
         case expr
         of CTerm.Fn (pos, expl, clauses) => (* TODO: Exhaustiveness checking: *)
             (* FIXME: Enforce that for implicit fn:s domain = type *)
-            let val codomain = FType.SVar (FType.UVar (Env.freshUv env Predicative))
+            let val codomain = FType.SVar (FType.UVar (Env.freshUv env))
                 val (eff, forallScopeId, domain, clauses) =
                     elaborateClauses env (fn (env, body) => elaborateExprAs env codomain body) clauses
                 val (typeDefs, domain) =
                     case domain
                     of SOME (typeDefs, domain) => (typeDefs, domain)
-                     | NONE => (#[], FType.SVar (FType.UVar (Env.freshUv env Predicative)))
+                     | NONE => (#[], FType.SVar (FType.UVar (Env.freshUv env)))
                 val def = {pos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
                 val arr =
                     case (expl, eff)
@@ -115,7 +114,7 @@ end = struct
                , FTerm.Let (pos, stmts, body))
             end
          | CTerm.Match (pos, _, _) =>
-            let val t = FType.SVar (FType.UVar (Env.freshUv env Predicative))
+            let val t = FType.SVar (FType.UVar (Env.freshUv env))
                 val (eff, expr) = elaborateExprAs env t expr
             in (eff, t, expr)
             end
@@ -167,7 +166,7 @@ end = struct
                           of SOME def => def
                            | NONE => ( Env.error env (UnboundVal (pos, name))
                                      ; { pos, id = DefId.fresh (), var = name
-                                       , typ = FType.SVar (FType.UVar (Env.freshUv env Predicative)) } )
+                                       , typ = FType.SVar (FType.UVar (Env.freshUv env)) } )
             in (Pure, #typ def, FTerm.Use (pos, def))
             end
          | CTerm.Const (pos, c) =>
@@ -309,7 +308,7 @@ end = struct
             end
          | CTerm.Def (pos, name) =>
             let val scopeId = Scope.Id.fresh ()
-                val t = FType.SVar (FType.UVar (TypeVars.Uv.fresh (scopeId, Predicative)))
+                val t = FType.SVar (FType.UVar (TypeVars.Uv.fresh (scopeId)))
                 val def = {pos, id = DefId.fresh (), var = name, typ = t}
                 val env = Env.pushScope env (Scope.PatternScope (scopeId, name, Visited (def, NONE)))
             in ((#[], t), FTerm.Def (pos, def), NONE, env)
@@ -448,7 +447,7 @@ end = struct
                                               in (callsite :: args, Id.SortedMap.insert (mapping, var, callsite))
                                               end
                                            | ({var, kind}, (args, mapping)) =>
-                                              let val uv = FType.SVar (FType.UVar (Env.newUv env (Predicative, nameFromId var)))
+                                              let val uv = FType.SVar (FType.UVar (Env.newUv env (nameFromId var)))
                                               in (uv :: args, Id.SortedMap.insert (mapping, var, uv))
                                               end)
                                          ([], Id.SortedMap.empty) params
@@ -468,8 +467,8 @@ end = struct
                  | FType.SVar (FType.UVar uv) =>
                     (case Uv.get uv
                      of Left uv =>
-                         let val domainUv = TypeVars.Uv.freshSibling (uv, Predicative)
-                             val codomainUv = TypeVars.Uv.freshSibling (uv, Predicative)
+                         let val domainUv = TypeVars.Uv.freshSibling uv
+                             val codomainUv = TypeVars.Uv.freshSibling uv
                              val eff = Impure
                              val arrow = { domain = FType.SVar (FType.UVar domainUv)
                                          , codomain = FType.SVar (FType.UVar codomainUv) }
@@ -478,7 +477,7 @@ end = struct
                          end
                       | Right typ => coerce callee typ)
                  | _ => ( Env.error env (UnCallable (callee, typ))
-                        ; (callee, Impure, { domain = FType.SVar (FType.UVar (Env.freshUv env Predicative))
+                        ; (callee, Impure, { domain = FType.SVar (FType.UVar (Env.freshUv env))
                                            , codomain = typ }) )
         in coerce callee typ
         end
@@ -499,8 +498,8 @@ end = struct
                  | FType.SVar (FType.UVar uv) =>
                     (case Uv.get uv
                      of Right typ => coerce expr typ
-                      | Left uv => let val fieldType = FType.SVar (FType.UVar (Env.freshUv env Predicative))
-                                       val base = FType.SVar (FType.UVar (Env.freshUv env Predicative))
+                      | Left uv => let val fieldType = FType.SVar (FType.UVar (Env.freshUv env))
+                                       val base = FType.SVar (FType.UVar (Env.freshUv env))
                                        val pos = FTerm.exprPos expr
                                        val row = FType.RowExt ({base, field = (label, fieldType)})
                                        val typ = FType.Record row
@@ -508,7 +507,7 @@ end = struct
                                     ; (expr, fieldType)
                                    end)
                  | _ => ( Env.error env (UnDottable (expr, typ))
-                        ; (expr, FType.SVar (FType.UVar (Env.freshUv env Predicative))) )
+                        ; (expr, FType.SVar (FType.UVar (Env.freshUv env))) )
             and coerceRow expr =
                 fn FType.RowExt ({base, field = (label', fieldt)}) =>
                     if label' = label

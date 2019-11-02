@@ -1,15 +1,13 @@
 structure TypeVars :> sig
     type kind = FType.kind
 
-    datatype predicativity = Predicative | Impredicative
-
     exception SetPrivate of Name.t
     exception Reset
 
     type ov
 
     structure Ov: sig
-        val new: ScopeId.t * predicativity * Name.t * kind -> ov
+        val new: ScopeId.t * Name.t * kind -> ov
         val scope: ov -> ScopeId.t
         val name: ov -> Name.t
     end
@@ -17,9 +15,9 @@ structure TypeVars :> sig
     type 't uv
 
     structure Uv: sig
-        val new: ScopeId.t * predicativity * Name.t -> 't uv
-        val fresh: ScopeId.t * predicativity -> 't uv
-        val freshSibling: 't uv * predicativity -> 't uv
+        val new: ScopeId.t * Name.t -> 't uv
+        val fresh: ScopeId.t -> 't uv
+        val freshSibling: 't uv -> 't uv
         val get: 't uv -> ('t uv, 't) Either.t
         val set: ('t -> 't uv option) (* Try to unwrap another uv from provided 't. *)
                  -> (ScopeId.t * ScopeId.t -> order) (* scope ordering to preserve scoping invariants *)
@@ -45,21 +43,16 @@ structure TypeVars :> sig
 end = struct
     type kind = FType.kind
 
-    datatype predicativity = Predicative | Impredicative
-
     exception SetPrivate of Name.t
     exception Reset
 
-    type meta =
-        { name: Name.t
-        , scope: ScopeId.t
-        , predicativity: predicativity }
+    type meta = {name: Name.t, scope: ScopeId.t}
 
     type ov = {meta: meta, kind: kind}
 
     structure Ov = struct
-        fun new (scope, predicativity, name, kind) =
-            {meta = {name, scope, predicativity}, kind}
+        fun new (scope, name, kind) =
+            {meta = {name, scope}, kind}
 
         fun scope ({meta = {scope, ...}, ...}: ov) = scope
 
@@ -72,12 +65,12 @@ end = struct
     withtype 't uv = 't link ref
 
     structure Uv = struct
-        fun new (scope, predicativity, name) =
-            ref (Root { meta = {name, scope, predicativity}
+        fun new (scope, name) =
+            ref (Root { meta = {name, scope}
                       , typ = ref NONE
                       , rank = ref 0 })
 
-        fun fresh (scope, predicativity) = new (scope, predicativity, Name.fresh ())
+        fun fresh scope = new (scope, Name.fresh ())
 
 
         fun find uv =
@@ -93,7 +86,7 @@ end = struct
             of Root root => root
              | Link _ => raise Fail "unreachable"
 
-        fun freshSibling (uv, predicativity) = fresh (#scope (#meta (root uv)), predicativity)
+        fun freshSibling uv = fresh (#scope (#meta (root uv)))
 
         fun get uv =
             let val uv = find uv
@@ -124,8 +117,8 @@ end = struct
             in if uv = uv'
                then ()
                else case (!uv, !uv')
-                    of ( Root {meta = {scope, predicativity, name}, rank, ...}
-                       , Root { meta = {scope = scope', predicativity = predicativity', name = name'}
+                    of ( Root {meta = {scope, name}, rank, ...}
+                       , Root { meta = {scope = scope', name = name'}
                               , rank = rank', ... } ) =>
                         if inScope scope 
                         then if inScope scope'

@@ -10,7 +10,6 @@ end = struct
     datatype either = datatype Either.t
     structure Uv = TypeVars.Uv
     structure Path = TypeVars.Path
-    datatype predicativity = datatype TypeVars.predicativity
     datatype explicitness = datatype Cst.explicitness
     datatype effect = datatype FType.effect
     structure FAst = FlexFAst
@@ -43,7 +42,7 @@ end = struct
 
     fun instantiate env (params, body) f =
         let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
-            val args = Vector.map (fn _ => SVar (UVar (Env.freshUv env Predicative)))
+            val args = Vector.map (fn _ => SVar (UVar (Env.freshUv env)))
                                   params
             val mapping = (params, args)
                         |> Vector.zipWith (fn ({var, kind = _}, arg) => (var, arg))
@@ -373,8 +372,8 @@ end = struct
             )
 
     and doAssignArrow (env: Env.t) y uv pos eff (arrow as {domain, codomain}) =
-        let val domainUv = TypeVars.Uv.freshSibling (uv, Predicative)
-            val codomainUv = TypeVars.Uv.freshSibling (uv, Predicative)
+        let val domainUv = TypeVars.Uv.freshSibling uv
+            val codomainUv = TypeVars.Uv.freshSibling uv
             val arrow' = { domain = SVar (UVar domainUv)
                          , codomain = SVar (UVar codomainUv)}
             val t' = Arrow (Explicit eff, arrow')
