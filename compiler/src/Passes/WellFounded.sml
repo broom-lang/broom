@@ -13,7 +13,6 @@ structure WellFounded :> sig
 end = struct
     structure FAst = FixedFAst
     structure FTerm = FAst.Term
-    structure FType = FAst.Type
     datatype expr = datatype FTerm.expr
     datatype stmt = datatype FTerm.stmt
     datatype pat = datatype FTerm.pat
@@ -268,7 +267,7 @@ end = struct
             end
     end
 
-    fun checkProgram (program as {axioms = _, typeFns = _, scope = topScopeId, stmts, sourcemap}) =
+    fun checkProgram {typeFns = _, stmts, sourcemap = _} =
         let val env = Env.new ()
             val changed = ref false
             val errors = ref []
@@ -334,13 +333,13 @@ end = struct
                     end
                  | Use (pos, def as {id, var, ...}) =>
                     let fun access ini via (def as {id, var, ...}) =
-                            case IniEnv.access ini (#id def)
+                            case IniEnv.access ini id
                             of Delayed Initialized | Instant Initialized => (* ok unsupported: *)
                                 Support.empty
                              | Delayed Uninitialized => (* ok with support: *)
                                 Support.singleton def
                              | Instant Uninitialized => (* error: *)
-                                ( error (ReadUninitialized (pos, via, #var def))
+                                ( error (ReadUninitialized (pos, via, var))
                                 ; Support.empty ) (* support won't help, so claim not to need any *)
 
                         val immediateSupport = access ini NONE def

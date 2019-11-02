@@ -2,7 +2,7 @@ structure Subtyping :> sig
     type coercion = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
    
     val applyCoercion: coercion -> FlexFAst.Term.expr -> FlexFAst.Term.expr
-    val subEffect: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.effect * FlexFAst.Type.effect -> unit
+    val subEffect: Pos.span -> FlexFAst.Type.effect * FlexFAst.Type.effect -> unit
     val subType: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
     val unify: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
 end = struct
@@ -59,7 +59,7 @@ end = struct
                         |> Vector.zipWith (fn ({var, ...}, def') => (var, UseT def'))
                         |> Id.SortedMap.fromVector
             val body = Concr.substitute (Env.hasScope env) mapping body
-        in f (env, scopeId, params', body)
+        in f (env, params', body)
         end
 
     type coercion = (FTerm.expr -> FTerm.expr) option
@@ -73,7 +73,6 @@ end = struct
     fun fnCoercion coerceDomain coerceCodomain
                    ((_, {domain = _, codomain}), (eff', {domain = domain', codomain = _})) callee =
         let val pos = FTerm.exprPos callee
-            val scopeId = ScopeId.fresh ()
             val param = {pos, id = DefId.fresh (), var = Name.fresh (), typ = domain'}
             val arg = applyCoercion coerceDomain (FTerm.Use (pos, param))
             val body = applyCoercion coerceCodomain (FTerm.App (pos, codomain, {callee, arg}))
@@ -104,7 +103,7 @@ end = struct
         fn (sub, super as ForAll universal) =>
             (case intent
              of Coerce () =>
-                 skolemize env universal (fn (env, scopeId, params, body) =>
+                 skolemize env universal (fn (env, params, body) =>
                      Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
                                 (coercion (Coerce ()) env currPos (sub, body))
                  )
@@ -121,8 +120,7 @@ end = struct
                   of ForAll universal' => raise Fail "unimplemented"
                    | _ => raise TypeError (NonUnifiable (currPos, concr sub, concr super, NONE))))
          | (sub, Arrow (Implicit, {domain, codomain})) =>
-            let val scopeId = ScopeId.fresh ()
-                val def = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
+            let val def = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
                 val coerceCodomain = coercion intent env currPos (sub, codomain)
             in SOME (fn expr => FTerm.Fn (currPos, def, Implicit, applyCoercion coerceCodomain expr))
             end
@@ -198,7 +196,7 @@ end = struct
 
     and arrowCoercion intent env currPos
                       (arrows as ((eff, {domain, codomain}), (eff', {domain = domain', codomain = codomain'}))) =
-        let do eqOrSubEffect intent env currPos (eff, eff')
+        let do eqOrSubEffect intent currPos (eff, eff')
             val coerceDomain = coercion intent env currPos (domain', domain)
             val coerceCodomain = coercion intent env currPos (codomain, codomain')
         in if isSome coerceDomain orelse isSome coerceCodomain
@@ -206,7 +204,7 @@ end = struct
            else NONE
         end
 
-    and eqOrSubEffect intent env currPos effs =
+    and eqOrSubEffect intent currPos effs =
         case intent
         of Coerce () => (case effs
                          of (Pure, Pure) => ()
@@ -217,7 +215,7 @@ end = struct
                     then ()
                     else raise Fail "Nonequal effects"
 
-    and subEffect env = eqOrSubEffect (Coerce ()) env
+    and subEffect pos = eqOrSubEffect (Coerce ()) pos
 
     and recordCoercion intent env currPos (t, t') (row, row') =
         case rowCoercion intent env currPos (row, row')
@@ -361,7 +359,7 @@ end = struct
     and doAssignUniversal env currPos y uv (universal as (_, _)) =
         case y
         of Coerce Up =>
-            skolemize env universal (fn (env, scopeId, params, body) =>
+            skolemize env universal (fn (env, params, body) =>
                 Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
                            (doAssign env currPos y (uv, body))
             )

@@ -89,8 +89,8 @@ end = struct
                                of [] => arrow
                                 | _ => FType.ForAll (Vector.fromList typeDefs, arrow)
                             end
-                         | CType.RecordT (pos, row) => FType.Record (elaborate env row)
-                         | CType.RowExt (pos, {base, fields}) =>
+                         | CType.RecordT (_, row) => FType.Record (elaborate env row)
+                         | CType.RowExt (_, {base, fields}) =>
                             let fun step ((label, t), base) =
                                     FType.RowExt {base, field = (label, elaborate env t)}
                             in Vector.foldl step (elaborate env base) fields
@@ -101,7 +101,7 @@ end = struct
                                 val var = Bindings.Type.fresh absBindings kind
                             in FType.UseT {var, kind}
                             end
-                         | CType.Interface (pos, decls) =>
+                         | CType.Interface (_, decls) =>
                             let val env = Env.pushScope env (declsScope env decls)
                                 val fields = Vector.map (elaborateDecl env) decls
                                 fun constructStep (field, base) = FType.RowExt {base, field}
@@ -118,7 +118,7 @@ end = struct
                                                     ^ Pos.spanToString (Env.sourcemap env) (CTerm.exprPos pathExpr)))
                                 | _ => raise Fail "Impure type path expression"
                             end
-                         | CType.TypeT pos =>
+                         | CType.TypeT _ =>
                             let val args = Env.universalParams env
                                 val kind = Vector.foldr (fn ({var = _, kind = argKind}, kind) =>
                                                              FType.ArrowK {domain = argKind, codomain = kind})
@@ -133,7 +133,7 @@ end = struct
                             (case elaborateExpr env expr
                              of (Pure, t, _) => t
                               | _ => raise Fail "Impure singleton type expression")
-                         | CType.Prim (pos, p) => FType.Prim p
+                         | CType.Prim (_, p) => FType.Prim p
 
                     and elaborateDecl env (_, name, _) =
                         ( name

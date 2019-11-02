@@ -308,13 +308,11 @@ end = struct
          | Axiom _ => () (* TODO: Some checks here (see F_c paper) *)
          | Expr expr => ignore (check env expr)
 
-    fun typecheckProgram {typeFns, axioms, scope = _, stmts, sourcemap} =
+    fun typecheckProgram {typeFns, stmts, sourcemap} =
         let val env = Vector.foldl (fn ((name, kindSig), env) => Env.insertTypeFn (env, name, kindSig))
                                    (Env.empty sourcemap) typeFns
-            val env = Vector.foldl (fn ((name, l, r), env) => Env.insertCo (env, name, l, r))
-                                   env axioms
             val env = pushStmts env stmts
-        in Vector.app (checkStmt env) stmts (* TODO: Use `typeFns`, `axioms` *)
+        in Vector.app (checkStmt env) stmts (* TODO: Use `typeFns` *)
          ; NONE
         end
 end

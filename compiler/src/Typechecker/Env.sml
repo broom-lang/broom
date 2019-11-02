@@ -12,10 +12,6 @@ signature TYPECHECKING_ENV = sig
             type bindings
         end
 
-        structure Axiom: sig
-            type bindings
-        end
-
         structure Type: sig
             type binding = kind
             type bindings
@@ -52,7 +48,6 @@ signature TYPECHECKING_ENV = sig
 
         type toplevel = { typeFns: Bindings.TypeFn.bindings
                         , pureCallsite: Name.t
-                        , axioms: Bindings.Axiom.bindings
                         , vals: Bindings.Expr.bindings }
 
         datatype t = TopScope of Id.t * toplevel
@@ -84,8 +79,6 @@ signature TYPECHECKING_ENV = sig
     val pureCallsite: t -> Name.t
     val freshAbstract: t -> FlexFAst.Type.Id.t -> FlexFAst.Type.tfn_sig -> Name.t
     val typeFns: t -> (Name.t * FlexFAst.Type.tfn_sig) vector
-    val insertAxiom: t -> Name.t -> output_type * output_type -> unit
-    val axioms: t -> (Name.t * output_type * output_type) vector 
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
@@ -124,18 +117,6 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
                  ; name
                 end
             val toVector = Vector.fromList o NameHashTable.listItemsi
-        end
-
-        structure Axiom = struct
-            type binding = output_type * output_type
-
-            type bindings = binding NameHashTable.hash_table
-
-            fun new () = NameHashTable.mkTable (0, Subscript)
-            val insert = NameHashTable.insert
-            fun toVector axioms =
-                axioms |> NameHashTable.listItemsi |> Vector.fromList
-                       |> Vector.map (fn (name, (l, r)) => (name, l, r))
         end
 
         structure Type = struct
@@ -194,7 +175,6 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
 
         type toplevel = { typeFns: Bindings.TypeFn.bindings
                         , pureCallsite: Name.t
-                        , axioms: Bindings.Axiom.bindings
                         , vals: Bindings.Expr.bindings }
 
         fun initialToplevel () =
@@ -202,7 +182,6 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
             in { typeFns
                , pureCallsite = Bindings.TypeFn.freshAbstract typeFns (FAst.Type.Id.fresh ())
                                                               {paramKinds = #[], kind = FAst.Type.CallsiteK}
-               , axioms = Bindings.Axiom.new ()
                , vals = Bindings.Expr.Builder.new () |> Bindings.Expr.Builder.build }
             end
 
@@ -212,11 +191,6 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
             Bindings.TypeFn.freshAbstract typeFns id kindSig
 
         fun typeFns ({typeFns, ...}: toplevel) = Bindings.TypeFn.toVector typeFns
-
-        fun insertAxiom ({axioms, ...}: toplevel) name ax =
-            Bindings.Axiom.insert axioms (name, ax)
-
-        fun axioms ({axioms, ...}: toplevel) = Bindings.Axiom.toVector axioms
 
         datatype t = TopScope of Id.t * toplevel
                    | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
@@ -305,10 +279,6 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
         Scope.freshAbstract toplevel id kindSig
 
     fun typeFns ({toplevel, ...}: t) = Scope.typeFns toplevel
-
-    fun insertAxiom ({toplevel, ...}: t) = Scope.insertAxiom toplevel
-
-    fun axioms ({toplevel, ...}: t) = Scope.axioms toplevel
 
     fun findExprClosure (env: t) name =
         let val rec find =
