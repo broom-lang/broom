@@ -8,11 +8,10 @@ structure Kindchecker :> sig
     type unvisited_binding_type =
          Pos.span -> Env.t -> Name.t -> Cst.Type.typ option Env.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
 
+    val reAbstract : Env.t -> FType.Abs.t -> FType.Concr.t
     val fix : { unvisitedBindingType : unvisited_binding_type
               , elaborateExpr : Env.t -> Cst.Term.expr -> FType.effect * FType.Concr.t * FTerm.expr }
-           -> { reAbstract : Env.t -> FType.Abs.t -> FType.Concr.t
-              , elaborateType : Env.t -> Cst.Type.typ -> FType.def list * FType.Concr.t
-              , joinEffs : effect * effect -> effect }
+           -> (Env.t -> Cst.Type.typ -> FType.def list * FType.Concr.t)
 end = struct
     structure CType = Cst.Type
     structure CTerm = Cst.Term
@@ -35,29 +34,29 @@ end = struct
     type unvisited_binding_type =
          Pos.span -> Env.t -> Name.t -> Cst.Type.typ option Env.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
 
-    fun fix {unvisitedBindingType : unvisited_binding_type, elaborateExpr} =
-        let fun reAbstract env =
-                fn Exists (params, body) =>
-                    let val (_, absBindings) = valOf (Env.nearestExists env)
-                        val mapping =
-                            Vector.foldl (fn ({var, kind}, mapping) =>
-                                              let val args = Env.universalParams env
-                                                  val kind = Vector.foldr (fn ({var = _, kind = argKind}, kind) =>
-                                                                               FType.ArrowK { domain = argKind
-                                                                                            , codomain = kind })
-                                                                          kind args
-                                                  val var' = Bindings.Type.fresh absBindings kind
-                                                  val app = FType.app { callee = FType.UseT {var = var', kind}
-                                                                      , args = Vector.map (fn def => FType.UseT def)
-                                                                                          args }
-                                              in Id.SortedMap.insert (mapping, var, app)
-                                              end)
-                                         Id.SortedMap.empty params
-                    in Concr.substitute (Env.hasScope env) mapping body
-                    end
+    fun reAbstract env =
+        fn Exists (params, body) =>
+            let val (_, absBindings) = valOf (Env.nearestExists env)
+                val mapping =
+                    Vector.foldl (fn ({var, kind}, mapping) =>
+                                      let val args = Env.universalParams env
+                                          val kind = Vector.foldr (fn ({var = _, kind = argKind}, kind) =>
+                                                                       FType.ArrowK { domain = argKind
+                                                                                    , codomain = kind })
+                                                                  kind args
+                                          val var' = Bindings.Type.fresh absBindings kind
+                                          val app = FType.app { callee = FType.UseT {var = var', kind}
+                                                              , args = Vector.map (fn def => FType.UseT def)
+                                                                                  args }
+                                      in Id.SortedMap.insert (mapping, var, app)
+                                      end)
+                                 Id.SortedMap.empty params
+            in Concr.substitute (Env.hasScope env) mapping body
+            end
 
+    fun fix {unvisitedBindingType : unvisited_binding_type, elaborateExpr} =
             (* Elaborate the type `typ` and return the elaborated version. *)
-            and elaborateType (env: Env.t) (t: CType.typ): FType.def list * concr =
+        let fun elaborateType (env: Env.t) (t: CType.typ): FType.def list * concr =
                 let val absBindings = Bindings.Type.new ()
                     val absScope = Scope.ExistsScope (Scope.Id.fresh (), absBindings)
                     val env = Env.pushScope env absScope
@@ -148,23 +147,6 @@ end = struct
                 in (defs, t)
                 end
 
-            and elaborateArr arr =
-                case arr
-                of Implicit => Implicit
-                 | Explicit eff => Explicit (elaborateEff eff)
-
-            and elaborateEff eff =
-                case eff
-                of Cst.Pure => Pure
-                 | Cst.Impure => Impure
-
-            and joinEffs effs =
-                case effs
-                of (Pure, Pure) => Pure
-                 | (Pure, Impure) => Impure
-                 | (Impure, Pure) => Impure
-                 | (Impure, Impure) => Impure
-
             and declsScope env decls =
                 let val builder = Bindings.Expr.Builder.new ()
                     do Vector.app (fn (pos, var, t) =>
@@ -175,7 +157,13 @@ end = struct
                                   decls
                 in Scope.InterfaceScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
                 end
-        in {reAbstract, elaborateType, joinEffs}
+        in elaborateType
         end
+
+    and elaborateArr Implicit = Implicit
+      | elaborateArr (Explicit eff) = Explicit (elaborateEff eff)
+
+    and elaborateEff Cst.Pure = Pure
+      | elaborateEff Cst.Impure = Impure
 end
 

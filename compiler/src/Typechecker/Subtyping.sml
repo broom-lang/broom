@@ -1,8 +1,11 @@
 structure Subtyping :> sig
+    type effect = FlexFAst.Type.effect 
+
     type coercion = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
    
     val applyCoercion: coercion -> FlexFAst.Term.expr -> FlexFAst.Term.expr
-    val subEffect: Pos.span -> FlexFAst.Type.effect * FlexFAst.Type.effect -> unit
+    val subEffect: Pos.span -> effect * effect -> unit
+    val joinEffs : effect * effect -> effect
     val subType: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
     val unify: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
 end = struct
@@ -97,6 +100,11 @@ end = struct
     val error =
         fn Coerce _ => NonSubType
          | Unify => NonUnifiable
+
+    fun joinEffs (Pure, Pure) = Pure
+      | joinEffs (Pure, Impure) = Impure
+      | joinEffs (Impure, Pure) = Impure
+      | joinEffs (Impure, Impure) = Impure
 
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
     fun coercion (intent: unit intent) (env: Env.t) currPos: concr * concr -> coercion =

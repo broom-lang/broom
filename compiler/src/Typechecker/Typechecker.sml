@@ -29,6 +29,8 @@ end = struct
     val subEffect = Subtyping.subEffect
     val subType = Subtyping.subType
     val unify = Subtyping.unify
+    val joinEffs = Subtyping.joinEffs
+    val reAbstract = Kindchecker.reAbstract
 
     fun uvSet env =
         Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env)
@@ -40,12 +42,7 @@ end = struct
     and lookupValType pos =
         #lookupValType (CheckUse.fix {elaborateType, reAbstract, instantiateExistential, elaborateExpr}) pos
 
-    and reAbstract env =
-        #reAbstract (Kindchecker.fix {unvisitedBindingType, elaborateExpr}) env
-    and elaborateType env =
-        #elaborateType (Kindchecker.fix {unvisitedBindingType, elaborateExpr}) env
-    and joinEffs effs =
-        #joinEffs (Kindchecker.fix {unvisitedBindingType, elaborateExpr}) effs
+    and elaborateType env = (Kindchecker.fix {unvisitedBindingType, elaborateExpr}) env
 
     and rowWhere env (row, field' as (label', fieldt')) =
         case row
