@@ -60,6 +60,8 @@ signature FAST_TYPE = sig
     end
 
     structure Abs: sig
+        datatype t = datatype abs
+
         val toDoc: ('sv -> PPrint.t) -> 'sv abs -> PPrint.t
         val toString: ('sv -> PPrint.t) -> 'sv abs -> string
         val mapChildren : ('sv concr -> 'sv concr) -> 'sv abs -> 'sv abs
@@ -354,6 +356,8 @@ structure FType :> FAST_TYPE = struct
     end
 
     structure Abs = struct
+        datatype t = datatype abs
+        
         val toDoc = absToDoc
         fun toString svarToDoc = PPrint.pretty 80 o toDoc svarToDoc
         val mapChildren = mapAbsChildren
@@ -381,6 +385,7 @@ signature CLOSED_FAST_TYPE = sig
     type def = FType.def
     type tfn_sig = FType.tfn_sig
 
+    datatype effect = datatype FType.effect
     type arrow = FType.arrow
 
     datatype concr' = datatype FType.concr
@@ -399,11 +404,15 @@ signature CLOSED_FAST_TYPE = sig
     val rowExtBase: concr -> concr
 
     structure Concr: sig
+        datatype t = datatype concr
+
         val toDoc: concr -> PPrint.t
         val substitute: (ScopeId.t -> bool) ->concr Id.SortedMap.map -> concr -> concr
     end
 
     structure Abs: sig
+        datatype t = datatype abs
+
         val toDoc: abs -> PPrint.t
         val concr: concr -> abs
     end

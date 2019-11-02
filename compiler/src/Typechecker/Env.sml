@@ -1,4 +1,4 @@
-structure TypecheckingEnv :> sig
+signature TYPECHECKING_ENV = sig
     type input_type = Cst.Type.typ
     type input_expr = Cst.Term.expr
     type output_type = FlexFAst.Type.concr
@@ -95,7 +95,9 @@ structure TypecheckingEnv :> sig
     val sourcemap : t -> Pos.sourcemap
     val error: t -> TypeError.t -> unit
     val errors: t -> TypeError.t list
-end = struct
+end
+
+structure TypecheckingEnv :> TYPECHECKING_ENV = struct
     open TypeError
     structure FAst = FlexFAst
 

@@ -35,6 +35,8 @@ structure FlexFAst = struct
         structure Concr = struct
             open Concr
 
+            datatype t = datatype concr
+
             val toDoc = concrToDoc
             val toString = toString svarToDoc
 
@@ -76,6 +78,8 @@ structure FlexFAst = struct
         structure Abs = struct
             open Abs
 
+            datatype t = datatype abs
+
             val toDoc = toDoc svarToDoc
 
             val occurs = fn hasScope => occurs (Concr.svarOccurs hasScope)
@@ -114,6 +118,8 @@ structure FixedFAst = struct
         structure Concr = struct
             open Concr
 
+            datatype t = datatype concr
+
             val toDoc = toDoc svarToDoc
             val substitute = fn hasScope => substitute (fn _ => fn _ => NONE)
             val kindOf: (Name.t -> tfn_sig) -> concr -> kind = kindOf (fn _ => raise Fail "unreachable")
@@ -122,6 +128,8 @@ structure FixedFAst = struct
 
         structure Abs = struct
             open Abs
+
+            datatype t = datatype abs
 
             val toDoc = toDoc svarToDoc
         end
