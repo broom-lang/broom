@@ -132,7 +132,7 @@ end = struct
                                        , FTerm.With (pos, typ, {base = baseExpr, field = (var, use)}) )
                                     end)
                                (FType.EmptyRow, FTerm.EmptyRecord pos) defs
-            in (eff, FType.Record row, FTerm.Let (pos, stmts, body))
+            in (eff, row, FTerm.Let (pos, stmts, body))
             end
          | CTerm.App (pos, {callee, arg}) =>
             (* FIXME: generative behaviour when `callEff` is `Impure`: *)
@@ -201,7 +201,7 @@ end = struct
                  | NONE => (Pure, FType.EmptyRow, FTerm.EmptyRecord pos)
             val (eff, rowType, expr) =
                 Vector.foldl elaborateEdit (baseEff, baseType, baseExpr) edits
-        in (eff, FType.Record rowType, expr)
+        in (eff, rowType, expr)
         end
 
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
