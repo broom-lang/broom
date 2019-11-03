@@ -18,9 +18,9 @@ end = struct
         fn ForAll (param, body) => ForAll (param, concrToF body)
          | Arrow (expl, {domain, codomain}) =>
             Arrow (expl, {domain = concrToF domain, codomain = concrToF codomain})
-         | Record row => Record (concrToF row)
-         | RowExt {field = (label, fieldt), ext} =>
-            RowExt {field = (label, concrToF fieldt), ext = concrToF ext}
+         | FType.Record row => FType.Record (concrToF row)
+         | RowExt {base, field = (label, fieldt)} =>
+            RowExt {base = concrToF base, field = (label, concrToF fieldt)}
          | EmptyRow => EmptyRow
          | FFType.App {callee, args} =>
             FFType.App {callee = concrToF callee, args = Vector.map concrToF args}
@@ -52,14 +52,11 @@ end = struct
         fn Fn (pos, {pos = defPos, id, var, typ}, expl, body) =>
             FFTerm.Fn (pos, {pos = defPos, id, var, typ = concrToF typ}, expl, exprToF body)
          | TFn (pos, param, body) => FFTerm.TFn (pos, param, exprToF body)
-         | Extend (pos, typ, fields, record) =>
-            FFTerm.Extend ( pos, concrToF typ
-                          , Vector.map (Pair.second exprToF) fields
-                          , Option.map exprToF record)
-         | Override (pos, typ, fields, ext) =>
-            FFTerm.Override ( pos, concrToF typ
-                            , Vector.map (Pair.second exprToF) fields
-                            , exprToF ext )
+         | EmptyRecord pos => FFTerm.EmptyRecord pos
+         | With (pos, typ, {base, field}) =>
+            FFTerm.With (pos, concrToF typ, {base = exprToF base, field = Pair.second exprToF field})
+         | Where (pos, typ, {base, field}) =>
+            FFTerm.Where (pos, concrToF typ, {base = exprToF base, field = Pair.second exprToF field})
          | Let (pos, stmts, body) =>
             FFTerm.Let (pos, Vector.map (stmtToF) stmts, exprToF body)
          | Match (pos, typ, matchee, clauses) =>
@@ -90,11 +87,7 @@ end = struct
          | Axiom (pos, name, l, r) => FFTerm.Axiom (pos, name, concrToF l, concrToF r)
          | Expr expr => FFTerm.Expr (exprToF expr)
 
-    fun programToF {typeFns, axioms, scope, stmts, sourcemap} =
-        { typeFns = typeFns
-        , axioms = Vector.map axiomToF axioms
-        , scope
-        , stmts = Vector.map stmtToF stmts
-        , sourcemap }
+    fun programToF {typeFns, stmts, sourcemap} =
+        {typeFns, stmts = Vector.map stmtToF stmts, sourcemap}
 end
 

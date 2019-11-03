@@ -16,11 +16,14 @@ fun       => (Tokens.FUN);
 type      => (Tokens.TYPE);
 pi        => (Tokens.PI);
 do        => (Tokens.DO);
+extends   => (Tokens.EXTENDS);
 module    => (Tokens.MODULE);
 interface => (Tokens.INTERFACE);
 fn        => (Tokens.FN);
 match     => (Tokens.MATCH);
 end       => (Tokens.END);
+with      => (Tokens.WITH);
+where     => (Tokens.WHERE);
 
 "=>" => (Tokens.DARROW);
 "="  => (Tokens.EQ);

@@ -8,8 +8,10 @@ signature FAST_TERM = sig
     datatype expr
         = Fn of Pos.span * def * arrow * expr
         | TFn of Pos.span * Type.def vector * expr
-        | Extend of Pos.span * Type.concr * (Name.t * expr) vector * expr option
-        | Override of Pos.span * Type.concr * (Name.t * expr) vector * expr
+        | EmptyRecord of Pos.span
+        | With of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
+        | Without of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
+        | Where of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector}
         | Field of Pos.span * Type.concr * expr * Name.t
@@ -32,8 +34,6 @@ signature FAST_TERM = sig
     withtype clause = {pattern: pat, body: expr}
 
     type program = { typeFns: (Name.t * Type.tfn_sig) vector
-                   , axioms: (Name.t * Type.concr * Type.concr) vector
-                   , scope: ScopeId.t
                    , stmts: stmt vector
                    , sourcemap: Pos.sourcemap }
    
@@ -80,8 +80,10 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
     datatype expr
         = Fn of Pos.span * def * arrow * expr
         | TFn of Pos.span * Type.def vector * expr
-        | Extend of Pos.span * Type.concr  * (Name.t * expr) vector * expr option
-        | Override of Pos.span * Type.concr * (Name.t * expr) vector * expr
+        | EmptyRecord of Pos.span
+        | With of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
+        | Without of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
+        | Where of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector}
         | Field of Pos.span * Type.concr * expr * Name.t
@@ -106,8 +108,6 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
     val exprPos =
         fn Fn (pos, _, _, _) => pos
          | TFn (pos, _, _) => pos
-         | Extend (pos, _, _, _) => pos
-         | Override (pos, _, _, _) => pos
          | App (pos, _, _) => pos
          | TApp (pos, _, _) => pos
          | Field (pos, _, _, _) => pos
@@ -119,8 +119,6 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | Const (pos, _) => pos
 
     type program = { typeFns: (Name.t * Type.tfn_sig) vector
-                   , axioms: (Name.t * Type.concr * Type.concr) vector
-                   , scope: ScopeId.t
                    , stmts: stmt vector
                    , sourcemap: Pos.sourcemap }
 
@@ -153,8 +151,13 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | TFn (_, params, body) =>
            text "/\\" <> PPrint.punctuate space (Vector.map Type.defToDoc params)
                <+> text "=>" <+> exprToDoc body
-        | Extend args => recordToDoc "extending" args
-        | Override (pos, typ, fields, ext) => recordToDoc "overriding" (pos, typ, fields, SOME ext)
+        | EmptyRecord _ => text "{}"
+        | With (_, _, {base, field = (label, fieldExpr)}) =>
+           braces(exprToDoc base <+> text "with" <+> Name.toDoc label
+                  <+> text "=" <+> exprToDoc fieldExpr)
+        | Where (_, _, {base, field = (label, fieldExpr)}) =>
+           braces(exprToDoc base <+> text "where" <+> Name.toDoc label
+                  <+> text "=" <+> exprToDoc fieldExpr)
         | App (_, _, {callee, arg}) =>
            parens (exprToDoc callee <+> exprToDoc arg)
         | TApp (_, _, {callee, args}) =>
@@ -223,16 +226,15 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         text "axiom" <+> Name.toDoc name <> text ":"
             <+> Type.Concr.toDoc l <+> text "~" <+> Type.Concr.toDoc r
 
-    fun programToDoc {typeFns, axioms, scope = _, stmts, sourcemap = _} =
+    fun programToDoc {typeFns, stmts, sourcemap = _} =
         punctuate (newline <> newline) (Vector.map typeFnToDoc typeFns)
-            <++> newline <> punctuate (newline <> newline) (Vector.map axiomToDoc axioms)
             <++> newline <> stmtsToDoc stmts
 
     val rec typeOf =
         fn Fn (_, {typ = domain, ...}, arrow, body) =>
             Type.Arrow (arrow, {domain, codomain = typeOf body})
          | TFn (_, params, body) => Type.ForAll (params, typeOf body)
-         | Extend (_, typ, _, _) | Override (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => typ
+         | App (_, typ, _) | TApp (_, typ, _) => typ
          | Field (_, typ, _, _) => typ
          | Let (_, _, body) => typeOf body
          | Match (_, t, _, _) => t

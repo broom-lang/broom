@@ -13,7 +13,6 @@ structure WellFounded :> sig
 end = struct
     structure FAst = FixedFAst
     structure FTerm = FAst.Term
-    structure FType = FAst.Type
     datatype expr = datatype FTerm.expr
     datatype stmt = datatype FTerm.stmt
     datatype pat = datatype FTerm.pat
@@ -87,22 +86,6 @@ end = struct
             end
          | EmptyRow => PPrint.empty
          | row => typToDoc row
-
-    val rec elaborateType : FType.concr -> typ =
-        fn FType.ForAll (_, body) => elaborateType body
-         | FType.Arrow (_, {domain = _, codomain}) =>
-            Closure (Support.empty, elaborateType codomain)
-         | FType.Record row => Record (elaborateType row)
-         | FType.RowExt {field = (label, fieldt), ext} =>
-            RowExt { field = (label, elaborateType fieldt)
-                   , ext = elaborateType ext }
-         | FType.EmptyRow => EmptyRow
-         | FType.Type _ => Scalar
-         | FType.App _ => Scalar
-         | FType.CallTFn _ => Scalar
-         | FType.UseT _ => Scalar
-         | FType.SVar _ => raise Fail "unreachable"
-         | FType.Prim _ => Scalar
 
     fun rewriteRow label row =
         let val rec rewrite = 
@@ -284,7 +267,7 @@ end = struct
             end
     end
 
-    fun checkProgram (program as {axioms = _, typeFns = _, scope = topScopeId, stmts, sourcemap}) =
+    fun checkProgram {typeFns = _, stmts, sourcemap = _} =
         let val env = Env.new ()
             val changed = ref false
             val errors = ref []
@@ -329,30 +312,17 @@ end = struct
                          in (Unknown, Support.union (calleeSupport, argSupport))
                          end)
                  | TApp (_, _, {callee, args = _}) => checkExpr ini ctx callee
-                 | Extend (_, _, fields, ext) =>
-                    let val (Record ext, extSupport) =
-                            case ext
-                            of SOME ext => checkExpr ini ctx ext
-                             | NONE => (Record EmptyRow, Support.empty)
-                        val (row, support) =
-                            Vector.foldl (fn ((label, expr), (typ, support)) =>
-                                              let val (fieldt, fieldSupport) = checkExpr ini ctx expr
-                                              in ( withField typ (label, fieldt)
-                                                 , Support.union (support, fieldSupport) )
-                                              end)
-                                         (ext, extSupport) fields
-                    in (Record row, support)
+                 | With (_, _, {base, field = (label, fieldExpr)}) =>
+                    let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
+                        val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
+                    in ( Record (withField base (label, fieldTyp))
+                       , Support.union (baseSupport, fieldSupport) )
                     end
-                 | Override (_, _, fields, ext) =>
-                    let val (Record ext, extSupport) = checkExpr ini ctx ext
-                        val (row, support) =
-                            Vector.foldl (fn ((label, expr), (typ, support)) =>
-                                              let val (fieldt, fieldSupport) = checkExpr ini ctx expr
-                                              in ( valOf (whereField typ (label, fieldt))
-                                                 , Support.union (support, fieldSupport) )
-                                              end)
-                                         (ext, extSupport) fields
-                    in (Record row, support)
+                 | Where (_, _, {base, field = (label, fieldExpr)}) =>
+                    let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
+                        val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
+                    in ( Record (valOf (whereField base (label, fieldTyp)))
+                       , Support.union (baseSupport, fieldSupport) )
                     end
                  | Field (_, _, expr, label) =>
                     let val (recTyp, support) = checkExpr ini ctx expr
@@ -363,13 +333,13 @@ end = struct
                     end
                  | Use (pos, def as {id, var, ...}) =>
                     let fun access ini via (def as {id, var, ...}) =
-                            case IniEnv.access ini (#id def)
+                            case IniEnv.access ini id
                             of Delayed Initialized | Instant Initialized => (* ok unsupported: *)
                                 Support.empty
                              | Delayed Uninitialized => (* ok with support: *)
                                 Support.singleton def
                              | Instant Uninitialized => (* error: *)
-                                ( error (ReadUninitialized (pos, via, #var def))
+                                ( error (ReadUninitialized (pos, via, var))
                                 ; Support.empty ) (* support won't help, so claim not to need any *)
 
                         val immediateSupport = access ini NONE def
@@ -389,7 +359,7 @@ end = struct
                     in (typ, Support.union (immediateSupport, transitiveSupport))
                     end
                  | Cast (_, _, expr, _) => checkExpr ini ctx expr
-                 | Type _ | Const _ => (Scalar, Support.empty)
+                 | EmptyRecord _ | Type _ | Const _ => (Scalar, Support.empty)
 
             and pushBlock ini stmts =
                 let val ids =

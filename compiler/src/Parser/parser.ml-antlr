@@ -5,6 +5,10 @@
     structure Type = Cst.Type
     datatype explicitness = datatype Cst.explicitness
     datatype effect = datatype Cst.effect
+
+    datatype row
+        = RecordFields of Term.recordFields
+        | RowType of Type.typ
 );
 
 %tokens
@@ -13,11 +17,14 @@
     | TYPE ("type")
     | PI ("pi")
     | DO ("do")
+    | EXTENDS ("extends")
     | MODULE ("module")
     | INTERFACE ("interface")
     | FN ("fn")
     | MATCH ("match")
     | END ("end")
+    | WITH ("with")
+    | WHERE ("where")
 
     | DARROW ("=>")
     | EQ ("=")
@@ -158,8 +165,11 @@ nestable
           in Term.Fn (FULL_SPAN, explicitness, clauses)
           end
       )
-    | "{" exprRow "}"  => (Term.Record (FULL_SPAN, exprRow))
-    | "{" typRow "}"   => (Term.Type (FULL_SPAN, Type.RecordT (FULL_SPAN, typRow)))
+    | "{" row "}" => (
+          case row
+          of RecordFields fields => Term.Record (FULL_SPAN, fields)
+           | RowType row => Term.Type (FULL_SPAN, Type.RecordT (FULL_SPAN, row))
+      )
     | "(" "=" expr ")" => (Term.Type (FULL_SPAN, Type.Singleton (FULL_SPAN, expr)))
     | "(" expr ")"
     | atom
@@ -179,40 +189,44 @@ clausesTail
 explicitClause : "|" pattern=paramPattern "->" body=expr => ({pattern, body});
 implicitClause : "|" pattern=paramPattern "=>" body=expr => ({pattern, body});
 
-exprRow : fields=(exprRowField ("," exprRowField)*)? ext=exprRowExt? => (
-        { fields = case fields
-                   of SOME (field, fields) => Vector.fromList (field :: fields)
-                    | NONE => #[]
-        , ext }
+row
+    : base=arrow row=( exprRowEdit* => (RecordFields {base = SOME base, edits = Vector.fromList exprRowEdit})
+                     | typRowEdit => (RowType (Type.RowExt (FULL_SPAN, {base = Type.Path base, fields = typRowEdit}))) )
+          => (row)
+    | exprBaseFields exprRowEdit* => (
+          RecordFields {base = NONE, edits = Vector.fromList (Term.With exprBaseFields :: exprRowEdit)}
+      )
+    | typRowFields => (RowType (Type.RowExt (FULL_SPAN, {base = Type.EmptyRow FULL_SPAN, fields = typRowFields})))
+    | => (RecordFields {base = NONE, edits = #[]})
+    | "&" typRowEdit => (RowType (Type.RowExt (FULL_SPAN, {base = Type.WildRow AMP_SPAN, fields = typRowEdit})))
+    | "&" => (RowType (Type.WildRow FULL_SPAN))
+    | ":" => (RowType (Type.EmptyRow FULL_SPAN))
+    ;
+
+exprRowEdit
+    : "with" exprFields => (Term.With (Vector.fromList exprFields))
+    | "where" exprFields => (Term.Where (Vector.fromList exprFields))
+    ;
+
+exprBaseFields : fields=(ID "=" expr "," exprFields => ((ID, expr) :: exprFields)) => (
+        Vector.fromList fields
     );
 
-exprRowField : ID expr=("=" expr)? => (
+exprFields : fields=(field=exprField fields=("," exprField)* => (field :: fields))? => (
+        getOpt (fields, [])
+    );
+
+exprField : ID expr=("=" expr)? => (
         case expr
         of SOME expr => (ID, expr)
          | NONE => (ID, Term.Use (ID_SPAN, ID))
     );
 
-exprRowExt : ".." expr ;
+typRowEdit : "with" typRowFields;
 
-typRow
-    : fields=(typRowField ("," typRowField)*) ext=typRowExt? => (
-          Type.RowExt (FULL_SPAN, { fields = let val (field, fields) = fields
-                                             in Vector.fromList (field :: fields)
-                                             end
-                                  , ext = case ext
-                                          of SOME ext => ext
-                                           | NONE => Type.EmptyRow ext_SPAN })
-      )
-    | typRowExt
-    | ":"       => (Type.EmptyRow FULL_SPAN)
-    ;
+typRowFields : field=typRowField fields=("," typRowField)* => (Vector.fromList (field :: fields));
 
 typRowField : ID ":" typ ;
-
-typRowExt
-    : "&" typ
-    | "&"     => (Type.WildRow FULL_SPAN)
-    ;
 
 atom
     : ID => (

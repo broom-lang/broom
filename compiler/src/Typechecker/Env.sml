@@ -1,4 +1,4 @@
-structure TypecheckingEnv :> sig
+signature TYPECHECKING_ENV = sig
     type input_type = Cst.Type.typ
     type input_expr = Cst.Term.expr
     type output_type = FlexFAst.Type.concr
@@ -9,10 +9,6 @@ structure TypecheckingEnv :> sig
 
     structure Bindings: sig
         structure TypeFn: sig
-            type bindings
-        end
-
-        structure Axiom: sig
             type bindings
         end
 
@@ -52,7 +48,6 @@ structure TypecheckingEnv :> sig
 
         type toplevel = { typeFns: Bindings.TypeFn.bindings
                         , pureCallsite: Name.t
-                        , axioms: Bindings.Axiom.bindings
                         , vals: Bindings.Expr.bindings }
 
         datatype t = TopScope of Id.t * toplevel
@@ -78,14 +73,12 @@ structure TypecheckingEnv :> sig
     val findType: t -> FType.Id.t -> Bindings.Type.binding option
     val universalParams: t -> FlexFAst.Type.def vector
     val nearestExists: t -> (Scope.Id.t * Bindings.Type.bindings) option
-    val newUv: t -> TypeVars.predicativity * Name.t -> FlexFAst.Type.uv
-    val freshUv: t -> TypeVars.predicativity -> FlexFAst.Type.uv
+    val newUv: t -> Name.t -> FlexFAst.Type.uv
+    val freshUv: t -> FlexFAst.Type.uv
 
     val pureCallsite: t -> Name.t
     val freshAbstract: t -> FlexFAst.Type.Id.t -> FlexFAst.Type.tfn_sig -> Name.t
     val typeFns: t -> (Name.t * FlexFAst.Type.tfn_sig) vector
-    val insertAxiom: t -> Name.t -> output_type * output_type -> unit
-    val axioms: t -> (Name.t * output_type * output_type) vector 
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
@@ -95,7 +88,9 @@ structure TypecheckingEnv :> sig
     val sourcemap : t -> Pos.sourcemap
     val error: t -> TypeError.t -> unit
     val errors: t -> TypeError.t list
-end = struct
+end
+
+structure TypecheckingEnv :> TYPECHECKING_ENV = struct
     open TypeError
     structure FAst = FlexFAst
 
@@ -122,18 +117,6 @@ end = struct
                  ; name
                 end
             val toVector = Vector.fromList o NameHashTable.listItemsi
-        end
-
-        structure Axiom = struct
-            type binding = output_type * output_type
-
-            type bindings = binding NameHashTable.hash_table
-
-            fun new () = NameHashTable.mkTable (0, Subscript)
-            val insert = NameHashTable.insert
-            fun toVector axioms =
-                axioms |> NameHashTable.listItemsi |> Vector.fromList
-                       |> Vector.map (fn (name, (l, r)) => (name, l, r))
         end
 
         structure Type = struct
@@ -192,7 +175,6 @@ end = struct
 
         type toplevel = { typeFns: Bindings.TypeFn.bindings
                         , pureCallsite: Name.t
-                        , axioms: Bindings.Axiom.bindings
                         , vals: Bindings.Expr.bindings }
 
         fun initialToplevel () =
@@ -200,7 +182,6 @@ end = struct
             in { typeFns
                , pureCallsite = Bindings.TypeFn.freshAbstract typeFns (FAst.Type.Id.fresh ())
                                                               {paramKinds = #[], kind = FAst.Type.CallsiteK}
-               , axioms = Bindings.Axiom.new ()
                , vals = Bindings.Expr.Builder.new () |> Bindings.Expr.Builder.build }
             end
 
@@ -210,11 +191,6 @@ end = struct
             Bindings.TypeFn.freshAbstract typeFns id kindSig
 
         fun typeFns ({typeFns, ...}: toplevel) = Bindings.TypeFn.toVector typeFns
-
-        fun insertAxiom ({axioms, ...}: toplevel) name ax =
-            Bindings.Axiom.insert axioms (name, ax)
-
-        fun axioms ({axioms, ...}: toplevel) = Bindings.Axiom.toVector axioms
 
         datatype t = TopScope of Id.t * toplevel
                    | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
@@ -287,14 +263,14 @@ end = struct
     fun nearestExists ({scopes, ...}: t) =
         List.some (fn Scope.ExistsScope scope => SOME scope | _ => NONE) scopes
 
-    fun newUv (env: t) (predicativity, name) =
+    fun newUv (env: t) name =
         case #scopes env
-        of scope :: _ => TypeVars.Uv.new (Scope.id scope, predicativity, name)
+        of scope :: _ => TypeVars.Uv.new (Scope.id scope, name)
          | [] => raise Fail "unreachable"
 
-    fun freshUv (env: t) predicativity =
+    fun freshUv (env: t) =
         case #scopes env
-        of scope :: _ => TypeVars.Uv.fresh (Scope.id scope, predicativity)
+        of scope :: _ => TypeVars.Uv.fresh (Scope.id scope)
          | [] => raise Fail "unreachable"
 
     fun pureCallsite ({toplevel, ...}: t) = Scope.pureCallsite toplevel
@@ -303,10 +279,6 @@ end = struct
         Scope.freshAbstract toplevel id kindSig
 
     fun typeFns ({toplevel, ...}: t) = Scope.typeFns toplevel
-
-    fun insertAxiom ({toplevel, ...}: t) = Scope.insertAxiom toplevel
-
-    fun axioms ({toplevel, ...}: t) = Scope.axioms toplevel
 
     fun findExprClosure (env: t) name =
         let val rec find =

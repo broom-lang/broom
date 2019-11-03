@@ -19,7 +19,7 @@ signature FAST_TYPE = sig
         = ForAll of def vector * 'sv concr
         | Arrow of arrow * {domain: 'sv concr, codomain: 'sv concr}
         | Record of 'sv concr
-        | RowExt of {field: Name.t * 'sv concr, ext: 'sv concr}
+        | RowExt of 'sv row
         | EmptyRow
         | Type of 'sv abs
         | App of {callee: 'sv concr, args: 'sv concr vector}
@@ -37,12 +37,14 @@ signature FAST_TYPE = sig
         | AppCo of {callee: 'sv co, args: 'sv concr vector}
         | UseCo of Name.t (* HACK *)
 
+    withtype 'sv row = {base: 'sv concr, field: Name.t * 'sv concr}
+
     val kindToDoc: kind -> PPrint.t
     val kindToString: kind -> string
     val defToDoc: def -> PPrint.t
     val arrowDoc: arrow -> PPrint.t
     val piEffect: 'sv concr -> effect option
-    val rowExtTail: 'sv concr -> 'sv concr
+    val rowExtBase: 'sv concr -> 'sv concr
     val app : {callee: 'sv concr, args: 'sv concr vector} -> 'sv concr
     
     structure Concr: sig
@@ -50,8 +52,7 @@ signature FAST_TYPE = sig
         val toString: ('sv -> PPrint.t) -> 'sv concr -> string
         val mapChildren : ('sv concr -> 'sv concr) -> 'sv concr -> 'sv concr
         val isSmall: 'sv concr -> bool
-        val rewriteRow : Name.t -> 'sv concr
-                       -> {field: Name.t * 'sv concr, ext: 'sv concr} option
+        val rewriteRow : Name.t -> 'sv concr -> 'sv row option
         val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv concr -> bool
         val substitute: ('sv concr Id.SortedMap.map -> 'sv -> 'sv concr option)
                         -> 'sv concr Id.SortedMap.map -> 'sv concr -> 'sv concr
@@ -59,6 +60,8 @@ signature FAST_TYPE = sig
     end
 
     structure Abs: sig
+        datatype t = datatype abs
+
         val toDoc: ('sv -> PPrint.t) -> 'sv abs -> PPrint.t
         val toString: ('sv -> PPrint.t) -> 'sv abs -> string
         val mapChildren : ('sv concr -> 'sv concr) -> 'sv abs -> 'sv abs
@@ -108,7 +111,7 @@ structure FType :> FAST_TYPE = struct
         = ForAll of def vector * 'sv concr
         | Arrow of arrow * {domain: 'sv concr, codomain: 'sv concr}
         | Record of 'sv concr
-        | RowExt of {field: Name.t * 'sv concr, ext: 'sv concr}
+        | RowExt of 'sv row
         | EmptyRow
         | Type of 'sv abs
         | App of {callee: 'sv concr, args: 'sv concr vector}
@@ -125,6 +128,8 @@ structure FType :> FAST_TYPE = struct
         | Symm of 'sv co
         | AppCo of {callee: 'sv co, args: 'sv concr vector}
         | UseCo of Name.t
+
+    withtype 'sv row = {base: 'sv concr, field: Name.t * 'sv concr}
 
     val arrowDoc =
         fn Cst.Implicit => text "=>"
@@ -178,22 +183,22 @@ structure FType :> FAST_TYPE = struct
         end
 
     and rowToOneLiner svarToDoc =
-        fn RowExt {field, ext} =>
-            fieldToDoc svarToDoc field
-                <> (case ext
-                    of RowExt _ => text "," <+> rowToOneLiner svarToDoc ext
-                     | EmptyRow => PPrint.empty
-                     | _ => space <> text "|" <+> concrToDoc svarToDoc ext)
+        fn RowExt {base, field} =>
+            rowToOneLiner svarToDoc base
+                <> (case base
+                    of RowExt _ => text "," <+> fieldToDoc svarToDoc field
+                     | EmptyRow => fieldToDoc svarToDoc field
+                     | _ => space <> text "with" <+> fieldToDoc svarToDoc field)
          | EmptyRow => PPrint.empty
          | t => concrToDoc svarToDoc t
 
     and rowToMultiLiner svarToDoc =
-        fn RowExt {field, ext} =>
-            fieldToDoc svarToDoc field
-                <> (case ext
-                    of RowExt _ => newline <> text "," <+> rowToMultiLiner svarToDoc ext
-                     | EmptyRow => PPrint.empty
-                     | _ => newline <> text "|" <+> concrToDoc svarToDoc ext)
+        fn RowExt {base, field} =>
+            rowToMultiLiner svarToDoc base
+                <> (case base
+                    of RowExt _ => newline <> text "," <+> fieldToDoc svarToDoc field
+                     | EmptyRow => fieldToDoc svarToDoc field
+                     | _ => newline <> text "with" <+> fieldToDoc svarToDoc field)
          | EmptyRow => PPrint.empty
          | t => concrToDoc svarToDoc t
 
@@ -219,8 +224,8 @@ structure FType :> FAST_TYPE = struct
          | Arrow (arrow, {domain, codomain}) =>
             Arrow (arrow, {domain = f domain, codomain = f codomain})
          | Record row => Record (f row)
-         | RowExt ({field = (label, fieldt), ext}) =>
-            RowExt ({field = (label, f fieldt), ext = f ext})
+         | RowExt ({base, field = (label, fieldt)}) =>
+            RowExt ({base = f base, field = (label, f fieldt)})
          | App {callee, args} => App {callee = f callee, args = Vector.map f args}
          | CallTFn (name, args) => CallTFn (name, Vector.map f args)
          | t as (EmptyRow | Type _ | SVar _ | UseT _ | Prim _) => t
@@ -233,8 +238,8 @@ structure FType :> FAST_TYPE = struct
          | Arrow (arr, {domain, codomain}) =>
             arrow (arr, {domain = concrCata alg domain, codomain = concrCata alg codomain})
          | Record row => record (concrCata alg row)
-         | RowExt {field = (label, fieldt), ext} =>
-            rowExt {field = (label, concrCata alg fieldt), ext = concrCata alg ext}
+         | RowExt {base, field = (label, fieldt)} =>
+            rowExt {base = concrCata alg base, field = (label, concrCata alg fieldt)}
          | EmptyRow => emptyRow
          | Type args => typ args
          | SVar args => svar args
@@ -250,7 +255,7 @@ structure FType :> FAST_TYPE = struct
     fun concrOccurs svarOcc sv = concrCata { forAll = #2
                                            , arrow = fn (_, {domain, codomain}) => domain orelse codomain
                                            , record = Fn.identity
-                                           , rowExt = fn {field = (_, fieldt), ext} => fieldt orelse ext
+                                           , rowExt = fn {base, field = (_, fieldt)} => base orelse fieldt
                                            , emptyRow = false
                                            , typ = fn t => absOccurs svarOcc sv t
                                            , svar = fn sv' => svarOcc sv sv'
@@ -296,8 +301,8 @@ structure FType :> FAST_TYPE = struct
          | Arrow (_, {domain, codomain}) =>
             smallConcr domain andalso smallConcr codomain
          | Record t => smallConcr t
-         | RowExt {field = (_, fieldt), ext} =>
-            smallConcr fieldt andalso smallConcr ext
+         | RowExt {base, field = (_, fieldt)} =>
+            smallConcr base andalso smallConcr fieldt
          | EmptyRow => true
          | Type t => smallAbs t
          | App {callee, args} => smallConcr callee andalso Vector.all smallConcr args
@@ -314,8 +319,8 @@ structure FType :> FAST_TYPE = struct
          | Arrow (Cst.Explicit eff, _) => SOME eff
          | _ => NONE
 
-    val rec rowExtTail =
-        fn RowExt {ext, ...} => rowExtTail ext
+    val rec rowExtBase =
+        fn RowExt {base, ...} => rowExtBase base
          | t => t
 
     val app = (* HACK *)
@@ -332,12 +337,12 @@ structure FType :> FAST_TYPE = struct
 
         fun rewriteRow label row =
             let val rec rewrite = 
-                    fn (RowExt (row as {field = (flabel, ftype), ext})) =>
+                    fn (RowExt (row as {base, field = (flabel, ftype)})) =>
                         if flabel = label
                         then SOME row
-                        else Option.map (fn {field, ext} =>
-                                             {field, ext = RowExt {field = (flabel, ftype), ext}})
-                                        (rewrite ext)
+                        else Option.map (fn {base, field} =>
+                                             {base = RowExt {base, field = (flabel, ftype)}, field})
+                                        (rewrite base)
                      | _ => NONE
             in rewrite row
             end
@@ -351,6 +356,8 @@ structure FType :> FAST_TYPE = struct
     end
 
     structure Abs = struct
+        datatype t = datatype abs
+        
         val toDoc = absToDoc
         fun toString svarToDoc = PPrint.pretty 80 o toDoc svarToDoc
         val mapChildren = mapAbsChildren
@@ -378,6 +385,7 @@ signature CLOSED_FAST_TYPE = sig
     type def = FType.def
     type tfn_sig = FType.tfn_sig
 
+    datatype effect = datatype FType.effect
     type arrow = FType.arrow
 
     datatype concr' = datatype FType.concr
@@ -393,14 +401,18 @@ signature CLOSED_FAST_TYPE = sig
     val defToDoc: def -> PPrint.t
     val arrowDoc: arrow -> PPrint.t
     val svarToDoc: sv -> PPrint.t
-    val rowExtTail: concr -> concr
+    val rowExtBase: concr -> concr
 
     structure Concr: sig
+        datatype t = datatype concr
+
         val toDoc: concr -> PPrint.t
         val substitute: (ScopeId.t -> bool) ->concr Id.SortedMap.map -> concr -> concr
     end
 
     structure Abs: sig
+        datatype t = datatype abs
+
         val toDoc: abs -> PPrint.t
         val concr: concr -> abs
     end

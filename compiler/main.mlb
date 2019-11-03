@@ -46,6 +46,8 @@ local
            src/Typechecker/Env.sml
 
            src/Typechecker/Subtyping.sml
+           src/Typechecker/CheckUse.sml
+           src/Typechecker/Kindchecker.sml
            src/Typechecker/Typechecker.sml
            src/Typechecker/ExitTypechecker.sml
            

@@ -1,8 +1,11 @@
 structure Subtyping :> sig
+    type effect = FlexFAst.Type.effect 
+
     type coercion = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
    
     val applyCoercion: coercion -> FlexFAst.Term.expr -> FlexFAst.Term.expr
-    val subEffect: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.effect * FlexFAst.Type.effect -> unit
+    val subEffect: Pos.span -> effect * effect -> unit
+    val joinEffs : effect * effect -> effect
     val subType: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
     val unify: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
 end = struct
@@ -10,7 +13,6 @@ end = struct
     datatype either = datatype Either.t
     structure Uv = TypeVars.Uv
     structure Path = TypeVars.Path
-    datatype predicativity = datatype TypeVars.predicativity
     datatype explicitness = datatype Cst.explicitness
     datatype effect = datatype FType.effect
     structure FAst = FlexFAst
@@ -43,7 +45,7 @@ end = struct
 
     fun instantiate env (params, body) f =
         let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
-            val args = Vector.map (fn _ => SVar (UVar (Env.freshUv env Predicative)))
+            val args = Vector.map (fn _ => SVar (UVar (Env.freshUv env)))
                                   params
             val mapping = (params, args)
                         |> Vector.zipWith (fn ({var, kind = _}, arg) => (var, arg))
@@ -60,11 +62,11 @@ end = struct
                         |> Vector.zipWith (fn ({var, ...}, def') => (var, UseT def'))
                         |> Id.SortedMap.fromVector
             val body = Concr.substitute (Env.hasScope env) mapping body
-        in f (env, scopeId, params', body)
+        in f (env, params', body)
         end
 
     type coercion = (FTerm.expr -> FTerm.expr) option
-    type field_coercion = Name.t * (concr * concr) * (FTerm.expr -> FTerm.expr)
+    type field_coercion = (Name.t * concr) * (FTerm.expr -> FTerm.expr) * concr
 
     fun applyCoercion (coerce: coercion) expr =
         case coerce
@@ -74,7 +76,6 @@ end = struct
     fun fnCoercion coerceDomain coerceCodomain
                    ((_, {domain = _, codomain}), (eff', {domain = domain', codomain = _})) callee =
         let val pos = FTerm.exprPos callee
-            val scopeId = ScopeId.fresh ()
             val param = {pos, id = DefId.fresh (), var = Name.fresh (), typ = domain'}
             val arg = applyCoercion coerceDomain (FTerm.Use (pos, param))
             val body = applyCoercion coerceCodomain (FTerm.App (pos, codomain, {callee, arg}))
@@ -100,12 +101,17 @@ end = struct
         fn Coerce _ => NonSubType
          | Unify => NonUnifiable
 
+    fun joinEffs (Pure, Pure) = Pure
+      | joinEffs (Pure, Impure) = Impure
+      | joinEffs (Impure, Pure) = Impure
+      | joinEffs (Impure, Impure) = Impure
+
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
     fun coercion (intent: unit intent) (env: Env.t) currPos: concr * concr -> coercion =
         fn (sub, super as ForAll universal) =>
             (case intent
              of Coerce () =>
-                 skolemize env universal (fn (env, scopeId, params, body) =>
+                 skolemize env universal (fn (env, params, body) =>
                      Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
                                 (coercion (Coerce ()) env currPos (sub, body))
                  )
@@ -122,8 +128,7 @@ end = struct
                   of ForAll universal' => raise Fail "unimplemented"
                    | _ => raise TypeError (NonUnifiable (currPos, concr sub, concr super, NONE))))
          | (sub, Arrow (Implicit, {domain, codomain})) =>
-            let val scopeId = ScopeId.fresh ()
-                val def = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
+            let val def = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
                 val coerceCodomain = coercion intent env currPos (sub, codomain)
             in SOME (fn expr => FTerm.Fn (currPos, def, Implicit, applyCoercion coerceCodomain expr))
             end
@@ -199,7 +204,7 @@ end = struct
 
     and arrowCoercion intent env currPos
                       (arrows as ((eff, {domain, codomain}), (eff', {domain = domain', codomain = codomain'}))) =
-        let do eqOrSubEffect intent env currPos (eff, eff')
+        let do eqOrSubEffect intent currPos (eff, eff')
             val coerceDomain = coercion intent env currPos (domain', domain)
             val coerceCodomain = coercion intent env currPos (codomain, codomain')
         in if isSome coerceDomain orelse isSome coerceCodomain
@@ -207,7 +212,7 @@ end = struct
            else NONE
         end
 
-    and eqOrSubEffect intent env currPos effs =
+    and eqOrSubEffect intent currPos effs =
         case intent
         of Coerce () => (case effs
                          of (Pure, Pure) => ()
@@ -218,7 +223,7 @@ end = struct
                     then ()
                     else raise Fail "Nonequal effects"
 
-    and subEffect env = eqOrSubEffect (Coerce ()) env
+    and subEffect pos = eqOrSubEffect (Coerce ()) pos
 
     and recordCoercion intent env currPos (t, t') (row, row') =
         case rowCoercion intent env currPos (row, row')
@@ -227,36 +232,37 @@ end = struct
             SOME (fn expr =>
                       let val tmpDef = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = t}
                           val tmpUse = FTerm.Use (currPos, tmpDef)
-                          fun emitField (label, (origFieldt, _), coerceField) =
+                          fun emitField ((label, origFieldt), coerceField, _) =
                               (label, coerceField (FTerm.Field (currPos, origFieldt, tmpUse, label)))
                       in FTerm.Let ( currPos
                                    , #[FTerm.Val (currPos, tmpDef, expr)]
-                                   , FTerm.Override ( currPos
-                                                    , t'
-                                                    , Vector.map emitField (Vector.fromList fieldCoercions)
-                                                    , tmpUse ) )
+                                   , List.foldl (fn (fieldCoercion as (_, _, row'), base) =>
+                                                     let val typ' = FType.Record row'
+                                                     in FTerm.Where (currPos, typ', {base, field = emitField fieldCoercion})
+                                                     end)
+                                                tmpUse fieldCoercions )
                       end)
 
     and rowCoercion intent env currPos (rows: concr * concr): field_coercion list =
         let val rec subExts =
-                fn (row, RowExt {field = (label, fieldt'), ext = ext'}) =>
-                    let val (fieldt, ext) = reorderRow currPos label (FType.rowExtTail ext') row
+                fn (row, row' as RowExt {base = base', field = (label, fieldt')}) =>
+                    let val {base, fieldt} = reorderRow currPos label (FType.rowExtBase base') row
                         val coerceField = coercion intent env currPos (fieldt, fieldt')
-                        val coerceExt = subExts (ext, ext')
+                        val coerceExt = subExts (base, base')
                     in case coerceField
-                       of SOME coerceField => (label, (fieldt, fieldt'), coerceField) :: coerceExt
+                       of SOME coerceField => ((label, fieldt), coerceField, row') :: coerceExt
                         | NONE => coerceExt
                     end
                  | rows => (coercion intent env currPos rows; [])
         in subExts rows
         end
 
-    and reorderRow currPos label (tail: concr): concr -> concr * concr =
-        fn RowExt {field = (label', fieldt'), ext = ext} =>
+    and reorderRow currPos label (tail: concr): concr -> {base: concr, fieldt: concr} =
+        fn RowExt {base, field = (label', fieldt')} =>
             if label = label'
-            then (fieldt', ext)
-            else let val (fieldt, ext) = reorderRow currPos label tail ext
-                 in (fieldt, RowExt {field = (label', fieldt'), ext = ext})
+            then {base, fieldt = fieldt'}
+            else let val {base, fieldt} = reorderRow currPos label tail base
+                 in {base = RowExt {base, field = (label', fieldt')}, fieldt}
                  end
          (* FIXME: `t` is actually row tail, not the type of `expr`. *)
          | t => raise TypeError (MissingField (currPos, t, label))
@@ -361,7 +367,7 @@ end = struct
     and doAssignUniversal env currPos y uv (universal as (_, _)) =
         case y
         of Coerce Up =>
-            skolemize env universal (fn (env, scopeId, params, body) =>
+            skolemize env universal (fn (env, params, body) =>
                 Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
                            (doAssign env currPos y (uv, body))
             )
@@ -372,8 +378,8 @@ end = struct
             )
 
     and doAssignArrow (env: Env.t) y uv pos eff (arrow as {domain, codomain}) =
-        let val domainUv = TypeVars.Uv.freshSibling (uv, Predicative)
-            val codomainUv = TypeVars.Uv.freshSibling (uv, Predicative)
+        let val domainUv = TypeVars.Uv.freshSibling uv
+            val codomainUv = TypeVars.Uv.freshSibling uv
             val arrow' = { domain = SVar (UVar domainUv)
                          , codomain = SVar (UVar codomainUv)}
             val t' = Arrow (Explicit eff, arrow')

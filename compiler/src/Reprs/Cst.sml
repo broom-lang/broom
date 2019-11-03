@@ -11,7 +11,7 @@ signature CST = sig
     datatype typ
         = Pi of Pos.span * def * arrow * typ
         | RecordT of Pos.span * typ
-        | RowExt of Pos.span * {fields: (Name.t * typ) vector, ext: typ}
+        | RowExt of Pos.span * row
         | EmptyRow of Pos.span
         | Interface of Pos.span * (Pos.span * Name.t * typ) vector
         | WildRow of Pos.span
@@ -24,7 +24,7 @@ signature CST = sig
         = Fn of Pos.span * expl * clause vector
         | Let of Pos.span * stmt vector * expr
         | Match of Pos.span * expr * clause vector
-        | Record of Pos.span * row
+        | Record of Pos.span * recordFields
         | Module of Pos.span * stmt vector
         | App of Pos.span * {callee: expr, arg: expr}
         | Field of Pos.span * expr * Name.t
@@ -42,9 +42,18 @@ signature CST = sig
         | Def of Pos.span * Name.t
         | ConstP of Pos.span * Const.t
 
+    and row_edit
+        = With of (Name.t * expr) vector
+        | Where of (Name.t * expr) vector
+
     withtype def = {var: Name.t, typ: typ option}
     and clause = {pattern: pat, body: expr}
-    and row = {fields: (Name.t * expr) vector, ext: expr option}
+    and recordFields =
+        { base : expr option
+        , edits : row_edit vector }
+    and row =
+        { base : typ
+        , fields : (Name.t * typ) vector }
 
     val explDoc: expl -> PPrint.t
     val arrowDoc: arrow -> PPrint.t
@@ -53,6 +62,7 @@ signature CST = sig
         structure Prim: PRIM_TYPE where type t = PrimType.t
 
         datatype typ = datatype typ
+        type row = row
 
         val pos: typ -> Pos.span
         val toDoc: typ -> PPrint.t
@@ -62,8 +72,9 @@ signature CST = sig
         datatype expr = datatype expr
         datatype stmt = datatype stmt
         datatype pat = datatype pat
+        datatype row_edit = datatype row_edit
         type def = def
-        type row = row
+        type recordFields = recordFields
 
         val exprPos: expr -> Pos.span
         val exprToDoc: expr -> PPrint.t
@@ -78,9 +89,12 @@ structure Cst :> CST = struct
     val op<+> = PPrint.<+>
     val op<++> = PPrint.<++>
     val text = PPrint.text
+    val space = PPrint.space
     val newline = PPrint.newline
+    val comma = PPrint.comma
     val parens = PPrint.parens
     val braces = PPrint.braces
+    val punctuate = PPrint.punctuate
 
     structure Prim = PrimType
 
@@ -94,7 +108,7 @@ structure Cst :> CST = struct
     datatype typ
         = Pi of Pos.span * def * arrow * typ
         | RecordT of Pos.span * typ
-        | RowExt of Pos.span * {fields: (Name.t * typ) vector, ext: typ}
+        | RowExt of Pos.span * row
         | EmptyRow of Pos.span
         | Interface of Pos.span * (Pos.span * Name.t * typ) vector
         | WildRow of Pos.span
@@ -107,7 +121,7 @@ structure Cst :> CST = struct
         = Fn of Pos.span * expl * clause vector
         | Let of Pos.span * stmt vector * expr
         | Match of Pos.span * expr * clause vector
-        | Record of Pos.span * row
+        | Record of Pos.span * recordFields
         | Module of Pos.span * stmt vector
         | App of Pos.span * {callee: expr, arg: expr}
         | Field of Pos.span * expr * Name.t
@@ -125,9 +139,18 @@ structure Cst :> CST = struct
         | Def of Pos.span * Name.t
         | ConstP of Pos.span * Const.t
 
+    and row_edit
+        = With of (Name.t * expr) vector
+        | Where of (Name.t * expr) vector
+
     withtype def = {var: Name.t, typ: typ option}
     and clause = {pattern: pat, body: expr}
-    and row = {fields: (Name.t * expr) vector, ext: expr option}
+    and recordFields =
+        { base : expr option
+        , edits : row_edit vector }
+    and row =
+        { base : typ
+        , fields : (Name.t * typ) vector }
 
     val exprPos =
         fn Fn (pos, _, _) => pos
@@ -168,12 +191,12 @@ structure Cst :> CST = struct
             text "fun" <+> Name.toDoc var <> annToDoc domain
                 <+> arrowDoc arrow <+> typeToDoc codomain
          | RecordT (_, row) => braces (typeToDoc row)
-         | RowExt (_, {fields, ext}) =>
+         | RowExt (_, {base, fields}) =>
             let fun fieldToDoc (label, fieldt) = 
                     Name.toDoc label <> text ": " <> typeToDoc fieldt
                 val fieldsDoc =
                     PPrint.punctuate (text ", ") (Vector.map fieldToDoc fields)
-            in fieldsDoc <+> text "|" <+> typeToDoc ext
+            in typeToDoc base <+> text "with" <+> fieldsDoc
             end
          | EmptyRow _ => text "(||)"
          | Interface (_, decls) =>
@@ -215,14 +238,28 @@ structure Cst :> CST = struct
          | Const (_, c) => Const.toDoc c
 
     and defToDoc = fn {var, typ} => Name.toDoc var <> annToDoc typ
+
+    and fieldToDoc =
+        fn (name, expr) => Name.toDoc name <+> text "=" <+> exprToDoc expr
+
+    and fieldsToDoc =
+        fn fields => PPrint.punctuate (space <> comma) (Vector.map fieldToDoc fields)
+
+    and editToDoc =
+        fn With fields => text "with" <+> fieldsToDoc fields
+         | Where fields => text "where" <+> fieldsToDoc fields
+
+    and editsToDoc =
+        fn edits => punctuate space (Vector.map editToDoc edits)
     
     and rowToDoc = 
-        fn {fields, ext} =>
-            let fun entryToDoc (label, expr) = Name.toDoc label <+> text "=" <+> exprToDoc expr
-                val fieldsDoc = PPrint.punctuate (text ", ") (Vector.map entryToDoc fields)
-                val extDoc = Option.mapOr (fn ext => text " .." <+> exprToDoc ext) PPrint.empty ext
-            in fieldsDoc <> extDoc
-            end
+        fn {base = SOME base, edits} => exprToDoc base <+> editsToDoc edits
+         | {base = NONE, edits} =>
+            (case Vector.uncons edits
+             of SOME (With startFields, edits) =>
+                 fieldsToDoc startFields <+> editsToDoc (VectorSlice.vector edits)
+              | SOME (Where _, _) => editsToDoc edits
+              | NONE => PPrint.empty)
 
     and clauseToDoc = fn expl => fn {pattern, body} =>
         patToDoc pattern <+> explDoc expl <+> exprToDoc body
@@ -246,6 +283,7 @@ structure Cst :> CST = struct
         structure Prim = PrimType
 
         datatype typ = datatype typ
+        type row = row
 
         val pos = typePos
         val toDoc = typeToDoc
@@ -255,8 +293,9 @@ structure Cst :> CST = struct
         datatype expr = datatype expr
         datatype stmt = datatype stmt
         datatype pat = datatype pat
+        datatype row_edit = datatype row_edit
         type def = def
-        type row = row
+        type recordFields = recordFields
 
         val exprPos = exprPos
         val exprToDoc = exprToDoc
