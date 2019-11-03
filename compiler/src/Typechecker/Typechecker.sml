@@ -330,20 +330,22 @@ end = struct
         in (eff, t, expr)
         end
 
-    and instantiateExistential env (Exists (params: FType.def vector, body)): concr * concr vector = 
-        let val paths = Vector.map (fn {var, kind} =>
-                                        let val typeFnName = Env.freshAbstract env var {paramKinds = #[], kind}
-                                            val typeFn = FType.CallTFn (typeFnName, #[])
-                                        in FAst.Type.SVar (FType.Path (Path.new typeFn))
-                                        end)
-                                   params
-           
-            val mapping = (params, paths)
-                        |> Vector.zipWith (fn ({var, ...}, path) => (var, path))
-                        |> Id.SortedMap.fromVector
-            val implType = Concr.substitute (Env.hasScope env) mapping body
-        in (implType, paths)
-        end
+    and instantiateExistential env: concr -> concr * concr vector = 
+        fn Exists (params: FType.def vector, body) =>
+            let val paths = Vector.map (fn {var, kind} =>
+                                            let val typeFnName = Env.freshAbstract env var {paramKinds = #[], kind}
+                                                val typeFn = FType.CallTFn (typeFnName, #[])
+                                            in FAst.Type.SVar (FType.Path (Path.new typeFn))
+                                            end)
+                                       params
+               
+                val mapping = (params, paths)
+                            |> Vector.zipWith (fn ({var, ...}, path) => (var, path))
+                            |> Id.SortedMap.fromVector
+                val implType = Concr.substitute (Env.hasScope env) mapping body
+            in (implType, paths)
+            end
+         | typ => (typ, #[])
 
     and elaborateAsExistsInst env (implType, paths) =
         fn CTerm.Match (pos, matchee, clauses) =>
