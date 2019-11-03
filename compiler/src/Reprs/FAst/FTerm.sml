@@ -18,7 +18,7 @@ signature FAST_TERM = sig
         | Let of Pos.span * stmt vector * expr
         | Match of Pos.span * Type.concr * expr * clause vector
         | Cast of Pos.span * Type.concr * expr * Type.co
-        | Type of Pos.span * Type.abs
+        | Type of Pos.span * Type.concr
         | Use of Pos.span * def
         | Const of Pos.span * Const.t
 
@@ -90,7 +90,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | Let of Pos.span * stmt vector * expr
         | Match of Pos.span * Type.concr * expr * clause vector
         | Cast of Pos.span * Type.concr * expr * Type.co
-        | Type of Pos.span * Type.abs
+        | Type of Pos.span * Type.concr
         | Use of Pos.span * def
         | Const of Pos.span * Const.t
 
@@ -176,7 +176,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
                   <+> braces (newline <> PPrint.punctuate newline (Vector.map clauseToDoc clauses))
            end
         | Cast (_, _, expr, co) => exprToDoc expr <+> text "via" <+> Type.Co.toDoc co
-        | Type (_, t) => brackets (Type.Abs.toDoc t)
+        | Type (_, t) => brackets (Type.Concr.toDoc t)
         | Use (_, {var, ...}) => Name.toDoc var 
         | Const (_, c) => Const.toDoc c
 

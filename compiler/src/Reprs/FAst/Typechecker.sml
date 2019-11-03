@@ -54,7 +54,6 @@ end = struct
 
     datatype kind = datatype FAst.Type.kind
     datatype concr = datatype FAst.Type.concr'
-    datatype abs = datatype FAst.Type.abs'
     datatype co = datatype FAst.Type.co'
     datatype expr = datatype FAst.Term.expr
     datatype stmt = datatype FAst.Term.stmt
@@ -109,7 +108,14 @@ end = struct
 
     fun eq env (t, t') =
         case (t, t')
-        of (ForAll (params, body), ForAll (params', body')) =>
+        of (Exists (params, body), Exists (params', body')) => 
+            let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
+                                       env params
+                val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
+                                       env params'
+            in eq env (body, body')
+            end
+         | (ForAll (params, body), ForAll (params', body')) =>
             let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
                                        env params
                 val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
@@ -127,7 +133,7 @@ end = struct
                  eq env (fieldt, fieldt') andalso eq env (base, base')
               | NONE => false)
          | (EmptyRow, EmptyRow) => true
-         | (FType.Type t, FType.Type t') => absEq env (t, t')
+         | (FType.Type t, FType.Type t') => eq env (t, t')
          | (FType.App {callee, args}, FType.App {callee = callee', args = args'}) =>
             eq env (callee, callee')
             andalso Vector.all (eq env) (Vector.zip (args, args'))
@@ -142,15 +148,6 @@ end = struct
               | NONE => raise Fail ("Out of scope: g__" ^ Id.toString var))
          | (Prim p, Prim p') => p = p' (* HACK? *)
          | _ => false
-    
-    and absEq env =
-        fn (Exists (params, body), Exists (params', body')) => 
-            let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
-                                       env params
-                val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
-                                       env params'
-            in eq env (body, body')
-            end
 
     fun checkEq currPos env ts =
         if eq env ts

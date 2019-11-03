@@ -9,12 +9,10 @@ structure FlexFAst = struct
         structure ScopeId = ScopeId
 
         datatype concr' = datatype FType.concr
-        datatype abs' = datatype FType.abs
         datatype co' = datatype FType.co
 
         datatype sv = OVar of ov | UVar of uv | Path of path
         withtype concr = sv FType.concr
-        and abs = sv FType.abs
         and co = sv FType.co
         and ov = TypeVars.ov
         and uv = sv FType.concr TypeVars.uv
@@ -75,16 +73,6 @@ structure FlexFAst = struct
                  | _ => NONE
         end
 
-        structure Abs = struct
-            open Abs
-
-            datatype t = datatype abs
-
-            val toDoc = toDoc svarToDoc
-
-            val occurs = fn hasScope => occurs (Concr.svarOccurs hasScope)
-        end
-
         structure Co = struct
             open Co
 
@@ -102,13 +90,11 @@ structure FixedFAst = struct
         open FType
         structure ScopeId = ScopeId
 
-        datatype abs' = datatype FType.abs
         datatype concr' = datatype FType.concr
         datatype co' = datatype FType.co
 
         type sv = Nothing.t
         type concr = sv concr
-        type abs = sv abs
         type co = sv co'
 
         val svarToDoc = PPrint.text o Nothing.toString
@@ -124,14 +110,6 @@ structure FixedFAst = struct
             val substitute = fn hasScope => substitute (fn _ => fn _ => NONE)
             val kindOf: (Name.t -> tfn_sig) -> concr -> kind = kindOf (fn _ => raise Fail "unreachable")
             val toString = concrToString
-        end
-
-        structure Abs = struct
-            open Abs
-
-            datatype t = datatype abs
-
-            val toDoc = toDoc svarToDoc
         end
 
         structure Co = struct

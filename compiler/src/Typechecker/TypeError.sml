@@ -1,13 +1,13 @@
 signature TYPE_ERROR = sig
-    datatype t = NonSubType of Pos.span * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
-               | NonUnifiable of Pos.span * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
+    datatype t = NonSubType of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr * t option
+               | NonUnifiable of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr * t option
                | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.span * Name.t
                | OutsideScope of Pos.span * Name.t
                | MissingField of Pos.span * FlexFAst.Type.concr * Name.t
                | DuplicateBinding of Pos.span * Name.t
-               | Occurs of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.abs
+               | Occurs of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr
    
     exception TypeError of t
 
@@ -17,21 +17,20 @@ end
 structure TypeError :> TYPE_ERROR = struct
     structure FAst = FlexFAst
     structure Concr = FAst.Type.Concr
-    structure Abs = FAst.Type.Abs
     structure FTerm = FAst.Term
     val text = PPrint.text
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
 
-    datatype t = NonSubType of Pos.span * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
-               | NonUnifiable of Pos.span * FlexFAst.Type.abs * FlexFAst.Type.abs * t option
+    datatype t = NonSubType of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr * t option
+               | NonUnifiable of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr * t option
                | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.span * Name.t
                | OutsideScope of Pos.span * Name.t
                | MissingField of Pos.span * FlexFAst.Type.concr * Name.t
                | DuplicateBinding of Pos.span * Name.t
-               | Occurs of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.abs
+               | Occurs of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr
     
     exception TypeError of t
 
@@ -39,12 +38,12 @@ structure TypeError :> TYPE_ERROR = struct
         let val (pos, details) = case err
                                  of NonSubType (pos, typ, superTyp, cause) =>
                                      ( pos
-                                     , Abs.toDoc typ <+> text "is not a subtype of" <+> Abs.toDoc superTyp
+                                     , Concr.toDoc typ <+> text "is not a subtype of" <+> Concr.toDoc superTyp
                                            <> Option.mapOr (fn cause => PPrint.newline <> text "because" <+> toDoc sourcemap cause)
                                                            PPrint.empty cause )
                                   | NonUnifiable (pos, lt, rt, cause) =>
                                      ( pos
-                                     , Abs.toDoc lt <+> text "does not unify with" <+> Abs.toDoc rt
+                                     , Concr.toDoc lt <+> text "does not unify with" <+> Concr.toDoc rt
                                            <> Option.mapOr (fn cause => PPrint.newline <> text "because" <+> toDoc sourcemap cause)
                                                            PPrint.empty cause )
                                   | UnCallable (expr, typ) =>
@@ -66,7 +65,7 @@ structure TypeError :> TYPE_ERROR = struct
                                   | Occurs (pos, v, t) =>
                                      ( pos
                                      , text "Occurs check: unifying" <+> Concr.toDoc v
-                                           <+> text "with" <+> Abs.toDoc t <+> text "would create infinite type." )
+                                           <+> text "with" <+> Concr.toDoc t <+> text "would create infinite type." )
         in text "TypeError in" <+> text (Pos.spanToString sourcemap pos) <> text ":" <+> details
         end
 end

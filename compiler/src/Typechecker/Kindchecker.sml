@@ -8,7 +8,7 @@ structure Kindchecker :> sig
     type unvisited_binding_type =
          Pos.span -> Env.t -> Name.t -> Cst.Type.typ option Env.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
 
-    val reAbstract : Env.t -> FType.Abs.t -> FType.Concr.t
+    val reAbstract : Env.t -> FType.Concr.t -> FType.Concr.t
     val fix : { unvisitedBindingType : unvisited_binding_type
               , elaborateExpr : Env.t -> Cst.Term.expr -> FType.effect * FType.Concr.t * FTerm.expr }
            -> (Env.t -> Cst.Type.typ -> FType.def list * FType.Concr.t)
@@ -17,13 +17,12 @@ end = struct
     structure CTerm = Cst.Term
     datatype explicitness = datatype Cst.explicitness
     datatype effect = datatype FType.effect
-    datatype abs = datatype FType.Abs.t
+    datatype concr = datatype FType.concr
     structure FType = FlexFAst.Type
     structure FTerm = FlexFAst.Term
     structure Id = FType.Id
     structure Concr = FType.Concr
     datatype concr = datatype Concr.t
-    val concr = FType.Abs.concr
     open TypeError
     structure Env = TypecheckingEnv
     structure Bindings = Env.Bindings
@@ -53,6 +52,7 @@ end = struct
                                  Id.SortedMap.empty params
             in Concr.substitute (Env.hasScope env) mapping body
             end
+         | t => t
 
     fun fix {unvisitedBindingType : unvisited_binding_type, elaborateExpr} =
             (* Elaborate the type `typ` and return the elaborated version. *)
@@ -126,7 +126,7 @@ end = struct
                                 val app = FType.app { callee = FType.UseT {var, kind}
                                                     , args = Vector.map (fn def => FType.UseT def)
                                                                         args }
-                            in FType.Type (concr app)
+                            in FType.Type app
                             end
                          | CType.Singleton (_, expr) =>
                             (case elaborateExpr env expr

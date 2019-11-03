@@ -6,15 +6,15 @@ structure CheckUse :> sig
     structure Env : TYPECHECKING_ENV where type t = TypecheckingEnv.t
 
     val fix : { elaborateType : Env.t -> Cst.Type.typ -> FType.def list * FType.Concr.t
-              , reAbstract : Env.t -> FType.Abs.t -> FType.Concr.t
-              , instantiateExistential : Env.t -> FType.Abs.t -> FType.Concr.t * FType.Concr.t vector
+              , reAbstract : Env.t -> FType.Concr.t -> FType.Concr.t
+              , instantiateExistential : Env.t -> FType.Concr.t -> FType.Concr.t * FType.Concr.t vector
               , elaborateExpr : Env.t -> Cst.Term.expr -> FType.effect * FType.Concr.t * FTerm.expr }
            -> { unvisitedBindingType : Pos.span -> Env.t -> Name.t
                     -> Cst.Type.typ option Env.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
               , lookupValType : Cst.Term.expr -> Name.t -> Env.t -> FTerm.def option }
 end = struct
-    datatype abs = datatype FType.Abs.t
     structure CTerm = Cst.Term
+    datatype concr = datatype FType.concr
     structure FType = FlexFAst.Type
     structure FTerm = FlexFAst.Term
     structure Env = TypecheckingEnv

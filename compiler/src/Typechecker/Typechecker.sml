@@ -14,7 +14,7 @@ end = struct
     structure Id = FType.Id
     structure Concr = FType.Concr
     datatype effect = datatype FType.effect
-    datatype abs' = datatype FAst.Type.abs'
+    datatype concr = datatype FAst.Type.concr'
     type concr = FType.concr
 
     open TypeError

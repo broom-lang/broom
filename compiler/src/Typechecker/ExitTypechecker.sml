@@ -7,7 +7,6 @@ end = struct
     structure FFType = FixedFAst.Type
     structure FFTerm = FixedFAst.Term
     datatype concr = datatype FlexFAst.Type.concr'
-    datatype abs = datatype FlexFAst.Type.abs'
     datatype co = datatype FlexFAst.Type.co'
     datatype expr = datatype FlexFAst.Term.expr
     datatype stmt = datatype FlexFAst.Term.stmt
@@ -15,7 +14,8 @@ end = struct
     datatype either = datatype Either.t
 
     val rec concrToF: FlexFAst.Type.concr -> FFType.concr =
-        fn ForAll (param, body) => ForAll (param, concrToF body)
+        fn Exists (params, body) => Exists (params, concrToF body)
+         | ForAll (params, body) => ForAll (params, concrToF body)
          | Arrow (expl, {domain, codomain}) =>
             Arrow (expl, {domain = concrToF domain, codomain = concrToF codomain})
          | FType.Record row => FType.Record (concrToF row)
@@ -26,7 +26,7 @@ end = struct
             FFType.App {callee = concrToF callee, args = Vector.map concrToF args}
          | CallTFn (f, args) =>
             CallTFn (f, Vector.map concrToF args)
-         | FFType.Type typ => FFType.Type (absToF typ)
+         | FFType.Type typ => FFType.Type (concrToF typ)
          | UseT def => UseT def
          | Prim p => Prim p
          | SVar (UVar uv) => (case TypeVars.Uv.get uv
@@ -35,9 +35,6 @@ end = struct
          | SVar (Path path) => (case TypeVars.Path.get (Fn.constantly false) path
                                 of Right ((_, t), _) => concrToF t
                                  | Left (t, _) => concrToF t)
-
-    and absToF: FlexFAst.Type.abs -> FFType.abs =
-        fn Exists (params, body) => Exists (params, concrToF body)
 
     and coercionToF: FlexFAst.Type.co -> FFType.co =
         fn Refl t => Refl (concrToF t)
@@ -69,7 +66,7 @@ end = struct
             FFTerm.Field (pos, concrToF typ, exprToF expr, label)
          | Cast (pos, typ, expr, coercion) =>
             FFTerm.Cast (pos, concrToF typ, exprToF expr, coercionToF coercion)
-         | Type (pos, typ) => FFTerm.Type (pos, absToF typ)
+         | Type (pos, typ) => FFTerm.Type (pos, concrToF typ)
          | Use (pos, {pos = defPos, id, var, typ}) =>
             FFTerm.Use (pos, {pos = defPos, id, var, typ = concrToF typ})
          | Const (pos, c) => FFTerm.Const (pos, c)
