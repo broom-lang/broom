@@ -125,14 +125,14 @@ end = struct
                                           | (FTerm.Axiom _, defs) | (FTerm.Expr _, defs) => defs)
                                         [] stmts
                 val (row, body) =
-                    List.foldl (fn (def as {var, typ, ...}, (baseTyp, baseExpr)) =>
-                                    let val row = FType.RowExt {base = baseTyp, field = (var, typ)}
+                    List.foldl (fn (def as {var, typ, ...}, (baseRow, baseExpr)) =>
+                                    let val row = FType.RowExt {base = baseRow, field = (var, typ)}
                                         val use = FTerm.Use (pos, def)
-                                    in ( FType.Record row
-                                       , FTerm.With (pos, typ, {base = baseExpr, field = (var, use)}) )
+                                    in ( row
+                                       , FTerm.With (pos, FType.Record row, {base = baseExpr, field = (var, use)}) )
                                     end)
                                (FType.EmptyRow, FTerm.EmptyRecord pos) defs
-            in (eff, row, FTerm.Let (pos, stmts, body))
+            in (eff, FType.Record row, FTerm.Let (pos, stmts, body))
             end
          | CTerm.App (pos, {callee, arg}) =>
             (* FIXME: generative behaviour when `callEff` is `Impure`: *)
@@ -168,23 +168,23 @@ end = struct
             (Pure, FType.Prim (Const.typeOf c), FTerm.Const (pos, c))
 
     and elaborateRecord env pos ({base, edits}: CTerm.recordFields): effect * concr * FTerm.expr =
-        let fun elaborateField editTyp editExpr ((label, expr), (eff, baseTyp, baseExpr)) =
+        let fun elaborateField editRow editExpr ((label, expr), (eff, baseRow, baseExpr)) =
                 let val (fieldEff, fieldTyp, fieldExpr) = elaborateExpr env expr
-                    val typ = editTyp (baseTyp, (label, fieldTyp))
+                    val row = editRow (baseRow, (label, fieldTyp))
                 in ( joinEffs (eff, fieldEff)
-                   , typ
-                   , editExpr (typ, baseExpr, (label, fieldExpr)) )
+                   , row
+                   , editExpr (FType.Record row, baseExpr, (label, fieldExpr)) )
                 end
 
             fun elaborateEdit (edit, acc) =
                 let val (editTyp, editExpr, fields) =   
                         case edit
                         of CTerm.With fields =>
-                            ( fn (base, field) => FType.Record (FType.RowExt {base, field})
+                            ( fn (base, field) => FType.RowExt {base, field}
                             , fn (typ, base, field) => FTerm.With (pos, typ, {base, field})
                             , fields )
                          | CTerm.Where fields =>
-                            ( FType.Record o rowWhere env
+                            ( rowWhere env
                               (* TODO: Subtyping between old and new field value: *)
                             , fn (typ, base, field) => FTerm.Where (pos, typ, {base, field})
                             , fields )
@@ -201,7 +201,7 @@ end = struct
                  | NONE => (Pure, FType.EmptyRow, FTerm.EmptyRecord pos)
             val (eff, rowType, expr) =
                 Vector.foldl elaborateEdit (baseEff, baseType, baseExpr) edits
-        in (eff, rowType, expr)
+        in (eff, FType.Record rowType, expr)
         end
 
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
