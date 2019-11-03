@@ -1,13 +1,13 @@
 structure Subtyping :> sig
     type effect = FlexFAst.Type.effect 
 
-    type coercion = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
+    type coercer = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
    
-    val applyCoercion: coercion -> FlexFAst.Term.expr -> FlexFAst.Term.expr
+    val applyCoercion: coercer -> FlexFAst.Term.expr -> FlexFAst.Term.expr
     val subEffect: Pos.span -> effect * effect -> unit
     val joinEffs : effect * effect -> effect
-    val subType: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
-    val unify: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercion
+    val subType: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercer
+    val unify: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercer
 end = struct
     val op|> = Fn.|>
     datatype either = datatype Either.t
@@ -72,10 +72,10 @@ end = struct
 (* # Coercions *)
 (* TODO: Replace this premature optimization with shrinker pass. *)
 
-    type coercion = (FTerm.expr -> FTerm.expr) option
-    type field_coercion = (Name.t * concr) * (FTerm.expr -> FTerm.expr) * concr
+    type coercer = (FTerm.expr -> FTerm.expr) option
+    type field_coercer = (Name.t * concr) * (FTerm.expr -> FTerm.expr) * concr
 
-    fun applyCoercion (coerce: coercion) expr =
+    fun applyCoercion (coerce: coercer) expr =
         case coerce
         of SOME f => f expr
          | NONE => expr
@@ -120,92 +120,8 @@ end = struct
 
 (* # Subtyping and Unification *)
 
-    (* Check that `typ` <: `superTyp` and return the coercion if any. *)
-    fun coercion (intent: unit intent) (env: Env.t) currPos: concr * concr -> coercion =
-        fn (sub, super as ForAll universal) =>
-            (case intent
-             of Coerce () =>
-                 skolemize env universal (fn (env, params, body) =>
-                     Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
-                                (coercion (Coerce ()) env currPos (sub, body))
-                 )
-              | Unify => raise TypeError (NonUnifiable (currPos, concr sub, concr super, NONE)))
-         | (sub as ForAll universal, super) =>
-            (case intent
-             of Coerce () =>
-                 instantiate env universal (fn (env, args, body) =>
-                     Option.map (fn coerce => fn expr => coerce (FTerm.TApp (currPos, body, {callee = expr, args})))
-                                (coercion (Coerce ()) env currPos (body, super))
-                 )
-              | Unify =>
-                 (case super
-                  of ForAll universal' => raise Fail "unimplemented"
-                   | _ => raise TypeError (NonUnifiable (currPos, concr sub, concr super, NONE))))
-         | (sub, Arrow (Implicit, {domain, codomain})) =>
-            let val def = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
-                val coerceCodomain = coercion intent env currPos (sub, codomain)
-            in SOME (fn expr => FTerm.Fn (currPos, def, Implicit, applyCoercion coerceCodomain expr))
-            end
-         | (Arrow (Implicit, {domain, codomain}), super) =>
-            (* FIXME: coercion from `codomain` <: `super` *)
-            (case domain
-             of FType.Type domain =>
-                 let val arg = FTerm.Type (currPos, domain)
-                 in SOME (fn expr => FTerm.App (currPos, codomain, {callee = expr, arg}))
-                 end
-              | _ => raise Fail "implicit parameter not of type `type`")
-         | (Arrow (Explicit eff, arr), Arrow (Explicit eff', arr')) =>
-            arrowCoercion intent env currPos ((eff, arr), (eff', arr'))
-         | (sub as Record row, super as Record row') =>
-            recordCoercion intent env currPos (sub, super) (row, row')
-         | (sub as RowExt _, super as RowExt _) =>
-           ( rowCoercion intent env currPos (sub, super)
-           ; NONE ) (* No values of row type exist => coercion unnecessary *)
-         | (EmptyRow, EmptyRow) => NONE
-         | (sub as Prim p, super as Prim p') =>
-            primCoercion intent currPos (p, p') (sub, super)
-         | (Type (Exists (#[], t)), Type (sup as Exists (#[], t'))) =>
-            ( coercion Unify env currPos (t, t')
-            ; SOME (fn _ => FTerm.Type (currPos, sup)))
-         | (App {callee = SVar (Path path), args}, super) =>
-            pathCoercion intent Up env currPos (path, args) super
-         | (sub, App {callee = SVar (Path path), args}) =>
-            pathCoercion intent Down env currPos (path, args) sub
-         | (App {callee, args}, App {callee = callee', args = args'}) =>
-            ( ignore (coercion intent env currPos (callee, callee'))
-            ; Vector.app (ignore o coercion intent env currPos) (Vector.zip (args, args'))
-            ; NONE )
-         | (sub as CallTFn call, super as CallTFn call') =>
-            tFnAppCoercion intent env currPos (call, call') (sub, super)
-         | (sub as UseT {var, ...}, super as UseT {var = var', ...}) =>
-            (* TODO: Go back to using `OVar` => this becomes `raise Fail "unreachable" *)
-            if var = var'
-            then if idInScope env var
-                 then NONE
-                 else raise TypeError (OutsideScope (currPos, Name.fromString ("g__" ^ Id.toString var)))
-            else raise TypeError (error intent (currPos, concr sub, concr super, NONE))
-         | (SVar (UVar uv), super as SVar (UVar uv')) =>
-            uvsCoercion intent env currPos super (uv, uv')
-         | (SVar (UVar uv), super) => uvCoercion env currPos (direct Up intent) uv super
-         | (sub, SVar (UVar uv)) => uvCoercion env currPos (direct Down intent) uv sub
-         | (SVar (Path path), super) => pathCoercion intent Up env currPos (path, #[]) super
-         | (sub, SVar (Path path)) => pathCoercion intent Down env currPos (path, #[]) sub
-         | (sub, super) => raise TypeError (NonSubType (currPos, concr sub, concr super, NONE))
-
-    and subType env currPos (typs as (sub, super)) =
-        coercion (Coerce ()) env currPos typs
-        handle TypeError cause =>
-                ( Env.error env (NonSubType (currPos, concr sub, concr super, SOME cause))
-                ; SOME (fn expr =>
-                            let val pos = FTerm.exprPos expr
-                                val def = {pos, id = DefId.fresh (), var = Name.fresh (), typ = super}
-                            in FTerm.Let ( FTerm.exprPos expr
-                                         , #[FTerm.Val (pos, def, expr)]
-                                         , FTerm.Use (pos, def) )
-                            end) )
-
-    and unify env currPos (typs as (l, r)) =
-        coercion Unify env currPos typs
+    fun unify env currPos (typs as (l, r)) =
+        coercion env currPos typs
         handle TypeError cause =>
                 ( Env.error env (NonUnifiable (currPos, concr l, concr r, SOME cause))
                 ; SOME (fn expr =>
@@ -216,11 +132,139 @@ end = struct
                                          , FTerm.Use (pos, def) )
                             end) )
 
+    and coercion (env: Env.t) currPos: concr * concr -> coercer =
+        fn (ForAll universal, ForAll universal') => raise Fail "unimplemented"
+         | (sub, Arrow (Implicit, {domain, codomain})) =>
+            let val def = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
+                val coerceCodomain = coercion env currPos (sub, codomain)
+            in SOME (fn expr => FTerm.Fn (currPos, def, Implicit, applyCoercion coerceCodomain expr))
+            end
+         | (Arrow (Implicit, {domain, codomain}), super) =>
+            (* FIXME: coercer from `codomain` <: `super` *)
+            (case domain
+             of FType.Type domain =>
+                 let val arg = FTerm.Type (currPos, domain)
+                 in SOME (fn expr => FTerm.App (currPos, codomain, {callee = expr, arg}))
+                 end
+              | _ => raise Fail "implicit parameter not of type `type`")
+         | (Arrow (Explicit eff, arr), Arrow (Explicit eff', arr')) =>
+            arrowCoercion Unify env currPos ((eff, arr), (eff', arr'))
+         | (sub as Record row, super as Record row') =>
+            recordCoercion Unify env currPos (sub, super) (row, row')
+         | (sub as RowExt _, super as RowExt _) =>
+           ( rowCoercion Unify env currPos (sub, super)
+           ; NONE ) (* No values of row type exist => coercer unnecessary *)
+         | (EmptyRow, EmptyRow) => NONE
+         | (sub as Prim p, super as Prim p') =>
+            primCoercion Unify currPos (p, p') (sub, super)
+         | (Type (Exists (#[], t)), Type (sup as Exists (#[], t'))) =>
+            ( coercion env currPos (t, t')
+            ; SOME (fn _ => FTerm.Type (currPos, sup)))
+         | (App {callee = SVar (Path path), args}, super) =>
+            pathCoercion Unify Up env currPos (path, args) super
+         | (sub, App {callee = SVar (Path path), args}) =>
+            pathCoercion Unify Down env currPos (path, args) sub
+         | (App {callee, args}, App {callee = callee', args = args'}) =>
+            ( ignore (coercion env currPos (callee, callee'))
+            ; Vector.app (ignore o coercion env currPos) (Vector.zip (args, args'))
+            ; NONE )
+         | (sub as CallTFn call, super as CallTFn call') =>
+            tFnAppCoercion Unify env currPos (call, call') (sub, super)
+         | (sub as UseT {var, ...}, super as UseT {var = var', ...}) =>
+            (* TODO: Go back to using `OVar` => this becomes `raise Fail "unreachable" *)
+            if var = var'
+            then if idInScope env var
+                 then NONE
+                 else raise TypeError (OutsideScope (currPos, Name.fromString ("g__" ^ Id.toString var)))
+            else raise TypeError (error Unify (currPos, concr sub, concr super, NONE))
+         | (SVar (UVar uv), super as SVar (UVar uv')) =>
+            uvsCoercion Unify env currPos super (uv, uv')
+         | (SVar (UVar uv), super) => uvCoercion env currPos (direct Up Unify) uv super
+         | (sub, SVar (UVar uv)) => uvCoercion env currPos (direct Down Unify) uv sub
+         | (SVar (Path path), super) => pathCoercion Unify Up env currPos (path, #[]) super
+         | (sub, SVar (Path path)) => pathCoercion Unify Down env currPos (path, #[]) sub
+         | (sub, super) => raise TypeError (NonSubType (currPos, concr sub, concr super, NONE))
+
+    (* Check that `typ` <: `superTyp` and return the coercer if any. *)
+    and subType env currPos (typs as (sub, super)) =
+        coercer env currPos typs
+        handle TypeError cause =>
+                ( Env.error env (NonSubType (currPos, concr sub, concr super, SOME cause))
+                ; SOME (fn expr =>
+                            let val pos = FTerm.exprPos expr
+                                val def = {pos, id = DefId.fresh (), var = Name.fresh (), typ = super}
+                            in FTerm.Let ( FTerm.exprPos expr
+                                         , #[FTerm.Val (pos, def, expr)]
+                                         , FTerm.Use (pos, def) )
+                            end) )
+
+    and coercer (env: Env.t) currPos: concr * concr -> coercer =
+        fn (sub, super as ForAll universal) =>
+            skolemize env universal (fn (env, params, body) =>
+                Option.map (fn coerce => fn expr => FTerm.TFn (currPos, params, coerce expr))
+                           (coercer env currPos (sub, body))
+            )
+         | (sub as ForAll universal, super) =>
+            instantiate env universal (fn (env, args, body) =>
+                Option.map (fn coerce => fn expr => coerce (FTerm.TApp (currPos, body, {callee = expr, args})))
+                           (coercer env currPos (body, super))
+            )
+         | (sub, Arrow (Implicit, {domain, codomain})) =>
+            let val def = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
+                val coerceCodomain = coercer env currPos (sub, codomain)
+            in SOME (fn expr => FTerm.Fn (currPos, def, Implicit, applyCoercion coerceCodomain expr))
+            end
+         | (Arrow (Implicit, {domain, codomain}), super) =>
+            (* FIXME: coercer from `codomain` <: `super` *)
+            (case domain
+             of FType.Type domain =>
+                 let val arg = FTerm.Type (currPos, domain)
+                 in SOME (fn expr => FTerm.App (currPos, codomain, {callee = expr, arg}))
+                 end
+              | _ => raise Fail "implicit parameter not of type `type`")
+         | (Arrow (Explicit eff, arr), Arrow (Explicit eff', arr')) =>
+            arrowCoercion (Coerce ()) env currPos ((eff, arr), (eff', arr'))
+         | (sub as Record row, super as Record row') =>
+            recordCoercion (Coerce ()) env currPos (sub, super) (row, row')
+         | (sub as RowExt _, super as RowExt _) =>
+           ( rowCoercion (Coerce ()) env currPos (sub, super)
+           ; NONE ) (* No values of row type exist => coercer unnecessary *)
+         | (EmptyRow, EmptyRow) => NONE
+         | (sub as Prim p, super as Prim p') =>
+            primCoercion (Coerce ()) currPos (p, p') (sub, super)
+         | (Type (Exists (#[], t)), Type (sup as Exists (#[], t'))) =>
+            ( coercion env currPos (t, t')
+            ; SOME (fn _ => FTerm.Type (currPos, sup)))
+         | (App {callee = SVar (Path path), args}, super) =>
+            pathCoercion (Coerce ()) Up env currPos (path, args) super
+         | (sub, App {callee = SVar (Path path), args}) =>
+            pathCoercion (Coerce ()) Down env currPos (path, args) sub
+         | (App {callee, args}, App {callee = callee', args = args'}) =>
+            ( ignore (coercer env currPos (callee, callee'))
+            ; Vector.app (ignore o coercer env currPos) (Vector.zip (args, args'))
+            ; NONE )
+         | (sub as CallTFn call, super as CallTFn call') =>
+            tFnAppCoercion (Coerce ()) env currPos (call, call') (sub, super)
+         | (sub as UseT {var, ...}, super as UseT {var = var', ...}) =>
+            (* TODO: Go back to using `OVar` => this becomes `raise Fail "unreachable" *)
+            if var = var'
+            then if idInScope env var
+                 then NONE
+                 else raise TypeError (OutsideScope (currPos, Name.fromString ("g__" ^ Id.toString var)))
+            else raise TypeError (error (Coerce ()) (currPos, concr sub, concr super, NONE))
+         | (SVar (UVar uv), super as SVar (UVar uv')) =>
+            uvsCoercion (Coerce ()) env currPos super (uv, uv')
+         | (SVar (UVar uv), super) => uvCoercion env currPos (direct Up (Coerce ())) uv super
+         | (sub, SVar (UVar uv)) => uvCoercion env currPos (direct Down (Coerce ())) uv sub
+         | (SVar (Path path), super) => pathCoercion (Coerce ()) Up env currPos (path, #[]) super
+         | (sub, SVar (Path path)) => pathCoercion (Coerce ()) Down env currPos (path, #[]) sub
+         | (sub, super) => raise TypeError (NonSubType (currPos, concr sub, concr super, NONE))
+
     and arrowCoercion intent env currPos
                       (arrows as ((eff, {domain, codomain}), (eff', {domain = domain', codomain = codomain'}))) =
         let do eqOrSubEffect intent currPos (eff, eff')
-            val coerceDomain = coercion intent env currPos (domain', domain)
-            val coerceCodomain = coercion intent env currPos (codomain, codomain')
+            val coerceDomain = coercer env currPos (domain', domain)
+            val coerceCodomain = coercer env currPos (codomain, codomain')
         in if isSome coerceDomain orelse isSome coerceCodomain
            then SOME (fnCoercion coerceDomain coerceCodomain arrows)
            else NONE
@@ -257,17 +301,17 @@ end = struct
                                                 tmpUse fieldCoercions )
                       end)
 
-    and rowCoercion intent env currPos (rows: concr * concr): field_coercion list =
+    and rowCoercion intent env currPos (rows: concr * concr): field_coercer list =
         let val rec subExts =
                 fn (row, row' as RowExt {base = base', field = (label, fieldt')}) =>
                     let val {base, fieldt} = reorderRow currPos label (FType.rowExtBase base') row
-                        val coerceField = coercion intent env currPos (fieldt, fieldt')
+                        val coerceField = coercer env currPos (fieldt, fieldt')
                         val coerceExt = subExts (base, base')
                     in case coerceField
                        of SOME coerceField => ((label, fieldt), coerceField, row') :: coerceExt
                         | NONE => coerceExt
                     end
-                 | rows => (coercion intent env currPos rows; [])
+                 | rows => (coercer env currPos rows; [])
         in subExts rows
         end
 
@@ -288,18 +332,18 @@ end = struct
 
     and tFnAppCoercion intent env currPos ((callee, args), (callee', args')) (t, t') =
         if callee = callee'
-        then ( Vector.app (ignore o coercion Unify env currPos) (Vector.zip (args, args'))
-             ; Vector.app (ignore o coercion Unify env currPos) (Vector.zip (args', args))
-             ; NONE ) (* Since both callee and args have to unify, coercion is always no-op. *)
+        then ( Vector.app (ignore o coercion env currPos) (Vector.zip (args, args'))
+             ; Vector.app (ignore o coercion env currPos) (Vector.zip (args', args))
+             ; NONE ) (* Since both callee and args have to unify, coercer is always no-op. *)
         else raise TypeError (error intent (currPos, concr t, concr t', NONE))
 
     and pathCoercion intent y env currPos (path, args) t =
         case Path.get (Env.hasScope env) path
         of Left (face, NONE) => (* Impl not visible => <:/~ face: *)
             let val face = App {callee = face, args}
-            in coercion intent env currPos (case y
-                                            of Up => (face , t)
-                                             | Down => (t, face))
+            in coercion env currPos (case y
+                                     of Up => (face , t)
+                                      | Down => (t, face))
             end
          | Left (face, SOME coercionDef) => (* Impl visible and unset => define: *)
             (* FIXME: enforce predicativity: *)
@@ -320,7 +364,7 @@ end = struct
                             | Down => (case args (* HACK *)
                                        of #[] => Path.face path
                                         | _ => FType.App {callee = Path.face path, args})
-                val coerceToImpl = coercion intent env currPos (case y
+                val coerceToImpl = coercion env currPos (case y
                                                                 of Up => (typ, t)
                                                                  | Down => (t, typ))
                 val coerceToPath = makePathCoercion y resT coercionDef args
@@ -340,26 +384,26 @@ end = struct
             (uvSet env (uv, superTyp); NONE) (* Call `uvSet` directly to skip occurs check. *)
          | (Left uv, Right t) => assign env currPos (Coerce Up, uv, t)
          | (Right t, Left uv) => assign env currPos (Coerce Down, uv, t)
-         | (Right t, Right t') => coercion intent env currPos (t, t')
+         | (Right t, Right t') => coercer env currPos (t, t')
 
     and uvCoercion env currPos intent uv t =
         case Uv.get uv
         of Left uv => assign env currPos (intent, uv, t)
          | Right t' =>
             (case intent
-             of Coerce Up => coercion (Coerce ()) env currPos (t', t)
-              | Coerce Down => coercion (Coerce ()) env currPos (t, t')
-              | Unify => coercion Unify env currPos (t, t'))
+             of Coerce Up => coercer env currPos (t', t)
+              | Coerce Down => coercer env currPos (t, t')
+              | Unify => coercion env currPos (t, t'))
 
 (* # Unification Variable Assignment *)
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
-    and assign (env: Env.t) currPos (y, uv: concr TypeVars.uv, t: concr): coercion =
+    and assign (env: Env.t) currPos (y, uv: concr TypeVars.uv, t: concr): coercer =
         if Concr.occurs (Env.hasScope env) uv t
         then raise TypeError (Occurs (currPos, SVar (UVar uv), concr t))
         else doAssign env currPos y (uv, t)
 
-    and doAssign (env: Env.t) currPos y (uv, t: concr): coercion =
+    and doAssign (env: Env.t) currPos y (uv, t: concr): coercer =
         case t
         of ForAll args => doAssignUniversal env currPos y uv args
          | Arrow (Explicit eff, domains) => doAssignArrow env y uv currPos eff domains
