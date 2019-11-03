@@ -31,6 +31,8 @@ end = struct
     structure Bindings = Env.Bindings
     open TypeError
 
+(* # Utils *)
+
     fun idInScope env id = isSome (Env.findType env id)
 
     (* FIXME: Check kinds and smallness/monotype *)
@@ -43,6 +45,7 @@ end = struct
         Path.set (Name.fromString o Concr.toString) (* HACK *)
                  (Env.hasScope env)
 
+    (* \forall a... . T --> [(\hat{a}/a)...]T and push \hat{a}... to env *)
     fun instantiate env (params, body) f =
         let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
             val args = Vector.map (fn _ => SVar (UVar (Env.freshUv env)))
@@ -54,6 +57,7 @@ end = struct
         in f (env, args, body)
         end
 
+    (* \forall a... . T --> T and push a... to env *)
     fun skolemize env (params, body) f =
         let val scopeId = Scope.Id.fresh ()
             val params' = Vector.map (fn {kind, var = _} => {var = Id.fresh (), kind}) params
@@ -64,6 +68,9 @@ end = struct
             val body = Concr.substitute (Env.hasScope env) mapping body
         in f (env, params', body)
         end
+
+(* # Coercions *)
+(* TODO: Replace this premature optimization with shrinker pass. *)
 
     type coercion = (FTerm.expr -> FTerm.expr) option
     type field_coercion = (Name.t * concr) * (FTerm.expr -> FTerm.expr) * concr
@@ -81,6 +88,9 @@ end = struct
             val body = applyCoercion coerceCodomain (FTerm.App (pos, codomain, {callee, arg}))
         in FTerm.Fn (pos, param, Explicit eff', body)
         end
+
+(* # Unification/Subtyping Generification Support *)
+(* TODO: Remove this premature abstraction *)
 
     datatype 'direction intent
         = Coerce of 'direction
@@ -101,10 +111,14 @@ end = struct
         fn Coerce _ => NonSubType
          | Unify => NonUnifiable
 
+(* # Effects *)
+
     fun joinEffs (Pure, Pure) = Pure
       | joinEffs (Pure, Impure) = Impure
       | joinEffs (Impure, Pure) = Impure
       | joinEffs (Impure, Impure) = Impure
+
+(* # Subtyping and Unification *)
 
     (* Check that `typ` <: `superTyp` and return the coercion if any. *)
     fun coercion (intent: unit intent) (env: Env.t) currPos: concr * concr -> coercion =
@@ -336,6 +350,8 @@ end = struct
              of Coerce Up => coercion (Coerce ()) env currPos (t', t)
               | Coerce Down => coercion (Coerce ()) env currPos (t, t')
               | Unify => coercion Unify env currPos (t, t'))
+
+(* # Unification Variable Assignment *)
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
     and assign (env: Env.t) currPos (y, uv: concr TypeVars.uv, t: concr): coercion =
