@@ -39,6 +39,8 @@ end = struct
         ( Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env) (uv, t)
         ; NONE )
 
+    fun uvMerge env = Uv.merge Scope.Id.compare (Env.hasScope env)
+
     (* FIXME: Check kinds and smallness/monotype *)
     fun pathSet env =
         Path.set (Name.fromString o Concr.toString) (* HACK *)
@@ -144,9 +146,6 @@ end = struct
          | (sub as RowExt _, super as RowExt _) =>
            ( rowCoercion Unify env currPos (sub, super)
            ; NONE ) (* No values of row type exist => coercer unnecessary *)
-         | (EmptyRow, EmptyRow) => NONE
-         | (sub as Prim p, super as Prim p') =>
-            primCoercion Unify currPos (p, p') (sub, super)
          | (Type (Exists (params, t)), Type (sup as Exists (params', t'))) =>
             (* FIXME: use params *)
             ( coercion env currPos (t, t')
@@ -177,6 +176,32 @@ end = struct
          | (sub, SVar (Path path)) => pathCoercion Unify Down env currPos (path, #[]) sub
          | (sub, super) => raise TypeError (NonSubType (currPos, sub, super, NONE))*)
         fn (EmptyRow, EmptyRow) => Refl EmptyRow
+         | (SVar (UVar uv), r as SVar (UVar uv')) =>
+            (case (Uv.get uv, Uv.get uv')
+             of (Left uv, Left uv') => (uvMerge env (uv, uv'); Refl r)
+              | (Left uv, Right t) | (Right t, Left uv) => solution env currPos uv t
+              | (Right l, Right r) => coercion env currPos (l, r))
+         | (l as Prim p, r as Prim p') =>
+            if p = p'
+            then Refl r
+            else raise TypeError (NonUnifiable (currPos, l, r, NONE))
+
+    and solution env currPos uv t =
+        if Concr.occurs (Env.hasScope env) uv t
+        then raise TypeError (Occurs (currPos, SVar (UVar uv), t))
+        (* FIXME: Scoping well-formedness should be checked recursively *)
+        else ( uvSet env (uv, t)
+             ; case t
+               of UseT {var, ...} => 
+                  if idInScope env var
+                  then ()
+                  else raise TypeError (OutsideScope (currPos, Name.fromString ("g__" ^ Id.toString var)))
+               | SVar (OVar ov) =>
+                  if Env.hasScope env (TypeVars.Ov.scope ov)
+                  then ()
+                  else raise TypeError (OutsideScope (currPos, TypeVars.Ov.name ov))
+               | _ => ()
+             ; Refl t )
 
     (* Check that `typ` <: `superTyp` and return the coercer if any. *)
     and subType env currPos (typs as (sub, super)) =

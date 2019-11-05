@@ -19,6 +19,9 @@ structure TypeVars :> sig
         val fresh: ScopeId.t -> 't uv
         val freshSibling: 't uv -> 't uv
         val get: 't uv -> ('t uv, 't) Either.t
+        val merge : (ScopeId.t * ScopeId.t -> order) (* scope ordering to preserve scoping invariants *)
+            -> (ScopeId.t -> bool) (* Is the required scope available? *)
+            -> 't uv * 't uv -> 't uv
         val set: ('t -> 't uv option) (* Try to unwrap another uv from provided 't. *)
                  -> (ScopeId.t * ScopeId.t -> order) (* scope ordering to preserve scoping invariants *)
                  -> (ScopeId.t -> bool) (* Is the required scope available? *)
@@ -115,7 +118,7 @@ end = struct
             let val uv = find uv
                 val uv' = find uv'
             in if uv = uv'
-               then ()
+               then uv
                else case (!uv, !uv')
                     of ( Root {meta = {scope, name}, rank, ...}
                        , Root { meta = {scope = scope', name = name'}
@@ -132,6 +135,7 @@ end = struct
                                                         | EQUAL => (uv, uv', rank'))
                                   in child := Link parent
                                    ; parentRank := newRank (!rank, !rank')
+                                   ; parent
                                   end
                             else raise SetPrivate name'
                         else raise SetPrivate name
@@ -140,7 +144,7 @@ end = struct
 
         fun set uvFromT scopeCmp inScope (uv, t) =
             case uvFromT t
-            of SOME uv' => merge scopeCmp inScope (uv, uv')
+            of SOME uv' => ignore (merge scopeCmp inScope (uv, uv'))
              | NONE => assign inScope (uv, t)
 
         val eq = op=
