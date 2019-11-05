@@ -7,15 +7,15 @@ signature FAST_TERM = sig
 
     datatype expr
         = Fn of Pos.span * def * arrow * expr
-        | TFn of Pos.span * Type.def vector * expr
+        | TFn of Pos.span * Type.def vector1 * expr
         | EmptyRecord of Pos.span
         | With of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | Without of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | Where of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
-        | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector}
+        | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector1}
         | Field of Pos.span * Type.concr * expr * Name.t
-        | Let of Pos.span * stmt vector * expr
+        | Let of Pos.span * stmt vector1 * expr
         | Match of Pos.span * Type.concr * expr * clause vector
         | Cast of Pos.span * Type.concr * expr * Type.co
         | Type of Pos.span * Type.concr
@@ -79,15 +79,15 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     datatype expr
         = Fn of Pos.span * def * arrow * expr
-        | TFn of Pos.span * Type.def vector * expr
+        | TFn of Pos.span * Type.def vector1 * expr
         | EmptyRecord of Pos.span
         | With of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | Without of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | Where of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
-        | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector}
+        | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector1}
         | Field of Pos.span * Type.concr * expr * Name.t
-        | Let of Pos.span * stmt vector * expr
+        | Let of Pos.span * stmt vector1 * expr
         | Match of Pos.span * Type.concr * expr * clause vector
         | Cast of Pos.span * Type.concr * expr * Type.co
         | Type of Pos.span * Type.concr
@@ -149,7 +149,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
        fn Fn (_, param, arrow, body) =>
            text "\\" <> defToDoc param <+> Type.arrowDoc arrow <+> exprToDoc body
         | TFn (_, params, body) =>
-           text "/\\" <> PPrint.punctuate space (Vector.map Type.defToDoc params)
+           text "/\\" <> PPrint.punctuate1 space (Vector1.map Type.defToDoc params)
                <+> text "=>" <+> exprToDoc body
         | EmptyRecord _ => text "{}"
         | With (_, _, {base, field = (label, fieldExpr)}) =>
@@ -161,13 +161,14 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | App (_, _, {callee, arg}) =>
            parens (exprToDoc callee <+> exprToDoc arg)
         | TApp (_, _, {callee, args}) =>
-           parens (exprToDoc callee <+> (args |> Vector.map Type.Concr.toDoc
-                                          |> PPrint.punctuate space
-                                          |> brackets))
+           parens (exprToDoc callee <+> (args
+                                        |> Vector1.map Type.Concr.toDoc
+                                        |> PPrint.punctuate1 space
+                                        |> brackets))
         | Field (_, _, expr, label) =>
            parens (exprToDoc expr <> text "." <> Name.toDoc label)
         | Let (_, stmts, body) =>
-           text "let" <+> PPrint.align (stmtsToDoc stmts)
+           text "let" <+> PPrint.align (stmtsToDoc (Vector1.toVector stmts))
            <++> text "in" <+> align (exprToDoc body)
            <++> text "end"
         | Match (_, _, matchee, clauses) => let

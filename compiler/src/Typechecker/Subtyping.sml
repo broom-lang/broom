@@ -44,24 +44,26 @@ end = struct
                  (Env.hasScope env)
 
     (* \forall a... . T --> [(\hat{a}/a)...]T and push \hat{a}... to env *)
-    fun instantiate env (params, body) f =
+    fun instantiate env (params: FType.def vector1, body) f =
         let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
-            val args = Vector.map (fn _ => SVar (UVar (Env.freshUv env)))
-                                  params
+            val args = Vector1.map (fn _ => SVar (UVar (Env.freshUv env)))
+                                   params
             val mapping = (params, args)
-                        |> Vector.zipWith (fn ({var, kind = _}, arg) => (var, arg))
+                        |> Vector1.zipWith (fn ({var, kind = _}, arg) => (var, arg))
+                        |> Vector1.toVector
                         |> Id.SortedMap.fromVector
             val body = Concr.substitute (Env.hasScope env) mapping body
         in f (env, args, body)
         end
 
     (* \forall a... . T --> T and push a... to env *)
-    fun skolemize env (params, body) f =
+    fun skolemize env (params: FType.def vector1, body) f =
         let val scopeId = Scope.Id.fresh ()
-            val params' = Vector.map (fn {kind, var = _} => {var = Id.fresh (), kind}) params
+            val params' = Vector1.map (fn {kind, var = _} => {var = Id.fresh (), kind}) params
             val env = Env.pushScope env (Scope.ForAllScope (scopeId, Bindings.Type.fromDefs params'))
             val mapping = (params, params')
-                        |> Vector.zipWith (fn ({var, ...}, def') => (var, UseT def'))
+                        |> Vector1.zipWith (fn ({var, ...}, def') => (var, UseT def'))
+                        |> Vector1.toVector
                         |> Id.SortedMap.fromVector
             val body = Concr.substitute (Env.hasScope env) mapping body
         in f (env, params', body)
@@ -126,7 +128,7 @@ end = struct
                             let val pos = FTerm.exprPos expr
                                 val def = {pos, id = DefId.fresh (), var = Name.fresh (), typ = r}
                             in FTerm.Let ( FTerm.exprPos expr
-                                         , #[FTerm.Val (pos, def, expr)]
+                                         , valOf (Vector1.fromVector #[FTerm.Val (pos, def, expr)])
                                          , FTerm.Use (pos, def) )
                             end) )
 
@@ -155,16 +157,18 @@ end = struct
          | (EmptyRow, EmptyRow) => NONE
          | (sub as Prim p, super as Prim p') =>
             primCoercion Unify currPos (p, p') (sub, super)
-         | (Type (Exists (#[], t)), Type (sup as Exists (#[], t'))) =>
+         | (Type (Exists (params, t)), Type (sup as Exists (params', t'))) =>
+            (* FIXME: use params *)
             ( coercion env currPos (t, t')
             ; SOME (fn _ => FTerm.Type (currPos, sup)))
          | (App {callee = SVar (Path path), args}, super) =>
-            pathCoercion Unify Up env currPos (path, args) super
+            pathCoercion Unify Up env currPos (path, Vector1.toVector args) super
          | (sub, App {callee = SVar (Path path), args}) =>
-            pathCoercion Unify Down env currPos (path, args) sub
+            pathCoercion Unify Down env currPos (path, Vector1.toVector args) sub
          | (App {callee, args}, App {callee = callee', args = args'}) =>
             ( ignore (coercion env currPos (callee, callee'))
-            ; Vector.app (ignore o coercion env currPos) (Vector.zip (args, args'))
+            ; Vector1.app (ignore o coercion env currPos)
+                          (Vector1.zip (args, args'))
             ; NONE )
          | (sub as CallTFn call, super as CallTFn call') =>
             tFnAppCoercion Unify env currPos (call, call') (sub, super)
@@ -192,7 +196,7 @@ end = struct
                             let val pos = FTerm.exprPos expr
                                 val def = {pos, id = DefId.fresh (), var = Name.fresh (), typ = super}
                             in FTerm.Let ( FTerm.exprPos expr
-                                         , #[FTerm.Val (pos, def, expr)]
+                                         , valOf (Vector1.fromVector #[FTerm.Val (pos, def, expr)])
                                          , FTerm.Use (pos, def) )
                             end) )
 
@@ -230,16 +234,18 @@ end = struct
          | (EmptyRow, EmptyRow) => NONE
          | (sub as Prim p, super as Prim p') =>
             primCoercion (Coerce ()) currPos (p, p') (sub, super)
-         | (Type (Exists (#[], t)), Type (sup as Exists (#[], t'))) =>
+         | (Type (Exists (params, t)), Type (sup as Exists (params', t'))) =>
+            (* FIXME: Use params *)
             ( coercion env currPos (t, t')
             ; SOME (fn _ => FTerm.Type (currPos, sup)))
          | (App {callee = SVar (Path path), args}, super) =>
-            pathCoercion (Coerce ()) Up env currPos (path, args) super
+            pathCoercion (Coerce ()) Up env currPos (path, Vector1.toVector args) super
          | (sub, App {callee = SVar (Path path), args}) =>
-            pathCoercion (Coerce ()) Down env currPos (path, args) sub
+            pathCoercion (Coerce ()) Down env currPos (path, Vector1.toVector args) sub
          | (App {callee, args}, App {callee = callee', args = args'}) =>
             ( ignore (coercer env currPos (callee, callee'))
-            ; Vector.app (ignore o coercer env currPos) (Vector.zip (args, args'))
+            ; Vector1.app (ignore o coercer env currPos)
+                          (Vector1.zip (args, args'))
             ; NONE )
          | (sub as CallTFn call, super as CallTFn call') =>
             tFnAppCoercion (Coerce ()) env currPos (call, call') (sub, super)
@@ -291,7 +297,7 @@ end = struct
                           fun emitField ((label, origFieldt), coerceField, _) =
                               (label, coerceField (FTerm.Field (currPos, origFieldt, tmpUse, label)))
                       in FTerm.Let ( currPos
-                                   , #[FTerm.Val (currPos, tmpDef, expr)]
+                                   , valOf (Vector1.fromVector #[FTerm.Val (currPos, tmpDef, expr)])
                                    , List.foldl (fn (fieldCoercion as (_, _, row'), base) =>
                                                      let val typ' = FType.Record row'
                                                      in FTerm.Where (currPos, typ', {base, field = emitField fieldCoercion})
@@ -338,7 +344,10 @@ end = struct
     and pathCoercion intent y env currPos (path, args) t =
         case Path.get (Env.hasScope env) path
         of Left (face, NONE) => (* Impl not visible => <:/~ face: *)
-            let val face = App {callee = face, args}
+            let val face =
+                    case Vector1.fromVector args
+                    of SOME args => App {callee = face, args}
+                     | NONE => face
             in coercion env currPos (case y
                                      of Up => (face , t)
                                       | Down => (t, face))
@@ -350,21 +359,21 @@ end = struct
             else let val params = Vector.map (fn UseT def => def) args
                      val resT = case y
                                 of Up => t
-                                 | Down => (case args (* HACK *)
-                                            of #[] => face
-                                             | _ => FType.App {callee = face, args})
+                                 | Down => (case Vector1.fromVector args
+                                            of SOME args => FType.App {callee = face, args}
+                                             | NONE => face)
                  in pathSet env (path, (params, t))
                   ; SOME (makePathCoercion y resT coercionDef args)
                  end
          | Right ((_, typ), coercionDef) => (* Impl visible and set => <:/~ impl and wrap/unwrap: *)
             let val resT = case y
                            of Up => t
-                            | Down => (case args (* HACK *)
-                                       of #[] => Path.face path
-                                        | _ => FType.App {callee = Path.face path, args})
+                            | Down => (case Vector1.fromVector args
+                                       of SOME args  => FType.App {callee = Path.face path, args}
+                                        | NONE => Path.face path)
                 val coerceToImpl = coercion env currPos (case y
-                                                                of Up => (typ, t)
-                                                                 | Down => (t, typ))
+                                                         of Up => (typ, t)
+                                                          | Down => (t, typ))
                 val coerceToPath = makePathCoercion y resT coercionDef args
             in case coerceToImpl
                of SOME coerceToImpl => SOME (coerceToPath o coerceToImpl)
@@ -372,9 +381,14 @@ end = struct
             end
 
     and makePathCoercion y t coercionDef args =
-        case y
-        of Up => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, AppCo {callee = UseCo coercionDef, args}))
-         | Down => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, Symm (AppCo {callee = UseCo coercionDef, args})))
+        let val coercion =
+                case Vector1.fromVector args
+                of SOME args => AppCo {callee = UseCo coercionDef, args}
+                 | NONE => UseCo coercionDef
+        in  case y
+            of Up => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, coercion))
+             | Down => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, Symm coercion))
+        end
 
     and uvsCoercion intent env currPos superTyp (uv, uv') =
         case (Uv.get uv, Uv.get uv')

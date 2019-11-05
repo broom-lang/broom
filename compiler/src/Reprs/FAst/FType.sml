@@ -16,14 +16,14 @@ signature FAST_TYPE = sig
     type tfn_sig = {paramKinds: kind vector, kind: kind}
 
     datatype 'sv concr
-        = Exists of def vector * 'sv concr
-        | ForAll of def vector * 'sv concr
+        = Exists of def vector1 * 'sv concr
+        | ForAll of def vector1 * 'sv concr
         | Arrow of arrow * {domain: 'sv concr, codomain: 'sv concr}
         | Record of 'sv concr
         | RowExt of 'sv row
         | EmptyRow
         | Type of 'sv concr
-        | App of {callee: 'sv concr, args: 'sv concr vector}
+        | App of {callee: 'sv concr, args: 'sv concr vector1}
         | CallTFn of Name.t * 'sv concr vector
         | UseT of def
         | SVar of 'sv
@@ -32,7 +32,7 @@ signature FAST_TYPE = sig
     and 'sv co
         = Refl of 'sv concr
         | Symm of 'sv co
-        | AppCo of {callee: 'sv co, args: 'sv concr vector}
+        | AppCo of {callee: 'sv co, args: 'sv concr vector1}
         | UseCo of Name.t (* HACK *)
 
     withtype 'sv row = {base: 'sv concr, field: Name.t * 'sv concr}
@@ -43,7 +43,6 @@ signature FAST_TYPE = sig
     val arrowDoc: arrow -> PPrint.t
     val piEffect: 'sv concr -> effect option
     val rowExtBase: 'sv concr -> 'sv concr
-    val app : {callee: 'sv concr, args: 'sv concr vector} -> 'sv concr
     
     structure Concr: sig
         val toDoc: ('sv -> PPrint.t) -> 'sv concr -> PPrint.t
@@ -93,14 +92,14 @@ structure FType :> FAST_TYPE = struct
     type tfn_sig = {paramKinds: kind vector, kind: kind}
 
     datatype 'sv concr
-        = Exists of def vector * 'sv concr
-        | ForAll of def vector * 'sv concr
+        = Exists of def vector1 * 'sv concr
+        | ForAll of def vector1 * 'sv concr
         | Arrow of arrow * {domain: 'sv concr, codomain: 'sv concr}
         | Record of 'sv concr
         | RowExt of 'sv row
         | EmptyRow
         | Type of 'sv concr
-        | App of {callee: 'sv concr, args: 'sv concr vector}
+        | App of {callee: 'sv concr, args: 'sv concr vector1}
         | CallTFn of Name.t * 'sv concr vector
         | UseT of def
         | SVar of 'sv
@@ -109,7 +108,7 @@ structure FType :> FAST_TYPE = struct
     and 'sv co
         = Refl of 'sv concr
         | Symm of 'sv co
-        | AppCo of {callee: 'sv co, args: 'sv concr vector}
+        | AppCo of {callee: 'sv co, args: 'sv concr vector1}
         | UseCo of Name.t
 
     withtype 'sv row = {base: 'sv concr, field: Name.t * 'sv concr}
@@ -134,12 +133,11 @@ structure FType :> FAST_TYPE = struct
 
     fun concrToDoc svarToDoc =
         let val rec concrToDoc =
-                fn Exists (#[], t) => concrToDoc t
-                 | Exists (params, t) =>
-                    text "exists" <+> PPrint.punctuate space (Vector.map defToDoc params)
+                fn Exists (params, t) =>
+                    text "exists" <+> PPrint.punctuate1 space (Vector1.map defToDoc params)
                         <+> text "." <+> concrToDoc t
                  | ForAll (params, t) =>
-                    text "forall" <+> PPrint.punctuate space (Vector.map defToDoc params)
+                    text "forall" <+> PPrint.punctuate1 space (Vector1.map defToDoc params)
                         <+> text "." <+> concrToDoc t
                  | Arrow (arrow, {domain, codomain}) =>
                     concrToDoc domain <+> arrowDoc arrow <+> concrToDoc codomain
@@ -160,7 +158,7 @@ structure FType :> FAST_TYPE = struct
                  | EmptyRow => text "(||)"
                  | Type t => brackets (text "=" <+> concrToDoc t)
                  | App {callee, args} =>
-                    concrToDoc callee <+> PPrint.punctuate PPrint.space (Vector.map concrToDoc args)
+                    concrToDoc callee <+> PPrint.punctuate1 PPrint.space (Vector1.map concrToDoc args)
                  | CallTFn (f, args) =>
                     Name.toDoc f <> parens (PPrint.punctuate (comma <> space) (Vector.map concrToDoc args))
                  | SVar sv => svarToDoc sv
@@ -197,7 +195,7 @@ structure FType :> FAST_TYPE = struct
          | Symm co => text "symm" <+> coercionToDoc svarToDoc co
          | AppCo {callee, args} =>
             coercionToDoc svarToDoc callee
-                <+> PPrint.punctuate space (Vector.map (concrToDoc svarToDoc) args)
+                <+> PPrint.punctuate1 space (Vector1.map (concrToDoc svarToDoc) args)
          | UseCo name => Name.toDoc name
 
     fun mapConcrChildren f =
@@ -208,7 +206,7 @@ structure FType :> FAST_TYPE = struct
          | Record row => Record (f row)
          | RowExt ({base, field = (label, fieldt)}) =>
             RowExt ({base = f base, field = (label, f fieldt)})
-         | App {callee, args} => App {callee = f callee, args = Vector.map f args}
+         | App {callee, args} => App {callee = f callee, args = Vector1.map f args}
          | CallTFn (name, args) => CallTFn (name, Vector.map f args)
          | t as (EmptyRow | Type _ | SVar _ | UseT _ | Prim _) => t
 
@@ -224,7 +222,7 @@ structure FType :> FAST_TYPE = struct
          | Type args => typ (concrCata alg args)
          | SVar args => svar args
          | App {callee, args} =>
-            app {callee = concrCata alg callee, args = Vector.map (concrCata alg) args}
+            app {callee = concrCata alg callee, args = Vector1.map (concrCata alg) args}
          | CallTFn (name, args) => callTFn (name, Vector.map (concrCata alg) args)
          | UseT args => uset args
          | Prim args => prim args
@@ -238,7 +236,7 @@ structure FType :> FAST_TYPE = struct
                                            , typ = Fn.identity
                                            , svar = fn sv' => svarOcc sv sv'
                                            , app = fn {callee, args} =>
-                                              callee orelse Vector.exists Fn.identity args
+                                              callee orelse Vector1.exists Fn.identity args
                                            , callTFn = fn (_, args) => Vector.exists Fn.identity args
                                            , uset = Fn.constantly false
                                            , prim = Fn.constantly false }
@@ -247,10 +245,10 @@ structure FType :> FAST_TYPE = struct
     fun concrSubstitute svarSubst mapping =
         let fun subst mapping =
                 fn t as Exists (params, _) | t as ForAll (params, _) =>
-                    let val mapping = Vector.foldl (fn ({var, ...}, mapping) =>
-                                                        (#1 (Id.SortedMap.remove (mapping, var)))
-                                                        handle _ => mapping)
-                                                   mapping params
+                    let val mapping = Vector1.foldl (fn ({var, ...}, mapping) =>
+                                                         (#1 (Id.SortedMap.remove (mapping, var)))
+                                                         handle _ => mapping)
+                                                    mapping params
                     in mapConcrChildren (subst mapping) t
                     end
                  | t as (Arrow _ | Record _ | RowExt _ | EmptyRow | App _ | CallTFn _ | Prim _) =>
@@ -262,8 +260,7 @@ structure FType :> FAST_TYPE = struct
         end
 
     val rec smallConcr =
-        fn Exists (params, body) | ForAll (params, body) =>
-            Vector.length params = 0 andalso smallConcr body
+        fn Exists (params, body) | ForAll (params, body) => false
          | Arrow (_, {domain, codomain}) =>
             smallConcr domain andalso smallConcr codomain
          | Record t => smallConcr t
@@ -271,7 +268,7 @@ structure FType :> FAST_TYPE = struct
             smallConcr base andalso smallConcr fieldt
          | EmptyRow => true
          | Type t => smallConcr t
-         | App {callee, args} => smallConcr callee andalso Vector.all smallConcr args
+         | App {callee, args} => smallConcr callee andalso Vector1.all smallConcr args
          | CallTFn (_, args) => Vector.all smallConcr args
          | SVar _ | UseT _ | Prim _ => true
 
@@ -284,10 +281,6 @@ structure FType :> FAST_TYPE = struct
     val rec rowExtBase =
         fn RowExt {base, ...} => rowExtBase base
          | t => t
-
-    val app = (* HACK *)
-        fn {callee, args = #[]} => callee
-         | args => App args
 
     structure Concr = struct
         val toDoc = concrToDoc

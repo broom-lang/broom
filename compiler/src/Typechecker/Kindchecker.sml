@@ -37,19 +37,23 @@ end = struct
         fn Exists (params, body) =>
             let val (_, absBindings) = valOf (Env.nearestExists env)
                 val mapping =
-                    Vector.foldl (fn ({var, kind}, mapping) =>
-                                      let val args = Env.universalParams env
-                                          val kind = Vector.foldr (fn ({var = _, kind = argKind}, kind) =>
-                                                                       FType.ArrowK { domain = argKind
-                                                                                    , codomain = kind })
-                                                                  kind args
-                                          val var' = Bindings.Type.fresh absBindings kind
-                                          val app = FType.app { callee = FType.UseT {var = var', kind}
-                                                              , args = Vector.map (fn def => FType.UseT def)
+                    Vector1.foldl (fn ({var, kind}, mapping) =>
+                                       let val args = Env.universalParams env
+                                           val kind = Vector.foldr (fn ({var = _, kind = argKind}, kind) =>
+                                                                        FType.ArrowK { domain = argKind
+                                                                                     , codomain = kind })
+                                                                   kind args
+                                           val var' = Bindings.Type.fresh absBindings kind
+                                           val use =
+                                               case Vector1.fromVector args
+                                               of SOME args =>
+                                                   FType.App { callee = FType.UseT {var = var', kind}
+                                                             , args = Vector1.map (fn def => FType.UseT def)
                                                                                   args }
-                                      in Id.SortedMap.insert (mapping, var, app)
-                                      end)
-                                 Id.SortedMap.empty params
+                                                | NONE => FType.UseT {var = var', kind}
+                                       in Id.SortedMap.insert (mapping, var, use)
+                                       end)
+                                  Id.SortedMap.empty params
             in Concr.substitute (Env.hasScope env) mapping body
             end
          | t => t
@@ -72,7 +76,8 @@ end = struct
 
                                 val env = Env.pushScope env (Scope.ForAllScope ( Scope.Id.fresh ()
                                                                                , typeDefs
-                                                                                 |> Vector.fromList
+                                                                                 |> Vector1.fromList
+                                                                                 |> valOf
                                                                                  |> Bindings.Type.fromDefs ))
                                 val def = {pos = pos, id = DefId.fresh (), var, typ = domain}
                                 val fnScope = Scope.FnScope (Scope.Id.fresh (), var, Visited (def, NONE))
@@ -84,9 +89,9 @@ end = struct
                                 val typeDefs = if List.null nonCallsiteTypeDefs andalso FType.Concr.isSmall codomain
                                                then nonCallsiteTypeDefs
                                                else typeDefs
-                            in case typeDefs
-                               of [] => arrow
-                                | _ => FType.ForAll (Vector.fromList typeDefs, arrow)
+                            in case Vector1.fromList typeDefs
+                               of SOME params => FType.ForAll (params, arrow)
+                                | NONE => arrow
                             end
                          | CType.RecordT (_, row) => FType.Record (elaborate env row)
                          | CType.RowExt (_, {base, fields}) =>
@@ -123,10 +128,14 @@ end = struct
                                                              FType.ArrowK {domain = argKind, codomain = kind})
                                                         FType.TypeK args
                                 val var = Bindings.Type.fresh absBindings kind
-                                val app = FType.app { callee = FType.UseT {var, kind}
-                                                    , args = Vector.map (fn def => FType.UseT def)
-                                                                        args }
-                            in FType.Type app
+                                val use =
+                                    case Vector1.fromVector args
+                                    of SOME args =>
+                                        FType.App { callee = FType.UseT {var, kind}
+                                                  , args = Vector1.map (fn def => FType.UseT def)
+                                                                       args }
+                                     | NONE => FType.UseT {var, kind}
+                            in FType.Type use 
                             end
                          | CType.Singleton (_, expr) =>
                             (case elaborateExpr env expr

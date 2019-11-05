@@ -7,7 +7,7 @@ structure CheckUse :> sig
 
     val fix : { elaborateType : Env.t -> Cst.Type.typ -> FType.def list * FType.Concr.t
               , reAbstract : Env.t -> FType.Concr.t -> FType.Concr.t
-              , instantiateExistential : Env.t -> FType.Concr.t -> FType.Concr.t * FType.Concr.t vector
+              , instantiateExistential : Env.t -> FType.def vector * FType.Concr.t -> FType.Concr.t * FType.Concr.t vector
               , elaborateExpr : Env.t -> Cst.Term.expr -> FType.effect * FType.Concr.t * FTerm.expr }
            -> { unvisitedBindingType : Pos.span -> Env.t -> Name.t
                     -> Cst.Type.typ option Env.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
@@ -34,13 +34,13 @@ end = struct
                               | (defs, t) =>
                                  (case Env.innermostScope env
                                   of Scope.InterfaceScope _ =>
-                                      let val abst = Exists (Vector.fromList defs, t)
+                                      let val abst = Exists (valOf (Vector1.fromList defs), t)
                                           val t = reAbstract env abst (* OPTIMIZE *)
                                       in (FTerm.setDefTyp def t, Typed (FTerm.setDefTyp def (t, NONE), oexpr))
                                       end
                                    | _ =>
                                       let val (t, paths) =
-                                              instantiateExistential env (Exists (Vector.fromList defs, t))
+                                              instantiateExistential env (Vector.fromList defs, t)
                                       in (FTerm.setDefTyp def t, Typed (FTerm.setDefTyp def (t, SOME paths), oexpr))
                                       end))
                          | (def as {typ = NONE, ...}, SOME expr) =>

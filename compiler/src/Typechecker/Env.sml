@@ -17,7 +17,7 @@ signature TYPECHECKING_ENV = sig
             type bindings
 
             val new: unit -> bindings
-            val fromDefs: FlexFAst.Type.def vector -> bindings
+            val fromDefs: FlexFAst.Type.def vector1 -> bindings
             val fresh: bindings -> binding -> FType.Id.t
             val defs: bindings -> FlexFAst.Type.def list
         end
@@ -137,7 +137,7 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
 
             fun fromDefs defs =
                 let val bs = new ()
-                in Vector.app (fn {var, kind} => Id.HashTable.insert bs (var, kind)) defs
+                in Vector1.app (fn {var, kind} => Id.HashTable.insert bs (var, kind)) defs
                  ; bs
                 end
 

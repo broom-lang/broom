@@ -22,6 +22,7 @@ signature PPRINT = sig
     val comma : t
     val semi : t
     val punctuate : t -> t vector -> t
+    val punctuate1 : t -> t vector1 -> t
 
     (* Delimiters: *)
     val lParen : t
@@ -142,13 +143,17 @@ structure PPrint :> PPRINT = struct
                    else l <> newline <> r
 
     fun punctuate sep docs =
-        case Vector.length docs
-        of 0 => empty
-         | 1 => Vector.sub (docs, 0)
+        case Vector1.fromVector docs
+        of SOME docs1 => punctuate1 sep docs1
+         | NONE => empty
+
+    and punctuate1 sep docs =
+        case Vector1.length docs
+        of 1 => Vector1.sub (docs, 0)
          | _ =>
-           let fun step (acc, doc) = doc <> sep <> acc
-           in VectorSlice.foldl step (Vector.sub (docs, 0)) (VectorSlice.slice (docs, 1, NONE))
-           end
+           Vector1.Slice.foldl (fn (acc, doc) => doc <> sep <> acc)
+                               (Vector1.sub (docs, 0))
+                               (Vector1.Slice.slice (docs, 1, NONE))
 
     val int = text o Int.toString
     val word = text o Word.toString

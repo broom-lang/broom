@@ -36,7 +36,7 @@ end = struct
                    | Callee of env * expr
                    | Arg of value
                    | Forcee
-                   | BlockCont of env * stmt VectorSlice.slice * expr
+                   | BlockCont of env * stmt Vector1.Slice.slice * expr
                    | Branches of env * clause VectorSlice.slice
                    | InitField of env * (Name.t * expr) VectorSlice.slice * expr option
                                 * value NameHashTable.hash_table * Name.t
@@ -121,12 +121,11 @@ end = struct
          | App (_, _, {callee, arg}) => eval env (Callee (env, arg) :: cont) callee
          | TApp (_, _, {callee, ...}) => eval env (Forcee :: cont) callee
          | Let (_, stmts, body) =>
-            (case Vector.uncons stmts
-             of SOME (stmt, stmts) =>
-                 let val env = enterBlock env
-                 in exec env (BlockCont (env, stmts, body) :: cont) stmt
-                 end
-              | NONE => eval env cont body)
+            let val env = enterBlock env
+                val stmt = Vector1.sub (stmts, 0)
+                val stmts = Vector1.Slice.slice (stmts, 1, NONE)
+            in exec env (BlockCont (env, stmts, body) :: cont) stmt
+            end
          | Match (_, _, matchee, clauses) =>
             eval env (Branches (env, VectorSlice.full clauses) :: cont) matchee
          (*| Extend (_, _, fields, ext) =>
@@ -201,7 +200,7 @@ end = struct
          | Arg f :: cont => apply cont f value
          | Forcee :: cont => force cont value
          | BlockCont (env, stmts, body) :: cont =>
-            (case VectorSlice.uncons stmts
+            (case Vector1.Slice.uncons stmts
              of SOME (stmt, stmts) =>
                  exec env (BlockCont (env, stmts, body) :: cont) stmt
               | NONE => eval env cont body)

@@ -23,7 +23,7 @@ end = struct
             RowExt {base = concrToF base, field = (label, concrToF fieldt)}
          | EmptyRow => EmptyRow
          | FFType.App {callee, args} =>
-            FFType.App {callee = concrToF callee, args = Vector.map concrToF args}
+            FFType.App {callee = concrToF callee, args = Vector1.map concrToF args}
          | CallTFn (f, args) =>
             CallTFn (f, Vector.map concrToF args)
          | FFType.Type typ => FFType.Type (concrToF typ)
@@ -40,7 +40,7 @@ end = struct
         fn Refl t => Refl (concrToF t)
          | Symm co => Symm (coercionToF co)
          | AppCo {callee, args} =>
-            AppCo {callee = coercionToF callee, args = Vector.map concrToF args}
+            AppCo {callee = coercionToF callee, args = Vector1.map concrToF args}
          | UseCo name => UseCo name
 
     fun axiomToF (name, l, r) = (name, concrToF l, concrToF r)
@@ -55,13 +55,13 @@ end = struct
          | Where (pos, typ, {base, field}) =>
             FFTerm.Where (pos, concrToF typ, {base = exprToF base, field = Pair.second exprToF field})
          | Let (pos, stmts, body) =>
-            FFTerm.Let (pos, Vector.map (stmtToF) stmts, exprToF body)
+            FFTerm.Let (pos, Vector1.map (stmtToF) stmts, exprToF body)
          | Match (pos, typ, matchee, clauses) =>
             FFTerm.Match (pos, concrToF typ, exprToF matchee, Vector.map clauseToF clauses)
          | App (pos, typ, {callee, arg}) =>
             FFTerm.App (pos, concrToF typ, {callee = exprToF callee, arg = exprToF arg})
          | TApp (pos, typ, {callee, args}) =>
-            FFTerm.TApp (pos, concrToF typ, {callee = exprToF callee, args = Vector.map concrToF args})
+            FFTerm.TApp (pos, concrToF typ, {callee = exprToF callee, args = Vector1.map concrToF args})
          | Field (pos, typ, expr, label) =>
             FFTerm.Field (pos, concrToF typ, exprToF expr, label)
          | Cast (pos, typ, expr, coercion) =>

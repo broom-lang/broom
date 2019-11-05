@@ -67,7 +67,7 @@ end = struct
                 of Val (_, {var, typ, ...}, _) => Env.insert (env, var, typ)
                  | Axiom (_, name, l, r) => Env.insertCo (env, name, l, r)
                  | Expr _ => env
-        in Vector.foldl pushStmt env stmts
+        in Vector1.foldl pushStmt env stmts
         end
 
     fun rowLabelType row label =
@@ -109,17 +109,17 @@ end = struct
     fun eq env (t, t') =
         case (t, t')
         of (Exists (params, body), Exists (params', body')) => 
-            let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
-                                       env params
-                val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
-                                       env params'
+            let val env = Vector1.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
+                                        env params
+                val env = Vector1.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
+                                        env params'
             in eq env (body, body')
             end
          | (ForAll (params, body), ForAll (params', body')) =>
-            let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
-                                       env params
-                val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
-                                       env params'
+            let val env = Vector1.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
+                                        env params
+                val env = Vector1.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
+                                        env params'
             in eq env (body, body')
             end
          | (Arrow (expl, {domain, codomain}), Arrow (expl', {domain = domain', codomain = codomain'})) =>
@@ -136,7 +136,7 @@ end = struct
          | (FType.Type t, FType.Type t') => eq env (t, t')
          | (FType.App {callee, args}, FType.App {callee = callee', args = args'}) =>
             eq env (callee, callee')
-            andalso Vector.all (eq env) (Vector.zip (args, args'))
+            andalso Vector1.all (eq env) (Vector1.zip (args, args'))
          | (CallTFn (callee, args), CallTFn (callee', args')) =>
             callee = callee'
             andalso Vector.all (eq env) (Vector.zip (args, args'))
@@ -161,15 +161,17 @@ end = struct
          | AppCo {callee, args} =>
             (case checkCo env callee
              of (ForAll (defs, l), ForAll (defs', r)) =>
-                 ( Vector.zip3With (fn ({kind, ...}, {kind = kind', ...}, arg) =>
-                                        ( checkKindEq (kind, kind')
-                                        ; checkKindEq (kindOf env arg, kind) ))
-                                   (defs, defs', args)
+                 ( Vector1.zip3With (fn ({kind, ...}, {kind = kind', ...}, arg) =>
+                                         ( checkKindEq (kind, kind')
+                                         ; checkKindEq (kindOf env arg, kind) ))
+                                    (defs, defs', args)
                  ; let val mapping = (defs, args)
-                                   |> Vector.zipWith (Pair.first #var)
+                                   |> Vector1.zipWith (Pair.first #var)
+                                   |> Vector1.toVector
                                    |> Id.SortedMap.fromVector
                        val mapping' = (defs', args)
-                                    |> Vector.zipWith (Pair.first #var)
+                                    |> Vector1.zipWith (Pair.first #var)
+                                    |> Vector1.toVector
                                     |> Id.SortedMap.fromVector
                    in ( FType.Concr.substitute (Fn.constantly false) mapping l
                       , FType.Concr.substitute (Fn.constantly false) mapping' r )
@@ -200,8 +202,8 @@ end = struct
         end
 
     and checkTFn env (pos, params, body) =
-        let val env = Vector.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
-                                   env params
+        let val env = Vector1.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
+                                    env params
         in ForAll (params, check env body)
         end
 
@@ -232,15 +234,15 @@ end = struct
     and checkTApp env (pos, typ, {callee, args}) =
         case check env callee
         of ForAll (params, body) =>
-            let do if Vector.length args = Vector.length params then () else raise Fail "argument count"
-                val pargs = Vector.zip (params, args)
+            let do if Vector1.length args = Vector1.length params then () else raise Fail "argument count"
+                val pargs = Vector1.zip (params, args)
                 
                 fun checkArg ({var = _, kind}, arg) = checkKindEq (kindOf env arg, kind)
-                do Vector.app checkArg pargs
+                do Vector1.app checkArg pargs
 
-                val mapping = Vector.foldl (fn (({var, ...}, arg), mapping) =>
-                                                Id.SortedMap.insert (mapping, var, arg))
-                                           Id.SortedMap.empty pargs
+                val mapping = Vector1.foldl (fn (({var, ...}, arg), mapping) =>
+                                                 Id.SortedMap.insert (mapping, var, arg))
+                                            Id.SortedMap.empty pargs
                 val typ' = FFType.Concr.substitute (Fn.constantly false) mapping body
             in checkEq pos env (typ', typ)
              ; typ
@@ -260,7 +262,7 @@ end = struct
 
     and checkLet env (_, stmts, body) =
         let val env = pushStmts env stmts
-        in Vector.app (checkStmt env) stmts
+        in Vector1.app (checkStmt env) stmts
          ; check env body
         end
 
@@ -308,7 +310,10 @@ end = struct
     fun typecheckProgram {typeFns, stmts, sourcemap} =
         let val env = Vector.foldl (fn ((name, kindSig), env) => Env.insertTypeFn (env, name, kindSig))
                                    (Env.empty sourcemap) typeFns
-            val env = pushStmts env stmts
+            val env =
+                case Vector1.fromVector stmts
+                of SOME stmts => pushStmts env stmts
+                 | NONE => env
         in Vector.app (checkStmt env) stmts (* TODO: Use `typeFns` *)
          ; NONE
         end

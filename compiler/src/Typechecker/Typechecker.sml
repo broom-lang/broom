@@ -88,16 +88,16 @@ end = struct
                      | (Explicit (), _) => Explicit eff
             in ( Pure
                , let val arrow = FType.Arrow (arr, {domain, codomain})
-                 in case typeDefs
-                    of #[] => arrow
-                     | _ => FType.ForAll (typeDefs, arrow)
+                 in case Vector1.fromVector typeDefs
+                    of SOME typeDefs => FType.ForAll (typeDefs, arrow)
+                     | NONE => arrow
                  end
                , let val f = FTerm.Fn ( pos, def, arr
                                       , FTerm.Match ( pos, codomain, FTerm.Use (pos, def)
                                                     , clauses ) )
-                 in case typeDefs
-                    of #[] => f
-                     | _ => FTerm.TFn (pos, typeDefs, f)
+                 in case Vector1.fromVector typeDefs
+                    of SOME typeDefs => FTerm.TFn (pos, typeDefs, f)
+                     | NONE => f
                  end )
             end
          | CTerm.Let (pos, stmts, body) =>
@@ -106,7 +106,9 @@ end = struct
                 val (stmtsEff, stmts) = elaborateStmts env stmts
                 val (bodyEff, typ, body) = elaborateExpr env body
             in ( joinEffs (stmtsEff, bodyEff), typ
-               , FTerm.Let (pos, stmts, body))
+               , case Vector1.fromVector stmts
+                 of SOME stmts => FTerm.Let (pos, stmts, body)
+                  | NONE => body )
             end
          | CTerm.Match (_, _, _) =>
             let val t = FType.SVar (FType.UVar (Env.freshUv env))
@@ -132,7 +134,10 @@ end = struct
                                        , FTerm.With (pos, FType.Record row, {base = baseExpr, field = (var, use)}) )
                                     end)
                                (FType.EmptyRow, FTerm.EmptyRecord pos) defs
-            in (eff, FType.Record row, FTerm.Let (pos, stmts, body))
+            in ( eff, FType.Record row
+               , case Vector1.fromVector stmts
+                 of SOME stmts => FTerm.Let (pos, stmts, body)
+                  | NONE => body )
             end
          | CTerm.App (pos, {callee, arg}) =>
             (* FIXME: generative behaviour when `callEff` is `Impure`: *)
@@ -149,11 +154,14 @@ end = struct
             end
          | CTerm.Ann (_, expr, t) =>
             let val (defs, t) = elaborateType env t
-            in elaborateAsExists env (Exists (Vector.fromList defs, t)) expr
+            in elaborateAsExists env (Vector.fromList defs, t) expr
             end
          | CTerm.Type (pos, t) =>
             let val (defs, body) = elaborateType env t
-                val t = FType.Exists (Vector.fromList defs, body)
+                val t =
+                    case Vector1.fromList defs
+                    of SOME defs => FType.Exists (defs, body)
+                     | NONE => body
             in (Pure, FType.Type t, FTerm.Type (pos, t))
             end
          | CTerm.Use (pos, name) =>
@@ -257,8 +265,12 @@ end = struct
                 let val (matcheeTyp, pattern, env) =
                         case matcheeTyp
                         of SOME (typeDefs, matcheeTyp') =>
-                            let val env = Env.pushScope env (Scope.ForAllScope ( Scope.Id.fresh ()
-                                                                               , Bindings.Type.fromDefs typeDefs ))
+                            let val env =
+                                    case Vector1.fromVector typeDefs
+                                    of SOME typeDefs =>
+                                        Env.pushScope env (Scope.ForAllScope ( Scope.Id.fresh ()
+                                                                             , Bindings.Type.fromDefs typeDefs ))
+                                     | NONE => env
                                 val (pattern, env) = elaboratePatternAs env matcheeTyp' pattern
                             in (matcheeTyp, pattern, env)
                             end
@@ -294,7 +306,11 @@ end = struct
             let val (typeDefs, t) = elaborateType env typ
                 val def = {pos, id = DefId.fresh (), var = name, typ = t}
                 val typeDefs = Vector.fromList typeDefs
-                val env = Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), Bindings.Type.fromDefs typeDefs))
+                val env =
+                    case Vector1.fromVector typeDefs
+                    of SOME typeDefs =>
+                        Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), Bindings.Type.fromDefs typeDefs))
+                     | NONE => env
                 val patScopeId = Scope.Id.fresh ()
                 val env = Env.pushScope env (Scope.PatternScope (patScopeId, name, Visited (def, NONE)))
             in ((typeDefs, t), FTerm.Def (pos', def), env)
@@ -330,22 +346,20 @@ end = struct
         in (eff, t, expr)
         end
 
-    and instantiateExistential env: concr -> concr * concr vector = 
-        fn Exists (params: FType.def vector, body) =>
-            let val paths = Vector.map (fn {var, kind} =>
-                                            let val typeFnName = Env.freshAbstract env var {paramKinds = #[], kind}
-                                                val typeFn = FType.CallTFn (typeFnName, #[])
-                                            in FAst.Type.SVar (FType.Path (Path.new typeFn))
-                                            end)
-                                       params
-               
-                val mapping = (params, paths)
-                            |> Vector.zipWith (fn ({var, ...}, path) => (var, path))
-                            |> Id.SortedMap.fromVector
-                val implType = Concr.substitute (Env.hasScope env) mapping body
-            in (implType, paths)
-            end
-         | typ => (typ, #[])
+    and instantiateExistential env (params: FType.def vector, body): concr * concr vector = 
+        let val paths = Vector.map (fn {var, kind} =>
+                                        let val typeFnName = Env.freshAbstract env var {paramKinds = #[], kind}
+                                            val typeFn = FType.CallTFn (typeFnName, #[])
+                                        in FAst.Type.SVar (FType.Path (Path.new typeFn))
+                                        end)
+                                   params
+           
+            val mapping = (params, paths)
+                        |> Vector.zipWith (fn ({var, ...}, path) => (var, path))
+                        |> Id.SortedMap.fromVector
+            val implType = Concr.substitute (Env.hasScope env) mapping body
+        in (implType, paths)
+        end
 
     and elaborateAsExistsInst env (implType, paths) =
         fn CTerm.Match (pos, matchee, clauses) =>
@@ -375,13 +389,20 @@ end = struct
                     Vector.zipWith (fn (FAst.Type.SVar (FType.Path path), name) =>
                                         let val face = Path.face path
                                             val ((params, t), _) = Either.unwrap (Path.get (Env.hasScope env) path)
-                                            val args = Vector.map (fn def => FType.UseT def) params
-                                        in FTerm.Axiom ( pos, name
-                                                       , FType.ForAll (params, FType.app {callee = face, args})
-                                                       , FType.ForAll (params, t) )
+                                        in  case Vector1.fromVector params
+                                            of SOME params =>
+                                                let val args = Vector1.map (fn def => FType.UseT def) params
+                                                in FTerm.Axiom ( pos, name
+                                                               , FType.ForAll (params, FType.App {callee = face, args})
+                                                               , FType.ForAll (params, t) )
+                                                end
+                                             | NONE => FTerm.Axiom (pos, name, face, t)
                                         end)    
                                    (paths, coercionNames)
-            in (eff, FTerm.Let (pos, axiomStmts, expr))
+            in ( eff
+               , case Vector1.fromVector axiomStmts
+                 of SOME axiomStmts => FTerm.Let (pos, axiomStmts, expr)
+                  | NONE => expr )
             end
 
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)
@@ -431,21 +452,21 @@ end = struct
                 fn FType.ForAll (params, t) =>
                     let val pos = FTerm.exprPos callee
                         val (args, mapping) =
-                            Vector.foldl (fn ({var, kind = kind as FType.CallsiteK}, (args, mapping)) =>
-                                              let val callId =
-                                                      case valOf (FType.piEffect t)
-                                                      of Impure =>
-                                                          Env.freshAbstract env (FType.Id.fresh ()) {paramKinds = #[], kind}
-                                                       | Pure => Env.pureCallsite env
-                                                  val callsite = FType.CallTFn (callId, #[])
-                                              in (callsite :: args, Id.SortedMap.insert (mapping, var, callsite))
-                                              end
-                                           | ({var, kind}, (args, mapping)) =>
-                                              let val uv = FType.SVar (FType.UVar (Env.newUv env (nameFromId var)))
-                                              in (uv :: args, Id.SortedMap.insert (mapping, var, uv))
-                                              end)
-                                         ([], Id.SortedMap.empty) params
-                        val args = args |> List.rev |> Vector.fromList
+                            Vector1.foldl (fn ({var, kind = kind as FType.CallsiteK}, (args, mapping)) =>
+                                               let val callId =
+                                                       case valOf (FType.piEffect t)
+                                                       of Impure =>
+                                                           Env.freshAbstract env (FType.Id.fresh ()) {paramKinds = #[], kind}
+                                                        | Pure => Env.pureCallsite env
+                                                   val callsite = FType.CallTFn (callId, #[])
+                                               in (callsite :: args, Id.SortedMap.insert (mapping, var, callsite))
+                                               end
+                                            | ({var, kind}, (args, mapping)) =>
+                                               let val uv = FType.SVar (FType.UVar (Env.newUv env (nameFromId var)))
+                                               in (uv :: args, Id.SortedMap.insert (mapping, var, uv))
+                                               end)
+                                          ([], Id.SortedMap.empty) params
+                        val args = args |> List.rev |> Vector1.fromList |> valOf
                         val calleeType = Concr.substitute (Env.hasScope env) mapping t
                     in coerce (FTerm.TApp (pos, calleeType, {callee, args})) calleeType
                     end

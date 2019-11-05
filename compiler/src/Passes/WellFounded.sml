@@ -283,8 +283,8 @@ end = struct
                     end
                  | TFn (_, _, body) => checkExpr ini ctx body
                  | Let (_, stmts, body) =>
-                    let val ini = pushBlock ini stmts
-                        val stmtsSupport = checkStmts ini stmts
+                    let val ini = pushBlock ini (Vector1.toVector stmts)
+                        val stmtsSupport = checkStmts ini (Vector1.toVector stmts)
                         val (typ, bodySupport) = checkExpr ini ctx body
                     in (typ, Support.union (stmtsSupport, bodySupport))
                     end
