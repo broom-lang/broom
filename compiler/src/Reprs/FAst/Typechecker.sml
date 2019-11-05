@@ -158,7 +158,7 @@ end = struct
     fun checkCo env =
         fn Refl t => (t, t)
          | Symm co => Pair.flip (checkCo env co)
-         | AppCo {callee, args} =>
+         | InstCo {callee, args} =>
             (case checkCo env callee
              of (ForAll (defs, l), ForAll (defs', r)) =>
                  ( Vector1.zip3With (fn ({kind, ...}, {kind = kind', ...}, arg) =>

@@ -32,7 +32,7 @@ signature FAST_TYPE = sig
     and 'sv co
         = Refl of 'sv concr
         | Symm of 'sv co
-        | AppCo of {callee: 'sv co, args: 'sv concr vector1}
+        | InstCo of {callee: 'sv co, args: 'sv concr vector1}
         | UseCo of Name.t (* HACK *)
 
     withtype 'sv row = {base: 'sv concr, field: Name.t * 'sv concr}
@@ -108,7 +108,7 @@ structure FType :> FAST_TYPE = struct
     and 'sv co
         = Refl of 'sv concr
         | Symm of 'sv co
-        | AppCo of {callee: 'sv co, args: 'sv concr vector1}
+        | InstCo of {callee: 'sv co, args: 'sv concr vector1}
         | UseCo of Name.t
 
     withtype 'sv row = {base: 'sv concr, field: Name.t * 'sv concr}
@@ -193,7 +193,7 @@ structure FType :> FAST_TYPE = struct
     and coercionToDoc svarToDoc =
         fn Refl t => concrToDoc svarToDoc t
          | Symm co => text "symm" <+> coercionToDoc svarToDoc co
-         | AppCo {callee, args} =>
+         | InstCo {callee, args} =>
             coercionToDoc svarToDoc callee
                 <+> PPrint.punctuate1 space (Vector1.map (concrToDoc svarToDoc) args)
          | UseCo name => Name.toDoc name
