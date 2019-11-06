@@ -28,17 +28,14 @@ end = struct
     structure Env = TypecheckingEnv
     structure Scope = Env.Scope
     structure Bindings = Env.Bindings
+    val checkMonotypeKind = Kindchecker.checkMonotypeKind
     open TypeError
 
 (* # Utils *)
 
     fun idInScope env id = isSome (Env.findType env id)
 
-    (* FIXME: Check kinds and smallness/monotype *)
-    fun uvSet env (uv, t) =
-        ( Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env) (uv, t)
-        ; NONE )
-
+    fun uvSet env = Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env)
     fun uvMerge env = Uv.merge Scope.Id.compare (Env.hasScope env)
 
     (* FIXME: Check kinds and smallness/monotype *)
@@ -46,10 +43,12 @@ end = struct
         Path.set (Name.fromString o Concr.toString) (* HACK *)
                  (Env.hasScope env)
 
+    fun occurs env = Concr.occurs (Env.hasScope env)
+
     (* \forall a... . T --> [(\hat{a}/a)...]T and push \hat{a}... to env *)
     fun instantiate env (params: FType.def vector1, body) f =
         let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
-            val args = Vector1.map (fn _ => SVar (UVar (Env.freshUv env)))
+            val args = Vector1.map (fn {kind, ...} => SVar (UVar (Env.freshUv env kind)))
                                    params
             val mapping = (params, args)
                         |> Vector1.zipWith (fn ({var, kind = _}, arg) => (var, arg))
@@ -124,7 +123,7 @@ end = struct
                 ( Env.error env (NonUnifiable (currPos, l, r, SOME cause))
                 ; Refl r )
 
-    and coercion (env: Env.t) currPos: concr * concr -> co =
+    and coercion (env: Env.t) pos: concr * concr -> co =
         (*fn (ForAll universal, ForAll universal') => raise Fail "unimplemented"
          | (sub, Arrow (Implicit, {domain, codomain})) =>
             let val def = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
@@ -168,40 +167,34 @@ end = struct
                  then NONE
                  else raise TypeError (OutsideScope (currPos, Name.fromString ("g__" ^ Id.toString var)))
             else raise TypeError (error Unify (currPos, sub, super, NONE))
-         | (SVar (UVar uv), super as SVar (UVar uv')) =>
-            uvsCoercion Unify env currPos super (uv, uv')
-         | (SVar (UVar uv), super) => uvCoercion env currPos (direct Up Unify) uv super
-         | (sub, SVar (UVar uv)) => uvCoercion env currPos (direct Down Unify) uv sub
          | (SVar (Path path), super) => pathCoercion Unify Up env currPos (path, #[]) super
          | (sub, SVar (Path path)) => pathCoercion Unify Down env currPos (path, #[]) sub
          | (sub, super) => raise TypeError (NonSubType (currPos, sub, super, NONE))*)
         fn (EmptyRow, EmptyRow) => Refl EmptyRow
          | (SVar (UVar uv), r as SVar (UVar uv')) =>
             (case (Uv.get uv, Uv.get uv')
-             of (Left uv, Left uv') => (uvMerge env (uv, uv'); Refl r)
-              | (Left uv, Right t) | (Right t, Left uv) => solution env currPos uv t
-              | (Right l, Right r) => coercion env currPos (l, r))
+             of (Right l, Right r) => coercion env pos (l, r)
+              | (Left uv, Right t) | (Right t, Left uv) =>
+                 solution env pos (uv , t)
+              | (Left uv, Left uv') =>
+                 ( uvMerge env (uv, uv')
+                 ; Refl r ))
+         | (SVar (UVar uv), t) | (t, SVar (UVar uv)) =>
+            (case Uv.get uv
+             of Right t' => coercion env pos (t, t')
+              | Left uv => solution env pos (uv, t))
          | (l as Prim p, r as Prim p') =>
             if p = p'
             then Refl r
-            else raise TypeError (NonUnifiable (currPos, l, r, NONE))
+            else raise TypeError (NonUnifiable (pos, l, r, NONE))
 
-    and solution env currPos uv t =
-        if Concr.occurs (Env.hasScope env) uv t
-        then raise TypeError (Occurs (currPos, SVar (UVar uv), t))
-        (* FIXME: Scoping well-formedness should be checked recursively *)
-        else ( uvSet env (uv, t)
-             ; case t
-               of UseT {var, ...} => 
-                  if idInScope env var
-                  then ()
-                  else raise TypeError (OutsideScope (currPos, Name.fromString ("g__" ^ Id.toString var)))
-               | SVar (OVar ov) =>
-                  if Env.hasScope env (TypeVars.Ov.scope ov)
-                  then ()
-                  else raise TypeError (OutsideScope (currPos, TypeVars.Ov.name ov))
-               | _ => ()
-             ; Refl t )
+    and solution env pos (uv, t) =
+        ( if occurs env uv t
+          then raise TypeError (Occurs (pos, SVar (UVar uv), t))
+          else ()
+        ; checkMonotypeKind env pos (Uv.kind uv) t
+        ; uvSet env (uv, t)
+        ; Refl t )
 
     (* Check that `typ` <: `superTyp` and return the coercer if any. *)
     and subType env currPos (typs as (sub, super)) =
@@ -439,7 +432,7 @@ end = struct
         case t
         of ForAll args => doAssignUniversal env currPos y uv args
          | Arrow (Explicit eff, domains) => doAssignArrow env y uv currPos eff domains
-         | RowExt _ | EmptyRow | Record _ | CallTFn _ | Prim _ | Type _ => uvSet env (uv, t)
+         | RowExt _ | EmptyRow | Record _ | CallTFn _ | Prim _ | Type _ => (uvSet env (uv, t); NONE)
          | UseT {var, ...} => 
             ( uvSet env (uv, t)
             ; if idInScope env var
@@ -451,10 +444,11 @@ end = struct
               then NONE
               else raise TypeError (OutsideScope (currPos, TypeVars.Ov.name ov)) )
          | SVar (UVar uv') =>
-            (case Uv.get uv'
-             of Left _ => uvSet env (uv, t)
-              | Right t => uvSet env (uv, t))
-         | SVar (Path _) => uvSet env (uv, t)
+            ( case Uv.get uv'
+              of Left _ => uvSet env (uv, t)
+               | Right t => uvSet env (uv, t)
+            ; NONE )
+         | SVar (Path _) => (uvSet env (uv, t); NONE)
 
     and doAssignUniversal env currPos (y: direction) uv (universal as (_, _)) =
         case y

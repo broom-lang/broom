@@ -12,6 +12,7 @@ structure Kindchecker :> sig
     val fix : { unvisitedBindingType : unvisited_binding_type
               , elaborateExpr : Env.t -> Cst.Term.expr -> FType.effect * FType.Concr.t * FTerm.expr }
            -> (Env.t -> Cst.Type.typ -> FType.def list * FType.Concr.t)
+    val checkMonotypeKind : Env.t -> Pos.span -> FType.kind -> FType.concr -> unit
 end = struct
     structure CType = Cst.Type
     structure CTerm = Cst.Term
@@ -23,6 +24,10 @@ end = struct
     structure Id = FType.Id
     structure Concr = FType.Concr
     datatype concr = datatype Concr.t
+    datatype sv = datatype FType.sv
+    structure Ov = TypeVars.Ov
+    structure Uv = TypeVars.Uv
+    structure Path = TypeVars.Path
     open TypeError
     structure Env = TypecheckingEnv
     structure Bindings = Env.Bindings
@@ -70,7 +75,7 @@ end = struct
                             let val (nonCallsiteTypeDefs, domain) =
                                     case domain
                                     of SOME domain => elaborateType env domain
-                                     | NONE => ([], FType.SVar (FType.UVar (Env.freshUv env)))
+                                     | NONE => ([], FType.SVar (FType.UVar (Env.freshUv env FType.TypeK)))
                                 val callsite = {var = FType.Id.fresh (), kind = FType.CallsiteK}
                                 val typeDefs = callsite :: nonCallsiteTypeDefs
 
@@ -174,5 +179,55 @@ end = struct
 
     and elaborateEff Cst.Pure = Pure
       | elaborateEff Cst.Impure = Impure
+
+    fun monotypeKind env pos =
+        fn t as Exists _ | t as ForAll _ => raise TypeError (NonMonotype (pos, t))
+         | Arrow (_, {domain, codomain}) =>
+            ( checkMonotypeKind env pos FType.TypeK domain
+            ; checkMonotypeKind env pos FType.TypeK codomain
+            ; FType.TypeK )
+         | Record row =>
+            ( checkMonotypeKind env pos FType.RowK row
+            ; FType.TypeK )
+         | RowExt {base, field = (_, fieldt)} =>
+            ( checkMonotypeKind env pos FType.RowK base
+            ; checkMonotypeKind env pos FType.TypeK fieldt
+            ; FType.TypeK )
+         | EmptyRow => FType.RowK
+         | Type t =>
+            ( checkMonotypeKind env pos FType.TypeK t
+            ; FType.TypeK )
+         | App {callee, args} =>
+            let fun checkArgKind i calleeKind =
+                    if i < Vector1.length args
+                    then case calleeKind
+                         of FType.ArrowK {domain, codomain} =>
+                             ( checkMonotypeKind env pos domain (Vector1.sub (args, i))
+                             ; checkArgKind (i + 1) codomain )
+                          | _ => raise TypeError (TypeCtorArity (pos, callee, calleeKind, Vector1.length args))
+                    else calleeKind
+            in checkArgKind 0 (monotypeKind env pos callee)
+            end
+         | CallTFn (name, args) =>
+            let val {paramKinds, kind} = Env.findTypeFn env name
+                do Vector.app (fn (paramKind, arg) => checkMonotypeKind env pos paramKind arg)
+                              (Vector.zip (paramKinds, args))
+            in kind
+            end
+         | SVar (UVar uv) => Uv.kind uv
+         | SVar (OVar ov) => raise Fail "unimplemented"
+         | SVar (Path path) => Path.kind path
+         | UseT {var, kind} => (* TODO: Should be unreachable on return of Ov: *)
+            if isSome (Env.findType env var)
+            then kind
+            else raise TypeError (OutsideScope (pos, var |> FType.Id.toString |> Name.fromString))
+         | Prim _ => FType.TypeK
+
+    and checkMonotypeKind env pos kind t =
+        let val kind' = monotypeKind env pos t
+        in  if kind' = kind
+            then ()
+            else raise TypeError (InequalKinds (pos, kind', kind))
+        end
 end
 

@@ -1,9 +1,12 @@
 signature TYPE_ERROR = sig
     datatype t = NonSubType of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr * t option
                | NonUnifiable of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr * t option
+               | InequalKinds of Pos.span * FlexFAst.Type.kind * FlexFAst.Type.kind
+               | NonMonotype of Pos.span * FlexFAst.Type.concr
                | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.span * Name.t
+               | TypeCtorArity of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.kind * int
                | OutsideScope of Pos.span * Name.t
                | MissingField of Pos.span * FlexFAst.Type.concr * Name.t
                | DuplicateBinding of Pos.span * Name.t
@@ -24,9 +27,12 @@ structure TypeError :> TYPE_ERROR = struct
 
     datatype t = NonSubType of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr * t option
                | NonUnifiable of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr * t option
+               | InequalKinds of Pos.span * FlexFAst.Type.kind * FlexFAst.Type.kind
+               | NonMonotype of Pos.span * FlexFAst.Type.concr
                | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
                | UnboundVal of Pos.span * Name.t
+               | TypeCtorArity of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.kind * int
                | OutsideScope of Pos.span * Name.t
                | MissingField of Pos.span * FlexFAst.Type.concr * Name.t
                | DuplicateBinding of Pos.span * Name.t
@@ -46,6 +52,12 @@ structure TypeError :> TYPE_ERROR = struct
                                      , Concr.toDoc lt <+> text "does not unify with" <+> Concr.toDoc rt
                                            <> Option.mapOr (fn cause => PPrint.newline <> text "because" <+> toDoc sourcemap cause)
                                                            PPrint.empty cause )
+                                  | InequalKinds (pos, kind, kind') =>
+                                     ( pos
+                                     , text "kind" <+> FType.kindToDoc kind <+> text "is not equal to" <+> FType.kindToDoc kind' )
+                                  | NonMonotype (pos, t) =>
+                                     ( pos
+                                     , Concr.toDoc t <+> text "is large and not allowed here" )
                                   | UnCallable (expr, typ) =>
                                      ( FTerm.exprPos expr
                                      , text "Value" <+> FTerm.exprToDoc expr
@@ -55,6 +67,10 @@ structure TypeError :> TYPE_ERROR = struct
                                      , text "Value" <+> FTerm.exprToDoc expr
                                            <+> text "of type" <+> Concr.toDoc typ <+> text "is not a record or module." )
                                   | UnboundVal (pos, name) => (pos, text "Unbound variable" <+> Name.toDoc name <> text ".")
+                                  | TypeCtorArity (pos, calleeType, calleeKind, argc) =>
+                                     ( pos
+                                     , Concr.toDoc calleeType <+> text ":" <+> FType.kindToDoc calleeKind
+                                       <+> text "applied to too many arguments" <+> PPrint.parens (PPrint.int argc) )
                                   | OutsideScope (pos, name) => (pos, text "Type out of scope" <+> Name.toDoc name <> text ".")
                                   | MissingField (pos, typ, label) =>
                                      ( pos

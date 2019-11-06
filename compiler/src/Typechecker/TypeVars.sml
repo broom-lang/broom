@@ -15,8 +15,8 @@ structure TypeVars :> sig
     type 't uv
 
     structure Uv: sig
-        val new: ScopeId.t * Name.t -> 't uv
-        val fresh: ScopeId.t -> 't uv
+        val new: ScopeId.t * Name.t * kind -> 't uv
+        val fresh: ScopeId.t * kind -> 't uv
         val freshSibling: 't uv -> 't uv
         val get: 't uv -> ('t uv, 't) Either.t
         val merge : (ScopeId.t * ScopeId.t -> order) (* scope ordering to preserve scoping invariants *)
@@ -27,13 +27,14 @@ structure TypeVars :> sig
                  -> (ScopeId.t -> bool) (* Is the required scope available? *)
                  -> 't uv * 't -> unit
         val eq: 't uv * 't uv -> bool
+        val kind : 't uv -> kind
         val name: 't uv -> Name.t
     end
 
     type 't path
 
     structure Path: sig
-        val new: 't -> 't path
+        val new: kind * 't -> 't path
         val face: 't path -> 't
         val get: (ScopeId.t -> bool) (* Is the required coercion available? *)
                  -> 't path -> ('t * Name.t option, (FType.def vector * 't) * Name.t) Either.t
@@ -42,6 +43,7 @@ structure TypeVars :> sig
                  -> (ScopeId.t -> bool) (* Is the required coercion available? *)
                  -> 't path * (FType.def vector * 't) -> unit
         val eq: 't path * 't path -> bool
+        val kind : 't path -> kind
     end
 end = struct
     type kind = FType.kind
@@ -49,17 +51,16 @@ end = struct
     exception SetPrivate of Name.t
     exception Reset
 
-    type meta = {name: Name.t, scope: ScopeId.t}
+    type meta = {name: Name.t, scope: ScopeId.t, kind: kind}
 
-    type ov = {meta: meta, kind: kind}
+    type ov = meta
 
     structure Ov = struct
-        fun new (scope, name, kind) =
-            {meta = {name, scope}, kind}
+        fun new (scope, name, kind) = {name, scope, kind}
 
-        fun scope ({meta = {scope, ...}, ...}: ov) = scope
+        val scope: ov -> ScopeId.t = #scope
 
-        fun name ({meta = {name, ...}, ...}: ov) = name
+        val name: ov -> Name.t = #name
     end
 
     datatype 't link
@@ -68,13 +69,12 @@ end = struct
     withtype 't uv = 't link ref
 
     structure Uv = struct
-        fun new (scope, name) =
-            ref (Root { meta = {name, scope}
+        fun new (scope, name, kind) =
+            ref (Root { meta = {name, scope, kind}
                       , typ = ref NONE
                       , rank = ref 0 })
 
-        fun fresh scope = new (scope, Name.fresh ())
-
+        fun fresh (scope, kind) = new (scope, Name.fresh (), kind)
 
         fun find uv =
             case !uv
@@ -89,7 +89,10 @@ end = struct
             of Root root => root
              | Link _ => raise Fail "unreachable"
 
-        fun freshSibling uv = fresh (#scope (#meta (root uv)))
+        fun freshSibling uv =
+            let val meta = #meta (root uv)
+            in fresh (#scope meta, #kind meta)
+            end
 
         fun get uv =
             let val uv = find uv
@@ -120,8 +123,8 @@ end = struct
             in if uv = uv'
                then uv
                else case (!uv, !uv')
-                    of ( Root {meta = {scope, name}, rank, ...}
-                       , Root { meta = {scope = scope', name = name'}
+                    of ( Root {meta = {scope, name, kind = _}, rank, ...}
+                       , Root { meta = {scope = scope', name = name', kind = _}
                               , rank = rank', ... } ) =>
                         if inScope scope 
                         then if inScope scope'
@@ -149,28 +152,30 @@ end = struct
 
         val eq = op=
 
+        fun kind uv = #kind (#meta (root uv))
+
         fun name uv = #name (#meta (root uv))
     end
 
     type 't impl = {typ: (FType.def vector * 't) option, coercion: Name.t option}
 
-    type 't path = {face: 't, impls: (ScopeId.t * 't impl) list ref}
+    type 't path = {kind: kind, face: 't, impls: (ScopeId.t * 't impl) list ref}
 
     structure Path = struct
-        fun new face = {face, impls = ref []}
+        fun new (kind, face) = {kind, face, impls = ref []}
 
         val face: 't path -> 't = #face
 
-        fun get inScope ({face, impls}: 't path) =
+        fun get inScope ({kind = _, face, impls}: 't path) =
             case List.find (inScope o #1) (!impls)
             of SOME (_, {typ = SOME t, coercion}) => Either.Right (t, valOf coercion)
              | SOME (_, {typ = NONE, coercion}) => Either.Left (face, coercion)
              | NONE => Either.Left (face, NONE)
 
-        fun addScope ({face, impls}: 't path, scope, coercion) =
+        fun addScope ({kind = _, face, impls}: 't path, scope, coercion) =
             impls := (scope, {typ = NONE, coercion = SOME coercion}) :: !impls
 
-        fun set faceName inScope ({face, impls}: 't path, t) =
+        fun set faceName inScope ({kind = _, face, impls}: 't path, t) =
             let val rec loop =
                     fn (scope, impl as {typ, coercion}) :: impls =>
                         if inScope scope
@@ -184,6 +189,8 @@ end = struct
 
         fun eq ({impls, ...}: 't path, {impls = impls', ...}: 't path) =
             impls = impls'
+
+        val kind: 't path -> kind = #kind
    end
 end
 
