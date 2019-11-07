@@ -45,7 +45,7 @@ end = struct
 
     fun occurs env = Concr.occurs (Env.hasScope env)
 
-    (* \forall a... . T --> [(\hat{a}/a)...]T and push \hat{a}... to env *)
+    (* \forall|\exists a... . T --> [(\hat{a}/a)...]T and push \hat{a}... to env *)
     fun instantiate env (params: FType.def vector1, body) f =
         let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
             val args = Vector1.map (fn {kind, ...} => SVar (UVar (Env.freshUv env kind)))
@@ -58,7 +58,7 @@ end = struct
         in f (env, args, body)
         end
 
-    (* \forall a... . T --> T and push a... to env *)
+    (* \forall|\exists a... . T --> T and push a... to env *)
     fun skolemize env (params: FType.def vector1, body) f =
         let val scopeId = Scope.Id.fresh ()
             val params' = Vector1.map (fn {kind, var = _} => {var = Id.fresh (), kind}) params
@@ -69,6 +69,28 @@ end = struct
                         |> Id.SortedMap.fromVector
             val body = Concr.substitute (Env.hasScope env) mapping body
         in f (env, params', body)
+        end
+
+    fun equiSkolemize env pos ((params, body), (params', body')) f =
+        let val scopeId = Scope.Id.fresh ()
+            do Vector1.zip (params, params') (* FIXME: arity errors *)
+               |> Vector1.app (fn ({kind, var = _}, {kind = kind', var = _}) =>
+                                   if kind = kind'
+                                   then ()
+                                   else raise TypeError (InequalKinds (pos, kind, kind')))
+            val params'' = Vector1.map (fn {kind, var = _} => {var = Id.fresh (), kind}) params
+            val env = Env.pushScope env (Scope.ForAllScope (scopeId, Bindings.Type.fromDefs params''))
+            val mapping = (params, params'')
+                        |> Vector1.zipWith (fn ({var, ...}, def') => (var, UseT def'))
+                        |> Vector1.toVector
+                        |> Id.SortedMap.fromVector
+            val body = Concr.substitute (Env.hasScope env) mapping body
+            val mapping' = (params', params'')
+                         |> Vector1.zipWith (fn ({var, ...}, def') => (var, UseT def'))
+                         |> Vector1.toVector
+                         |> Id.SortedMap.fromVector
+            val body' = Concr.substitute (Env.hasScope env) mapping' body'
+        in f (env, params'', (body, body'))
         end
 
 (* # Coercions *)
@@ -115,7 +137,7 @@ end = struct
       | joinEffs (Impure, Pure) = Impure
       | joinEffs (Impure, Impure) = Impure
 
-(* # Subtyping and Unification *)
+(* # Unification *)
 
     fun unify env currPos (typs as (l, r)) =
         coercion env currPos typs
@@ -123,70 +145,80 @@ end = struct
                 ( Env.error env (NonUnifiable (currPos, l, r, SOME cause))
                 ; Refl r )
 
-    and coercion (env: Env.t) pos: concr * concr -> co =
-        (*fn (ForAll universal, ForAll universal') => raise Fail "unimplemented"
-         | (sub, Arrow (Implicit, {domain, codomain})) =>
-            let val def = {pos = currPos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
-                val coerceCodomain = coercion env currPos (sub, codomain)
-            in SOME (fn expr => FTerm.Fn (currPos, def, Implicit, applyCoercion coerceCodomain expr))
-            end
-         | (Arrow (Implicit, {domain, codomain}), super) =>
-            (* FIXME: coercer from `codomain` <: `super` *)
-            (case domain
-             of FType.Type domain =>
-                 let val arg = FTerm.Type (currPos, domain)
-                 in SOME (fn expr => FTerm.App (currPos, codomain, {callee = expr, arg}))
-                 end
-              | _ => raise Fail "implicit parameter not of type `type`")
-         | (Arrow (Explicit eff, arr), Arrow (Explicit eff', arr')) =>
-            arrowCoercion Unify env currPos ((eff, arr), (eff', arr'))
-         | (sub as Record row, super as Record row') =>
-            recordCoercion Unify env currPos (sub, super) (row, row')
-         | (sub as RowExt _, super as RowExt _) =>
-           ( rowCoercion Unify env currPos (sub, super)
-           ; NONE ) (* No values of row type exist => coercer unnecessary *)
-         | (Type (Exists (params, t)), Type (sup as Exists (params', t'))) =>
-            (* FIXME: use params *)
-            ( coercion env currPos (t, t')
-            ; SOME (fn _ => FTerm.Type (currPos, sup)))
-         | (App {callee = SVar (Path path), args}, super) =>
-            pathCoercion Unify Up env currPos (path, Vector1.toVector args) super
-         | (sub, App {callee = SVar (Path path), args}) =>
-            pathCoercion Unify Down env currPos (path, Vector1.toVector args) sub
-         | (App {callee, args}, App {callee = callee', args = args'}) =>
-            ( ignore (coercion env currPos (callee, callee'))
-            ; Vector1.app (ignore o coercion env currPos)
-                          (Vector1.zip (args, args'))
-            ; NONE )
-         | (sub as CallTFn call, super as CallTFn call') =>
-            tFnAppCoercion Unify env currPos (call, call') (sub, super)
-         | (sub as UseT {var, ...}, super as UseT {var = var', ...}) =>
-            (* TODO: Go back to using `OVar` => this becomes `raise Fail "unreachable" *)
-            if var = var'
-            then if idInScope env var
-                 then NONE
-                 else raise TypeError (OutsideScope (currPos, Name.fromString ("g__" ^ Id.toString var)))
-            else raise TypeError (error Unify (currPos, sub, super, NONE))
-         | (SVar (Path path), super) => pathCoercion Unify Up env currPos (path, #[]) super
-         | (sub, SVar (Path path)) => pathCoercion Unify Down env currPos (path, #[]) sub
-         | (sub, super) => raise TypeError (NonSubType (currPos, sub, super, NONE))*)
-        fn (EmptyRow, EmptyRow) => Refl EmptyRow
-         | (SVar (UVar uv), r as SVar (UVar uv')) =>
-            (case (Uv.get uv, Uv.get uv')
-             of (Right l, Right r) => coercion env pos (l, r)
-              | (Left uv, Right t) | (Right t, Left uv) =>
-                 solution env pos (uv , t)
-              | (Left uv, Left uv') =>
-                 ( uvMerge env (uv, uv')
-                 ; Refl r ))
-         | (SVar (UVar uv), t) | (t, SVar (UVar uv)) =>
-            (case Uv.get uv
-             of Right t' => coercion env pos (t, t')
-              | Left uv => solution env pos (uv, t))
-         | (l as Prim p, r as Prim p') =>
-            if p = p'
-            then Refl r
-            else raise TypeError (NonUnifiable (pos, l, r, NONE))
+    and coercion env pos (Exists existential, Exists existential') =
+         equiSkolemize env pos (existential, existential') (fn (env, params, (body, body')) =>
+             ExistsCo (params, coercion env pos (body, body'))
+         )
+
+      | coercion env pos (ForAll universal, ForAll universal') =
+         equiSkolemize env pos (universal, universal') (fn (env, params, (body, body')) =>
+             ForAllCo (params, coercion env pos (body, body'))
+         )
+
+      | coercion env pos ( Arrow (arr, {domain, codomain})
+                         , Arrow (arr', {domain = domain', codomain = codomain'}) ) =
+         if not (arr = arr')
+         then raise Fail "arrows"
+         else ArrowCo (arr, { domain = coercion env pos (domain, domain')
+                            , codomain = coercion env pos (codomain, codomain') })
+
+      | coercion env pos (Record row, Record row') = RecordCo (coercion env pos (row, row'))
+
+      | coercion env pos (RowExt {base, field}, RowExt {base = base', field = field'}) =
+         raise Fail "unimplemented"
+
+      | coercion env pos (EmptyRow, EmptyRow) = Refl EmptyRow
+
+      | coercion env pos (Type t, Type t') = TypeCo (coercion env pos (t, t'))
+
+      | coercion env pos (App {callee, args}, App {callee = callee', args = args'}) =
+         Vector1.foldl (fn ((arg, arg'), calleeCoercion) =>
+                            CompCo (calleeCoercion, coercion env pos (arg, arg')))
+                       (coercion env pos (callee, callee'))
+                       (Vector1.zip (args, args')) (* FIXME: Arity errors *)
+
+      | coercion env pos (CallTFn (name, args), CallTFn (name', args')) =
+         (* FIXME: Arity errors: *)
+         CallTFnCo (name, Vector.zipWith (coercion env pos) (args, args'))
+
+      | coercion env pos (l as UseT {var, kind}, r as UseT {var = var', kind = kind'}) =
+         (* TODO: Go back to using `OVar` => this becomes `raise Fail "unreachable" *)
+         if not (var = var')
+         then raise TypeError (NonUnifiable (pos, l, r, NONE))
+         else if not (idInScope env var)
+              then raise TypeError (OutsideScope (pos, Name.fromString ("g__" ^ Id.toString var)))
+              else if not (kind = kind')
+                   then raise TypeError (InequalKinds (pos, kind, kind'))
+                   else Refl l
+
+      | coercion env pos (SVar (OVar ov), SVar (OVar ov')) = raise Fail "unimplemented"
+
+      | coercion env pos (SVar (UVar uv), r as SVar (UVar uv')) =
+         (case (Uv.get uv, Uv.get uv')
+          of (Right l, Right r) => coercion env pos (l, r)
+           | (Left uv, Right t) | (Right t, Left uv) =>
+              solution env pos (uv , t)
+           | (Left uv, Left uv') =>
+              ( uvMerge env (uv, uv')
+              ; Refl r ))
+
+      | coercion env pos ((SVar (UVar uv), t) | (t, SVar (UVar uv))) =
+         (case Uv.get uv
+          of Right t' => coercion env pos (t, t')
+           | Left uv => solution env pos (uv, t))
+
+      | coercion env pos (SVar (Path path), SVar (Path path')) =
+         raise Fail "unimplemented"
+
+      | coercion env pos ((SVar (Path path), t) | (t, SVar (Path path))) =
+         raise Fail "unimplemented"
+
+      | coercion env pos (l as Prim p, r as Prim p') =
+         if p = p'
+         then Refl r
+         else raise TypeError (NonUnifiable (pos, l, r, NONE))
+
+      | coercion env pos (l, r) = raise TypeError (NonUnifiable (pos, l, r, NONE))
 
     and solution env pos (uv, t) =
         ( if occurs env uv t
@@ -195,6 +227,8 @@ end = struct
         ; checkMonotypeKind env pos (Uv.kind uv) t
         ; uvSet env (uv, t)
         ; Refl t )
+
+(* # Subtyping *)
 
     (* Check that `typ` <: `superTyp` and return the coercer if any. *)
     and subType env currPos (typs as (sub, super)) =

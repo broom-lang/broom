@@ -32,8 +32,15 @@ signature FAST_TYPE = sig
     and 'sv co
         = Refl of 'sv concr
         | Symm of 'sv co
+        | CompCo of 'sv co * 'sv co
+        | CallTFnCo of Name.t * 'sv co vector
+        | ForAllCo of def vector1 * 'sv co
+        | ExistsCo of def vector1 * 'sv co
+        | ArrowCo of arrow * {domain: 'sv co, codomain: 'sv co}
         | InstCo of {callee: 'sv co, args: 'sv concr vector1}
         | UseCo of Name.t (* HACK *)
+        | RecordCo of 'sv co
+        | TypeCo of 'sv co
 
     withtype 'sv row = {base: 'sv concr, field: Name.t * 'sv concr}
 
@@ -108,8 +115,15 @@ structure FType :> FAST_TYPE = struct
     and 'sv co
         = Refl of 'sv concr
         | Symm of 'sv co
+        | CompCo of 'sv co * 'sv co
+        | CallTFnCo of Name.t * 'sv co vector
+        | ForAllCo of def vector1 * 'sv co
+        | ExistsCo of def vector1 * 'sv co
+        | ArrowCo of arrow * {domain: 'sv co, codomain: 'sv co}
         | InstCo of {callee: 'sv co, args: 'sv concr vector1}
         | UseCo of Name.t
+        | RecordCo of 'sv co
+        | TypeCo of 'sv co
 
     withtype 'sv row = {base: 'sv concr, field: Name.t * 'sv concr}
 
@@ -197,6 +211,7 @@ structure FType :> FAST_TYPE = struct
             coercionToDoc svarToDoc callee
                 <+> PPrint.punctuate1 space (Vector1.map (concrToDoc svarToDoc) args)
          | UseCo name => Name.toDoc name
+         | RecordCo rowCo => braces (coercionToDoc svarToDoc rowCo)
 
     fun mapConcrChildren f =
         fn Exists (params, body) => Exists (params, f body)
