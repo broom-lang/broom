@@ -114,21 +114,11 @@ end = struct
         end
 
 (* # Unification/Subtyping Generification Support *)
-(* TODO: Remove this premature abstraction *)
-
-    datatype 'direction intent
-        = Coerce of 'direction
-        | Unify
 
     datatype direction = Up | Down
 
-    val flip =
-        fn Up => Down
-         | Down => Up
-
-    val error =
-        fn Coerce _ => NonSubType
-         | Unify => NonUnifiable
+    fun flip Up = Down
+      | flip Down = Up
 
 (* # Effects *)
 
@@ -273,19 +263,19 @@ end = struct
            | _ => raise Fail "implicit parameter not of type `type`")
 
       | coercer env currPos (Arrow (Explicit eff, arr), Arrow (Explicit eff', arr')) =
-         arrowCoercion (Coerce ()) env currPos ((eff, arr), (eff', arr'))
+         arrowCoercion env currPos ((eff, arr), (eff', arr'))
 
       | coercer env currPos (sub as Record row, super as Record row') =
-         recordCoercion (Coerce ()) env currPos (sub, super) (row, row')
+         recordCoercion env currPos (sub, super) (row, row')
 
       | coercer env currPos (sub as RowExt _, super as RowExt _) =
-        ( rowCoercion (Coerce ()) env currPos (sub, super)
+        ( rowCoercion env currPos (sub, super)
         ; NONE ) (* No values of row type exist => coercer unnecessary *)
 
       | coercer env currPos (EmptyRow, EmptyRow) = NONE
 
       | coercer env currPos (sub as Prim p, super as Prim p') =
-         primCoercion (Coerce ()) currPos (p, p') (sub, super)
+         primCoercion currPos (p, p') (sub, super)
 
       | coercer env currPos (Type (Exists (params, t)), Type (sup as Exists (params', t'))) =
          (* FIXME: Use params *)
@@ -293,10 +283,10 @@ end = struct
          ; SOME (fn _ => FTerm.Type (currPos, sup)))
 
       | coercer env currPos (App {callee = SVar (Path path), args}, super) =
-         pathCoercion (Coerce ()) Up env currPos (path, Vector1.toVector args) super
+         pathCoercion Up env currPos (path, Vector1.toVector args) super
 
       | coercer env currPos (sub, App {callee = SVar (Path path), args}) =
-         pathCoercion (Coerce ()) Down env currPos (path, Vector1.toVector args) sub
+         pathCoercion Down env currPos (path, Vector1.toVector args) sub
 
       | coercer env currPos (App {callee, args}, App {callee = callee', args = args'}) =
          ( ignore (coercer env currPos (callee, callee'))
@@ -305,7 +295,7 @@ end = struct
          ; NONE )
 
       | coercer env currPos (sub as CallTFn call, super as CallTFn call') =
-         tFnAppCoercion (Coerce ()) env currPos (call, call') (sub, super)
+         tFnAppCoercion env currPos (call, call') (sub, super)
 
       | coercer env currPos (sub as UseT {var, ...}, super as UseT {var = var', ...}) =
          (* TODO: Go back to using `OVar` => this becomes `raise Fail "unreachable" *)
@@ -314,26 +304,26 @@ end = struct
               then NONE
               else raise TypeError (OutsideScope ( currPos
                                                  , Name.fromString ("g__" ^ Id.toString var) ))
-         else raise TypeError (error (Coerce ()) (currPos, sub, super, NONE))
+         else raise TypeError (NonSubType (currPos, sub, super, NONE))
 
       | coercer env currPos (SVar (UVar uv), super as SVar (UVar uv')) =
-         uvsCoercion (Coerce ()) env currPos super (uv, uv')
+         uvsCoercion env currPos super (uv, uv')
 
       | coercer env currPos (SVar (UVar uv), super) = uvCoercion env currPos Up uv super
 
       | coercer env currPos (sub, SVar (UVar uv)) = uvCoercion env currPos Down uv sub
 
       | coercer env currPos (SVar (Path path), super) =
-         pathCoercion (Coerce ()) Up env currPos (path, #[]) super
+         pathCoercion Up env currPos (path, #[]) super
 
       | coercer env currPos (sub, SVar (Path path)) =
-         pathCoercion (Coerce ()) Down env currPos (path, #[]) sub
+         pathCoercion Down env currPos (path, #[]) sub
 
       | coercer env currPos (sub, super) = raise TypeError (NonSubType (currPos, sub, super, NONE))
 
-    and arrowCoercion intent env currPos
+    and arrowCoercion env currPos
                       (arrows as ((eff, {domain, codomain}), (eff', {domain = domain', codomain = codomain'}))) =
-        let do eqOrSubEffect intent currPos (eff, eff')
+        let do subEffect currPos (eff, eff')
             val coerceDomain = coercer env currPos (domain', domain)
             val coerceCodomain = coercer env currPos (codomain, codomain')
         in if isSome coerceDomain orelse isSome coerceCodomain
@@ -341,21 +331,15 @@ end = struct
            else NONE
         end
 
-    and eqOrSubEffect intent currPos effs =
-        case intent
-        of Coerce () => (case effs
-                         of (Pure, Pure) => ()
-                          | (Pure, Impure) => ()
-                          | (Impure, Pure) => raise Fail "Impure is not a subtype of Pure"
-                          | (Impure, Impure) => ())
-         | Unify => if op= effs
-                    then ()
-                    else raise Fail "Nonequal effects"
+    and subEffect currPos effs =
+        case effs
+        of (Pure, Pure) => ()
+         | (Pure, Impure) => ()
+         | (Impure, Pure) => raise Fail "Impure is not a subtype of Pure"
+         | (Impure, Impure) => ()
 
-    and subEffect pos = eqOrSubEffect (Coerce ()) pos
-
-    and recordCoercion intent env currPos (t, t') (row, row') =
-        case rowCoercion intent env currPos (row, row')
+    and recordCoercion env currPos (t, t') (row, row') =
+        case rowCoercion env currPos (row, row')
         of [] => NONE
          | fieldCoercions =>
             SOME (fn expr =>
@@ -372,7 +356,7 @@ end = struct
                                                 tmpUse fieldCoercions )
                       end)
 
-    and rowCoercion intent env currPos (rows: concr * concr): field_coercer list =
+    and rowCoercion env currPos (rows: concr * concr): field_coercer list =
         let val rec subExts =
                 fn (row, row' as RowExt {base = base', field = (label, fieldt')}) =>
                     let val {base, fieldt} = reorderRow currPos label (FType.rowExtBase base') row
@@ -396,19 +380,19 @@ end = struct
          (* FIXME: `t` is actually row tail, not the type of `expr`. *)
          | t => raise TypeError (MissingField (currPos, t, label))
 
-    and primCoercion intent currPos (p, p') (sub, super) =
+    and primCoercion currPos (p, p') (sub, super) =
         if p = p'
         then NONE
-        else raise TypeError (error intent (currPos, sub, super, NONE))
+        else raise TypeError (NonSubType (currPos, sub, super, NONE))
 
-    and tFnAppCoercion intent env currPos ((callee, args), (callee', args')) (t, t') =
+    and tFnAppCoercion env currPos ((callee, args), (callee', args')) (t, t') =
         if callee = callee'
         then ( Vector.app (ignore o coercion env currPos) (Vector.zip (args, args'))
              ; Vector.app (ignore o coercion env currPos) (Vector.zip (args', args))
              ; NONE ) (* Since both callee and args have to unify, coercer is always no-op. *)
-        else raise TypeError (error intent (currPos, t, t', NONE))
+        else raise TypeError (NonSubType (currPos, t, t', NONE))
 
-    and pathCoercion intent y env currPos (path, args) t =
+    and pathCoercion y env currPos (path, args) t =
         case Path.get (Env.hasScope env) path
         of Left (face, NONE) => (* Impl not visible => <:/~ face: *)
             let val face =
@@ -462,7 +446,7 @@ end = struct
              | Down => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, Symm coercion))
         end
 
-    and uvsCoercion intent env currPos superTyp (uv, uv') =
+    and uvsCoercion env currPos superTyp (uv, uv') =
         case (Uv.get uv, Uv.get uv')
         of (Left uv, Left _) =>
             (uvSet env (uv, superTyp); NONE) (* Call `uvSet` directly to skip occurs check. *)
@@ -478,7 +462,7 @@ end = struct
              of Up => coercer env currPos (t', t)
               | Down => coercer env currPos (t, t'))
 
-(* # Unification Variable Assignment *)
+(* ## Unification Variable Sub/Super-solution *)
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
     and assign (env: Env.t) currPos (y: direction, uv: concr TypeVars.uv, t: concr): coercer =
