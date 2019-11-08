@@ -284,9 +284,6 @@ end = struct
 
       | coercer env currPos (EmptyRow, EmptyRow) = NONE
 
-      | coercer env currPos (sub as Prim p, super as Prim p') =
-         primCoercion currPos (p, p') (sub, super)
-
       | coercer env currPos (Type (Exists (params, t)), Type (sup as Exists (params', t'))) =
          (* FIXME: Use params *)
          ( coercion env currPos (t, t')
@@ -304,8 +301,12 @@ end = struct
                        (Vector1.zip (args, args'))
          ; NONE )
 
-      | coercer env currPos (sub as CallTFn call, super as CallTFn call') =
-         tFnAppCoercion env currPos (call, call') (sub, super)
+      | coercer env currPos (sub as CallTFn (callee, args), super as CallTFn (callee', args')) =
+         if callee = callee'
+         then ( Vector.app (ignore o coercion env currPos) (Vector.zip (args, args'))
+              ; Vector.app (ignore o coercion env currPos) (Vector.zip (args', args))
+              ; NONE ) (* Since both callee and args have to unify, coercer is always no-op. *)
+         else raise TypeError (NonSubType (currPos, sub, super, NONE))
 
       | coercer env currPos (sub as UseT {var, ...}, super as UseT {var = var', ...}) =
          (* TODO: Go back to using `OVar` => this becomes `raise Fail "unreachable" *)
@@ -328,6 +329,11 @@ end = struct
 
       | coercer env currPos (sub, SVar (Path path)) =
          pathCoercion Down env currPos (path, #[]) sub
+
+      | coercer env currPos (sub as Prim p, super as Prim p') =
+         if p = p'
+         then NONE
+         else raise TypeError (NonSubType (currPos, sub, super, NONE))
 
       | coercer env currPos (sub, super) = raise TypeError (NonSubType (currPos, sub, super, NONE))
 
@@ -379,18 +385,6 @@ end = struct
                  | rows => (coercer env currPos rows; [])
         in subExts rows
         end
-
-    and primCoercion currPos (p, p') (sub, super) =
-        if p = p'
-        then NONE
-        else raise TypeError (NonSubType (currPos, sub, super, NONE))
-
-    and tFnAppCoercion env currPos ((callee, args), (callee', args')) (t, t') =
-        if callee = callee'
-        then ( Vector.app (ignore o coercion env currPos) (Vector.zip (args, args'))
-             ; Vector.app (ignore o coercion env currPos) (Vector.zip (args', args))
-             ; NONE ) (* Since both callee and args have to unify, coercer is always no-op. *)
-        else raise TypeError (NonSubType (currPos, t, t', NONE))
 
     and pathCoercion y env currPos (path, args) t =
         case Path.get (Env.hasScope env) path
