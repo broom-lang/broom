@@ -93,6 +93,16 @@ end = struct
         in f (env, params'', (body, body'))
         end
 
+    fun reorderRow currPos label: concr -> {base: concr, fieldt: concr} =
+        fn RowExt {base, field = (label', fieldt')} =>
+            if label = label'
+            then {base, fieldt = fieldt'}
+            else let val {base, fieldt} = reorderRow currPos label base
+                 in {base = RowExt {base, field = (label', fieldt')}, fieldt}
+                 end
+         (* FIXME: `t` is actually row tail, not the type of `expr`. *)
+         | t => raise TypeError (MissingField (currPos, t, label))
+
 (* # Coercions *)
 (* TODO: Replace this premature optimization with shrinker pass. *)
 
@@ -359,7 +369,7 @@ end = struct
     and rowCoercion env currPos (rows: concr * concr): field_coercer list =
         let val rec subExts =
                 fn (row, row' as RowExt {base = base', field = (label, fieldt')}) =>
-                    let val {base, fieldt} = reorderRow currPos label (FType.rowExtBase base') row
+                    let val {base, fieldt} = reorderRow currPos label row
                         val coerceField = coercer env currPos (fieldt, fieldt')
                         val coerceExt = subExts (base, base')
                     in case coerceField
@@ -369,16 +379,6 @@ end = struct
                  | rows => (coercer env currPos rows; [])
         in subExts rows
         end
-
-    and reorderRow currPos label (tail: concr): concr -> {base: concr, fieldt: concr} =
-        fn RowExt {base, field = (label', fieldt')} =>
-            if label = label'
-            then {base, fieldt = fieldt'}
-            else let val {base, fieldt} = reorderRow currPos label tail base
-                 in {base = RowExt {base, field = (label', fieldt')}, fieldt}
-                 end
-         (* FIXME: `t` is actually row tail, not the type of `expr`. *)
-         | t => raise TypeError (MissingField (currPos, t, label))
 
     and primCoercion currPos (p, p') (sub, super) =
         if p = p'
