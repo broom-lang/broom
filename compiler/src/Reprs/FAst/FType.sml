@@ -40,6 +40,7 @@ signature FAST_TYPE = sig
         | InstCo of {callee: 'sv co, args: 'sv concr vector1}
         | UseCo of Name.t (* HACK *)
         | RecordCo of 'sv co
+        | RowExtCo of {base: 'sv co, field: Name.t * 'sv co}
         | TypeCo of 'sv co
 
     withtype 'sv row = {base: 'sv concr, field: Name.t * 'sv concr}
@@ -123,6 +124,7 @@ structure FType :> FAST_TYPE = struct
         | InstCo of {callee: 'sv co, args: 'sv concr vector1}
         | UseCo of Name.t
         | RecordCo of 'sv co
+        | RowExtCo of {base: 'sv co, field: Name.t * 'sv co}
         | TypeCo of 'sv co
 
     withtype 'sv row = {base: 'sv concr, field: Name.t * 'sv concr}

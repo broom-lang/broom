@@ -92,7 +92,7 @@ end = struct
             val body' = Concr.substitute (Env.hasScope env) mapping' body'
         in f (env, params'', (body, body'))
         end
-
+ 
     fun reorderRow pos label: concr -> {base: concr, fieldt: concr} =
         fn RowExt {base, field = (label', fieldt')} =>
             if label = label'
@@ -164,8 +164,13 @@ end = struct
 
       | coercion env pos (Record row, Record row') = RecordCo (coercion env pos (row, row'))
 
-      | coercion env pos (RowExt {base, field}, RowExt {base = base', field = field'}) =
-         raise Fail "unimplemented"
+      | coercion env pos (row as RowExt _, RowExt {base = base', field = (label', fieldt')}) =
+         let val {base, fieldt} = reorderRow pos label' row
+             val fieldCoercion = coercion env pos (fieldt, fieldt')
+             val baseCoercion = coercion env pos (base, base')
+         in RowExtCo { base = coercion env pos (base, base')
+                     , field = (label', coercion env pos (fieldt, fieldt')) }
+         end
 
       | coercion env pos (EmptyRow, EmptyRow) = Refl EmptyRow
 
