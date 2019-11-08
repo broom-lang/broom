@@ -32,6 +32,7 @@ signature FAST_TYPE = sig
     and 'sv co
         = Refl of 'sv concr
         | Symm of 'sv co
+        | Trans of 'sv co * 'sv co
         | CompCo of 'sv co * 'sv co
         | CallTFnCo of Name.t * 'sv co vector
         | ForAllCo of def vector1 * 'sv co
@@ -116,6 +117,7 @@ structure FType :> FAST_TYPE = struct
     and 'sv co
         = Refl of 'sv concr
         | Symm of 'sv co
+        | Trans of 'sv co * 'sv co
         | CompCo of 'sv co * 'sv co
         | CallTFnCo of Name.t * 'sv co vector
         | ForAllCo of def vector1 * 'sv co
