@@ -343,9 +343,13 @@ end = struct
       | coercer env pos (sub as Record row, super as Record row') =
          recordCoercion env pos (sub, super) (row, row')
 
-      | coercer env pos (sub as RowExt _, super as RowExt _) =
-        ( rowCoercion env pos (sub, super)
-        ; NONE ) (* No values of row type exist => coercer unnecessary *)
+      | coercer env pos (sub as RowExt _, super as RowExt {base = base', field = (label, fieldt')}) =
+         let val {base, fieldt} = reorderRow pos label sub
+             (* No values of row type exist => coercer unnecessary: *)
+             do ignore (coercer env pos (fieldt, fieldt'))
+             do ignore (coercer env pos (base, base'))
+         in NONE
+         end
 
       | coercer env pos (EmptyRow, EmptyRow) = NONE
 
@@ -430,7 +434,7 @@ end = struct
          | (Impure, Impure) => ()
 
     and recordCoercion env pos (t, t') (row, row') =
-        case rowCoercion env pos (row, row')
+        case recordRowCoercion env pos (row, row')
         of [] => NONE
          | fieldCoercions =>
             SOME (fn expr =>
@@ -447,7 +451,7 @@ end = struct
                                                 tmpUse fieldCoercions )
                       end)
 
-    and rowCoercion env pos (rows: concr * concr): field_coercer list =
+    and recordRowCoercion env pos (rows: concr * concr): field_coercer list =
         let val rec subExts =
                 fn (row, row' as RowExt {base = base', field = (label, fieldt')}) =>
                     let val {base, fieldt} = reorderRow pos label row
