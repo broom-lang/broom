@@ -308,7 +308,13 @@ end = struct
                                          , FTerm.Use (pos, def) )
                             end) )
 
-    and coercer env pos (sub, super as ForAll universal) =
+    and coercer env pos (sub as Exists existential, super) =
+         raise Fail "unimplemented"
+
+      | coercer env pos (sub, super as Exists existential) =
+         raise Fail "unimplemented"
+
+      | coercer env pos (sub, super as ForAll universal) =
          skolemize env universal (fn (env, params, body) =>
              Option.map (fn coerce => fn expr => FTerm.TFn (pos, params, coerce expr))
                         (coercer env pos (sub, body))
@@ -391,6 +397,9 @@ end = struct
               else raise TypeError (OutsideScope ( pos
                                                  , Name.fromString ("g__" ^ Id.toString var) ))
          else raise TypeError (NonSubType (pos, sub, super, NONE))
+
+      | coercer env pos (SVar (OVar ov), SVar (OVar ov')) =
+         raise Fail "unimplemented"
 
       | coercer env pos (SVar (UVar uv), super as SVar (UVar uv')) =
          uvsCoercion env pos super (uv, uv')
