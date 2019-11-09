@@ -388,7 +388,15 @@ end = struct
                 val axiomStmts =
                     Vector.zipWith (fn (FAst.Type.SVar (FType.Path path), name) =>
                                         let val face = Path.face path
-                                            val ((params, t), _) = Either.unwrap (Path.get (Env.hasScope env) path)
+                                            val params =
+                                                let fun kindParams params =
+                                                        fn FType.ArrowK {domain, codomain} =>
+                                                            kindParams ({var = FType.Id.fresh (), kind = domain} :: params)
+                                                                       codomain
+                                                         | _ => Vector.fromList (List.rev params)
+                                                in kindParams [] (Path.kind path)
+                                                end
+                                            val (t, _) = Either.unwrap (Path.get (Env.hasScope env) path)
                                         in  case Vector1.fromVector params
                                             of SOME params =>
                                                 let val args = Vector1.map (fn def => FType.UseT def) params

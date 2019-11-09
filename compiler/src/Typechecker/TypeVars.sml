@@ -37,11 +37,11 @@ structure TypeVars :> sig
         val new: kind * 't -> 't path
         val face: 't path -> 't
         val get: (ScopeId.t -> bool) (* Is the required coercion available? *)
-                 -> 't path -> ('t * Name.t option, (FType.def vector * 't) * Name.t) Either.t
+                 -> 't path -> ('t * Name.t option, 't * Name.t) Either.t
         val addScope: 't path * ScopeId.t * Name.t -> unit
         val set: ('t -> Name.t)
                  -> (ScopeId.t -> bool) (* Is the required coercion available? *)
-                 -> 't path * (FType.def vector * 't) -> unit
+                 -> 't path * 't -> unit
         val eq: 't path * 't path -> bool
         val kind : 't path -> kind
     end
@@ -157,7 +157,7 @@ end = struct
         fun name uv = #name (#meta (root uv))
     end
 
-    type 't impl = {typ: (FType.def vector * 't) option, coercion: Name.t option}
+    type 't impl = {typ: 't option, coercion: Name.t option}
 
     type 't path = {kind: kind, face: 't, impls: (ScopeId.t * 't impl) list ref}
 

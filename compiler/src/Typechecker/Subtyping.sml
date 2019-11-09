@@ -264,7 +264,7 @@ end = struct
 
     and pathCoercion env pos direction (path, args) t =
         case pathGet env path
-        of Right ((_, impl), coDef) => (* Read through: *)
+        of Right (impl, coDef) => (* Read through: *)
             let val face = applyType (Path.face path) args
                 val revealCo = instantiateCoercion (UseCo coDef) args
             in  case direction
@@ -278,8 +278,7 @@ end = struct
               else ()
             ; checkMonotypeKind env pos (Path.kind path) t
             ; let val revealCo = instantiateCoercion (UseCo coDef) args
-                  val params = Vector.map (fn UseT def => def) args
-                  do pathSet env (path, (params, t))
+                  do pathSet env (path, t)
               in  case direction
                   of Up => revealCo
                    | Down => Symm revealCo
@@ -470,7 +469,7 @@ end = struct
 
     and pathCoercer direction env pos (path, args) t =
         case pathGet env path
-        of Right ((_, impl), coDef) => (* Read through: *)
+        of Right (impl, coDef) => (* Read through: *)
             let val face = applyType (Path.face path) args
                 val revealCo = instantiateCoercion (UseCo coDef) args
             in  case direction
@@ -495,8 +494,7 @@ end = struct
               else ()
             ; checkMonotypeKind env pos (Path.kind path) t
             ; let val revealCo = instantiateCoercion (UseCo coDef) args
-                  val params = Vector.map (fn UseT def => def) args
-                  do pathSet env (path, (params, t))
+                  do pathSet env (path, t)
               in  case direction
                   of Up => SOME (fn expr => Cast (exprPos expr, t, expr, revealCo))
                    | Down => SOME (fn expr => Cast (exprPos expr, face, expr, Symm revealCo))

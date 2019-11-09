@@ -33,7 +33,7 @@ end = struct
                               of Right t => concrToF t
                                | Left _ => Prim (FFType.Prim.Unit))
          | SVar (Path path) => (case TypeVars.Path.get (Fn.constantly false) path
-                                of Right ((_, t), _) => concrToF t
+                                of Right (t, _) => concrToF t
                                  | Left (t, _) => concrToF t)
 
     and coercionToF: FlexFAst.Type.co -> FFType.co =
