@@ -26,6 +26,8 @@ end = struct
     datatype co' = datatype FAst.Type.co'
     type co = FType.co
     structure FTerm = FAst.Term
+    val Cast = FTerm.Cast
+    val exprPos = FTerm.exprPos
     structure Env = TypecheckingEnv
     structure Scope = Env.Scope
     structure Bindings = Env.Bindings
@@ -352,6 +354,13 @@ end = struct
          ( coercion env pos (t, t')
          ; SOME (fn _ => FTerm.Type (pos, sup)))
 
+      | coercer env pos ( App {callee = SVar (Path path), args}
+                        , App {callee = SVar (Path path'), args = args'} ) =
+         (case (pathGet env path, pathGet env path')
+          of (Left (face, SOME coDef), Left (face', SOME coDef')) =>
+              raise Fail "unimplemented" (* Uhh, `Path`:s can't be merged. *)
+           | _ => raise Fail "unimplemented")
+
       | coercer env pos (App {callee = SVar (Path path), args}, super) =
          pathCoercer Up env pos (path, Vector1.toVector args) super
 
@@ -386,6 +395,9 @@ end = struct
       | coercer env pos (SVar (UVar uv), super) = uvCoercion env pos Up uv super
 
       | coercer env pos (sub, SVar (UVar uv)) = uvCoercion env pos Down uv sub
+
+      | coercer env pos (SVar (Path path), SVar (Path path')) =
+         raise Fail "unimplemented"
 
       | coercer env pos (SVar (Path path), super) =
          pathCoercer Up env pos (path, #[]) super
@@ -449,61 +461,46 @@ end = struct
         in subExts rows
         end
 
-    and pathCoercer y env pos (path, args) t =
+    and pathCoercer direction env pos (path, args) t =
         case pathGet env path
-        of Left (face, NONE) => (* Impl not visible => <:/~ face: *)
-            let val face =
-                    case Vector1.fromVector args
-                    of SOME args => App {callee = face, args}
-                     | NONE => face
-                val co = coercion env pos (case y
-                                           of Up => (face , t)
-                                            | Down => (t, face))
-            in  case Vector1.fromVector args
-                of SOME args =>
-                    SOME (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, InstCo {callee = co, args}))
-                 | NONE =>
-                    SOME (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, co))
+        of Right ((_, impl), coDef) => (* Read through: *)
+            let val face = applyType (Path.face path) args
+                val revealCo = instantiateCoercion (UseCo coDef) args
+            in  case direction
+                of Up =>
+                    let fun reveal expr = Cast (exprPos expr, impl, expr, revealCo)
+                    in  case coercer env pos (impl, t)
+                        of SOME fromImpl => SOME (fromImpl o reveal)
+                         | NONE => SOME reveal
+                    end
+                 | Down =>
+                    let fun hide expr = Cast (exprPos expr, face, expr, Symm revealCo)
+                    in  case coercer env pos (t, impl)
+                        of SOME toImpl => SOME (hide o toImpl)
+                         | NONE => SOME hide
+                    end
             end
 
-         | Left (face, SOME coercionDef) => (* Impl visible and unset => define: *)
-            (* FIXME: enforce predicativity: *)
-            if Concr.pathOccurs path t
-            then raise TypeError (Occurs (pos, face, t))
-            else let val params = Vector.map (fn UseT def => def) args
-                     val resT = case y
-                                of Up => t
-                                 | Down => (case Vector1.fromVector args
-                                            of SOME args => FType.App {callee = face, args}
-                                             | NONE => face)
-                 in pathSet env (path, (params, t))
-                  ; SOME (makePathCoercion y resT coercionDef args)
-                 end
+         | Left (face, SOME coDef) => (* Define: *)
+            (* TODO: Replace `checkMonotypeKind` + `pathSet` with some `assign` style thing: *)
+            ( if pathOccurs path t
+              then raise TypeError (Occurs (pos, face, t))
+              else ()
+            ; checkMonotypeKind env pos (Path.kind path) t
+            ; let val revealCo = instantiateCoercion (UseCo coDef) args
+                  val params = Vector.map (fn UseT def => def) args
+                  do pathSet env (path, (params, t))
+              in  case direction
+                  of Up => SOME (fn expr => Cast (exprPos expr, t, expr, revealCo))
+                   | Down => SOME (fn expr => Cast (exprPos expr, face, expr, Symm revealCo))
+              end )
 
-         | Right ((_, typ), coercionDef) => (* Impl visible and set => <:/~ impl and wrap/unwrap: *)
-            let val resT = case y
-                           of Up => t
-                            | Down => (case Vector1.fromVector args
-                                       of SOME args  => FType.App {callee = Path.face path, args}
-                                        | NONE => Path.face path)
-                val coerceToImpl = coercer env pos (case y
-                                                    of Up => (typ, t)
-                                                     | Down => (t, typ))
-                val coerceToPath = makePathCoercion y resT coercionDef args
-            in  case coerceToImpl
-                of SOME coerceToImpl => SOME (coerceToPath o coerceToImpl)
-                 | NONE => SOME coerceToPath
+         | Left (face, NONE) => (* Superficial: *)
+            let val face = applyType face args
+            in  case direction
+                of Up => coercer env pos (face, t)
+                 | Down => coercer env pos (t, face)
             end
-
-    and makePathCoercion y t coercionDef args =
-        let val coercion =
-                case Vector1.fromVector args
-                of SOME args => InstCo {callee = UseCo coercionDef, args}
-                 | NONE => UseCo coercionDef
-        in  case y
-            of Up => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, coercion))
-             | Down => (fn expr => FTerm.Cast (FTerm.exprPos expr, t, expr, Symm coercion))
-        end
 
     and uvsCoercion env pos superTyp (uv, uv') =
         case (Uv.get uv, Uv.get uv')
