@@ -349,10 +349,10 @@ end = struct
 
       | coercer env pos (EmptyRow, EmptyRow) = NONE
 
-      | coercer env pos (Type (Exists (params, t)), Type (sup as Exists (params', t'))) =
-         (* FIXME: Use params *)
-         ( coercion env pos (t, t')
-         ; SOME (fn _ => FTerm.Type (pos, sup)))
+      | coercer env pos (Type sub, Type super) =
+         ( coercer env pos (sub, super)
+         ; coercer env pos (super, sub)
+         ; SOME (fn _ => FTerm.Type (pos, super)) )
 
       | coercer env pos ( App {callee = SVar (Path path), args}
                         , App {callee = SVar (Path path'), args = args'} ) =
