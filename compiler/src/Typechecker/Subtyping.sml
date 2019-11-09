@@ -36,6 +36,10 @@ end = struct
 
 (* # Utils *)
 
+    val rec kindCodomain =
+      fn FType.ArrowK {codomain, ...} => kindCodomain codomain
+       | kind => kind
+
     fun idInScope env id = isSome (Env.findType env id)
 
     fun uvSet env = Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env)
@@ -276,7 +280,7 @@ end = struct
             ( if pathOccurs path t
               then raise TypeError (Occurs (pos, face, t))
               else ()
-            ; checkMonotypeKind env pos (Path.kind path) t
+            ; checkMonotypeKind env pos (kindCodomain (Path.kind path)) t
             ; let val revealCo = instantiateCoercion (UseCo coDef) args
                   do pathSet env (path, t)
               in  case direction
@@ -501,7 +505,7 @@ end = struct
             ( if pathOccurs path t
               then raise TypeError (Occurs (pos, face, t))
               else ()
-            ; checkMonotypeKind env pos (Path.kind path) t
+            ; checkMonotypeKind env pos (kindCodomain (Path.kind path)) t
             ; let val revealCo = instantiateCoercion (UseCo coDef) args
                   do pathSet env (path, t)
               in  case direction
