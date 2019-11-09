@@ -22,13 +22,14 @@ structure FlexFAst = struct
         and svarToDoc =
             fn Path path =>
                 (case TypeVars.Path.get (Fn.constantly false) path
-                 of Either.Right (t, _) => concrToDoc t
-                  | Either.Left (t, _) => text "^^" <> PPrint.parens (concrToDoc t))
+                 of Either.Right (uv, _) => uvToDoc uv
+                  | Either.Left t => text "^^" <> PPrint.parens (concrToDoc t))
              | OVar ov => Name.toDoc (TypeVars.Ov.name ov)
-             | UVar uv =>
-                (case TypeVars.Uv.get uv
-                 of Either.Right t => concrToDoc t
-                  | Either.Left uv => text "^" <> Name.toDoc (TypeVars.Uv.name uv))
+             | UVar uv => uvToDoc uv
+        and uvToDoc = fn uv =>
+            case TypeVars.Uv.get uv
+            of Either.Right t => concrToDoc t
+             | Either.Left uv => text "^" <> Name.toDoc (TypeVars.Uv.name uv)
 
         structure Concr = struct
             open Concr
@@ -42,12 +43,14 @@ structure FlexFAst = struct
             and svarOccurs hasScope uv =
                 fn Path path =>
                     (case TypeVars.Path.get hasScope path
-                     of Either.Left (t, _) => occurs hasScope uv t
-                      | Either.Right (t, _) => occurs hasScope uv t)
+                     of Either.Left t => occurs hasScope uv t
+                      | Either.Right (uv', _) => uvOccurs hasScope uv uv')
                  | OVar _ => false
-                 | UVar uv' => (case TypeVars.Uv.get uv'
-                                of Either.Left uv' => TypeVars.Uv.eq (uv, uv')
-                                 | Either.Right t => occurs hasScope uv t)
+                 | UVar uv' => uvOccurs hasScope uv uv'
+            and uvOccurs hasScope uv uv' =
+                case TypeVars.Uv.get uv'
+                of Either.Left uv' => TypeVars.Uv.eq (uv, uv')
+                 | Either.Right t => occurs hasScope uv t
 
             fun pathOccurs path = FType.Concr.occurs pathSvarOccurs path
             and pathSvarOccurs path =
@@ -62,11 +65,13 @@ structure FlexFAst = struct
                 fn Path path =>
                     (case TypeVars.Path.get hasScope path
                      of Either.Left _ => NONE (* path faces are always CallTFn:s with OVar args *)
-                      | Either.Right (t, _) => SOME (substitute hasScope kv t))
+                      | Either.Right (uv, _) => uvSubstitute hasScope kv uv)
                  | OVar _ => NONE
-                 | UVar uv => (case TypeVars.Uv.get uv
-                               of Either.Left _ => NONE
-                                | Either.Right t => SOME (substitute hasScope kv t))
+                 | UVar uv => uvSubstitute hasScope kv uv
+            and uvSubstitute hasScope kv uv =
+                case TypeVars.Uv.get uv
+                of Either.Left _ => NONE
+                 | Either.Right t => SOME (substitute hasScope kv t)
 
             val tryToUv =
                 fn SVar (UVar uv) => SOME uv

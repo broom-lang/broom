@@ -396,15 +396,15 @@ end = struct
                                                          | _ => Vector.fromList (List.rev params)
                                                 in kindParams [] (Path.kind path)
                                                 end
-                                            val (t, _) = Either.unwrap (Path.get (Env.hasScope env) path)
+                                            val (impl, _) = Either.unwrap (Path.get (Env.hasScope env) path)
                                         in  case Vector1.fromVector params
                                             of SOME params =>
                                                 let val args = Vector1.map (fn def => FType.UseT def) params
                                                 in FTerm.Axiom ( pos, name
                                                                , FType.ForAll (params, FType.App {callee = face, args})
-                                                               , FType.ForAll (params, t) )
+                                                               , FType.ForAll (params, SVar (FType.UVar impl)) )
                                                 end
-                                             | NONE => FTerm.Axiom (pos, name, face, t)
+                                             | NONE => FTerm.Axiom (pos, name, face, SVar (FType.UVar impl))
                                         end)    
                                    (paths, coercionNames)
             in ( eff

@@ -37,16 +37,17 @@ structure TypeVars :> sig
         val new: kind * 't -> 't path
         val face: 't path -> 't
         val get: (ScopeId.t -> bool) (* Is the required coercion available? *)
-                 -> 't path -> ('t * Name.t option, 't * Name.t) Either.t
+                 -> 't path -> ('t, 't uv * Name.t) Either.t
         val addScope: 't path * ScopeId.t * Name.t -> unit
-        val set: ('t -> Name.t)
-                 -> (ScopeId.t -> bool) (* Is the required coercion available? *)
-                 -> 't path * 't -> unit
         val eq: 't path * 't path -> bool
         val kind : 't path -> kind
     end
 end = struct
     type kind = FType.kind
+
+    val rec kindCodomain =
+      fn FType.ArrowK {codomain, ...} => kindCodomain codomain
+       | kind => kind
 
     exception SetPrivate of Name.t
     exception Reset
@@ -157,7 +158,7 @@ end = struct
         fun name uv = #name (#meta (root uv))
     end
 
-    type 't impl = {typ: 't option, coercion: Name.t option}
+    type 't impl = {typ: 't uv, coercion: Name.t}
 
     type 't path = {kind: kind, face: 't, impls: (ScopeId.t * 't impl) list ref}
 
@@ -168,24 +169,11 @@ end = struct
 
         fun get inScope ({kind = _, face, impls}: 't path) =
             case List.find (inScope o #1) (!impls)
-            of SOME (_, {typ = SOME t, coercion}) => Either.Right (t, valOf coercion)
-             | SOME (_, {typ = NONE, coercion}) => Either.Left (face, coercion)
-             | NONE => Either.Left (face, NONE)
+            of SOME (_, {typ = uv, coercion}) => Either.Right (uv, coercion)
+             | NONE => Either.Left face
 
-        fun addScope ({kind = _, face, impls}: 't path, scope, coercion) =
-            impls := (scope, {typ = NONE, coercion = SOME coercion}) :: !impls
-
-        fun set faceName inScope ({kind = _, face, impls}: 't path, t) =
-            let val rec loop =
-                    fn (scope, impl as {typ, coercion}) :: impls =>
-                        if inScope scope
-                        then case typ
-                             of SOME _ => raise Reset
-                              | NONE => (scope, {typ = SOME t, coercion}) :: impls
-                        else (scope, impl) :: loop impls
-                     | [] => raise SetPrivate (faceName face)
-            in impls := loop (!impls)
-            end
+        fun addScope ({kind, face, impls}: 't path, scope, coercion) =
+            impls := (scope, {typ = Uv.fresh (scope, kindCodomain kind), coercion}) :: !impls
 
         fun eq ({impls, ...}: 't path, {impls = impls', ...}: 't path) =
             impls = impls'

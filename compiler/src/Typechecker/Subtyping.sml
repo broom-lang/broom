@@ -36,21 +36,12 @@ end = struct
 
 (* # Utils *)
 
-    val rec kindCodomain =
-      fn FType.ArrowK {codomain, ...} => kindCodomain codomain
-       | kind => kind
-
     fun idInScope env id = isSome (Env.findType env id)
 
     fun uvSet env = Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env)
     fun uvMerge env = Uv.merge Scope.Id.compare (Env.hasScope env)
 
     fun pathGet env = Path.get (Env.hasScope env)
-
-    (* FIXME: Check kinds and smallness/monotype *)
-    fun pathSet env =
-        Path.set (Name.fromString o Concr.toString) (* HACK *)
-                 (Env.hasScope env)
 
     fun occurs env = Concr.occurs (Env.hasScope env)
 
@@ -197,10 +188,7 @@ end = struct
 
       | coercion env pos ( App {callee = SVar (Path path), args}
                          , App {callee = SVar (Path path'), args = args'} ) =
-         (case (pathGet env path, pathGet env path')
-          of (Left (face, SOME coDef), Left (face', SOME coDef')) =>
-              raise Fail "unimplemented" (* Uhh, `Path`:s can't be merged. *)
-           | _ => raise Fail "unimplemented")
+         pathsCoercion env pos ((path, Vector1.toVector args), (path', Vector1.toVector args')) 
 
       | coercion env pos (App {callee = SVar (Path path), args}, t) =
          pathCoercion env pos Up (path, Vector1.toVector args) t
@@ -245,7 +233,7 @@ end = struct
            | Left uv => solution env pos (uv, t))
 
       | coercion env pos (SVar (Path path), SVar (Path path')) =
-         raise Fail "unimplemented"
+         pathsCoercion env pos ((path, #[]), (path', #[]))
 
       | coercion env pos (SVar (Path path), t) = pathCoercion env pos Up (path, #[]) t
 
@@ -266,34 +254,35 @@ end = struct
         ; uvSet env (uv, t)
         ; Refl t )
 
+    and pathsCoercion env pos ((path, args), (path', args')) =
+        case (pathGet env path, pathGet env path')
+        of (Right (impl, coDef), Right (impl', coDef')) =>
+            raise Fail "unimplemented"
+         | (Right _, Left face') =>
+            pathCoercion env pos Up (path, args) (applyType face' args')
+         | (Left face, Right _) =>
+            pathCoercion env pos Down (path', args') (applyType face args)
+         | (Left face, Left face') =>
+            let val face = applyType face args
+                val face' = applyType face' args'
+            in coercion env pos (face, face')
+            end
+
     and pathCoercion env pos direction (path, args) t =
         case pathGet env path
-        of Right (impl, coDef) => (* Read through: *)
+        of Right (impl, coDef) =>
             let val face = applyType (Path.face path) args
                 val revealCo = instantiateCoercion (UseCo coDef) args
             in  case direction
-                of Up => Trans (revealCo, coercion env pos (impl, t))
-                 | Down => Trans (coercion env pos (t, impl), Symm revealCo)
+                of Up => Trans (revealCo, coercion env pos (SVar (UVar impl), t))
+                 | Down => Trans (coercion env pos (SVar (UVar impl), t), Symm revealCo)
             end
-
-         | Left (face, SOME coDef) => (* Define: *)
-            ( if pathOccurs path t
-              then raise TypeError (Occurs (pos, face, t))
-              else ()
-            ; checkMonotypeKind env pos (kindCodomain (Path.kind path)) t
-            ; let val revealCo = instantiateCoercion (UseCo coDef) args
-                  do pathSet env (path, t)
-              in  case direction
-                  of Up => revealCo
-                   | Down => Symm revealCo
-              end )
-
-         | Left (face, NONE) => (* Superficial: *)
+            
+         | Left face =>
             let val face = applyType face args
-                val co = case direction
-                         of Up => coercion env pos (face, t)
-                          | Down => coercion env pos (t, face)
-            in  instantiateCoercion co args
+            in  case direction
+                of Up => coercion env pos (face, t)
+                 | Down => coercion env pos (t, face)
             end
 
 (* # Subtyping *)
@@ -369,16 +358,13 @@ end = struct
 
       | coercer env pos ( App {callee = SVar (Path path), args}
                         , App {callee = SVar (Path path'), args = args'} ) =
-         (case (pathGet env path, pathGet env path')
-          of (Left (face, SOME coDef), Left (face', SOME coDef')) =>
-              raise Fail "unimplemented" (* Uhh, `Path`:s can't be merged. *)
-           | _ => raise Fail "unimplemented")
+         pathsCoercer env pos ((path, Vector1.toVector args), (path', Vector1.toVector args'))
 
       | coercer env pos (App {callee = SVar (Path path), args}, super) =
-         pathCoercer Up env pos (path, Vector1.toVector args) super
+         pathCoercer env pos Up (path, Vector1.toVector args) super
 
       | coercer env pos (sub, App {callee = SVar (Path path), args}) =
-         pathCoercer Down env pos (path, Vector1.toVector args) sub
+         pathCoercer env pos Down (path, Vector1.toVector args) sub
 
       | coercer env pos (App {callee, args}, App {callee = callee', args = args'}) =
          ( ignore (coercer env pos (callee, callee'))
@@ -413,13 +399,13 @@ end = struct
       | coercer env pos (sub, SVar (UVar uv)) = uvCoercion env pos Down uv sub
 
       | coercer env pos (SVar (Path path), SVar (Path path')) =
-         raise Fail "unimplemented"
+         pathsCoercer env pos ((path, #[]), (path', #[]))
 
       | coercer env pos (SVar (Path path), super) =
-         pathCoercer Up env pos (path, #[]) super
+         pathCoercer env pos Up (path, #[]) super
 
       | coercer env pos (sub, SVar (Path path)) =
-         pathCoercer Down env pos (path, #[]) sub
+         pathCoercer env pos Down (path, #[]) sub
 
       | coercer env pos (sub as Prim p, super as Prim p') =
          if p = p'
@@ -476,44 +462,45 @@ end = struct
                 SOME (fn expr =>
                           FTerm.Let ( pos
                                     , valOf (Vector1.fromVector #[FTerm.Val (pos, tmpDef, expr)])
-                                    , coerce expr ))
+                                    , coerce tmpUse ))
              | NONE => NONE
         end
 
-    and pathCoercer direction env pos (path, args) t =
+    and pathsCoercer env pos ((path, args), (path', args')) =
+        case (pathGet env path, pathGet env path')
+        of (Right (impl, coDef), Right (impl', coDef')) =>
+            raise Fail "unimplemented"
+         | (Right _, Left face') =>
+            pathCoercer env pos Up (path, args) (applyType face' args')
+         | (Left face, Right _) =>
+            pathCoercer env pos Down (path', args') (applyType face args)
+         | (Left face, Left face') =>
+            let val face = applyType face args
+                val face' = applyType face' args'
+            in coercer env pos (face, face')
+            end
+
+    and pathCoercer env pos direction (path, args) t =
         case pathGet env path
-        of Right (impl, coDef) => (* Read through: *)
+        of Right (impl, coDef) =>
             let val face = applyType (Path.face path) args
                 val revealCo = instantiateCoercion (UseCo coDef) args
             in  case direction
                 of Up =>
-                    let fun reveal expr = Cast (exprPos expr, impl, expr, revealCo)
-                    in  case coercer env pos (impl, t)
+                    let fun reveal expr = Cast (exprPos expr, SVar (UVar impl), expr, revealCo)
+                    in  case coercer env pos (SVar (UVar impl), t)
                         of SOME fromImpl => SOME (fromImpl o reveal)
                          | NONE => SOME reveal
                     end
                  | Down =>
                     let fun hide expr = Cast (exprPos expr, face, expr, Symm revealCo)
-                    in  case coercer env pos (t, impl)
+                    in  case coercer env pos (t, SVar (UVar impl))
                         of SOME toImpl => SOME (hide o toImpl)
                          | NONE => SOME hide
                     end
             end
 
-         | Left (face, SOME coDef) => (* Define: *)
-            (* TODO: Replace `checkMonotypeKind` + `pathSet` with some `assign` style thing: *)
-            ( if pathOccurs path t
-              then raise TypeError (Occurs (pos, face, t))
-              else ()
-            ; checkMonotypeKind env pos (kindCodomain (Path.kind path)) t
-            ; let val revealCo = instantiateCoercion (UseCo coDef) args
-                  do pathSet env (path, t)
-              in  case direction
-                  of Up => SOME (fn expr => Cast (exprPos expr, t, expr, revealCo))
-                   | Down => SOME (fn expr => Cast (exprPos expr, face, expr, Symm revealCo))
-              end )
-
-         | Left (face, NONE) => (* Superficial: *)
+         | Left face =>
             let val face = applyType face args
             in  case direction
                 of Up => coercer env pos (face, t)
