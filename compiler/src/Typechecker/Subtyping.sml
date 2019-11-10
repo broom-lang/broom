@@ -224,8 +224,14 @@ end = struct
            | (Left uv, Right t) | (Right t, Left uv) =>
               solution env pos (uv , t)
            | (Left uv, Left uv') =>
-              ( uvMerge env (uv, uv')
-              ; Refl r ))
+              let val kind = Uv.kind uv
+                  val kind' = Uv.kind uv'
+              in if not (kind = kind')
+                 then raise TypeError (InequalKinds (pos, kind, kind'))
+                 else ()
+               ; uvMerge env (uv, uv')
+               ; Refl r
+              end)
 
       | coercion env pos ((SVar (UVar uv), t) | (t, SVar (UVar uv))) =
          (case Uv.get uv
@@ -391,12 +397,30 @@ end = struct
       | coercer env pos (SVar (OVar ov), SVar (OVar ov')) =
          raise Fail "unimplemented"
 
-      | coercer env pos (SVar (UVar uv), super as SVar (UVar uv')) =
-         uvsCoercion env pos super (uv, uv')
+      | coercer env pos (SVar (UVar uv), SVar (UVar uv')) =
+         (case (Uv.get uv, Uv.get uv')
+          of (Right t, Right t') => coercer env pos (t, t')
+           | (Left uv, Right t) => assign env pos (Up, uv, t)
+           | (Right t, Left uv) => assign env pos (Down, uv, t)
+           | (Left uv, Left uv') =>
+              let val kind = Uv.kind uv
+                  val kind' = Uv.kind uv'
+              in if not (kind = kind')
+                 then raise TypeError (InequalKinds (pos, kind, kind'))
+                 else ()
+               ; uvMerge env (uv, uv')
+               ; NONE
+              end)
 
-      | coercer env pos (SVar (UVar uv), super) = uvCoercion env pos Up uv super
+      | coercer env pos (SVar (UVar uv), super) =
+         (case Uv.get uv
+          of Left uv => assign env pos (Up, uv, super)
+           | Right sub => coercer env pos (sub, super))
 
-      | coercer env pos (sub, SVar (UVar uv)) = uvCoercion env pos Down uv sub
+      | coercer env pos (sub, SVar (UVar uv)) =
+         (case Uv.get uv
+          of Left uv => assign env pos (Down, uv, sub)
+           | Right super => coercer env pos (sub, super))
 
       | coercer env pos (SVar (Path path), SVar (Path path')) =
          pathsCoercer env pos ((path, #[]), (path', #[]))
@@ -506,22 +530,6 @@ end = struct
                 of Up => coercer env pos (face, t)
                  | Down => coercer env pos (t, face)
             end
-
-    and uvsCoercion env pos superTyp (uv, uv') =
-        case (Uv.get uv, Uv.get uv')
-        of (Left uv, Left _) =>
-            (uvSet env (uv, superTyp); NONE) (* Call `uvSet` directly to skip occurs check. *)
-         | (Left uv, Right t) => assign env pos (Up, uv, t)
-         | (Right t, Left uv) => assign env pos (Down, uv, t)
-         | (Right t, Right t') => coercer env pos (t, t')
-
-    and uvCoercion env pos direction uv t =
-        case Uv.get uv
-        of Left uv => assign env pos (direction, uv, t)
-         | Right t' =>
-            (case direction
-             of Up => coercer env pos (t', t)
-              | Down => coercer env pos (t, t'))
 
 (* ## Unification Variable Sub/Super-solution *)
 
