@@ -506,12 +506,21 @@ end = struct
                 coerce (applyImplicit domains expr, codomain)
 
               | coerce (expr, FType.Record row) =
-                let fun coerceRow expr =
+                let val rec fieldType =
                         fn FType.RowExt ({base, field = (label', fieldt)}) =>
                             if label' = label
-                            then (expr, fieldt)
-                            else coerceRow expr base
-                in coerceRow expr row
+                            then fieldt
+                            else fieldType base
+                         | FType.SVar (FType.UVar uv) =>
+                            let val base = FType.SVar (FType.UVar (Uv.freshSibling (uv, FType.RowK)))
+                                val fieldt = FType.SVar (FType.UVar (Uv.freshSibling (uv, FType.TypeK)))
+                                do uvSet env (uv, FType.Record (FType.RowExt ({base, field = (label, fieldt)})))
+                            in fieldt
+                            end
+                         | _ =>
+                            ( Env.error env (UnDottable (expr, typ))
+                            ; FType.SVar (FType.UVar (Env.freshUv env FType.TypeK)) )
+                in (expr, fieldType row)
                 end
 
               | coerce (expr, FType.SVar (FType.UVar uv)) =
@@ -519,15 +528,15 @@ end = struct
                  of Right typ => coerce (expr, typ)
                   | Left uv =>
                      let val base = FType.SVar (FType.UVar (Uv.freshSibling (uv, FType.RowK)))
-                         val fieldType = FType.SVar (FType.UVar (Uv.freshSibling (uv, FType.TypeK)))
-                         do uvSet env (uv, FType.Record (FType.RowExt ({base, field = (label, fieldType)})))
-                     in (expr, fieldType)
+                         val fieldt = FType.SVar (FType.UVar (Uv.freshSibling (uv, FType.TypeK)))
+                         do uvSet env (uv, FType.Record (FType.RowExt ({base, field = (label, fieldt)})))
+                     in (expr, fieldt)
                      end)
 
               | coerce (callee, FType.SVar (FType.Path path)) =
                  raise Fail "unimplemented"
 
-              | coerce (expr, _) =
+              | coerce (expr, typ) =
                 ( Env.error env (UnDottable (expr, typ))
                 ; (expr, FType.SVar (FType.UVar (Env.freshUv env FType.TypeK))) )
         in coerce (expr, typ)
