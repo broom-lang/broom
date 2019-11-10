@@ -208,8 +208,10 @@ exprRowEdit
     | "where" exprFields => (Term.Where (Vector.fromList exprFields))
     ;
 
-exprBaseFields : fields=(ID "=" expr "," exprFields => ((ID, expr) :: exprFields)) => (
-        Vector.fromList fields
+exprBaseFields : ID "=" expr tail=("," exprFields)? => (
+        case tail
+        of SOME tail => Vector.fromList ((ID, expr) :: tail)
+         | NONE => #[(ID, expr)]
     );
 
 exprFields : fields=(field=exprField fields=("," exprField)* => (field :: fields))? => (
