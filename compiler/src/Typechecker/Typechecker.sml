@@ -339,7 +339,7 @@ end = struct
 
     and instantiateExistential env (params: FType.def vector, body): concr * concr vector = 
         let val paths = Vector.map (fn {var, kind} =>
-                                        let val face = CallTFn (Env.freshAbstract env var kind)
+                                        let val face = CallTFn (Env.freshAbstract env kind)
                                         in FAst.Type.SVar (Path (Path.new (kind, face)))
                                         end)
                                    params
@@ -559,7 +559,7 @@ end = struct
 
     and resolveTypeArg env eff {var, kind = kind as CallsiteK} =
         (case eff
-         of Impure => CallTFn (Env.freshAbstract env (FType.Id.fresh ()) kind)
+         of Impure => CallTFn (Env.freshAbstract env kind)
           | Pure => CallTFn (Env.pureCallsite env))
 
       | resolveTypeArg env _ {var, kind} =

@@ -33,7 +33,7 @@ signature FAST_TERM = sig
 
     withtype clause = {pattern: pat, body: expr}
 
-    type program = { typeFns: (Name.t * Type.kind) vector
+    type program = { typeFns: Type.def vector
                    , stmts: stmt vector
                    , sourcemap: Pos.sourcemap }
    
@@ -118,7 +118,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | Use (pos, _) => pos
          | Const (pos, _) => pos
 
-    type program = { typeFns: (Name.t * Type.kind) vector
+    type program = { typeFns: Type.def vector
                    , stmts: stmt vector
                    , sourcemap: Pos.sourcemap }
 
@@ -215,8 +215,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         fn Def (pos, _) => pos
          | ConstP (pos, _) => pos
 
-    fun typeFnToDoc (name, kind) =
-        text "type" <+> Name.toDoc name <> text ":" <> Type.kindToDoc kind
+    fun typeFnToDoc def = text "type" <+> Type.defToDoc def
 
     fun axiomToDoc (name, l, r) =
         text "axiom" <+> Name.toDoc name <> text ":"

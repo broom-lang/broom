@@ -208,7 +208,7 @@ end = struct
                     else calleeKind
             in checkArgKind 0 (monotypeKind env pos callee)
             end
-         | CallTFn name => Env.findTypeFn env name
+         | CallTFn {kind, ...} => kind
          | SVar (UVar uv) => Uv.kind uv
          | SVar (OVar ov) => raise Fail "unimplemented"
          | SVar (Path path) => Path.kind path

@@ -22,7 +22,7 @@ signature FAST_TYPE = sig
         | EmptyRow
         | Type of 'sv concr
         | App of {callee: 'sv concr, args: 'sv concr vector1}
-        | CallTFn of Name.t
+        | CallTFn of def
         | UseT of def
         | SVar of 'sv
         | Prim of Prim.t
@@ -32,7 +32,7 @@ signature FAST_TYPE = sig
         | Symm of 'sv co
         | Trans of 'sv co * 'sv co
         | CompCo of 'sv co * 'sv co
-        | CallTFnCo of Name.t
+        | CallTFnCo of def
         | ForAllCo of def vector1 * 'sv co
         | ExistsCo of def vector1 * 'sv co
         | ArrowCo of arrow * {domain: 'sv co, codomain: 'sv co}
@@ -61,7 +61,7 @@ signature FAST_TYPE = sig
         val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv concr -> bool
         val substitute: ('sv concr Id.SortedMap.map -> 'sv -> 'sv concr option)
                         -> 'sv concr Id.SortedMap.map -> 'sv concr -> 'sv concr
-        val kindOf: ('sv -> kind) -> (Name.t -> kind) -> 'sv concr -> kind
+        val kindOf: ('sv -> kind) -> 'sv concr -> kind
     end
 
     structure Co: sig
@@ -106,7 +106,7 @@ structure FType :> FAST_TYPE = struct
         | EmptyRow
         | Type of 'sv concr
         | App of {callee: 'sv concr, args: 'sv concr vector1}
-        | CallTFn of Name.t
+        | CallTFn of def
         | UseT of def
         | SVar of 'sv
         | Prim of Prim.t
@@ -116,7 +116,7 @@ structure FType :> FAST_TYPE = struct
         | Symm of 'sv co
         | Trans of 'sv co * 'sv co
         | CompCo of 'sv co * 'sv co
-        | CallTFnCo of Name.t
+        | CallTFnCo of def
         | ForAllCo of def vector1 * 'sv co
         | ExistsCo of def vector1 * 'sv co
         | ArrowCo of arrow * {domain: 'sv co, codomain: 'sv co}
@@ -178,7 +178,7 @@ structure FType :> FAST_TYPE = struct
                  | Type t => brackets (text "=" <+> concrToDoc t)
                  | App {callee, args} =>
                     concrToDoc callee <+> PPrint.punctuate1 PPrint.space (Vector1.map concrToDoc args)
-                 | CallTFn f => Name.toDoc f <> parens (PPrint.empty)
+                 | CallTFn {var, kind = _} => text (Id.toString var) <> parens (PPrint.empty)
                  | SVar sv => svarToDoc sv
                  | UseT {var, kind = _} => idToDoc var
                  | Prim p => Prim.toDoc p
@@ -319,10 +319,10 @@ structure FType :> FAST_TYPE = struct
             in rewrite row
             end
 
-        fun kindOf svarKind (typeFnKind: Name.t -> kind) =
+        fun kindOf svarKind =
             fn t as (ForAll _ | Arrow _ | Record _ | Type _ | Prim _)  => TypeK
              | t as (RowExt _ | EmptyRow) => RowK
-             | CallTFn name => typeFnKind name
+             | CallTFn {kind, ...} => kind
              | UseT {kind, ...} => kind
              | SVar args => svarKind args
     end

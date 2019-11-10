@@ -113,7 +113,7 @@ structure FixedFAst = struct
 
             val toDoc = toDoc svarToDoc
             val substitute = fn hasScope => substitute (fn _ => fn _ => NONE)
-            val kindOf: (Name.t -> kind) -> concr -> kind = kindOf (fn _ => raise Fail "unreachable")
+            val kindOf: concr -> kind = kindOf (fn _ => raise Fail "unreachable")
             val toString = concrToString
         end
 

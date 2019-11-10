@@ -6,6 +6,7 @@ end = struct
     structure Id = FType.Id
     structure FFType = FAst.Type
     structure Concr = FFType.Concr
+    val kindOf = Concr.kindOf
     structure FFTerm = FAst.Term
     val op|> = Fn.|>
 
@@ -15,11 +16,9 @@ end = struct
         val empty: Pos.sourcemap -> t
         val insert: t * Name.t * FFType.concr -> t
         val insertType: t * Id.t * (Id.t * FFType.kind) -> t
-        val insertTypeFn: t * Name.t * FFType.kind -> t
 
         val find: t * Name.t -> FFType.concr option
         val findType: t * Id.t -> (Id.t * FFType.kind) option
-        val findTypeFn: t * Name.t -> FFType.kind option
         val insertCo: t * Name.t * FFType.concr * FFType.concr -> t
         val findCo: t * Name.t -> (FFType.concr * FFType.concr) option
 
@@ -27,27 +26,23 @@ end = struct
     end = struct
         type t = { vals: FFType.concr NameSortedMap.map
                  , types: (Id.t * FFType.kind) Id.SortedMap.map
-                 , typeFns: FFType.kind NameSortedMap.map
                  , coercions: (FFType.concr * FFType.concr) NameSortedMap.map
                  , sourcemap: Pos.sourcemap }
 
         fun empty sourcemap =
             { vals = NameSortedMap.empty, types = Id.SortedMap.empty
-            , typeFns = NameSortedMap.empty, coercions = NameSortedMap.empty
+            , coercions = NameSortedMap.empty
             , sourcemap }
 
-        fun insert ({vals, types, typeFns, coercions, sourcemap}, name, t) =
-            {vals = NameSortedMap.insert (vals, name, t), types, typeFns, coercions, sourcemap}
-        fun insertType ({vals, types, typeFns, coercions, sourcemap}, id, entry) =
-            {vals, types = Id.SortedMap.insert (types, id, entry), typeFns, coercions, sourcemap}
-        fun insertTypeFn ({vals, types, typeFns, coercions, sourcemap}, name, tfkind) =
-            {vals, types, typeFns = NameSortedMap.insert (typeFns, name, tfkind), coercions, sourcemap}
-        fun insertCo ({vals, types, typeFns, coercions, sourcemap}, name, l, r) =
-            {vals, types, typeFns, coercions = NameSortedMap.insert (coercions, name, (l, r)), sourcemap}
+        fun insert ({vals, types, coercions, sourcemap}, name, t) =
+            {vals = NameSortedMap.insert (vals, name, t), types, coercions, sourcemap}
+        fun insertType ({vals, types, coercions, sourcemap}, id, entry) =
+            {vals, types = Id.SortedMap.insert (types, id, entry), coercions, sourcemap}
+        fun insertCo ({vals, types, coercions, sourcemap}, name, l, r) =
+            {vals, types, coercions = NameSortedMap.insert (coercions, name, (l, r)), sourcemap}
 
         fun find ({vals, ...}: t, name) = NameSortedMap.find (vals, name)
         fun findType ({types, ...}: t, id) = Id.SortedMap.find (types, id)
-        fun findTypeFn ({typeFns, ...}: t, id) = NameSortedMap.find (typeFns, id)
         fun findCo ({coercions, ...}: t, name) = NameSortedMap.find (coercions, name)
 
         val sourcemap: t -> Pos.sourcemap = #sourcemap
@@ -87,14 +82,6 @@ end = struct
             then RowExt {base, field = field'}
             else RowExt {base = rowWhere base field', field}
          | _ => raise Fail ("Tried to override missing field " ^ Name.toString label')
-
-    fun kindOf env =
-        let fun findTypeFnExn name =
-                case Env.findTypeFn (env, name)
-                of SOME tfkind => tfkind
-                 | NONE => raise Fail ("Unbound type function " ^ Name.toString name)
-        in FFType.Concr.kindOf findTypeFnExn
-        end
 
     val rec kindEq =
         fn (ArrowK _, ArrowK _) => raise Fail "unimplemented"
@@ -174,7 +161,7 @@ end = struct
              of (ForAll (defs, l), ForAll (defs', r)) =>
                  ( Vector1.zip3With (fn ({kind, ...}, {kind = kind', ...}, arg) =>
                                          ( checkKindEq (kind, kind')
-                                         ; checkKindEq (kindOf env arg, kind) ))
+                                         ; checkKindEq (kindOf arg, kind) ))
                                     (defs, defs', args)
                  ; let val mapping = (defs, args)
                                    |> Vector1.zipWith (Pair.first #var)
@@ -248,7 +235,7 @@ end = struct
             let do if Vector1.length args = Vector1.length params then () else raise Fail "argument count"
                 val pargs = Vector1.zip (params, args)
                 
-                fun checkArg ({var = _, kind}, arg) = checkKindEq (kindOf env arg, kind)
+                fun checkArg ({var = _, kind}, arg) = checkKindEq (kindOf arg, kind)
                 do Vector1.app checkArg pargs
 
                 val mapping = Vector1.foldl (fn (({var, ...}, arg), mapping) =>
@@ -318,13 +305,11 @@ end = struct
          | Axiom _ => () (* TODO: Some checks here (see F_c paper) *)
          | Expr expr => ignore (check env expr)
 
-    fun typecheckProgram {typeFns, stmts, sourcemap} =
-        let val env = Vector.foldl (fn ((name, kindSig), env) => Env.insertTypeFn (env, name, kindSig))
-                                   (Env.empty sourcemap) typeFns
-            val env =
+    fun typecheckProgram {typeFns = _, stmts, sourcemap} =
+        let val env =
                 case Vector1.fromVector stmts
-                of SOME stmts => pushStmts env stmts
-                 | NONE => env
+                of SOME stmts => pushStmts (Env.empty sourcemap) stmts
+                 | NONE => Env.empty sourcemap
         in Vector.app (checkStmt env) stmts (* TODO: Use `typeFns` *)
          ; NONE
         end

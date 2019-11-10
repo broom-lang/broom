@@ -47,7 +47,7 @@ signature TYPECHECKING_ENV = sig
         structure Id: ID where type t = FlexFAst.ScopeId.t
 
         type toplevel = { typeFns: Bindings.TypeFn.bindings
-                        , pureCallsite: Name.t
+                        , pureCallsite: FlexFAst.Type.def
                         , vals: Bindings.Expr.bindings }
 
         datatype t = TopScope of Id.t * toplevel
@@ -76,10 +76,9 @@ signature TYPECHECKING_ENV = sig
     val newUv: t -> Name.t * kind -> FlexFAst.Type.uv
     val freshUv: t -> kind -> FlexFAst.Type.uv
 
-    val pureCallsite: t -> Name.t
-    val freshAbstract: t -> FlexFAst.Type.Id.t -> kind -> Name.t
-    val findTypeFn : t -> Name.t -> kind
-    val typeFns: t -> (Name.t * kind) vector
+    val pureCallsite: t -> FlexFAst.Type.def
+    val freshAbstract: t -> kind -> FlexFAst.Type.def
+    val typeFns: t -> FlexFAst.Type.def vector
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
@@ -107,16 +106,16 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
 
     structure Bindings = struct
         structure TypeFn = struct
-            type bindings = kind NameHashTable.hash_table
+            type bindings = FAst.Type.def list ref
 
-            fun new () = NameHashTable.mkTable (0, Subscript)
-            val insert = NameHashTable.insert
-            fun freshAbstract typeFns id kind =
-                let val name = "g__" ^ FAst.Type.Id.toString id |> Name.fromString |> Name.freshen
-                in insert typeFns (name, kind)
-                 ; name
+            fun new () = ref []
+            fun insert typeFns f = typeFns := f :: !typeFns
+            fun freshAbstract typeFns kind =
+                let val def = {var = FAst.Type.Id.fresh (), kind}
+                in insert typeFns def
+                 ; def
                 end
-            val toVector = Vector.fromList o NameHashTable.listItemsi
+            val toVector = Vector.fromList o op!
         end
 
         structure Type = struct
@@ -174,20 +173,20 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
         structure Id = FAst.ScopeId
 
         type toplevel = { typeFns: Bindings.TypeFn.bindings
-                        , pureCallsite: Name.t
+                        , pureCallsite: FAst.Type.def
                         , vals: Bindings.Expr.bindings }
 
         fun initialToplevel () =
             let val typeFns = Bindings.TypeFn.new ()
             in { typeFns
-               , pureCallsite = Bindings.TypeFn.freshAbstract typeFns (FAst.Type.Id.fresh ()) FAst.Type.CallsiteK
+               , pureCallsite = Bindings.TypeFn.freshAbstract typeFns FAst.Type.CallsiteK
                , vals = Bindings.Expr.Builder.new () |> Bindings.Expr.Builder.build }
             end
 
         fun pureCallsite ({pureCallsite, ...}: toplevel) = pureCallsite
 
-        fun freshAbstract ({typeFns, ...}: toplevel) id kind =
-            Bindings.TypeFn.freshAbstract typeFns id kind
+        fun freshAbstract ({typeFns, ...}: toplevel) kind =
+            Bindings.TypeFn.freshAbstract typeFns kind
 
         fun typeFns ({typeFns, ...}: toplevel) = Bindings.TypeFn.toVector typeFns
 
@@ -274,13 +273,8 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
 
     fun pureCallsite ({toplevel, ...}: t) = Scope.pureCallsite toplevel
 
-    fun freshAbstract ({toplevel, ...}: t) id kindSig =
-        Scope.freshAbstract toplevel id kindSig
-
-    fun findTypeFn ({toplevel, ...}: t) name =
-        Scope.typeFns toplevel
-        |> Vector.find (fn (name', _) => name' = name)
-        |> valOf |> #2
+    fun freshAbstract ({toplevel, ...}: t) kindSig =
+        Scope.freshAbstract toplevel kindSig
 
     fun typeFns ({toplevel, ...}: t) = Scope.typeFns toplevel
 
