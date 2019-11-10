@@ -6,6 +6,7 @@ signature PRIM_TYPE = sig
 end
 
 structure PrimType :> PRIM_TYPE = struct
+    (* TODO: Replace `Unit` with empty record and remove from here: *)
     datatype t = Unit | Bool | I32
     
     val toString = fn Unit => "Unit"

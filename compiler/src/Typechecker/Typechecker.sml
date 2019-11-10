@@ -490,8 +490,8 @@ end = struct
                  | FType.SVar (FType.UVar uv) =>
                     (case Uv.get uv
                      of Left uv =>
-                         let val domainUv = TypeVars.Uv.freshSibling uv
-                             val codomainUv = TypeVars.Uv.freshSibling uv
+                         let val domainUv = TypeVars.Uv.freshSibling (uv, FType.TypeK)
+                             val codomainUv = TypeVars.Uv.freshSibling (uv, FType.TypeK)
                              val eff = Impure
                              val arrow = { domain = FType.SVar (FType.UVar domainUv)
                                          , codomain = FType.SVar (FType.UVar codomainUv) }

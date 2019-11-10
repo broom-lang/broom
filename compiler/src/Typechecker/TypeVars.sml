@@ -17,7 +17,7 @@ structure TypeVars :> sig
     structure Uv: sig
         val new: ScopeId.t * Name.t * kind -> 't uv
         val fresh: ScopeId.t * kind -> 't uv
-        val freshSibling: 't uv -> 't uv
+        val freshSibling: 't uv * kind -> 't uv
         val get: 't uv -> ('t uv, 't) Either.t
         val merge : (ScopeId.t * ScopeId.t -> order) (* scope ordering to preserve scoping invariants *)
             -> (ScopeId.t -> bool) (* Is the required scope available? *)
@@ -90,10 +90,7 @@ end = struct
             of Root root => root
              | Link _ => raise Fail "unreachable"
 
-        fun freshSibling uv =
-            let val meta = #meta (root uv)
-            in fresh (#scope meta, #kind meta)
-            end
+        fun freshSibling (uv, kind) = fresh (#scope (#meta (root uv)), kind)
 
         fun get uv =
             let val uv = find uv

@@ -22,6 +22,7 @@ end = struct
     val pathOccurs = Concr.pathOccurs
     datatype concr' = datatype FAst.Type.concr'
     type concr = FType.concr
+    datatype kind = datatype FType.kind
     datatype sv = datatype FType.sv
     datatype co' = datatype FAst.Type.co'
     type co = FType.co
@@ -566,8 +567,8 @@ end = struct
          raise Fail "unimplemented"
 
       | doAssign env pos direction uv (Arrow (Explicit eff, arrow as {domain, codomain})) =
-         let val domainUv = Uv.freshSibling uv
-             val codomainUv = Uv.freshSibling uv
+         let val domainUv = Uv.freshSibling (uv, TypeK)
+             val codomainUv = Uv.freshSibling (uv, TypeK)
              val arrow' = { domain = SVar (UVar domainUv)
                           , codomain = SVar (UVar codomainUv)}
              val t' = Arrow (Explicit eff, arrow')
@@ -583,12 +584,52 @@ end = struct
             else NONE
          end
 
-      | doAssign env pos direction uv (t as (Record _)) =
-         raise Fail "unimplemented"
+      | doAssign env pos direction uv (Record row) =
+         let val rowUv = Uv.freshSibling (uv, RowK)
+             val uvRow = SVar (UVar rowUv)
+             do ignore (uvSet env (uv, Record uvRow))
+             val tmpDef = {pos, id = DefId.fresh (), var = Name.fresh (), typ = SVar (UVar uv)}
+             val tmpUse = FTerm.Use (pos, tmpDef)
+
+             val rec recCoercer =
+                 fn (uvRow, row' as RowExt {base = base', field = (label, fieldt')}, uv) =>
+                     let val baseUv = Uv.freshSibling (uv, RowK)
+                         val fieldUv = Uv.freshSibling (uv, TypeK)
+                         val base = SVar (UVar baseUv)
+                         val fieldt = SVar (UVar fieldUv)
+                         val row = RowExt {base, field = (label, fieldt)}
+                         do ignore (uvSet env (uv, row))
+                         val row' = RowExt {base, field = (label, fieldt')}
+                         val t' = Record row'
+
+                     in  case doAssign env pos direction fieldUv fieldt'
+                         of SOME coerceField =>
+                             let val fieldExpr = coerceField (FTerm.Field (pos, fieldt, tmpUse, label))
+                                 val nextCoerce = recCoercer (row, base', baseUv)
+                             in  SOME (fn expr =>
+                                           let val expr =
+                                                   FTerm.Where (pos, t', { base = expr
+                                                                         , field = (label, fieldExpr) })
+                                           in applyCoercion nextCoerce expr
+                                           end)
+                             end
+                          | NONE => recCoercer (row, base', baseUv)
+                     end
+                  | (_, row', baseUv) => (* FIXME: What about WildRow?!: *)
+                     ( doAssign env pos direction baseUv row'
+                     ; NONE )
+         in  case recCoercer (uvRow, row, rowUv)
+             of SOME coerce =>
+                 SOME (fn expr =>
+                           FTerm.Let ( pos
+                                     , valOf (Vector1.fromVector #[FTerm.Val (pos, tmpDef, expr)])
+                                     , coerce tmpUse ))
+              | NONE => NONE
+         end
 
       | doAssign env pos direction uv (row as (RowExt {base, field = (label, fieldt)})) =
-         let val baseUv = Uv.freshSibling uv
-             val fieldUv = Uv.freshSibling uv
+         let val baseUv = Uv.freshSibling (uv, RowK)
+             val fieldUv = Uv.freshSibling (uv, TypeK)
              val row' = RowExt { base = SVar (UVar baseUv)
                                , field = (label, SVar (UVar fieldUv)) }
              do ignore (uvSet env (uv, row'))

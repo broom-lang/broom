@@ -29,14 +29,9 @@ end = struct
          | FFType.Type typ => FFType.Type (concrToF typ)
          | UseT def => UseT def
          | Prim p => Prim p
-         | SVar (UVar uv) => (case TypeVars.Uv.get uv
-                              of Right t => concrToF t
-                               | Left _ => Prim (FFType.Prim.Unit))
+         | SVar (UVar uv) => uvToF uv
          | SVar (Path path) => (case TypeVars.Path.get (Fn.constantly false) path
-                                of Right (uv, _) =>
-                                    (case TypeVars.Uv.get uv
-                                     of Right t => concrToF t
-                                      | Left _ => Prim (FFType.Prim.Unit))
+                                of Right (uv, _) => uvToF uv
                                  | Left t => concrToF t)
 
     and coercionToF: FlexFAst.Type.co -> FFType.co =
@@ -45,6 +40,11 @@ end = struct
          | InstCo {callee, args} =>
             InstCo {callee = coercionToF callee, args = Vector1.map concrToF args}
          | UseCo name => UseCo name
+
+    and uvToF = fn uv =>
+        case TypeVars.Uv.get uv
+        of Right t => concrToF t
+         | Left uv => FType.kindDefault (TypeVars.Uv.kind uv)
 
     fun axiomToF (name, l, r) = (name, concrToF l, concrToF r)
 

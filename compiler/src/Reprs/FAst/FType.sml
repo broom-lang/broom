@@ -48,6 +48,7 @@ signature FAST_TYPE = sig
 
     val kindToDoc: kind -> PPrint.t
     val kindToString: kind -> string
+    val kindDefault: kind -> 'sv concr
     val defToDoc: def -> PPrint.t
     val arrowDoc: arrow -> PPrint.t
     val piEffect: 'sv concr -> effect option
@@ -144,6 +145,10 @@ structure FType :> FAST_TYPE = struct
          | CallsiteK => text "Callsite"
 
     val kindToString = PPrint.pretty 80 o kindToDoc
+
+    val kindDefault =
+        fn TypeK => Prim Prim.Unit
+         | RowK => EmptyRow
 
     fun idToDoc id = text ("g__" ^ Id.toString id)
 
