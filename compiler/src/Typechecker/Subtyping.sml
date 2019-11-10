@@ -203,9 +203,10 @@ end = struct
                        (coercion env pos (callee, callee'))
                        (Vector1.zip (args, args')) (* FIXME: Arity errors *)
 
-      | coercion env pos (CallTFn (name, args), CallTFn (name', args')) =
-         (* FIXME: Arity errors: *)
-         CallTFnCo (name, Vector.zipWith (coercion env pos) (args, args'))
+      | coercion env pos (l as CallTFn name, r as CallTFn name') =
+         if not (name = name')
+         then raise TypeError (NonUnifiable (pos, l, r, NONE))
+         else CallTFnCo name
 
       | coercion env pos (l as UseT {var, kind}, r as UseT {var = var', kind = kind'}) =
          (* TODO: Go back to using `OVar` => this becomes `raise Fail "unreachable" *)
@@ -419,12 +420,10 @@ end = struct
                        (Vector1.zip (args, args'))
          ; NONE )
 
-      | coercer env pos (sub as CallTFn (callee, args), super as CallTFn (callee', args')) =
-         if callee = callee'
-         then ( Vector.app (ignore o coercion env pos) (Vector.zip (args, args'))
-              ; Vector.app (ignore o coercion env pos) (Vector.zip (args', args))
-              ; NONE ) (* Since both callee and args have to unify, coercer is always no-op. *)
-         else raise TypeError (NonSubType (pos, sub, super, NONE))
+      | coercer env pos (sub as CallTFn callee, super as CallTFn callee') =
+         if not (callee = callee')
+         then raise TypeError (NonSubType (pos, sub, super, NONE))
+         else NONE
 
       | coercer env pos (sub as UseT {var, ...}, super as UseT {var = var', ...}) =
          (* TODO: Go back to using `OVar` => this becomes `raise Fail "unreachable" *)

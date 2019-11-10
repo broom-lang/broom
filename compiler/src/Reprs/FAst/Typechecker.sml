@@ -15,11 +15,11 @@ end = struct
         val empty: Pos.sourcemap -> t
         val insert: t * Name.t * FFType.concr -> t
         val insertType: t * Id.t * (Id.t * FFType.kind) -> t
-        val insertTypeFn: t * Name.t * FFType.tfn_sig -> t
+        val insertTypeFn: t * Name.t * FFType.kind -> t
 
         val find: t * Name.t -> FFType.concr option
         val findType: t * Id.t -> (Id.t * FFType.kind) option
-        val findTypeFn: t * Name.t -> FFType.tfn_sig option
+        val findTypeFn: t * Name.t -> FFType.kind option
         val insertCo: t * Name.t * FFType.concr * FFType.concr -> t
         val findCo: t * Name.t -> (FFType.concr * FFType.concr) option
 
@@ -27,7 +27,7 @@ end = struct
     end = struct
         type t = { vals: FFType.concr NameSortedMap.map
                  , types: (Id.t * FFType.kind) Id.SortedMap.map
-                 , typeFns: FFType.tfn_sig NameSortedMap.map
+                 , typeFns: FFType.kind NameSortedMap.map
                  , coercions: (FFType.concr * FFType.concr) NameSortedMap.map
                  , sourcemap: Pos.sourcemap }
 
@@ -150,9 +150,7 @@ end = struct
          | (FType.App {callee, args}, FType.App {callee = callee', args = args'}) =>
             eq env (callee, callee')
             andalso Vector1.all (eq env) (Vector1.zip (args, args'))
-         | (CallTFn (callee, args), CallTFn (callee', args')) =>
-            callee = callee'
-            andalso Vector.all (eq env) (Vector.zip (args, args'))
+         | (CallTFn callee, CallTFn callee') => callee = callee'
          | (UseT {var, ...}, UseT {var = var', ...}) =>
             (case Env.findType (env, var)
              of SOME (id, _) => (case Env.findType (env, var')

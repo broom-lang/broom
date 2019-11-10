@@ -13,8 +13,6 @@ signature FAST_TYPE = sig
 
     type def = {var: Id.t, kind: kind}
 
-    type tfn_sig = {paramKinds: kind vector, kind: kind}
-
     datatype 'sv concr
         = Exists of def vector1 * 'sv concr
         | ForAll of def vector1 * 'sv concr
@@ -24,7 +22,7 @@ signature FAST_TYPE = sig
         | EmptyRow
         | Type of 'sv concr
         | App of {callee: 'sv concr, args: 'sv concr vector1}
-        | CallTFn of Name.t * 'sv concr vector
+        | CallTFn of Name.t
         | UseT of def
         | SVar of 'sv
         | Prim of Prim.t
@@ -34,7 +32,7 @@ signature FAST_TYPE = sig
         | Symm of 'sv co
         | Trans of 'sv co * 'sv co
         | CompCo of 'sv co * 'sv co
-        | CallTFnCo of Name.t * 'sv co vector
+        | CallTFnCo of Name.t
         | ForAllCo of def vector1 * 'sv co
         | ExistsCo of def vector1 * 'sv co
         | ArrowCo of arrow * {domain: 'sv co, codomain: 'sv co}
@@ -63,7 +61,7 @@ signature FAST_TYPE = sig
         val occurs: ('uv -> 'sv -> bool) -> 'uv -> 'sv concr -> bool
         val substitute: ('sv concr Id.SortedMap.map -> 'sv -> 'sv concr option)
                         -> 'sv concr Id.SortedMap.map -> 'sv concr -> 'sv concr
-        val kindOf: ('sv -> kind) -> (Name.t -> tfn_sig) -> 'sv concr -> kind
+        val kindOf: ('sv -> kind) -> (Name.t -> kind) -> 'sv concr -> kind
     end
 
     structure Co: sig
@@ -99,8 +97,6 @@ structure FType :> FAST_TYPE = struct
 
     type def = {var: Id.t, kind: kind}
 
-    type tfn_sig = {paramKinds: kind vector, kind: kind}
-
     datatype 'sv concr
         = Exists of def vector1 * 'sv concr
         | ForAll of def vector1 * 'sv concr
@@ -110,7 +106,7 @@ structure FType :> FAST_TYPE = struct
         | EmptyRow
         | Type of 'sv concr
         | App of {callee: 'sv concr, args: 'sv concr vector1}
-        | CallTFn of Name.t * 'sv concr vector
+        | CallTFn of Name.t
         | UseT of def
         | SVar of 'sv
         | Prim of Prim.t
@@ -120,7 +116,7 @@ structure FType :> FAST_TYPE = struct
         | Symm of 'sv co
         | Trans of 'sv co * 'sv co
         | CompCo of 'sv co * 'sv co
-        | CallTFnCo of Name.t * 'sv co vector
+        | CallTFnCo of Name.t
         | ForAllCo of def vector1 * 'sv co
         | ExistsCo of def vector1 * 'sv co
         | ArrowCo of arrow * {domain: 'sv co, codomain: 'sv co}
@@ -182,8 +178,7 @@ structure FType :> FAST_TYPE = struct
                  | Type t => brackets (text "=" <+> concrToDoc t)
                  | App {callee, args} =>
                     concrToDoc callee <+> PPrint.punctuate1 PPrint.space (Vector1.map concrToDoc args)
-                 | CallTFn (f, args) =>
-                    Name.toDoc f <> parens (PPrint.punctuate (comma <> space) (Vector.map concrToDoc args))
+                 | CallTFn f => Name.toDoc f <> parens (PPrint.empty)
                  | SVar sv => svarToDoc sv
                  | UseT {var, kind = _} => idToDoc var
                  | Prim p => Prim.toDoc p
@@ -231,8 +226,7 @@ structure FType :> FAST_TYPE = struct
          | RowExt ({base, field = (label, fieldt)}) =>
             RowExt ({base = f base, field = (label, f fieldt)})
          | App {callee, args} => App {callee = f callee, args = Vector1.map f args}
-         | CallTFn (name, args) => CallTFn (name, Vector.map f args)
-         | t as (EmptyRow | Type _ | SVar _ | UseT _ | Prim _) => t
+         | t as (EmptyRow | Type _ | CallTFn _ | SVar _ | UseT _ | Prim _) => t
 
     fun concrCata (alg as {exists, forAll, arrow, record, rowExt, emptyRow, typ, svar, app, callTFn, uset, prim}) =
         fn Exists (params, body) => exists (params, concrCata alg body)
@@ -247,7 +241,7 @@ structure FType :> FAST_TYPE = struct
          | SVar args => svar args
          | App {callee, args} =>
             app {callee = concrCata alg callee, args = Vector1.map (concrCata alg) args}
-         | CallTFn (name, args) => callTFn (name, Vector.map (concrCata alg) args)
+         | CallTFn args => callTFn args
          | UseT args => uset args
          | Prim args => prim args
 
@@ -261,7 +255,7 @@ structure FType :> FAST_TYPE = struct
                                            , svar = fn sv' => svarOcc sv sv'
                                            , app = fn {callee, args} =>
                                               callee orelse Vector1.exists Fn.identity args
-                                           , callTFn = fn (_, args) => Vector.exists Fn.identity args
+                                           , callTFn = Fn.constantly false
                                            , uset = Fn.constantly false
                                            , prim = Fn.constantly false }
 
@@ -293,8 +287,7 @@ structure FType :> FAST_TYPE = struct
          | EmptyRow => true
          | Type t => smallConcr t
          | App {callee, args} => smallConcr callee andalso Vector1.all smallConcr args
-         | CallTFn (_, args) => Vector.all smallConcr args
-         | SVar _ | UseT _ | Prim _ => true
+         | CallTFn _ | SVar _ | UseT _ | Prim _ => true
 
     val rec piEffect =
         fn ForAll (_, body) => piEffect body
@@ -326,10 +319,10 @@ structure FType :> FAST_TYPE = struct
             in rewrite row
             end
 
-        fun kindOf svarKind (typeFnKind: Name.t -> tfn_sig) =
+        fun kindOf svarKind (typeFnKind: Name.t -> kind) =
             fn t as (ForAll _ | Arrow _ | Record _ | Type _ | Prim _)  => TypeK
              | t as (RowExt _ | EmptyRow) => RowK
-             | CallTFn ( callee, #[]) => #kind (typeFnKind callee)
+             | CallTFn name => typeFnKind name
              | UseT {kind, ...} => kind
              | SVar args => svarKind args
     end
@@ -346,7 +339,6 @@ signature CLOSED_FAST_TYPE = sig
 
     datatype kind = datatype FType.kind
     type def = FType.def
-    type tfn_sig = FType.tfn_sig
 
     datatype effect = datatype FType.effect
     type arrow = FType.arrow

@@ -77,9 +77,9 @@ signature TYPECHECKING_ENV = sig
     val freshUv: t -> kind -> FlexFAst.Type.uv
 
     val pureCallsite: t -> Name.t
-    val freshAbstract: t -> FlexFAst.Type.Id.t -> FlexFAst.Type.tfn_sig -> Name.t
-    val findTypeFn : t -> Name.t -> FlexFAst.Type.tfn_sig
-    val typeFns: t -> (Name.t * FlexFAst.Type.tfn_sig) vector
+    val freshAbstract: t -> FlexFAst.Type.Id.t -> kind -> Name.t
+    val findTypeFn : t -> Name.t -> kind
+    val typeFns: t -> (Name.t * kind) vector
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
@@ -99,7 +99,6 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
     type input_expr = Cst.Term.expr
     type output_type = FAst.Type.concr
     type kind = FlexFAst.Type.kind
-    type tfn_sig = FAst.Type.tfn_sig
     type abs_ctx = output_type vector 
     type effect = FlexFAst.Type.effect
     type output_expr = FAst.Term.expr
@@ -108,13 +107,13 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
 
     structure Bindings = struct
         structure TypeFn = struct
-            type bindings = tfn_sig NameHashTable.hash_table
+            type bindings = kind NameHashTable.hash_table
 
             fun new () = NameHashTable.mkTable (0, Subscript)
             val insert = NameHashTable.insert
-            fun freshAbstract typeFns id kindSig =
+            fun freshAbstract typeFns id kind =
                 let val name = "g__" ^ FAst.Type.Id.toString id |> Name.fromString |> Name.freshen
-                in insert typeFns (name, kindSig)
+                in insert typeFns (name, kind)
                  ; name
                 end
             val toVector = Vector.fromList o NameHashTable.listItemsi
@@ -181,15 +180,14 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
         fun initialToplevel () =
             let val typeFns = Bindings.TypeFn.new ()
             in { typeFns
-               , pureCallsite = Bindings.TypeFn.freshAbstract typeFns (FAst.Type.Id.fresh ())
-                                                              {paramKinds = #[], kind = FAst.Type.CallsiteK}
+               , pureCallsite = Bindings.TypeFn.freshAbstract typeFns (FAst.Type.Id.fresh ()) FAst.Type.CallsiteK
                , vals = Bindings.Expr.Builder.new () |> Bindings.Expr.Builder.build }
             end
 
         fun pureCallsite ({pureCallsite, ...}: toplevel) = pureCallsite
 
-        fun freshAbstract ({typeFns, ...}: toplevel) id kindSig =
-            Bindings.TypeFn.freshAbstract typeFns id kindSig
+        fun freshAbstract ({typeFns, ...}: toplevel) id kind =
+            Bindings.TypeFn.freshAbstract typeFns id kind
 
         fun typeFns ({typeFns, ...}: toplevel) = Bindings.TypeFn.toVector typeFns
 

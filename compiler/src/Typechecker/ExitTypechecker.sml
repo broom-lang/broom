@@ -24,8 +24,7 @@ end = struct
          | EmptyRow => EmptyRow
          | FFType.App {callee, args} =>
             FFType.App {callee = concrToF callee, args = Vector1.map concrToF args}
-         | CallTFn (f, args) =>
-            CallTFn (f, Vector.map concrToF args)
+         | CallTFn name => CallTFn name
          | FFType.Type typ => FFType.Type (concrToF typ)
          | UseT def => UseT def
          | Prim p => Prim p
