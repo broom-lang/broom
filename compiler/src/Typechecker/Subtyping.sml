@@ -341,11 +341,51 @@ end = struct
               end
            | _ => raise Fail "implicit parameter not of type `type`")
 
-      | coercer env pos (Arrow (Explicit eff, arr), Arrow (Explicit eff', arr')) =
-         arrowCoercion env pos ((eff, arr), (eff', arr'))
+      | coercer env pos ( Arrow (Explicit eff, domains as {domain, codomain})
+                        , Arrow (Explicit eff', domains' as {domain = domain', codomain = codomain'}) ) =
+         let do subEffect pos (eff, eff')
+             val coerceDomain = coercer env pos (domain', domain)
+             val coerceCodomain = coercer env pos (codomain, codomain')
+         in if isSome coerceDomain orelse isSome coerceCodomain
+            then SOME (fnCoercion coerceDomain coerceCodomain
+                                  ((eff, domains), (eff', domains')))
+            else NONE
+         end
 
       | coercer env pos (sub as Record row, super as Record row') =
-         recordCoercion env pos (sub, super) (row, row')
+         let val tmpDef = {pos, id = DefId.fresh (), var = Name.fresh (), typ = sub}
+             val tmpUse = FTerm.Use (pos, tmpDef)
+
+             val rec recCoercer =
+                 fn (row, row' as RowExt {base = base', field = (label, fieldt')}, tail) =>
+                     let val {base, fieldt} = reorderRow pos label row
+                         val row = RowExt {base, field = (label, fieldt')}
+                         val t = Record row
+                         val {base = tail, ...} = reorderRow pos label tail
+                     in  case coercer env pos (fieldt, fieldt')
+                         of SOME coerceField =>
+                             let val fieldExpr = coerceField (FTerm.Field (pos, fieldt, tmpUse, label))
+                                 val nextCoerce = recCoercer (row, base', tail)
+                             in  SOME (fn expr =>
+                                           let val expr =
+                                                   FTerm.Where (pos, t, { base = expr
+                                                                        , field = (label, fieldExpr) })
+                                           in applyCoercion nextCoerce expr
+                                           end)
+                             end
+                          | NONE => recCoercer (row, base', tail)
+                     end
+                  | (_, row', tail) => (* FIXME: What about WildRow?!: *)
+                     ( coercion env pos (tail, row')
+                     ; NONE )
+         in  case recCoercer (row, row', row)
+             of SOME coerce =>
+                 SOME (fn expr =>
+                           FTerm.Let ( pos
+                                     , valOf (Vector1.fromVector #[FTerm.Val (pos, tmpDef, expr)])
+                                     , coerce tmpUse ))
+              | NONE => NONE
+         end
 
       | coercer env pos (sub as RowExt _, super as RowExt {base = base', field = (label, fieldt')}) =
          let val {base, fieldt} = reorderRow pos label sub
@@ -438,57 +478,12 @@ end = struct
 
       | coercer env pos (sub, super) = raise TypeError (NonSubType (pos, sub, super, NONE))
 
-    and arrowCoercion env pos
-                      (arrows as ((eff, {domain, codomain}), (eff', {domain = domain', codomain = codomain'}))) =
-        let do subEffect pos (eff, eff')
-            val coerceDomain = coercer env pos (domain', domain)
-            val coerceCodomain = coercer env pos (codomain, codomain')
-        in if isSome coerceDomain orelse isSome coerceCodomain
-           then SOME (fnCoercion coerceDomain coerceCodomain arrows)
-           else NONE
-        end
-
     and subEffect pos effs =
         case effs
         of (Pure, Pure) => ()
          | (Pure, Impure) => ()
          | (Impure, Pure) => raise Fail "Impure is not a subtype of Pure"
          | (Impure, Impure) => ()
-
-    and recordCoercion env pos (t, t') (row, row') =
-        let val tmpDef = {pos, id = DefId.fresh (), var = Name.fresh (), typ = t}
-            val tmpUse = FTerm.Use (pos, tmpDef)
-
-            val rec recCoercer =
-                fn (row, row' as RowExt {base = base', field = (label, fieldt')}, tail) =>
-                    let val {base, fieldt} = reorderRow pos label row
-                        val row = RowExt {base, field = (label, fieldt')}
-                        val t = Record row
-                        val {base = tail, ...} = reorderRow pos label tail
-                    in  case coercer env pos (fieldt, fieldt')
-                        of SOME coerceField =>
-                            let val fieldExpr = coerceField (FTerm.Field (pos, fieldt, tmpUse, label))
-                                val nextCoerce = recCoercer (row, base', tail)
-                            in  SOME (fn expr =>
-                                          let val expr =
-                                                  FTerm.Where (pos, t, { base = expr
-                                                                       , field = (label, fieldExpr) })
-                                          in applyCoercion nextCoerce expr
-                                          end)
-                            end
-                         | NONE => recCoercer (row, base', tail)
-                    end
-                 | (_, row', tail) => (* FIXME: What about WildRow?!: *)
-                    ( coercion env pos (tail, row')
-                    ; NONE )
-        in  case recCoercer (row, row', row)
-            of SOME coerce =>
-                SOME (fn expr =>
-                          FTerm.Let ( pos
-                                    , valOf (Vector1.fromVector #[FTerm.Val (pos, tmpDef, expr)])
-                                    , coerce tmpUse ))
-             | NONE => NONE
-        end
 
     and pathsCoercer env pos ((path, args), (path', args')) =
         case (pathGet env path, pathGet env path')
