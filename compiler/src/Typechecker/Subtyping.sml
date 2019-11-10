@@ -530,32 +530,50 @@ end = struct
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
     and assign (env: Env.t) pos (y: direction, uv: concr TypeVars.uv, t: concr): coercer =
-        if Concr.occurs (Env.hasScope env) uv t
+        if occurs env uv t
         then raise TypeError (Occurs (pos, SVar (UVar uv), t))
         else doAssign env pos y uv t
 
-    and doAssign env pos direction uv (ForAll universal) =
-       (case direction
-        of Up =>
-            skolemize env universal (fn (env, params, body) =>
-                Option.map (fn coerce => fn expr => FTerm.TFn (pos, params, coerce expr))
-                           (doAssign env pos direction uv body)
-            )
-         | Down =>
-            instantiate env universal (fn (env, args, body) =>
-                Option.map (fn coerce => fn callee => coerce (FTerm.TApp (pos, body, {callee, args})))
-                           (doAssign env pos direction uv body)
-            ))
+    and doAssign env pos direction uv (Exists existential) =
+         (case direction
+          of Down =>
+              instantiate env existential (fn (env, args, body) =>
+                  ( doAssign env pos direction uv body
+                  ; NONE ) (* No values of existential type. *)
+              )
+           | Up =>
+              skolemize env existential (fn (env, params, body) =>
+                  ( doAssign env pos direction uv body
+                  ; NONE ) (* No values of existential type. *)
+              ))
+
+      | doAssign env pos direction uv (ForAll universal) =
+         (case direction
+          of Up =>
+              skolemize env universal (fn (env, params, body) =>
+                  Option.map (fn coerce => fn expr =>
+                                  FTerm.TFn (pos, params, coerce expr))
+                             (doAssign env pos direction uv body)
+              )
+           | Down =>
+              instantiate env universal (fn (env, args, body) =>
+                  Option.map (fn coerce => fn callee =>
+                                  coerce (FTerm.TApp (pos, body, {callee, args})))
+                             (doAssign env pos direction uv body)
+              ))
+
+      | doAssign env pos direction uv (Arrow (Implicit, _)) =
+         raise Fail "unimplemented"
 
       | doAssign env pos direction uv (Arrow (Explicit eff, arrow as {domain, codomain})) =
-         let val domainUv = TypeVars.Uv.freshSibling uv
-             val codomainUv = TypeVars.Uv.freshSibling uv
+         let val domainUv = Uv.freshSibling uv
+             val codomainUv = Uv.freshSibling uv
              val arrow' = { domain = SVar (UVar domainUv)
-                             , codomain = SVar (UVar codomainUv)}
+                          , codomain = SVar (UVar codomainUv)}
              val t' = Arrow (Explicit eff, arrow')
              do ignore (uvSet env (uv, t'))
-             val coerceDomain = assign env pos (flip direction, domainUv, domain) (* contravariance *)
-             val coerceCodomain = assign env pos (direction, codomainUv, codomain)
+             val coerceDomain = doAssign env pos (flip direction) domainUv domain (* contravariance *)
+             val coerceCodomain = doAssign env pos direction codomainUv codomain (* covariance *)
          in if isSome coerceDomain orelse isSome coerceCodomain
             then let val arrows = case direction
                                   of Up => ((eff, arrow'), (eff, arrow))
@@ -565,28 +583,49 @@ end = struct
             else NONE
          end
 
-      | doAssign env pos direction uv (t as (RowExt _ | EmptyRow | Record _ | CallTFn _ | Prim _ | Type _)) =
-         (uvSet env (uv, t); NONE)
+      | doAssign env pos direction uv (t as (Record _)) =
+         raise Fail "unimplemented"
 
-      | doAssign env pos direction uv (t as UseT {var, ...}) = 
-         ( uvSet env (uv, t)
-         ; if idInScope env var
-           then NONE
-           else raise TypeError (OutsideScope (pos, Name.fromString ("g__" ^ Id.toString var))) )
+      | doAssign env pos direction uv (row as (RowExt {base, field = (label, fieldt)})) =
+         let val baseUv = Uv.freshSibling uv
+             val fieldUv = Uv.freshSibling uv
+             val row' = RowExt { base = SVar (UVar baseUv)
+                               , field = (label, SVar (UVar fieldUv)) }
+             do ignore (uvSet env (uv, row'))
+             (* Covariance: *)
+             do ignore (doAssign env pos direction fieldUv fieldt)
+             do ignore (doAssign env pos direction baseUv base)
+         in NONE (* No values of row type. *)
+         end
 
-      | doAssign env pos direction uv (t as SVar (OVar ov)) =
-         ( uvSet env (uv, t)
-         ; if Env.hasScope env (TypeVars.Ov.scope ov)
-           then NONE
-           else raise TypeError (OutsideScope (pos, TypeVars.Ov.name ov)) )
-
-      | doAssign env pos direction uv (t as SVar (UVar uv')) =
-         ( case Uv.get uv'
-           of Left _ => uvSet env (uv, t)
-            | Right t => uvSet env (uv, t)
+      | doAssign env pos direction uv (t as (EmptyRow | Prim _)) =
+         ( solution env pos (uv, t) (* trivially structured *)
          ; NONE )
 
+      | doAssign env pos direction uv (t as (Type _ | App _ | CallTFn _)) =
+         ( solution env pos (uv, t) (* invariance *)
+         ; NONE )
+
+      | doAssign env pos direction uv (t as UseT {var, ...}) =
+         (* Becomes unreachable on return of OVar: *)
+         ( solution env pos (uv, t) (* trivially structured *)
+         ; NONE )
+
+      | doAssign env pos direction uv (t as SVar (OVar ov)) =
+         ( solution env pos (uv, t) (* trivially structured *)
+         ; NONE )
+
+      | doAssign env pos direction uv (SVar (UVar uv')) =
+         let val kind = Uv.kind uv
+             val kind' = Uv.kind uv'
+         in if not (kind = kind')
+            then raise TypeError (InequalKinds (pos, kind, kind'))
+            else ()
+          ; uvMerge env (uv, uv')
+          ; NONE
+         end
+
       | doAssign env pos direction uv (t as SVar (Path _)) =
-         (uvSet env (uv, t); NONE)
+         raise Fail "unimplemented"
 end
 
