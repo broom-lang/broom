@@ -464,87 +464,106 @@ end = struct
 
 (* # Focalization *)
 
-    (* Coerce `callee` into a function and return t coerced and its `domain` and `codomain`. *)
+    (* Coerce `callee` into a function. *)
     and coerceCallee (env: Env.t) (typ: concr, callee: FTerm.expr) : FTerm.expr * effect * {domain: concr, codomain: concr} =
-        let fun coerce callee =
-                fn FType.ForAll (params, t) =>
-                    let val pos = FTerm.exprPos callee
-                        val (args, mapping) =
-                            Vector1.foldl (fn ({var, kind = kind as FType.CallsiteK}, (args, mapping)) =>
-                                               let val callId =
-                                                       case valOf (FType.piEffect t)
-                                                       of Impure =>
-                                                           Env.freshAbstract env (FType.Id.fresh ()) {paramKinds = #[], kind}
-                                                        | Pure => Env.pureCallsite env
-                                                   val callsite = FType.CallTFn (callId, #[])
-                                               in (callsite :: args, Id.SortedMap.insert (mapping, var, callsite))
-                                               end
-                                            | ({var, kind}, (args, mapping)) =>
-                                               let val uv = FType.SVar (FType.UVar (Env.newUv env (nameFromId var, FType.TypeK)))
-                                               in (uv :: args, Id.SortedMap.insert (mapping, var, uv))
-                                               end)
-                                          ([], Id.SortedMap.empty) params
-                        val args = args |> List.rev |> Vector1.fromList |> valOf
-                        val calleeType = Concr.substitute (Env.hasScope env) mapping t
-                    in coerce (FTerm.TApp (pos, calleeType, {callee, args})) calleeType
-                    end
-                 | FType.Arrow (Implicit, {domain, codomain}) =>
-                    (case domain
-                     of FType.Type domain =>
-                         let val pos = FTerm.exprPos callee
-                             val arg = FTerm.Type (pos, domain)
-                         in coerce (FTerm.App (pos, codomain, {callee, arg})) codomain
-                         end
-                      | _ => raise Fail "implicit parameter not of type `type`")
-                 | FType.Arrow (Explicit eff, domains) => (callee, eff, domains)
-                 | FType.SVar (FType.UVar uv) =>
-                    (case Uv.get uv
-                     of Left uv =>
-                         let val domainUv = TypeVars.Uv.freshSibling (uv, FType.TypeK)
-                             val codomainUv = TypeVars.Uv.freshSibling (uv, FType.TypeK)
-                             val eff = Impure
-                             val arrow = { domain = FType.SVar (FType.UVar domainUv)
-                                         , codomain = FType.SVar (FType.UVar codomainUv) }
-                         in uvSet env (uv, FType.Arrow (Explicit eff, arrow))
-                          ; (callee, eff, arrow)
-                         end
-                      | Right typ => coerce callee typ)
-                 | _ => ( Env.error env (UnCallable (callee, typ))
-                        ; (callee, Impure, { domain = FType.SVar (FType.UVar (Env.freshUv env FType.TypeK))
-                                           , codomain = typ }) )
+        let fun coerce callee (FType.ForAll (params, t)) =
+                let val pos = FTerm.exprPos callee
+                    val (args, mapping) =
+                        Vector1.foldl (fn ({var, kind = kind as FType.CallsiteK}, (args, mapping)) =>
+                                           let val callId =
+                                                   case valOf (FType.piEffect t)
+                                                   of Impure =>
+                                                       Env.freshAbstract env (FType.Id.fresh ()) {paramKinds = #[], kind}
+                                                    | Pure => Env.pureCallsite env
+                                               val callsite = FType.CallTFn (callId, #[])
+                                           in (callsite :: args, Id.SortedMap.insert (mapping, var, callsite))
+                                           end
+                                        | ({var, kind}, (args, mapping)) =>
+                                           let val uv = FType.SVar (FType.UVar (Env.newUv env (nameFromId var, FType.TypeK)))
+                                           in (uv :: args, Id.SortedMap.insert (mapping, var, uv))
+                                           end)
+                                      ([], Id.SortedMap.empty) params
+                    val args = args |> List.rev |> Vector1.fromList |> valOf
+                    val calleeType = Concr.substitute (Env.hasScope env) mapping t
+                in coerce (FTerm.TApp (pos, calleeType, {callee, args})) calleeType
+                end
+                
+              | coerce callee (FType.Arrow (Implicit, {domain, codomain})) =
+                (case domain
+                 of FType.Type domain =>
+                     let val pos = FTerm.exprPos callee
+                         val arg = FTerm.Type (pos, domain)
+                     in coerce (FTerm.App (pos, codomain, {callee, arg})) codomain
+                     end
+                  | _ => raise Fail "implicit parameter not of type `type`")
+
+              | coerce callee (FType.Arrow (Explicit eff, domains)) =
+                 (callee, eff, domains)
+
+              | coerce callee (FType.SVar (FType.UVar uv)) =
+                (case Uv.get uv
+                 of Left uv =>
+                     let val domainUv = TypeVars.Uv.freshSibling (uv, FType.TypeK)
+                         val codomainUv = TypeVars.Uv.freshSibling (uv, FType.TypeK)
+                         val eff = Impure
+                         val arrow = { domain = FType.SVar (FType.UVar domainUv)
+                                     , codomain = FType.SVar (FType.UVar codomainUv) }
+                     in uvSet env (uv, FType.Arrow (Explicit eff, arrow))
+                      ; (callee, eff, arrow)
+                     end
+                  | Right typ => coerce callee typ)
+
+              | coerce callee (FType.SVar (FType.Path path)) =
+                 raise Fail "unimplemented"
+
+              | coerce callee _ =
+                 ( Env.error env (UnCallable (callee, typ))
+                 ; (callee, Impure, { domain = FType.SVar (FType.UVar (Env.freshUv env FType.TypeK))
+                                    , codomain = typ }) )
         in coerce callee typ
         end
    
-    (* Coerce `expr` (in place) into a record with at least `label` and return the expr and `label`:ed type. *)
+    (* Coerce `expr` into a record with at least `label`. *)
     and coerceRecord env (typ: concr, expr: FTerm.expr) label: FTerm.expr * concr =
-        let fun coerce expr = 
-                fn FType.ForAll _ => raise Fail "unimplemented"
-                 | FType.Arrow (Implicit, {domain, codomain}) =>
-                    (case domain
-                     of FType.Type domain =>
-                         let val pos = FTerm.exprPos expr
-                             val arg = FTerm.Type (pos, domain)
-                         in coerce (FTerm.App (pos, codomain, {callee = expr, arg})) codomain
-                         end
-                      | _ => raise Fail "implicit parameter not of type `type`")
-                 | FType.Record row => coerceRow expr row
-                 | FType.SVar (FType.UVar uv) =>
-                    (case Uv.get uv
-                     of Right typ => coerce expr typ
-                      | Left uv => let val fieldType = FType.SVar (FType.UVar (Env.freshUv env FType.TypeK))
-                                       val base = FType.SVar (FType.UVar (Env.freshUv env FType.TypeK))
-                                       val row = FType.RowExt ({base, field = (label, fieldType)})
-                                       val typ = FType.Record row
-                                   in uvSet env (uv, typ)
-                                    ; (expr, fieldType)
-                                   end)
-                 | _ => ( Env.error env (UnDottable (expr, typ))
-                        ; (expr, FType.SVar (FType.UVar (Env.freshUv env FType.TypeK))) )
-            and coerceRow expr =
-                fn FType.RowExt ({base, field = (label', fieldt)}) =>
-                    if label' = label
-                    then (expr, fieldt)
-                    else coerceRow expr base
+        let fun coerce expr (FType.ForAll _) =
+                raise Fail "unimplemented"
+
+              | coerce expr (FType.Arrow (Implicit, {domain, codomain})) =
+                (case domain
+                 of FType.Type domain =>
+                     let val pos = FTerm.exprPos expr
+                         val arg = FTerm.Type (pos, domain)
+                     in coerce (FTerm.App (pos, codomain, {callee = expr, arg})) codomain
+                     end
+                  | _ => raise Fail "implicit parameter not of type `type`")
+
+              | coerce expr (FType.Record row) =
+                let fun coerceRow expr =
+                        fn FType.RowExt ({base, field = (label', fieldt)}) =>
+                            if label' = label
+                            then (expr, fieldt)
+                            else coerceRow expr base
+                in coerceRow expr row
+                end
+
+              | coerce expr (FType.SVar (FType.UVar uv)) =
+                (case Uv.get uv
+                 of Right typ => coerce expr typ
+                  | Left uv =>
+                     let val fieldType = FType.SVar (FType.UVar (Env.freshUv env FType.TypeK))
+                         val base = FType.SVar (FType.UVar (Env.freshUv env FType.TypeK))
+                         val row = FType.RowExt ({base, field = (label, fieldType)})
+                         val typ = FType.Record row
+                     in uvSet env (uv, typ)
+                      ; (expr, fieldType)
+                     end)
+
+              | coerce callee (FType.SVar (FType.Path path)) =
+                 raise Fail "unimplemented"
+
+              | coerce expr _ =
+                ( Env.error env (UnDottable (expr, typ))
+                ; (expr, FType.SVar (FType.UVar (Env.freshUv env FType.TypeK))) )
         in coerce expr typ
         end
 
