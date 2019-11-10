@@ -5,6 +5,7 @@ end = struct
     structure FType = FAst.Type
     structure Id = FType.Id
     structure FFType = FAst.Type
+    structure Concr = FFType.Concr
     structure FFTerm = FAst.Term
     val op|> = Fn.|>
 
@@ -106,22 +107,34 @@ end = struct
                             then ()
                             else raise Fail (FFType.kindToString (#1 kinds) ^ " != " ^ FFType.kindToString (#2 kinds))
 
+    fun skolemize env ((params, body), (params', body')) f =
+        let do Vector1.zip (params, params') (* FIXME: arity errors *)
+               |> Vector1.app (fn ({kind, var = _}, {kind = kind', var = _}) =>
+                                   if kind = kind'
+                                   then ()
+                                   else raise Fail "inequal kinds")
+            val params'' = Vector1.map (fn {kind, var = _} => {var = Id.fresh (), kind}) params
+            val env = Vector1.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
+                                    env params''
+            val mapping = (params, params'')
+                        |> Vector1.zipWith (fn ({var, ...}, def') => (var, UseT def'))
+                        |> Vector1.toVector
+                        |> Id.SortedMap.fromVector
+            val body = Concr.substitute Fn.undefined mapping body
+            val mapping' = (params', params'')
+                         |> Vector1.zipWith (fn ({var, ...}, def') => (var, UseT def'))
+                         |> Vector1.toVector
+                         |> Id.SortedMap.fromVector
+            val body' = Concr.substitute Fn.undefined mapping' body'
+        in f env (body, body')
+        end
+
     fun eq env (t, t') =
         case (t, t')
-        of (Exists (params, body), Exists (params', body')) => 
-            let val env = Vector1.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
-                                        env params
-                val env = Vector1.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
-                                        env params'
-            in eq env (body, body')
-            end
-         | (ForAll (params, body), ForAll (params', body')) =>
-            let val env = Vector1.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
-                                        env params
-                val env = Vector1.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
-                                        env params'
-            in eq env (body, body')
-            end
+        of (Exists existential, Exists existential') => 
+            skolemize env (existential, existential') eq
+         | (ForAll universal, ForAll universal') =>
+            skolemize env (universal, universal') eq
          | (Arrow (expl, {domain, codomain}), Arrow (expl', {domain = domain', codomain = codomain'})) =>
             expl = expl'
             andalso eq env (domain, domain')
