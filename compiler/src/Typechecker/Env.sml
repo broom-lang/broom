@@ -1,11 +1,13 @@
 signature TYPECHECKING_ENV = sig
-    type input_type = Cst.Type.typ
-    type input_expr = Cst.Term.expr
-    type output_type = FlexFAst.Type.concr
-    type kind = FlexFAst.Type.kind
+    type input_type
+    type input_expr
+    type kind
+    type type_id
+    type output_def
+    type effect
+    type output_type
+    type output_expr
     type abs_ctx = output_type vector 
-    type effect = FlexFAst.Type.effect
-    type output_expr = FlexFAst.Term.expr
 
     structure Bindings: sig
         structure TypeFn: sig
@@ -17,9 +19,9 @@ signature TYPECHECKING_ENV = sig
             type bindings
 
             val new: unit -> bindings
-            val fromDefs: FlexFAst.Type.def vector1 -> bindings
-            val fresh: bindings -> binding -> FType.Id.t
-            val defs: bindings -> FlexFAst.Type.def list
+            val fromDefs: output_def vector1 -> bindings
+            val fresh: bindings -> binding -> type_id
+            val defs: bindings -> output_def list
         end
 
         structure Expr: sig
@@ -44,10 +46,10 @@ signature TYPECHECKING_ENV = sig
     end
 
     structure Scope: sig
-        structure Id: ID where type t = FlexFAst.ScopeId.t
+        structure Id: ID where type t = ScopeId.t
 
         type toplevel = { typeFns: Bindings.TypeFn.bindings
-                        , pureCallsite: FlexFAst.Type.def
+                        , pureCallsite: output_def
                         , vals: Bindings.Expr.bindings }
 
         datatype t = TopScope of Id.t * toplevel
@@ -70,15 +72,15 @@ signature TYPECHECKING_ENV = sig
     val pushScope: t -> Scope.t -> t
     val hasScope: t -> Scope.Id.t -> bool
 
-    val findType: t -> FType.Id.t -> Bindings.Type.binding option
-    val universalParams: t -> FlexFAst.Type.def vector
+    val findType: t -> type_id -> Bindings.Type.binding option
+    val universalParams: t -> type_id vector
     val nearestExists: t -> (Scope.Id.t * Bindings.Type.bindings) option
     val newUv: t -> Name.t * kind -> FlexFAst.Type.uv
     val freshUv: t -> kind -> FlexFAst.Type.uv
 
-    val pureCallsite: t -> FlexFAst.Type.def
-    val freshAbstract: t -> kind -> FlexFAst.Type.def
-    val typeFns: t -> FlexFAst.Type.def vector
+    val pureCallsite: t -> output_def
+    val freshAbstract: t -> kind -> output_def
+    val typeFns: t -> output_def vector
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
@@ -90,17 +92,29 @@ signature TYPECHECKING_ENV = sig
     val errors: t -> TypeError.t list
 end
 
-structure TypecheckingEnv :> TYPECHECKING_ENV = struct
+functor TypecheckingEnv (Types : sig
+    structure Input : sig
+        type typ
+        type expr
+    end
+
+    structure Output : sig
+        type kind
+        type effect
+        type typ
+        type expr
+    end
+end) :> TYPECHECKING_ENV = struct
     open TypeError
     structure FAst = FlexFAst
 
-    type input_type = Cst.Type.typ
-    type input_expr = Cst.Term.expr
-    type output_type = FAst.Type.concr
-    type kind = FlexFAst.Type.kind
+    type input_type = Types.Input.typ
+    type input_expr = Types.Input.expr
+    type kind = Types.Output.kind
+    type effect = Types.Output.effect
+    type output_type = Types.Output.typ
+    type output_expr = Types.Output.expr
     type abs_ctx = output_type vector 
-    type effect = FlexFAst.Type.effect
-    type output_expr = FAst.Term.expr
 
     val op|> = Fn.|>
 

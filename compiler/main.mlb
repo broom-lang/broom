@@ -36,6 +36,7 @@ local
            end
 
            src/Typechecker/ScopeId.sml
+           src/Typechecker/Env.sml
 
            src/Reprs/FAst/FType.sml
            src/Reprs/FAst/FTerm.sml
@@ -43,8 +44,6 @@ local
            src/Reprs/FAst/FAst.sml
            src/Reprs/FAst/Eval.sml
            src/Typechecker/TypeError.sml
-
-           src/Typechecker/Env.sml
 
            src/Typechecker/Kindchecker.sml
            src/Typechecker/Subtyping.sml
