@@ -1,0 +1,9 @@
+[package]
+name = "broom-gc"
+version = "0.1.0"
+authors = ["Pauli Jaakkola <pauli.jaakkola@iki.fi>"]
+edition = "2018"
+
+[dependencies]
+nix = "0.13.0"
+
