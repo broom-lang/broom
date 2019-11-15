@@ -1,7 +1,9 @@
 structure Typechecker :> sig
-    val elaborateProgram: TypecheckingEnv.t -> Cst.Term.stmt vector
-        -> ( FlexFAst.Term.program * TypecheckingEnv.t * TypeError.t list
-           , FlexFAst.Term.program * TypecheckingEnv.t ) Either.t
+    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
+
+    val elaborateProgram: env -> Cst.Term.stmt vector
+        -> ( FlexFAst.Term.program * env * TypeError.t list
+           , FlexFAst.Term.program * env) Either.t
 end = struct
     val op|> = Fn.|>
     datatype either = datatype Either.t
@@ -24,6 +26,7 @@ end = struct
     structure Env = TypecheckingEnv
     structure Bindings = Env.Bindings
     structure Scope = Env.Scope
+    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
     datatype expr_binding_state = datatype Bindings.Expr.binding_state
     structure Path = TypeVars.Path
  
@@ -58,7 +61,7 @@ end = struct
 (* # Expression Type Synthesis *)
 
     (* Elaborate the expression `exprRef` and return its computed type. *)
-    and elaborateExpr (env: Env.t) (expr: CTerm.expr): effect * concr * FTerm.expr =
+    and elaborateExpr (env: env) (expr: CTerm.expr): effect * concr * FTerm.expr =
         case expr
         of CTerm.Fn (pos, expl, clauses) => (* TODO: Exhaustiveness checking: *)
             (* FIXME: Enforce that for implicit fn:s domain = type *)
@@ -257,7 +260,7 @@ end = struct
 (* # Expression Type Checking *)
 
     (* Elaborate the expression `exprRef` to a subtype of `typ`. *)
-    and elaborateExprAs (env: Env.t) (typ: concr) (expr: CTerm.expr): effect * FTerm.expr =
+    and elaborateExprAs (env: env) (typ: concr) (expr: CTerm.expr): effect * FTerm.expr =
         case expr
         of CTerm.Fn (pos, expl, clauses) => (* TODO: Exhaustiveness checking: *)
             (case typ
@@ -404,7 +407,7 @@ end = struct
             end
 
     (* Like `elaborateExprAs`, but will always just do subtyping and apply the coercion. *)
-    and coerceExprTo (env: Env.t) (typ: concr) (expr: CTerm.expr): effect * FTerm.expr =
+    and coerceExprTo (env: env) (typ: concr) (expr: CTerm.expr): effect * FTerm.expr =
         let val (eff, t', fexpr) = elaborateExpr env expr
             val coercion = subType env (CTerm.exprPos expr) (t', typ)
         in (eff, applyCoercion coercion fexpr)
@@ -426,13 +429,15 @@ end = struct
         let val builder = Bindings.Expr.Builder.new ()
             do Vector.app (fn CTerm.Val (_, CTerm.Def (pos, name), expr) =>
                                let val def = {pos, id = DefId.fresh (), var = name, typ = NONE}
-                               in Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
-                                  handle TypeError err => Env.error env err
+                               in case Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
+                                  of Left err => Env.error env (DuplicateBinding err)
+                                   | Right res => res
                                end
                             | CTerm.Val (_, CTerm.AnnP (_, {pat = CTerm.Def (pos, name), typ}), expr) =>
                                let val def = {pos, id = DefId.fresh (), var = name, typ = SOME typ}
-                               in Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
-                                  handle TypeError err => Env.error env err
+                               in case Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
+                                  of Left err => Env.error env (DuplicateBinding err)
+                                   | Right res => res
                                end
                             | CTerm.Expr _ => ())
                           stmts
@@ -466,7 +471,7 @@ end = struct
 (* # Focalization *)
 
     (* Coerce `callee` into a function. *)
-    and coerceCallee (env: Env.t) (typ: concr, callee: FTerm.expr) : FTerm.expr * effect * {domain: concr, codomain: concr} =
+    and coerceCallee (env: env) (typ: concr, callee: FTerm.expr) : FTerm.expr * effect * {domain: concr, codomain: concr} =
         let fun coerce (callee, ForAll (universal as (_, body))) =
                 coerce (applyPolymorphic env universal callee)
                 

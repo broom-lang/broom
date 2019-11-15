@@ -3,15 +3,15 @@ structure CheckUse :> sig
     structure FTerm : FAST_TERM
         where type expr = FlexFAst.Term.expr
         where type Type.sv = FlexFAst.Type.sv
-    structure Env : TYPECHECKING_ENV where type t = TypecheckingEnv.t
+    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
-    val fix : { elaborateType : Env.t -> Cst.Type.typ -> FType.def list * FType.Concr.t
-              , reAbstract : Env.t -> FType.Concr.t -> FType.Concr.t
-              , instantiateExistential : Env.t -> FType.def vector * FType.Concr.t -> FType.Concr.t * FType.Concr.t vector
-              , elaborateExpr : Env.t -> Cst.Term.expr -> FType.effect * FType.Concr.t * FTerm.expr }
-           -> { unvisitedBindingType : Pos.span -> Env.t -> Name.t
-                    -> Cst.Type.typ option Env.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
-              , lookupValType : Cst.Term.expr -> Name.t -> Env.t -> FTerm.def option }
+    val fix : { elaborateType : env -> Cst.Type.typ -> FType.def list * FType.Concr.t
+              , reAbstract : env -> FType.Concr.t -> FType.Concr.t
+              , instantiateExistential : env -> FType.def vector * FType.Concr.t -> FType.Concr.t * FType.Concr.t vector
+              , elaborateExpr : env -> Cst.Term.expr -> FType.effect * FType.Concr.t * FTerm.expr }
+           -> { unvisitedBindingType : Pos.span -> env -> Name.t
+                    -> Cst.Type.typ option TypecheckingEnv.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
+              , lookupValType : Cst.Term.expr -> Name.t -> env -> FTerm.def option }
 end = struct
     structure CTerm = Cst.Term
     datatype concr = datatype FType.concr
@@ -19,12 +19,17 @@ end = struct
     structure FTerm = FlexFAst.Term
     structure Env = TypecheckingEnv
     structure Scope = Env.Scope
+    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
     datatype binding_state = datatype Env.Bindings.Expr.binding_state
     val subType = Subtyping.subType
+    datatype either = datatype Either.t
+    open TypeError
 
     fun fix {elaborateType, reAbstract, instantiateExistential, elaborateExpr} =
         let fun unvisitedBindingType pos env name args : FTerm.def =
-                let do Env.updateExpr pos env name (Fn.constantly (Visiting args)) (* Mark binding 'grey'. *)
+                let do case Env.updateExpr pos env name (Fn.constantly (Visiting args)) (* Mark binding 'grey'. *)
+                       of Left err => Env.error env (UnboundVal err)
+                        | Right res => res
                     val (def, binding') =
                         case args
                         of (def as {typ = SOME t, ...}, oexpr) =>
@@ -55,7 +60,9 @@ end = struct
                 in case valOf (Env.findExpr env name)
                    of Unvisited _ => raise Fail "unreachable" (* State is at 'least' `Visiting`. *)
                     | Visiting _ =>
-                       ( Env.updateExpr pos env name (Fn.constantly binding')
+                       ( case Env.updateExpr pos env name (Fn.constantly binding')
+                         of Left err => Env.error env (UnboundVal err)
+                          | Right res => res
                        ; def )
                     | Typed ({typ = (usageTyp, NONE), ...}, _) | Visited ({typ = usageTyp, ...}, _) =>
                        (* We must have found a cycle and used `cyclicBindingType`. *)
@@ -68,8 +75,10 @@ end = struct
                this to insert a unification variable, inferring a monomorphic type. *)
             and cyclicBindingType pos env name (def, oexpr) : FTerm.def =
                 let val t = FType.SVar (FType.UVar (Env.freshUv env FType.TypeK))
-                in Env.updateExpr pos env name (Fn.constantly (Typed ( FTerm.setDefTyp def (t, NONE)
-                                                                     , oexpr )))
+                in case Env.updateExpr pos env name (Fn.constantly (Typed ( FTerm.setDefTyp def (t, NONE)
+                                                                          , oexpr )))
+                   of Left err => Env.error env (UnboundVal err)
+                    | Right res => res
                  ; FTerm.setDefTyp def t
                 end
 

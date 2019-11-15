@@ -4,15 +4,15 @@ structure Kindchecker :> sig
     structure FTerm : FAST_TERM
         where type expr = FlexFAst.Term.expr
         where type Type.sv = FlexFAst.Type.sv
-    structure Env : TYPECHECKING_ENV where type t = TypecheckingEnv.t
+    type env = (FType.concr, FTerm.expr, TypeError.t) TypecheckingEnv.t
     type unvisited_binding_type =
-         Pos.span -> Env.t -> Name.t -> Cst.Type.typ option Env.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
+         Pos.span -> env -> Name.t -> Cst.Type.typ option TypecheckingEnv.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
 
-    val reAbstract : Env.t -> FType.Concr.t -> FType.Concr.t
+    val reAbstract : env -> FType.Concr.t -> FType.Concr.t
     val fix : { unvisitedBindingType : unvisited_binding_type
-              , elaborateExpr : Env.t -> Cst.Term.expr -> FType.effect * FType.Concr.t * FTerm.expr }
-           -> (Env.t -> Cst.Type.typ -> FType.def list * FType.Concr.t)
-    val checkMonotypeKind : Env.t -> Pos.span -> FType.kind -> FType.concr -> unit
+              , elaborateExpr : env -> Cst.Term.expr -> FType.effect * FType.Concr.t * FTerm.expr }
+           -> (env -> Cst.Type.typ -> FType.def list * FType.Concr.t)
+    val checkMonotypeKind : env -> Pos.span -> FType.kind -> FType.concr -> unit
 end = struct
     structure CType = Cst.Type
     structure CTerm = Cst.Term
@@ -33,10 +33,12 @@ end = struct
     structure Bindings = Env.Bindings
     datatype binding_state = datatype Bindings.Expr.binding_state
     structure Scope = Env.Scope
+    type env = (FType.concr, FTerm.expr, TypeError.t) Env.t
+    datatype either = datatype Either.t
     val op|> = Fn.|>
 
     type unvisited_binding_type =
-         Pos.span -> Env.t -> Name.t -> Cst.Type.typ option Env.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
+         Pos.span -> env -> Name.t -> Cst.Type.typ option Env.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
 
     fun reAbstract env =
         fn Exists (params, body) =>
@@ -65,7 +67,7 @@ end = struct
 
     fun fix {unvisitedBindingType : unvisited_binding_type, elaborateExpr} =
             (* Elaborate the type `typ` and return the elaborated version. *)
-        let fun elaborateType (env: Env.t) (t: CType.typ): FType.def list * concr =
+        let fun elaborateType (env: env) (t: CType.typ): FType.def list * concr =
                 let val absBindings = Bindings.Type.new ()
                     val absScope = Scope.ExistsScope (Scope.Id.fresh (), absBindings)
                     val env = Env.pushScope env absScope
@@ -165,8 +167,9 @@ end = struct
                 let val builder = Bindings.Expr.Builder.new ()
                     do Vector.app (fn (pos, var, t) =>
                                        let val def = {pos, id = DefId.fresh (), var, typ = SOME t}
-                                       in Bindings.Expr.Builder.insert builder pos var (Unvisited (def, NONE))
-                                          handle TypeError err => Env.error env err
+                                       in case Bindings.Expr.Builder.insert builder pos var (Unvisited (def, NONE))
+                                          of Left err => Env.error env (DuplicateBinding err)
+                                           | Right res => res
                                        end)
                                   decls
                 in Scope.InterfaceScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)

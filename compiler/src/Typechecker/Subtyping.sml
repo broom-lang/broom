@@ -1,13 +1,14 @@
 structure Subtyping :> sig
     type effect = FlexFAst.Type.effect
+    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
     type coercer = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
    
     val applyCoercion: coercer -> FlexFAst.Term.expr -> FlexFAst.Term.expr
     val subEffect: Pos.span -> effect * effect -> unit
     val joinEffs : effect * effect -> effect
-    val subType: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercer
-    val unify: TypecheckingEnv.t -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> FlexFAst.Type.co
+    val subType: env -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercer
+    val unify: env -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> FlexFAst.Type.co
 end = struct
     val op|> = Fn.|>
     datatype either = datatype Either.t
@@ -31,6 +32,7 @@ end = struct
     val exprPos = FTerm.exprPos
     structure Env = TypecheckingEnv
     structure Scope = Env.Scope
+    type env = (FType.concr, FTerm.expr, TypeError.t) Env.t
     structure Bindings = Env.Bindings
     val checkMonotypeKind = Kindchecker.checkMonotypeKind
     open TypeError
@@ -529,7 +531,7 @@ end = struct
 (* ## Unification Variable Sub/Super-solution *)
 
     (* Assign the unification variable `uv` to a sub/supertype (`y`) of `t` *)
-    and assign (env: Env.t) pos (y: direction, uv: concr TypeVars.uv, t: concr): coercer =
+    and assign (env: env) pos (y: direction, uv: concr TypeVars.uv, t: concr): coercer =
         if occurs env uv t
         then raise TypeError (Occurs (pos, SVar (UVar uv), t))
         else doAssign env pos y uv t
