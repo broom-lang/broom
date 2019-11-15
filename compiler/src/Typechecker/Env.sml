@@ -1,13 +1,15 @@
 signature TYPECHECKING_ENV = sig
-    type input_type
-    type input_expr
-    type kind
-    type type_id
-    type output_def
-    type effect
-    type output_type
-    type output_expr
-    type abs_ctx = output_type vector 
+    type input_type = Cst.Type.typ
+    type input_expr = Cst.Term.expr
+    type type_id = FType.Id.t
+    type kind = FType.kind
+    type odef = FType.def
+    type effect = FType.effect
+    type otype
+    type oexpr
+    type error
+
+    type abs_ctx = otype vector 
 
     structure Bindings: sig
         structure TypeFn: sig
@@ -15,13 +17,12 @@ signature TYPECHECKING_ENV = sig
         end
 
         structure Type: sig
-            type binding = kind
             type bindings
 
             val new: unit -> bindings
-            val fromDefs: output_def vector1 -> bindings
-            val fresh: bindings -> binding -> type_id
-            val defs: bindings -> output_def list
+            val fromDefs: odef vector1 -> bindings
+            val fresh: bindings -> kind -> type_id
+            val defs: bindings -> odef list
         end
 
         structure Expr: sig
@@ -30,8 +31,8 @@ signature TYPECHECKING_ENV = sig
             datatype binding_state
                 = Unvisited of input_type option def * input_expr option
                 | Visiting of input_type option def * input_expr option
-                | Typed of (output_type * abs_ctx option) def * input_expr option
-                | Visited of output_type def * (effect * output_expr) option
+                | Typed of (otype * abs_ctx option) def * input_expr option
+                | Visited of otype def * (effect * oexpr) option
 
             type bindings
 
@@ -39,7 +40,7 @@ signature TYPECHECKING_ENV = sig
                 type t
 
                 val new: unit -> t
-                val insert: t -> Pos.span -> Name.t -> binding_state -> unit
+                val insert: t -> Pos.span -> Name.t -> binding_state -> (Pos.span * Name.t, unit) Either.t
                 val build: t -> bindings
             end
         end
@@ -49,17 +50,18 @@ signature TYPECHECKING_ENV = sig
         structure Id: ID where type t = ScopeId.t
 
         type toplevel = { typeFns: Bindings.TypeFn.bindings
-                        , pureCallsite: output_def
+                        , pureCallsite: odef
                         , vals: Bindings.Expr.bindings }
 
-        datatype t = TopScope of Id.t * toplevel
-                   | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
-                   | PatternScope of Id.t * Name.t * Bindings.Expr.binding_state
-                   | ForAllScope of Id.t * Bindings.Type.bindings
-                   | ExistsScope of Id.t * Bindings.Type.bindings
-                   | BlockScope of Id.t * Bindings.Expr.bindings
-                   | InterfaceScope of Id.t * Bindings.Expr.bindings
-                   | Marker of Id.t
+        datatype t
+            = TopScope of Id.t * toplevel
+            | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
+            | PatternScope of Id.t * Name.t * Bindings.Expr.binding_state
+            | ForAllScope of Id.t * Bindings.Type.bindings
+            | ExistsScope of Id.t * Bindings.Type.bindings
+            | BlockScope of Id.t * Bindings.Expr.bindings
+            | InterfaceScope of Id.t * Bindings.Expr.bindings
+            | Marker of Id.t
 
         val id : t -> Id.t
     end
@@ -72,60 +74,52 @@ signature TYPECHECKING_ENV = sig
     val pushScope: t -> Scope.t -> t
     val hasScope: t -> Scope.Id.t -> bool
 
-    val findType: t -> type_id -> Bindings.Type.binding option
-    val universalParams: t -> type_id vector
+    val findType: t -> type_id -> kind option
+    val universalParams: t -> odef vector
     val nearestExists: t -> (Scope.Id.t * Bindings.Type.bindings) option
-    val newUv: t -> Name.t * kind -> FlexFAst.Type.uv
-    val freshUv: t -> kind -> FlexFAst.Type.uv
 
-    val pureCallsite: t -> output_def
-    val freshAbstract: t -> kind -> output_def
-    val typeFns: t -> output_def vector
+    val pureCallsite: t -> odef
+    val freshAbstract: t -> kind -> odef
+    val typeFns: t -> odef vector
    
     val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
     val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
     val updateExpr: Pos.span -> t -> Name.t
-                  -> (Bindings.Expr.binding_state -> Bindings.Expr.binding_state) -> unit
+                  -> (Bindings.Expr.binding_state -> Bindings.Expr.binding_state)
+                  -> (Pos.span * Name.t, unit) Either.t
 
     val sourcemap : t -> Pos.sourcemap
-    val error: t -> TypeError.t -> unit
-    val errors: t -> TypeError.t list
+    val error: t -> error -> unit
+    val errors: t -> error list
 end
 
-functor TypecheckingEnv (Types : sig
-    structure Input : sig
-        type typ
-        type expr
-    end
-
-    structure Output : sig
-        type kind
-        type effect
-        type typ
-        type expr
-    end
+functor TypecheckingEnv (Output : sig
+    type typ
+    type expr
+    type error
 end) :> TYPECHECKING_ENV = struct
-    open TypeError
-    structure FAst = FlexFAst
+    type input_type = Cst.Type.typ
+    type input_expr = Cst.Term.expr
+    type type_id = FType.Id.t
+    type kind = FType.kind
+    type odef = FType.def
+    type effect = FType.effect
+    type otype = Output.typ
+    type oexpr = Output.expr
+    type error = Output.error
 
-    type input_type = Types.Input.typ
-    type input_expr = Types.Input.expr
-    type kind = Types.Output.kind
-    type effect = Types.Output.effect
-    type output_type = Types.Output.typ
-    type output_expr = Types.Output.expr
-    type abs_ctx = output_type vector 
+    type abs_ctx = otype vector 
 
     val op|> = Fn.|>
 
     structure Bindings = struct
         structure TypeFn = struct
-            type bindings = FAst.Type.def list ref
+            type bindings = odef list ref
 
             fun new () = ref []
             fun insert typeFns f = typeFns := f :: !typeFns
             fun freshAbstract typeFns kind =
-                let val def = {var = FAst.Type.Id.fresh (), kind}
+                let val def = {var = FType.Id.fresh (), kind}
                 in insert typeFns def
                  ; def
                 end
@@ -163,8 +157,8 @@ end) :> TYPECHECKING_ENV = struct
             datatype binding_state
                 = Unvisited of input_type option def * input_expr option
                 | Visiting of input_type option def * input_expr option
-                | Typed of (output_type * abs_ctx option) def * input_expr option
-                | Visited of output_type def * (effect * output_expr) option
+                | Typed of (otype * abs_ctx option) def * input_expr option
+                | Visited of otype def * (effect * oexpr) option
 
             type bindings = binding_state NameHashTable.hash_table
 
@@ -176,24 +170,24 @@ end) :> TYPECHECKING_ENV = struct
                 fun new () = NameHashTable.mkTable (0, Subscript)
                 fun insert builder pos name b =
                     if NameHashTable.inDomain builder name
-                    then raise TypeError (DuplicateBinding (pos, name))
-                    else NameHashTable.insert builder (name, b)
+                    then Either.Left (pos, name)
+                    else Either.Right (NameHashTable.insert builder (name, b))
                 val build = Fn.identity
             end
         end
     end
 
     structure Scope = struct
-        structure Id = FAst.ScopeId
+        structure Id = ScopeId
 
         type toplevel = { typeFns: Bindings.TypeFn.bindings
-                        , pureCallsite: FAst.Type.def
+                        , pureCallsite: odef
                         , vals: Bindings.Expr.bindings }
 
         fun initialToplevel () =
             let val typeFns = Bindings.TypeFn.new ()
             in { typeFns
-               , pureCallsite = Bindings.TypeFn.freshAbstract typeFns FAst.Type.CallsiteK
+               , pureCallsite = Bindings.TypeFn.freshAbstract typeFns FType.CallsiteK
                , vals = Bindings.Expr.Builder.new () |> Bindings.Expr.Builder.build }
             end
 
@@ -244,7 +238,7 @@ end) :> TYPECHECKING_ENV = struct
              , scopeIds: Scope.Id.t list
              , scopes: Scope.t list
              , sourcemap: Pos.sourcemap
-             , errors: TypeError.t list ref }
+             , errors: error list ref }
     
     fun initial sourcemap (id, toplevel) =
         { toplevel, scopeIds = [id], scopes = [Scope.TopScope (id, toplevel)]
@@ -275,16 +269,6 @@ end) :> TYPECHECKING_ENV = struct
     fun nearestExists ({scopes, ...}: t) =
         List.some (fn Scope.ExistsScope scope => SOME scope | _ => NONE) scopes
 
-    fun newUv (env: t) (name, kind) =
-        case #scopes env
-        of scope :: _ => TypeVars.Uv.new (Scope.id scope, name, kind)
-         | [] => raise Fail "unreachable"
-
-    fun freshUv (env: t) kind =
-        case #scopes env
-        of scope :: _ => TypeVars.Uv.fresh (Scope.id scope, kind)
-         | [] => raise Fail "unreachable"
-
     fun pureCallsite ({toplevel, ...}: t) = Scope.pureCallsite toplevel
 
     fun freshAbstract ({toplevel, ...}: t) kindSig =
@@ -308,14 +292,14 @@ end) :> TYPECHECKING_ENV = struct
         let val rec update =
                 fn (Scope.BlockScope (_, bs) | Scope.InterfaceScope (_, bs)) :: env =>
                     (case Bindings.Expr.find bs name
-                     of SOME v => NameHashTable.insert bs (name, f v)
+                     of SOME v => Either.Right (NameHashTable.insert bs (name, f v))
                       | NONE => update env)
                  | Scope.FnScope (_, var, _) :: env =>
                     if var = name
                     then raise Fail "unreachable"
                     else update env
                  | (Scope.ForAllScope _ | Scope.ExistsScope _) :: env => update env
-                 | [] =>  raise TypeError (UnboundVal (pos, name))
+                 | [] => Either.Left (pos, name)
         in update (#scopes env)
         end
 
@@ -323,6 +307,6 @@ end) :> TYPECHECKING_ENV = struct
 
     fun error ({errors, ...}: t) err = errors := err :: (!errors)
 
-    val errors: t -> TypeError.t list = List.rev o op! o #errors
+    val errors: t -> error list = List.rev o op! o #errors
 end
 
