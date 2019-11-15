@@ -5,11 +5,8 @@ signature TYPECHECKING_ENV = sig
     type kind = FType.kind
     type odef = FType.def
     type effect = FType.effect
-    type otype
-    type oexpr
-    type error
 
-    type abs_ctx = otype vector 
+    type 'otyp abs_ctx = 'otyp vector 
 
     structure Bindings: sig
         structure TypeFn: sig
@@ -26,22 +23,23 @@ signature TYPECHECKING_ENV = sig
         end
 
         structure Expr: sig
-            type 'typ def = {pos: Pos.span, id: DefId.t, var: Name.t, typ: 'typ}
+            type 'otyp def = {pos: Pos.span, id: DefId.t, var: Name.t, typ: 'otyp}
 
-            datatype binding_state
+            datatype ('otyp, 'oexpr) binding_state
                 = Unvisited of input_type option def * input_expr option
                 | Visiting of input_type option def * input_expr option
-                | Typed of (otype * abs_ctx option) def * input_expr option
-                | Visited of otype def * (effect * oexpr) option
+                | Typed of ('otyp * 'otyp abs_ctx option) def * input_expr option
+                | Visited of 'otyp def * (effect * 'oexpr) option
 
-            type bindings
+            type ('otyp, 'oexpr) bindings
 
             structure Builder: sig
-                type t
+                type ('otyp, 'oexpr) t
 
-                val new: unit -> t
-                val insert: t -> Pos.span -> Name.t -> binding_state -> (Pos.span * Name.t, unit) Either.t
-                val build: t -> bindings
+                val new: unit -> ('otyp, 'oexpr) t
+                val insert: ('otyp, 'oexpr) t -> Pos.span -> Name.t -> ('otyp, 'oexpr) binding_state
+                    -> (Pos.span * Name.t, unit) Either.t
+                val build: ('otyp, 'oexpr) t -> ('otyp, 'oexpr) bindings
             end
         end
     end
@@ -49,66 +47,60 @@ signature TYPECHECKING_ENV = sig
     structure Scope: sig
         structure Id: ID where type t = ScopeId.t
 
-        type toplevel = { typeFns: Bindings.TypeFn.bindings
-                        , pureCallsite: odef
-                        , vals: Bindings.Expr.bindings }
+        type ('otyp, 'oexpr) toplevel = { typeFns: Bindings.TypeFn.bindings
+                                        , pureCallsite: odef
+                                        , vals: ('otyp, 'oexpr) Bindings.Expr.bindings }
 
-        datatype t
-            = TopScope of Id.t * toplevel
-            | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
-            | PatternScope of Id.t * Name.t * Bindings.Expr.binding_state
+        datatype ('otyp, 'oexpr) t
+            = TopScope of Id.t * ('otyp, 'oexpr) toplevel
+            | FnScope of Id.t * Name.t * ('otyp, 'oexpr) Bindings.Expr.binding_state
+            | PatternScope of Id.t * Name.t * ('otyp, 'oexpr) Bindings.Expr.binding_state
             | ForAllScope of Id.t * Bindings.Type.bindings
             | ExistsScope of Id.t * Bindings.Type.bindings
-            | BlockScope of Id.t * Bindings.Expr.bindings
-            | InterfaceScope of Id.t * Bindings.Expr.bindings
+            | BlockScope of Id.t * ('otyp, 'oexpr) Bindings.Expr.bindings
+            | InterfaceScope of Id.t * ('otyp, 'oexpr) Bindings.Expr.bindings
             | Marker of Id.t
 
-        val id : t -> Id.t
+        val id : ('otyp, 'oexpr) t -> Id.t
     end
 
-    type t
+    type ('otyp, 'oexpr, 'error) t
 
-    val default: Pos.sourcemap -> t
-    val initial: Pos.sourcemap -> Scope.Id.t * Scope.toplevel -> t
-    val innermostScope: t -> Scope.t
-    val pushScope: t -> Scope.t -> t
-    val hasScope: t -> Scope.Id.t -> bool
+    val default: Pos.sourcemap -> ('otyp, 'oexpr, 'error) t
+    val initial: Pos.sourcemap -> Scope.Id.t * ('otyp, 'oexpr) Scope.toplevel -> ('otyp, 'oexpr, 'error) t
+    val innermostScope: ('otyp, 'oexpr, 'error) t -> ('otyp, 'oexpr) Scope.t
+    val pushScope: ('otyp, 'oexpr, 'error) t -> ('otyp, 'oexpr) Scope.t -> ('otyp, 'oexpr, 'error) t
+    val hasScope: ('otyp, 'oexpr, 'error) t -> Scope.Id.t -> bool
 
-    val findType: t -> type_id -> kind option
-    val universalParams: t -> odef vector
-    val nearestExists: t -> (Scope.Id.t * Bindings.Type.bindings) option
+    val findType: ('otyp, 'oexpr, 'error) t -> type_id -> kind option
+    val universalParams: ('otyp, 'oexpr, 'error) t -> odef vector
+    val nearestExists: ('otyp, 'oexpr, 'error) t -> (Scope.Id.t * Bindings.Type.bindings) option
 
-    val pureCallsite: t -> odef
-    val freshAbstract: t -> kind -> odef
-    val typeFns: t -> odef vector
+    val pureCallsite: ('otyp, 'oexpr, 'error) t -> odef
+    val freshAbstract: ('otyp, 'oexpr, 'error) t -> kind -> odef
+    val typeFns: ('otyp, 'oexpr, 'error) t -> odef vector
    
-    val findExpr: t -> Name.t -> Bindings.Expr.binding_state option
-    val findExprClosure: t -> Name.t -> (Bindings.Expr.binding_state * t) option
-    val updateExpr: Pos.span -> t -> Name.t
-                  -> (Bindings.Expr.binding_state -> Bindings.Expr.binding_state)
+    val findExpr: ('otyp, 'oexpr, 'error) t -> Name.t -> ('otyp, 'oexpr) Bindings.Expr.binding_state option
+    val findExprClosure: ('otyp, 'oexpr, 'error) t -> Name.t
+        -> (('otyp, 'oexpr) Bindings.Expr.binding_state * ('otyp, 'oexpr, 'error) t) option
+    val updateExpr: Pos.span -> ('otyp, 'oexpr, 'error) t -> Name.t
+                  -> (('otyp, 'oexpr) Bindings.Expr.binding_state -> ('otyp, 'oexpr) Bindings.Expr.binding_state)
                   -> (Pos.span * Name.t, unit) Either.t
 
-    val sourcemap : t -> Pos.sourcemap
-    val error: t -> error -> unit
-    val errors: t -> error list
+    val sourcemap : ('otyp, 'oexpr, 'error) t -> Pos.sourcemap
+    val error: ('otyp, 'oexpr, 'error) t -> 'error -> unit
+    val errors: ('otyp, 'oexpr, 'error) t -> 'error list
 end
 
-functor TypecheckingEnv (Output : sig
-    type typ
-    type expr
-    type error
-end) :> TYPECHECKING_ENV = struct
+structure TypecheckingEnv :> TYPECHECKING_ENV = struct
     type input_type = Cst.Type.typ
     type input_expr = Cst.Term.expr
     type type_id = FType.Id.t
     type kind = FType.kind
     type odef = FType.def
     type effect = FType.effect
-    type otype = Output.typ
-    type oexpr = Output.expr
-    type error = Output.error
 
-    type abs_ctx = otype vector 
+    type 'otyp abs_ctx = 'otyp vector 
 
     val op|> = Fn.|>
 
@@ -152,20 +144,20 @@ end) :> TYPECHECKING_ENV = struct
         end
 
         structure Expr = struct
-            type 'typ def = {pos: Pos.span, id: DefId.t, var: Name.t, typ: 'typ}
+            type 'otyp def = {pos: Pos.span, id: DefId.t, var: Name.t, typ: 'otyp}
 
-            datatype binding_state
+            datatype ('otyp, 'oexpr) binding_state
                 = Unvisited of input_type option def * input_expr option
                 | Visiting of input_type option def * input_expr option
-                | Typed of (otype * abs_ctx option) def * input_expr option
-                | Visited of otype def * (effect * oexpr) option
+                | Typed of ('otyp * 'otyp abs_ctx option) def * input_expr option
+                | Visited of 'otyp def * (effect * 'oexpr) option
 
-            type bindings = binding_state NameHashTable.hash_table
+            type ('otyp, 'oexpr) bindings = ('otyp, 'oexpr) binding_state NameHashTable.hash_table
 
             val find = NameHashTable.find
 
             structure Builder = struct
-                type t = bindings
+                type ('otyp, 'oexpr) t = ('otyp, 'oexpr) bindings
 
                 fun new () = NameHashTable.mkTable (0, Subscript)
                 fun insert builder pos name b =
@@ -180,9 +172,9 @@ end) :> TYPECHECKING_ENV = struct
     structure Scope = struct
         structure Id = ScopeId
 
-        type toplevel = { typeFns: Bindings.TypeFn.bindings
-                        , pureCallsite: odef
-                        , vals: Bindings.Expr.bindings }
+        type ('otyp, 'oexpr) toplevel = { typeFns: Bindings.TypeFn.bindings
+                                        , pureCallsite: odef
+                                        , vals: ('otyp, 'oexpr) Bindings.Expr.bindings }
 
         fun initialToplevel () =
             let val typeFns = Bindings.TypeFn.new ()
@@ -191,21 +183,22 @@ end) :> TYPECHECKING_ENV = struct
                , vals = Bindings.Expr.Builder.new () |> Bindings.Expr.Builder.build }
             end
 
-        fun pureCallsite ({pureCallsite, ...}: toplevel) = pureCallsite
+        fun pureCallsite ({pureCallsite, ...}: ('otyp, 'oexpr) toplevel) = pureCallsite
 
-        fun freshAbstract ({typeFns, ...}: toplevel) kind =
+        fun freshAbstract ({typeFns, ...}: ('otyp, 'oexpr) toplevel) kind =
             Bindings.TypeFn.freshAbstract typeFns kind
 
-        fun typeFns ({typeFns, ...}: toplevel) = Bindings.TypeFn.toVector typeFns
+        fun typeFns ({typeFns, ...}: ('otyp, 'oexpr) toplevel) = Bindings.TypeFn.toVector typeFns
 
-        datatype t = TopScope of Id.t * toplevel
-                   | FnScope of Id.t * Name.t * Bindings.Expr.binding_state
-                   | PatternScope of Id.t * Name.t * Bindings.Expr.binding_state
-                   | ForAllScope of Id.t * Bindings.Type.bindings
-                   | ExistsScope of Id.t * Bindings.Type.bindings
-                   | BlockScope of Id.t * Bindings.Expr.bindings
-                   | InterfaceScope of Id.t * Bindings.Expr.bindings
-                   | Marker of Id.t
+        datatype ('otyp, 'oexpr) t
+            = TopScope of Id.t * ('otyp, 'oexpr) toplevel
+            | FnScope of Id.t * Name.t * ('otyp, 'oexpr) Bindings.Expr.binding_state
+            | PatternScope of Id.t * Name.t * ('otyp, 'oexpr) Bindings.Expr.binding_state
+            | ForAllScope of Id.t * Bindings.Type.bindings
+            | ExistsScope of Id.t * Bindings.Type.bindings
+            | BlockScope of Id.t * ('otyp, 'oexpr) Bindings.Expr.bindings
+            | InterfaceScope of Id.t * ('otyp, 'oexpr) Bindings.Expr.bindings
+            | Marker of Id.t
 
         val id = fn FnScope (id, _, _) => id
                   | PatternScope (id, _, _) => id
@@ -234,11 +227,12 @@ end) :> TYPECHECKING_ENV = struct
              | BlockScope (_, bindings) | InterfaceScope (_, bindings) => Bindings.Expr.find bindings name
     end
 
-    type t = { toplevel: Scope.toplevel
-             , scopeIds: Scope.Id.t list
-             , scopes: Scope.t list
-             , sourcemap: Pos.sourcemap
-             , errors: error list ref }
+    type ('otyp, 'oexpr, 'error) t =
+        { toplevel: ('otyp, 'oexpr) Scope.toplevel
+        , scopeIds: Scope.Id.t list
+        , scopes: ('otyp, 'oexpr) Scope.t list
+        , sourcemap: Pos.sourcemap
+        , errors: 'error list ref }
     
     fun initial sourcemap (id, toplevel) =
         { toplevel, scopeIds = [id], scopes = [Scope.TopScope (id, toplevel)]
@@ -246,16 +240,16 @@ end) :> TYPECHECKING_ENV = struct
 
     fun default sourcemap = initial sourcemap (Scope.Id.fresh (), Scope.initialToplevel ())
 
-    fun innermostScope ({scopes, ...}: t) = hd scopes
+    fun innermostScope ({scopes, ...}: ('otyp, 'oexpr, 'error) t) = hd scopes
 
     fun pushScope {scopeIds, scopes, toplevel, sourcemap, errors} scope =
         { scopes = scope :: scopes, scopeIds = Scope.id scope :: scopeIds, toplevel
         , sourcemap, errors }
 
-    fun hasScope (env: t) id =
+    fun hasScope (env: ('otyp, 'oexpr, 'error) t) id =
         List.exists (fn id' => id' = id) (#scopeIds env)
 
-    fun findType (env: t) id =
+    fun findType (env: ('otyp, 'oexpr, 'error) t) id =
         let val rec find =
                 fn scope :: env =>
                     Scope.findType scope id |> Option.orElse (fn () => find env)
@@ -263,20 +257,20 @@ end) :> TYPECHECKING_ENV = struct
         in find (#scopes env)
         end
 
-    fun universalParams ({scopes, ...}: t) =
+    fun universalParams ({scopes, ...}: ('otyp, 'oexpr, 'error) t) =
         Vector.concat (List.map Scope.universalParams scopes)
 
-    fun nearestExists ({scopes, ...}: t) =
+    fun nearestExists ({scopes, ...}: ('otyp, 'oexpr, 'error) t) =
         List.some (fn Scope.ExistsScope scope => SOME scope | _ => NONE) scopes
 
-    fun pureCallsite ({toplevel, ...}: t) = Scope.pureCallsite toplevel
+    fun pureCallsite ({toplevel, ...}: ('otyp, 'oexpr, 'error) t) = Scope.pureCallsite toplevel
 
-    fun freshAbstract ({toplevel, ...}: t) kindSig =
+    fun freshAbstract ({toplevel, ...}: ('otyp, 'oexpr, 'error) t) kindSig =
         Scope.freshAbstract toplevel kindSig
 
-    fun typeFns ({toplevel, ...}: t) = Scope.typeFns toplevel
+    fun typeFns ({toplevel, ...}: ('otyp, 'oexpr, 'error) t) = Scope.typeFns toplevel
 
-    fun findExprClosure (env: t) name =
+    fun findExprClosure (env: ('otyp, 'oexpr, 'error) t) name =
         let val rec find =
                 fn env as {scopes = scope :: scopes, scopeIds = _ :: scopeIds, toplevel, sourcemap, errors} =>
                     (case Scope.findExpr scope name
@@ -288,7 +282,7 @@ end) :> TYPECHECKING_ENV = struct
 
     fun findExpr env name = Option.map #1 (findExprClosure env name)
 
-    fun updateExpr pos (env: t) name f =
+    fun updateExpr pos (env: ('otyp, 'oexpr, 'error) t) name f =
         let val rec update =
                 fn (Scope.BlockScope (_, bs) | Scope.InterfaceScope (_, bs)) :: env =>
                     (case Bindings.Expr.find bs name
@@ -303,10 +297,10 @@ end) :> TYPECHECKING_ENV = struct
         in update (#scopes env)
         end
 
-    val sourcemap: t -> Pos.sourcemap = #sourcemap
+    val sourcemap: ('otyp, 'oexpr, 'error) t -> Pos.sourcemap = #sourcemap
 
-    fun error ({errors, ...}: t) err = errors := err :: (!errors)
+    fun error ({errors, ...}: ('otyp, 'oexpr, 'error) t) err = errors := err :: (!errors)
 
-    val errors: t -> error list = List.rev o op! o #errors
+    fun errors ({errors, ...}: ('otyp, 'oexpr, 'error) t) = List.rev (!errors)
 end
 
