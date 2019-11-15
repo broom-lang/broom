@@ -51,7 +51,7 @@ end = struct
     (* \forall|\exists a... . T --> [(\hat{a}/a)...]T and push \hat{a}... to env *)
     fun instantiate env (params: FType.def vector1, body) f =
         let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
-            val args = Vector1.map (fn {kind, ...} => SVar (UVar (Env.freshUv env kind)))
+            val args = Vector1.map (fn {kind, ...} => SVar (UVar (Uv.fresh (env, kind))))
                                    params
             val mapping = (params, args)
                         |> Vector1.zipWith (fn ({var, kind = _}, arg) => (var, arg))

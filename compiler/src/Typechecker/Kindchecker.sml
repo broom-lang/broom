@@ -77,7 +77,7 @@ end = struct
                             let val (nonCallsiteTypeDefs, domain) =
                                     case domain
                                     of SOME domain => elaborateType env domain
-                                     | NONE => ([], FType.SVar (FType.UVar (Env.freshUv env FType.TypeK)))
+                                     | NONE => ([], FType.SVar (FType.UVar (TypeVars.Uv.fresh (env, FType.TypeK))))
                                 val callsite = {var = FType.Id.fresh (), kind = FType.CallsiteK}
                                 val typeDefs = callsite :: nonCallsiteTypeDefs
 

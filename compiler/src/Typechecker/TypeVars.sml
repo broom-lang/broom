@@ -1,5 +1,6 @@
 structure TypeVars :> sig
     type kind = FType.kind
+    type ('otyp, 'oexpr, 'error) env = ('otyp, 'oexpr, 'error) TypecheckingEnv.t
 
     exception SetPrivate of Name.t
     exception Reset
@@ -15,8 +16,8 @@ structure TypeVars :> sig
     type 't uv
 
     structure Uv: sig
-        val new: ScopeId.t * Name.t * kind -> 't uv
-        val fresh: ScopeId.t * kind -> 't uv
+        val new: ('otyp, 'oexpr, 'error) env * Name.t * kind -> 't uv
+        val fresh: ('otyp, 'oexpr, 'error) env * kind -> 't uv
         val freshSibling: 't uv * kind -> 't uv
         val get: 't uv -> ('t uv, 't) Either.t
         val merge : (ScopeId.t * ScopeId.t -> order) (* scope ordering to preserve scoping invariants *)
@@ -43,7 +44,9 @@ structure TypeVars :> sig
         val kind : 't path -> kind
     end
 end = struct
+    structure Env = TypecheckingEnv
     type kind = FType.kind
+    type ('otyp, 'oexpr, 'error) env = ('otyp, 'oexpr, 'error) Env.t
 
     val rec kindCodomain =
       fn FType.ArrowK {codomain, ...} => kindCodomain codomain
@@ -70,12 +73,14 @@ end = struct
     withtype 't uv = 't link ref
 
     structure Uv = struct
-        fun new (scope, name, kind) =
-            ref (Root { meta = {name, scope, kind}
-                      , typ = ref NONE
-                      , rank = ref 0 })
+        fun new (env, name, kind) =
+            let val scope = Env.Scope.id (Env.innermostScope env)
+            in ref (Root { meta = {name, scope, kind}
+                         , typ = ref NONE
+                         , rank = ref 0 })
+            end
 
-        fun fresh (scope, kind) = new (scope, Name.fresh (), kind)
+        fun fresh (env, kind) = new (env, Name.fresh (), kind)
 
         fun find uv =
             case !uv
@@ -90,7 +95,10 @@ end = struct
             of Root root => root
              | Link _ => raise Fail "unreachable"
 
-        fun freshSibling (uv, kind) = fresh (#scope (#meta (root uv)), kind)
+        fun freshSibling (uv, kind) =
+            ref (Root { meta = {name = Name.fresh (), scope = #scope (#meta (root uv)), kind}
+                      , typ = ref NONE
+                      , rank = ref 0 })
 
         fun get uv =
             let val uv = find uv
@@ -170,7 +178,11 @@ end = struct
              | NONE => Either.Left face
 
         fun addScope ({kind, face, impls}: 't path, scope, coercion) =
-            impls := (scope, {typ = Uv.fresh (scope, kindCodomain kind), coercion}) :: !impls
+            let val uv = ref (Root { meta = {name = Name.fresh (), scope, kind = kindCodomain kind}
+                                   , typ = ref NONE
+                                   , rank = ref 0 })
+            in impls := (scope, {typ = uv, coercion}) :: !impls
+            end
 
         fun eq ({impls, ...}: 't path, {impls = impls', ...}: 't path) =
             impls = impls'

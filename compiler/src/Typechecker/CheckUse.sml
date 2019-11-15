@@ -54,7 +54,7 @@ end = struct
                             in (def, Visited (def, SOME (eff, expr)))
                             end
                          | (def as {typ = NONE, ...}, oexpr as NONE) =>
-                            let val t = FType.SVar (FType.UVar (Env.freshUv env FType.TypeK))
+                            let val t = FType.SVar (FType.UVar (TypeVars.Uv.fresh (env, FType.TypeK)))
                             in (FTerm.setDefTyp def t, Typed (FTerm.setDefTyp def (t, NONE), oexpr))
                             end
                 in case valOf (Env.findExpr env name)
@@ -74,7 +74,7 @@ end = struct
             (* In case we encounter a recursive reference to `name` not broken by type annotations we call
                this to insert a unification variable, inferring a monomorphic type. *)
             and cyclicBindingType pos env name (def, oexpr) : FTerm.def =
-                let val t = FType.SVar (FType.UVar (Env.freshUv env FType.TypeK))
+                let val t = FType.SVar (FType.UVar (TypeVars.Uv.fresh (env, FType.TypeK)))
                 in case Env.updateExpr pos env name (Fn.constantly (Typed ( FTerm.setDefTyp def (t, NONE)
                                                                           , oexpr )))
                    of Left err => Env.error env (UnboundVal err)
