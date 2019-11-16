@@ -15,6 +15,7 @@ local
            src/Util/Vector.sml
            src/Util/VectorSlice.sml
            src/Util/Vector1.sml
+           src/Util/Trictor.sml
            src/Util/String.sml
            src/Util/Monoid.sml
            src/Util/Bimappable.sml

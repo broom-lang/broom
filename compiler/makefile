@@ -22,6 +22,10 @@ check: main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
 %.ml-ulex.sml: %.ml-ulex
 	ml-ulex --strict-sml $<
 
+.PHONY: utest
+utest: $(shell find test/unit -name '*.sml' -or -name '*.mlb')
+	mlton -const 'Exn.keepHistory true' test/unit/unit.mlb && ./test/unit/unit
+
 .PHONY: itest
 itest: itests
 	@echo "All integration tests passed."

@@ -1,0 +1,15 @@
+local
+    $(SML_LIB)/basis/basis.mlb
+    $(SML_LIB)/basis/mlton.mlb
+in  ann "allowSuccessorML true"
+    in  local
+            ../../src/Util/Fn.sml
+            ../../src/Util/Vector.sml
+            ../../src/Util/Trictor.sml
+        in
+            Assert.sml
+            TestTrictor.sml
+        end
+    end
+end
+

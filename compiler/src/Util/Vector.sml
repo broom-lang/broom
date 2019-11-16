@@ -14,6 +14,14 @@ structure Vector = struct
          ; done ()
         end
 
+    fun append (xs, y) =
+        let val len = Vector.length xs + 1
+            val {update, done, ...} = MLton.Vector.create len
+        in Vector.appi update xs
+         ; update (len - 1, y)
+         ; done ()
+        end
+
     fun zipWith f (xs, ys) =
         let val len = Int.min (Vector.length xs, Vector.length ys)
             val {update, done, ...} = MLton.Vector.create len
@@ -39,4 +47,8 @@ structure Vector = struct
         in loop 0
          ; done ()
         end
+
+    fun inspect inspectEl vs =
+        "#" ^ Int.toString (length vs) ^ "["
+        ^ foldl (fn (v, res) => res ^ ", " ^ inspectEl v) "" vs ^ "]"
 end
