@@ -2,42 +2,42 @@
    Extended for unification variables and implemented on `Trictor`. *)
 
 signature UNION_FIND = sig
-    type 'a pool
-    type 'a t
+    type ('s, 'd) pool
+    type ('s, 'd) t
 
-    val pool : unit -> 'a pool
-    val new : 'a pool -> 'a t * 'a pool
-    val find : 'a pool -> 'a t -> 'a t
-    val get : 'a pool -> 'a t -> ('a t, 'a) Either.t
-    val union : 'a pool -> 'a t * 'a t -> 'a pool
-    val define : 'a pool -> 'a t -> 'a -> ('a, 'a pool) Either.t
+    val pool : unit -> ('s, 'd) pool
+    val new : ('s, 'd) pool -> 's -> ('s, 'd) t * ('s, 'd) pool
+    val find : ('s, 'd) pool -> ('s, 'd) t -> ('s, 'd) t
+    val get : ('s, 'd) pool -> ('s, 'd) t -> 's * (('s, 'd) t, 'd) Either.t
+    val union : ('s, 'd) pool -> ('s, 'd) t * ('s, 'd) t -> ('s, 'd) pool
+    val define : ('s, 'd) pool -> ('s, 'd) t -> 'd -> ('d, ('s, 'd) pool) Either.t
 end
 
 structure UnionFind :> UNION_FIND = struct
-    type 'a t = int
+    type ('s, 'd) t = int
 
-    datatype 'a node
-        = Link of 'a t
-        | Leaf of 'a option
+    datatype ('s, 'd) node
+        = Link of ('s, 'd) t
+        | Leaf of 's * 'd option
 
-    type 'a pool =
-        { parents : 'a node Trictor.t ref
+    type ('s, 'd) pool =
+        { parents : ('s, 'd) node Trictor.t ref
         , ranks : int Trictor.t }
 
     fun pool () = 
         { parents = ref (Trictor.empty ())
         , ranks = Trictor.empty () }
 
-    fun new {parents = ref parents, ranks} =
+    fun new {parents = ref parents, ranks} s =
         ( Trictor.length parents
-        , { parents = ref (Trictor.append parents (Leaf NONE))
+        , { parents = ref (Trictor.append parents (Leaf (s, NONE)))
           , ranks = Trictor.append ranks 0 } )
 
     fun find {parents, ranks = _} i =
         let fun doFind parents i =
                 case Trictor.sub (parents, i)
-                of Leaf (SOME v) => (parents, i)
-                 | Leaf NONE => (parents, i)
+                of Leaf (_, SOME _) => (parents, i)
+                 | Leaf (_, NONE) => (parents, i)
                  | Link i' =>
                     let val (parents, repr) = doFind parents i'
                     in ( Trictor.update (parents, i, Link repr)
@@ -52,8 +52,8 @@ structure UnionFind :> UNION_FIND = struct
     fun get (pool as {parents, ...}) i =
         let val repr = find pool i
         in case Trictor.sub (!parents, repr)
-           of Leaf (SOME v) => Either.Right v
-            | Leaf NONE => Either.Left repr
+           of Leaf (s, SOME d) => (s, Either.Right d)
+            | Leaf (s, NONE) => (s, Either.Left repr)
             | Link _ => raise Fail "unreachable"
         end
 
@@ -72,11 +72,11 @@ structure UnionFind :> UNION_FIND = struct
                     , ranks = Trictor.update' (ranks, repr, fn rank => rank + 1) }
         end
 
-    fun define (pool as {parents, ranks}) i v =
+    fun define (pool as {parents, ranks}) i d =
         case get pool i
-        of Either.Left i =>
-            Either.Right { parents = ref (Trictor.update (!parents, i, Leaf (SOME v)))
+        of (s, Either.Left i) =>
+            Either.Right { parents = ref (Trictor.update (!parents, i, Leaf (s, SOME d)))
                          , ranks }
-         | Either.Right v => Either.Left v
+         | (_, Either.Right v) => Either.Left v
 end
 

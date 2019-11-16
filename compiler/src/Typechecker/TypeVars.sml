@@ -65,6 +65,42 @@ end = struct
         val name: ov -> Name.t = #name
     end
 
+    structure Uv' = struct
+        type 't uv = (meta, 't) UnionFind.t
+
+        fun make env meta =
+            let val scope = Env.Scope.id (Env.innermostScope env)
+                val subst = Env.currentSubstitution env
+                val (uv, subst') = UnionFind.new subst meta
+            in Env.setSubstitution env subst'
+             ; uv
+            end
+
+        fun new (env, name, kind) =
+            let val scope = Env.Scope.id (Env.innermostScope env)
+            in make env {name, scope, kind}
+            end
+
+        fun fresh (env, kind) = new (env, Name.fresh (), kind)
+
+        fun freshSibling env (uv, kind) =
+            let val scope = #scope (#1 (UnionFind.get (Env.currentSubstitution env) uv))
+            in make env {name = Name.fresh (), scope, kind}
+            end
+
+        fun get env uv = #2 (UnionFind.get (Env.currentSubstitution env) uv)
+
+        fun set env (uv, t) =
+            let val pool = Env.currentSubstitution env
+                val ({scope, name, kind = _}, _) = UnionFind.get (Env.currentSubstitution env) uv
+            in if not (Env.hasScope env scope)
+               then raise SetPrivate name
+               else case UnionFind.define pool uv t
+                    of Either.Left _ => raise Reset
+                     | Either.Right pool' => Env.setSubstitution env pool'
+            end
+    end
+
     datatype 't link
         = Link of 't uv
         | Root of {meta: meta, typ: 't option ref, rank: int ref}

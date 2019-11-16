@@ -8,6 +8,8 @@ signature TYPECHECKING_ENV = sig
 
     type 'otyp abs_ctx = 'otyp vector 
 
+    type 't subst = ({name : Name.t, kind : kind, scope : ScopeId.t}, 't) UnionFind.pool
+
     structure Bindings: sig
         structure TypeFn: sig
             type bindings
@@ -49,7 +51,8 @@ signature TYPECHECKING_ENV = sig
 
         type ('otyp, 'oexpr) toplevel = { typeFns: Bindings.TypeFn.bindings
                                         , pureCallsite: odef
-                                        , vals: ('otyp, 'oexpr) Bindings.Expr.bindings }
+                                        , vals: ('otyp, 'oexpr) Bindings.Expr.bindings
+                                        , subst: 'otyp subst ref }
 
         datatype ('otyp, 'oexpr) t
             = TopScope of Id.t * ('otyp, 'oexpr) toplevel
@@ -87,6 +90,9 @@ signature TYPECHECKING_ENV = sig
                   -> (('otyp, 'oexpr) Bindings.Expr.binding_state -> ('otyp, 'oexpr) Bindings.Expr.binding_state)
                   -> (Pos.span * Name.t, unit) Either.t
 
+    val currentSubstitution : ('otyp, 'oexpr, 'error) t -> 'otyp subst
+    val setSubstitution : ('otyp, 'oexpr, 'error) t -> 'otyp subst -> unit
+
     val sourcemap : ('otyp, 'oexpr, 'error) t -> Pos.sourcemap
     val error: ('otyp, 'oexpr, 'error) t -> 'error -> unit
     val errors: ('otyp, 'oexpr, 'error) t -> 'error list
@@ -103,6 +109,8 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
     type 'otyp abs_ctx = 'otyp vector 
 
     val op|> = Fn.|>
+
+    type 't subst = ({name : Name.t, kind : kind, scope : ScopeId.t}, 't) UnionFind.pool
 
     structure Bindings = struct
         structure TypeFn = struct
@@ -174,13 +182,15 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
 
         type ('otyp, 'oexpr) toplevel = { typeFns: Bindings.TypeFn.bindings
                                         , pureCallsite: odef
-                                        , vals: ('otyp, 'oexpr) Bindings.Expr.bindings }
+                                        , vals: ('otyp, 'oexpr) Bindings.Expr.bindings
+                                        , subst: 'otyp subst ref }
 
         fun initialToplevel () =
             let val typeFns = Bindings.TypeFn.new ()
             in { typeFns
                , pureCallsite = Bindings.TypeFn.freshAbstract typeFns FType.CallsiteK
-               , vals = Bindings.Expr.Builder.new () |> Bindings.Expr.Builder.build }
+               , vals = Bindings.Expr.Builder.new () |> Bindings.Expr.Builder.build
+               , subst = ref (UnionFind.pool ()) }
             end
 
         fun pureCallsite ({pureCallsite, ...}: ('otyp, 'oexpr) toplevel) = pureCallsite
@@ -296,6 +306,12 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
                  | [] => Either.Left (pos, name)
         in update (#scopes env)
         end
+
+    fun currentSubstitution ({toplevel, ...}: ('otyp, 'oexpr, 'error) t) =
+        !(#subst toplevel)
+
+    fun setSubstitution ({toplevel, ...}: ('otyp, 'oexpr, 'error) t) subst' =
+        #subst toplevel := subst'
 
     val sourcemap: ('otyp, 'oexpr, 'error) t -> Pos.sourcemap = #sourcemap
 
