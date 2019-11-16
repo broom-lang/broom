@@ -41,9 +41,6 @@ end = struct
 
     fun idInScope env id = isSome (Env.findType env id)
 
-    fun uvSet env = Uv.set (Env.hasScope env)
-    fun uvMerge env = Uv.merge Scope.Id.compare (Env.hasScope env)
-
     fun pathGet env = Path.get (Env.hasScope env)
 
     fun occurs env = Concr.occurs (Env.hasScope env)
@@ -233,7 +230,7 @@ end = struct
               in if not (kind = kind')
                  then raise TypeError (InequalKinds (pos, kind, kind'))
                  else ()
-               ; uvMerge env (uv, uv')
+               ; Uv.merge env (uv, uv')
                ; Refl r
               end)
 
@@ -261,7 +258,7 @@ end = struct
           then raise TypeError (Occurs (pos, SVar (UVar uv), t))
           else ()
         ; checkMonotypeKind env pos (Uv.kind uv) t
-        ; uvSet env (uv, t)
+        ; Uv.set env (uv, t)
         ; Refl t )
 
     and pathsCoercion env pos ((path, args), (path', args')) =
@@ -450,7 +447,7 @@ end = struct
               in if not (kind = kind')
                  then raise TypeError (InequalKinds (pos, kind, kind'))
                  else ()
-               ; uvMerge env (uv, uv')
+               ; Uv.merge env (uv, uv')
                ; NONE
               end)
 
@@ -573,7 +570,7 @@ end = struct
              val arrow' = { domain = SVar (UVar domainUv)
                           , codomain = SVar (UVar codomainUv)}
              val t' = Arrow (Explicit eff, arrow')
-             do ignore (uvSet env (uv, t'))
+             do ignore (Uv.set env (uv, t'))
              val coerceDomain = doAssign env pos (flip direction) domainUv domain (* contravariance *)
              val coerceCodomain = doAssign env pos direction codomainUv codomain (* covariance *)
          in if isSome coerceDomain orelse isSome coerceCodomain
@@ -588,7 +585,7 @@ end = struct
       | doAssign env pos direction uv (Record row) =
          let val rowUv = Uv.freshSibling (uv, RowK)
              val uvRow = SVar (UVar rowUv)
-             do ignore (uvSet env (uv, Record uvRow))
+             do ignore (Uv.set env (uv, Record uvRow))
              val tmpDef = {pos, id = DefId.fresh (), var = Name.fresh (), typ = SVar (UVar uv)}
              val tmpUse = FTerm.Use (pos, tmpDef)
 
@@ -599,7 +596,7 @@ end = struct
                          val base = SVar (UVar baseUv)
                          val fieldt = SVar (UVar fieldUv)
                          val row = RowExt {base, field = (label, fieldt)}
-                         do ignore (uvSet env (uv, row))
+                         do ignore (Uv.set env (uv, row))
                          val row' = RowExt {base, field = (label, fieldt')}
                          val t' = Record row'
 
@@ -633,7 +630,7 @@ end = struct
              val fieldUv = Uv.freshSibling (uv, TypeK)
              val row' = RowExt { base = SVar (UVar baseUv)
                                , field = (label, SVar (UVar fieldUv)) }
-             do ignore (uvSet env (uv, row'))
+             do ignore (Uv.set env (uv, row'))
              (* Covariance: *)
              do ignore (doAssign env pos direction fieldUv fieldt)
              do ignore (doAssign env pos direction baseUv base)
@@ -663,7 +660,7 @@ end = struct
          in if not (kind = kind')
             then raise TypeError (InequalKinds (pos, kind, kind'))
             else ()
-          ; uvMerge env (uv, uv')
+          ; Uv.merge env (uv, uv')
           ; NONE
          end
 

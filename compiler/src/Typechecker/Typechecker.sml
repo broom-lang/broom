@@ -39,8 +39,6 @@ end = struct
 
 (* # Utils *)
 
-    fun uvSet env = Uv.set (Env.hasScope env)
-
     val nameFromId = Name.fromString o Id.toString
 
     fun unvisitedBindingType env =
@@ -488,7 +486,7 @@ end = struct
                          val codomain = SVar (UVar (Uv.freshSibling (uv, TypeK)))
                          val eff = Impure
                          val arrow = {domain, codomain}
-                         do uvSet env (uv, Arrow (Explicit eff, arrow))
+                         do Uv.set env (uv, Arrow (Explicit eff, arrow))
                      in (callee, eff, arrow)
                      end)
 
@@ -519,7 +517,7 @@ end = struct
                          | SVar (UVar uv) =>
                             let val base = SVar (UVar (Uv.freshSibling (uv, RowK)))
                                 val fieldt = SVar (UVar (Uv.freshSibling (uv, TypeK)))
-                                do uvSet env (uv, Record (RowExt ({base, field = (label, fieldt)})))
+                                do Uv.set env (uv, Record (RowExt ({base, field = (label, fieldt)})))
                             in fieldt
                             end
                          | _ =>
@@ -534,7 +532,7 @@ end = struct
                   | Left uv =>
                      let val base = SVar (UVar (Uv.freshSibling (uv, RowK)))
                          val fieldt = SVar (UVar (Uv.freshSibling (uv, TypeK)))
-                         do uvSet env (uv, Record (RowExt ({base, field = (label, fieldt)})))
+                         do Uv.set env (uv, Record (RowExt ({base, field = (label, fieldt)})))
                      in (expr, fieldt)
                      end)
 

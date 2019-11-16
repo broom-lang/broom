@@ -20,11 +20,8 @@ structure TypeVars :> sig
         val fresh: ('otyp, 'oexpr, 'error) env * kind -> 't uv
         val freshSibling: 't uv * kind -> 't uv
         val get: 't uv -> ('t uv, 't) Either.t
-        val merge : (ScopeId.t * ScopeId.t -> order) (* scope ordering to preserve scoping invariants *)
-            -> (ScopeId.t -> bool) (* Is the required scope available? *)
-            -> 't uv * 't uv -> 't uv
-        val set: (ScopeId.t -> bool) (* Is the required scope available? *)
-                 -> 't uv * 't -> unit
+        val merge : ('otyp, 'oexpr, 'error) env -> 't uv * 't uv -> 't uv
+        val set: ('otyp, 'oexpr, 'error) env -> 't uv * 't -> unit
         val eq: 't uv * 't uv -> bool
         val kind : 't uv -> kind
         val name: 't uv -> Name.t
@@ -108,9 +105,9 @@ end = struct
                 | Link _ => raise Fail "unreachable"
             end
 
-        fun assign inScope (uv, t) =
+        fun assign env (uv, t) =
             let val {meta = {scope, name, ...}, typ, ...} = root uv
-            in if inScope scope
+            in if Env.hasScope env scope
                then case !typ
                     of SOME _ => raise Reset
                      | NONE => typ := SOME t
@@ -122,7 +119,7 @@ end = struct
             then rank + 1
             else Int.max (rank, rank')
 
-        fun merge scopeCmp inScope (uv, uv') =
+        fun merge env (uv, uv') =
             let val uv = find uv
                 val uv' = find uv'
             in if uv = uv'
@@ -131,10 +128,10 @@ end = struct
                     of ( Root {meta = {scope, name, kind = _}, rank, ...}
                        , Root { meta = {scope = scope', name = name', kind = _}
                               , rank = rank', ... } ) =>
-                        if inScope scope 
-                        then if inScope scope'
+                        if Env.hasScope env scope 
+                        then if Env.hasScope env scope'
                              then let val (child, parent, parentRank) =
-                                          case scopeCmp (scope, scope')
+                                          case Env.Scope.Id.compare (scope, scope')
                                           of LESS => (uv, uv', rank')
                                            | GREATER => (uv', uv, rank)
                                            | EQUAL => (case Int.compare (!rank, !rank')
