@@ -65,41 +65,6 @@ end = struct
         val name: ov -> Name.t = #name
     end
 
-    structure Uv' = struct
-        type 't uv = (meta, 't) UnionFind.t
-
-        fun make env meta =
-            let val scope = Env.Scope.id (Env.innermostScope env)
-                val subst = Env.currentSubstitution env
-                val (uv, subst') = UnionFind.new subst meta
-            in Env.setSubstitution env subst'
-             ; uv
-            end
-
-        fun new (env, name, kind) =
-            let val scope = Env.Scope.id (Env.innermostScope env)
-            in make env {name, scope, kind}
-            end
-
-        fun fresh (env, kind) = new (env, Name.fresh (), kind)
-
-        fun freshSibling env (uv, kind) =
-            let val scope = #scope (#1 (UnionFind.get (Env.currentSubstitution env) uv))
-            in make env {name = Name.fresh (), scope, kind}
-            end
-
-        fun get env uv = #2 (UnionFind.get (Env.currentSubstitution env) uv)
-
-        fun set env (uv, t) =
-            let val pool = Env.currentSubstitution env
-                val ({scope, name, kind = _}, _) = UnionFind.get (Env.currentSubstitution env) uv
-            in if not (Env.hasScope env scope)
-               then raise SetPrivate name
-               else case UnionFind.define pool uv t
-                    of Either.Left _ => raise Reset
-                     | Either.Right pool' => Env.setSubstitution env pool'
-            end
-    end
 
     datatype 't link
         = Link of 't uv
@@ -192,6 +157,64 @@ end = struct
         fun kind uv = #kind (#meta (root uv))
 
         fun name uv = #name (#meta (root uv))
+    end
+
+    type 't uv' = (meta, 't) UnionFind.t
+
+    structure Uv' = struct
+        fun make env meta =
+            let val scope = Env.Scope.id (Env.innermostScope env)
+                val subst = Env.currentSubstitution env
+                val (uv, subst') = UnionFind.new subst meta
+            in Env.setSubstitution env subst'
+             ; uv
+            end
+
+        fun new (env, name, kind) =
+            let val scope = Env.Scope.id (Env.innermostScope env)
+            in make env {name, scope, kind}
+            end
+
+        fun fresh (env, kind) = new (env, Name.fresh (), kind)
+
+        fun freshSibling env (uv, kind) =
+            let val scope = #scope (#1 (UnionFind.get (Env.currentSubstitution env) uv))
+            in make env {name = Name.fresh (), scope, kind}
+            end
+
+        fun get env uv = #2 (UnionFind.get (Env.currentSubstitution env) uv)
+
+        fun set env (uv, t) =
+            let val pool = Env.currentSubstitution env
+                val ({scope, name, kind = _}, _) = UnionFind.get (Env.currentSubstitution env) uv
+            in if not (Env.hasScope env scope)
+               then raise SetPrivate name
+               else case UnionFind.define pool uv t
+                    of Either.Left _ => raise Reset
+                     | Either.Right pool' => Env.setSubstitution env pool'
+            end
+
+        fun compareMetaScopes ({scope, ...}: meta, {scope = scope', ...}: meta) =
+            Env.Scope.Id.compare (scope, scope')
+
+        fun merge env (uv, uv') =
+            let val subst = Env.currentSubstitution env
+                val ({scope, name, ...}, _) = UnionFind.get subst uv
+            in if not (Env.hasScope env scope)
+               then raise SetPrivate name
+               else let val ({scope, name, ...}, _) = UnionFind.get subst uv'
+                    in if not (Env.hasScope env scope)
+                       then raise SetPrivate name
+                       else let val subst' = UnionFind.union subst compareMetaScopes (uv, uv')
+                            in Env.setSubstitution env subst'
+                            end
+                    end
+            end
+
+        val eq = UnionFind.eq
+
+        fun kind env uv = #kind (#1 (UnionFind.get (Env.currentSubstitution env) uv))
+        fun name env uv = #name (#1 (UnionFind.get (Env.currentSubstitution env) uv))
     end
 
     type 't impl = {typ: 't uv, coercion: Name.t}

@@ -9,8 +9,9 @@ signature UNION_FIND = sig
     val new : ('s, 'd) pool -> 's -> ('s, 'd) t * ('s, 'd) pool
     val find : ('s, 'd) pool -> ('s, 'd) t -> ('s, 'd) t
     val get : ('s, 'd) pool -> ('s, 'd) t -> 's * (('s, 'd) t, 'd) Either.t
-    val union : ('s, 'd) pool -> ('s, 'd) t * ('s, 'd) t -> ('s, 'd) pool
+    val union : ('s, 'd) pool -> ('s * 's -> order) -> ('s, 'd) t * ('s, 'd) t -> ('s, 'd) pool
     val define : ('s, 'd) pool -> ('s, 'd) t -> 'd -> ('d, ('s, 'd) pool) Either.t
+    val eq : ('s, 'd) t * ('s, 'd) t -> bool
 end
 
 structure UnionFind :> UNION_FIND = struct
@@ -57,19 +58,36 @@ structure UnionFind :> UNION_FIND = struct
             | Link _ => raise Fail "unreachable"
         end
 
-    fun union (pool as {parents = ref parents, ranks}) (i, i') =
+    fun newRank (rank, rank') =
+        if rank = rank'
+        then rank + 1
+        else Int.max (rank, rank')
+
+    fun union (pool as {parents = ref parents, ranks}) compareStatics (i, i') =
         let val repr = find pool i
             val repr' = find pool i'
         in  if repr = repr'
             then pool
-            else case Int.compare (Trictor.sub (ranks, repr), Trictor.sub (ranks, repr'))
+            else case compareStatics (#1 (get pool repr), #1 (get pool repr'))
                  of LESS =>
-                    {parents = ref (Trictor.update (parents, repr, Link repr')), ranks}
+                     { parents = ref (Trictor.update (parents, repr, Link repr'))
+                     , ranks = Trictor.update ( ranks, repr'
+                                              , newRank ( Trictor.sub (ranks, repr)
+                                                        , Trictor.sub (ranks, repr') )) }
                   | GREATER =>
-                    {parents = ref (Trictor.update (parents, repr', Link repr)), ranks}
+                     { parents = ref (Trictor.update (parents, repr', Link repr'))
+                     , ranks = Trictor.update ( ranks, repr
+                                              , newRank ( Trictor.sub (ranks, repr)
+                                                        , Trictor.sub (ranks, repr') )) }
                   | EQUAL =>
-                    { parents = ref (Trictor.update (parents, repr', Link repr))
-                    , ranks = Trictor.update' (ranks, repr, fn rank => rank + 1) }
+                     (case Int.compare (Trictor.sub (ranks, repr), Trictor.sub (ranks, repr'))
+                      of LESS =>
+                         {parents = ref (Trictor.update (parents, repr, Link repr')), ranks}
+                       | GREATER =>
+                         {parents = ref (Trictor.update (parents, repr', Link repr)), ranks}
+                       | EQUAL =>
+                         { parents = ref (Trictor.update (parents, repr', Link repr))
+                         , ranks = Trictor.update' (ranks, repr, fn rank => rank + 1) })
         end
 
     fun define (pool as {parents, ranks}) i d =
@@ -78,5 +96,7 @@ structure UnionFind :> UNION_FIND = struct
             Either.Right { parents = ref (Trictor.update (!parents, i, Leaf (s, SOME d)))
                          , ranks }
          | (_, Either.Right v) => Either.Left v
+
+    val eq = op=
 end
 
