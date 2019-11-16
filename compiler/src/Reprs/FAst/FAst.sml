@@ -72,10 +72,6 @@ structure FlexFAst = struct
                 case TypeVars.Uv.get uv
                 of Either.Left _ => NONE
                  | Either.Right t => SOME (substitute hasScope kv t)
-
-            val tryToUv =
-                fn SVar (UVar uv) => SOME uv
-                 | _ => NONE
         end
 
         structure Co = struct

@@ -41,7 +41,7 @@ end = struct
 
     fun idInScope env id = isSome (Env.findType env id)
 
-    fun uvSet env = Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env)
+    fun uvSet env = Uv.set (Env.hasScope env)
     fun uvMerge env = Uv.merge Scope.Id.compare (Env.hasScope env)
 
     fun pathGet env = Path.get (Env.hasScope env)

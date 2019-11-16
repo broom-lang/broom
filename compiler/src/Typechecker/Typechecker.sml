@@ -39,8 +39,7 @@ end = struct
 
 (* # Utils *)
 
-    fun uvSet env =
-        Uv.set Concr.tryToUv Scope.Id.compare (Env.hasScope env)
+    fun uvSet env = Uv.set (Env.hasScope env)
 
     val nameFromId = Name.fromString o Id.toString
 

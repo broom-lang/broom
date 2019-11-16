@@ -23,9 +23,7 @@ structure TypeVars :> sig
         val merge : (ScopeId.t * ScopeId.t -> order) (* scope ordering to preserve scoping invariants *)
             -> (ScopeId.t -> bool) (* Is the required scope available? *)
             -> 't uv * 't uv -> 't uv
-        val set: ('t -> 't uv option) (* Try to unwrap another uv from provided 't. *)
-                 -> (ScopeId.t * ScopeId.t -> order) (* scope ordering to preserve scoping invariants *)
-                 -> (ScopeId.t -> bool) (* Is the required scope available? *)
+        val set: (ScopeId.t -> bool) (* Is the required scope available? *)
                  -> 't uv * 't -> unit
         val eq: 't uv * 't uv -> bool
         val kind : 't uv -> kind
@@ -151,10 +149,7 @@ end = struct
                      | _ => raise Fail "unreachable"
             end
 
-        fun set uvFromT scopeCmp inScope (uv, t) =
-            case uvFromT t
-            of SOME uv' => ignore (merge scopeCmp inScope (uv, uv'))
-             | NONE => assign inScope (uv, t)
+        val set = assign
 
         val eq = op=
 
