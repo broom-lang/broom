@@ -18,18 +18,18 @@ structure FlexFAst = struct
         and uv = sv FType.concr TypeVars.uv
         and path = sv FType.concr TypeVars.path
 
-        val rec concrToDoc = fn t => FType.Concr.toDoc svarToDoc t
-        and svarToDoc =
+        fun concrToDoc env = fn t => FType.Concr.toDoc (svarToDoc env) t
+        and svarToDoc env =
             fn Path path =>
-                (case TypeVars.Path.get (Fn.constantly false) path
-                 of Either.Right (uv, _) => uvToDoc uv
-                  | Either.Left t => text "^^" <> PPrint.parens (concrToDoc t))
+                (case TypeVars.Path.get env path
+                 of Either.Right (uv, _) => uvToDoc env uv
+                  | Either.Left t => text "^^" <> PPrint.parens (concrToDoc env t))
              | OVar ov => Name.toDoc (TypeVars.Ov.name ov)
-             | UVar uv => uvToDoc uv
-        and uvToDoc = fn uv =>
-            case TypeVars.Uv.get uv
-            of Either.Right t => concrToDoc t
-             | Either.Left uv => text "^" <> Name.toDoc (TypeVars.Uv.name uv)
+             | UVar uv => uvToDoc env uv
+        and uvToDoc env uv =
+            case TypeVars.Uv.get env uv
+            of Either.Right t => concrToDoc env t
+             | Either.Left uv => text "^" <> Name.toDoc (TypeVars.Uv.name env uv)
 
         structure Concr = struct
             open Concr
@@ -37,47 +37,47 @@ structure FlexFAst = struct
             datatype t = datatype concr
 
             val toDoc = concrToDoc
-            val toString = toString svarToDoc
+            fun toString env = Concr.toString (svarToDoc env)
 
-            fun occurs hasScope uv = FType.Concr.occurs (svarOccurs hasScope) uv
-            and svarOccurs hasScope uv =
+            fun occurs env uv = FType.Concr.occurs (svarOccurs env) uv
+            and svarOccurs env uv =
                 fn Path path =>
-                    (case TypeVars.Path.get hasScope path
-                     of Either.Left t => occurs hasScope uv t
-                      | Either.Right (uv', _) => uvOccurs hasScope uv uv')
+                    (case TypeVars.Path.get env path
+                     of Either.Left t => occurs env uv t
+                      | Either.Right (uv', _) => uvOccurs env uv uv')
                  | OVar _ => false
-                 | UVar uv' => uvOccurs hasScope uv uv'
-            and uvOccurs hasScope uv uv' =
-                case TypeVars.Uv.get uv'
+                 | UVar uv' => uvOccurs env uv uv'
+            and uvOccurs env uv uv' =
+                case TypeVars.Uv.get env uv'
                 of Either.Left uv' => TypeVars.Uv.eq (uv, uv')
-                 | Either.Right t => occurs hasScope uv t
+                 | Either.Right t => occurs env uv t
 
-            fun pathOccurs path = FType.Concr.occurs pathSvarOccurs path
-            and pathSvarOccurs path =
+            fun pathOccurs env path = FType.Concr.occurs (pathSvarOccurs env) path
+            and pathSvarOccurs env path =
                 fn Path path' => TypeVars.Path.eq (path', path)
                  | OVar _ => false
-                 | UVar uv => (case TypeVars.Uv.get uv
+                 | UVar uv => (case TypeVars.Uv.get env uv
                                of Either.Left uv => false
-                                | Either.Right t => pathOccurs path t)
+                                | Either.Right t => pathOccurs env path t)
 
-            fun substitute hasScope kv = FType.Concr.substitute (svarSubstitute hasScope) kv
-            and svarSubstitute hasScope kv =
+            fun substitute env kv = FType.Concr.substitute (svarSubstitute env) kv
+            and svarSubstitute env kv =
                 fn Path path =>
-                    (case TypeVars.Path.get hasScope path
+                    (case TypeVars.Path.get env path
                      of Either.Left _ => NONE (* path faces are always CallTFn:s with OVar args *)
-                      | Either.Right (uv, _) => uvSubstitute hasScope kv uv)
+                      | Either.Right (uv, _) => uvSubstitute env kv uv)
                  | OVar _ => NONE
-                 | UVar uv => uvSubstitute hasScope kv uv
-            and uvSubstitute hasScope kv uv =
-                case TypeVars.Uv.get uv
+                 | UVar uv => uvSubstitute env kv uv
+            and uvSubstitute env kv uv =
+                case TypeVars.Uv.get env uv
                 of Either.Left _ => NONE
-                 | Either.Right t => SOME (substitute hasScope kv t)
+                 | Either.Right t => SOME (substitute env kv t)
         end
 
         structure Co = struct
             open Co
 
-            val toDoc = toDoc svarToDoc
+            fun toDoc env = Co.toDoc (svarToDoc env)
         end
     end
 

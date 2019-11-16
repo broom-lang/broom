@@ -16,15 +16,15 @@ structure TypeVars :> sig
     type 't uv
 
     structure Uv: sig
-        val new: ('otyp, 'oexpr, 'error) env * Name.t * kind -> 't uv
-        val fresh: ('otyp, 'oexpr, 'error) env * kind -> 't uv
-        val freshSibling: 't uv * kind -> 't uv
-        val get: 't uv -> ('t uv, 't) Either.t
-        val merge : ('otyp, 'oexpr, 'error) env -> 't uv * 't uv -> 't uv
-        val set: ('otyp, 'oexpr, 'error) env -> 't uv * 't -> unit
+        val new: ('t, 'oexpr, 'error) env * Name.t * kind -> 't uv
+        val fresh: ('t, 'oexpr, 'error) env * kind -> 't uv
+        val freshSibling: ('t, 'oexpr, 'error) env -> 't uv * kind -> 't uv
+        val get: ('t, 'oexpr, 'error) env -> 't uv -> ('t uv, 't) Either.t
+        val merge : ('t, 'oexpr, 'error) env -> 't uv * 't uv -> unit
+        val set: ('t, 'oexpr, 'error) env -> 't uv * 't -> unit
         val eq: 't uv * 't uv -> bool
-        val kind : 't uv -> kind
-        val name: 't uv -> Name.t
+        val kind : ('t, 'oexpr, 'error) env -> 't uv -> kind
+        val name: ('t, 'oexpr, 'error) env -> 't uv -> Name.t
     end
 
     type 't path
@@ -32,9 +32,8 @@ structure TypeVars :> sig
     structure Path: sig
         val new: kind * 't -> 't path
         val face: 't path -> 't
-        val get: (ScopeId.t -> bool) (* Is the required coercion available? *)
-                 -> 't path -> ('t, 't uv * Name.t) Either.t
-        val addScope: 't path * ScopeId.t * Name.t -> unit
+        val get: ('t, 'oexpr, 'error) env -> 't path -> ('t, 't uv * Name.t) Either.t
+        val addScope: ('t, 'expr, 'error) env -> 't path * ScopeId.t * Name.t -> unit
         val eq: 't path * 't path -> bool
         val kind : 't path -> kind
     end
@@ -156,9 +155,9 @@ end = struct
         fun name uv = #name (#meta (root uv))
     end
 
-    type 't uv' = (meta, 't) UnionFind.t
+    type 't uv = (meta, 't) UnionFind.t
 
-    structure Uv' = struct
+    structure Uv = struct
         fun make env meta =
             let val scope = Env.Scope.id (Env.innermostScope env)
                 val subst = Env.currentSubstitution env
@@ -223,15 +222,13 @@ end = struct
 
         val face: 't path -> 't = #face
 
-        fun get inScope ({kind = _, face, impls}: 't path) =
-            case List.find (inScope o #1) (!impls)
+        fun get env ({kind = _, face, impls}: 't path) =
+            case List.find (Env.hasScope env o #1) (!impls)
             of SOME (_, {typ = uv, coercion}) => Either.Right (uv, coercion)
              | NONE => Either.Left face
 
-        fun addScope ({kind, face, impls}: 't path, scope, coercion) =
-            let val uv = ref (Root { meta = {name = Name.fresh (), scope, kind = kindCodomain kind}
-                                   , typ = ref NONE
-                                   , rank = ref 0 })
+        fun addScope env ({kind, face, impls}: 't path, scope, coercion) =
+            let val uv = Uv.make env {name = Name.fresh (), scope, kind = kindCodomain kind}
             in impls := (scope, {typ = uv, coercion}) :: !impls
             end
 
