@@ -8,6 +8,7 @@ signature TRICTOR = sig
     val fromVector : 'a vector -> 'a t
     val append : 'a t -> 'a -> 'a t
     val update : 'a t * index * 'a -> 'a t
+    val update' : 'a t * index * ('a -> 'a) -> 'a t
 
     val length : 'a t -> int
     val find : 'a t -> index -> 'a option
@@ -82,26 +83,33 @@ structure Trictor :> TRICTOR = struct
         then Leaves vs
         else Branch #[path vs (level - bits)]
 
-    fun update ({root, tail, len, shift}: 'a t, i, v) =
+    fun update' ({root, tail, len, shift}: 'a t, i, f) =
         let val i = fromInt i
         in  if i >= len
             then raise Subscript
             else if i > tailOffset len
-                 then {root, tail = tailInsert tail i v, len, shift}
-                 else {root = trieInsert root shift i v, tail, len, shift}
+                 then {root, tail = tailUpdate tail i f, len, shift}
+                 else {root = trieUpdate root shift i f, tail, len, shift}
         end
 
-    and tailInsert tail i v = Vector.update (tail, toInt (andb(i, mask)), v)
+    and tailUpdate tail i f =
+        let val j = toInt (andb(i, mask))
+        in Vector.update (tail, j, f (Vector.sub (tail, j)))
+        end
 
-    and trieInsert node level i v =
+    and trieUpdate node level i f =
         case node
         of Branch nodes =>
             let val j = toInt (andb(i >> level, mask))
-                val node' = trieInsert (Vector.sub (nodes, j)) (level - bits) i v
+                val node' = trieUpdate (Vector.sub (nodes, j)) (level - bits) i f
             in Branch (Vector.update (nodes, j, node'))
             end
          | Leaves leaves =>
-            Leaves (Vector.update (leaves, toInt (andb(i, mask)), v))
+            let val j = toInt (andb(i, mask))
+            in Leaves (Vector.update (leaves, j, f (Vector.sub (leaves, j))))
+            end
+
+    fun update (vs, i, v) = update' (vs, i, Fn.constantly v)
 
     fun length ({len, ...}: 'a t) = toInt len
 

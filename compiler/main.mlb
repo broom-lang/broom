@@ -20,6 +20,7 @@ local
            src/Util/Monoid.sml
            src/Util/Bimappable.sml
            src/Util/Pair.sml
+           src/Util/UnionFind.sml
            src/Util/PPrint.sml
            src/Util/Id.sml
            src/Util/CLIParser.sml
