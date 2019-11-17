@@ -43,7 +43,7 @@ end = struct
     (* \forall|\exists a... . T --> [(\hat{a}/a)...]T and push \hat{a}... to env *)
     fun instantiate env (params: FType.def vector1, body) f =
         let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
-            val args = Vector1.map (fn {kind, ...} => SVar (UVar (Uv.fresh (env, kind))))
+            val args = Vector1.map (fn {kind, ...} => SVar (UVar (Uv.fresh env kind)))
                                    params
             val mapping = (params, args)
                         |> Vector1.zipWith (fn ({var, kind = _}, arg) => (var, arg))
@@ -250,7 +250,7 @@ end = struct
           then raise TypeError (Occurs (pos, SVar (UVar uv), t))
           else ()
         ; checkMonotypeKind env pos (Uv.kind env uv) t
-        ; Uv.set env (uv, t)
+        ; Uv.set env uv t
         ; Refl t )
 
     and pathsCoercion env pos ((path, args), (path', args')) =
@@ -561,7 +561,7 @@ end = struct
              val arrow' = { domain = SVar (UVar domainUv)
                           , codomain = SVar (UVar codomainUv)}
              val t' = Arrow (Explicit eff, arrow')
-             do ignore (Uv.set env (uv, t'))
+             do Uv.set env uv t'
              val coerceDomain = doAssign env pos (flip direction) domainUv domain (* contravariance *)
              val coerceCodomain = doAssign env pos direction codomainUv codomain (* covariance *)
          in if isSome coerceDomain orelse isSome coerceCodomain
@@ -576,7 +576,7 @@ end = struct
       | doAssign env pos direction uv (Record row) =
          let val rowUv = Uv.freshSibling env (uv, RowK)
              val uvRow = SVar (UVar rowUv)
-             do ignore (Uv.set env (uv, Record uvRow))
+             do Uv.set env uv (Record uvRow)
              val tmpDef = {pos, id = DefId.fresh (), var = Name.fresh (), typ = SVar (UVar uv)}
              val tmpUse = FTerm.Use (pos, tmpDef)
 
@@ -587,7 +587,7 @@ end = struct
                          val base = SVar (UVar baseUv)
                          val fieldt = SVar (UVar fieldUv)
                          val row = RowExt {base, field = (label, fieldt)}
-                         do ignore (Uv.set env (uv, row))
+                         do Uv.set env uv row
                          val row' = RowExt {base, field = (label, fieldt')}
                          val t' = Record row'
 
@@ -621,7 +621,7 @@ end = struct
              val fieldUv = Uv.freshSibling env (uv, TypeK)
              val row' = RowExt { base = SVar (UVar baseUv)
                                , field = (label, SVar (UVar fieldUv)) }
-             do ignore (Uv.set env (uv, row'))
+             do Uv.set env uv row'
              (* Covariance: *)
              do ignore (doAssign env pos direction fieldUv fieldt)
              do ignore (doAssign env pos direction baseUv base)

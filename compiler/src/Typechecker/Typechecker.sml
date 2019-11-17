@@ -62,13 +62,13 @@ end = struct
         case expr
         of CTerm.Fn (pos, expl, clauses) => (* TODO: Exhaustiveness checking: *)
             (* FIXME: Enforce that for implicit fn:s domain = type *)
-            let val codomain = SVar (UVar (Uv.fresh (env, TypeK)))
+            let val codomain = SVar (UVar (Uv.fresh env TypeK))
                 val (eff, domain, clauses) =
                     elaborateClauses env (fn (env, body) => elaborateExprAs env codomain body) clauses
                 val (typeDefs, domain) =
                     case domain
                     of SOME (typeDefs, domain) => (typeDefs, domain)
-                     | NONE => (#[], SVar (UVar (Uv.fresh (env, TypeK))))
+                     | NONE => (#[], SVar (UVar (Uv.fresh env TypeK)))
                 val def = {pos, id = DefId.fresh (), var = Name.fresh (), typ = domain}
                 val arr =
                     case (expl, eff)
@@ -100,7 +100,7 @@ end = struct
                   | NONE => body )
             end
          | CTerm.Match (_, _, _) =>
-            let val t = SVar (UVar (Uv.fresh (env, TypeK)))
+            let val t = SVar (UVar (Uv.fresh env TypeK))
                 val (eff, expr) = elaborateExprAs env t expr
             in (eff, t, expr)
             end
@@ -158,7 +158,7 @@ end = struct
                           of SOME def => def
                            | NONE => ( Env.error env (UnboundVal (pos, name))
                                      ; { pos, id = DefId.fresh (), var = name
-                                       , typ = SVar (UVar (Uv.fresh (env, TypeK))) } )
+                                       , typ = SVar (UVar (Uv.fresh env TypeK)) } )
             in (Pure, #typ def, FTerm.Use (pos, def))
             end
          | CTerm.Const (pos, c) =>
@@ -207,7 +207,7 @@ end = struct
             end
          | CTerm.Def (pos, name) =>
             let val scopeId = Scope.Id.fresh ()
-                val t = SVar (UVar (Uv.fresh (env, TypeK)))
+                val t = SVar (UVar (Uv.fresh env TypeK))
                 val def = {pos, id = DefId.fresh (), var = name, typ = t}
                 val env = Env.pushScope env (Scope.PatternScope (scopeId, name, Visited (def, NONE)))
             in ((#[], t), FTerm.Def (pos, def), env)
@@ -370,7 +370,7 @@ end = struct
                 val pos = CTerm.exprPos expr
                 val coercionNames = Vector.map (fn FAst.Type.SVar (Path path) =>
                                                     let val name = Name.freshen (Name.fromString "coImpl")
-                                                        do Path.addScope env (path, scopeId, name)
+                                                        do Path.addScope env path (scopeId, name)
                                                     in name
                                                     end)
                                                paths
@@ -486,7 +486,7 @@ end = struct
                          val codomain = SVar (UVar (Uv.freshSibling env (uv, TypeK)))
                          val eff = Impure
                          val arrow = {domain, codomain}
-                         do Uv.set env (uv, Arrow (Explicit eff, arrow))
+                         do Uv.set env uv (Arrow (Explicit eff, arrow))
                      in (callee, eff, arrow)
                      end)
 
@@ -495,7 +495,7 @@ end = struct
 
               | coerce (callee, _) =
                  ( Env.error env (UnCallable (callee, typ))
-                 ; (callee, Impure, { domain = SVar (UVar (Uv.fresh (env, TypeK)))
+                 ; (callee, Impure, { domain = SVar (UVar (Uv.fresh env TypeK))
                                     , codomain = typ }) )
         in coerce (callee, typ)
         end
@@ -517,12 +517,12 @@ end = struct
                          | SVar (UVar uv) =>
                             let val base = SVar (UVar (Uv.freshSibling env (uv, RowK)))
                                 val fieldt = SVar (UVar (Uv.freshSibling env (uv, TypeK)))
-                                do Uv.set env (uv, Record (RowExt ({base, field = (label, fieldt)})))
+                                do Uv.set env uv (Record (RowExt ({base, field = (label, fieldt)})))
                             in fieldt
                             end
                          | _ =>
                             ( Env.error env (UnDottable (expr, typ))
-                            ; SVar (UVar (Uv.fresh (env, TypeK))) )
+                            ; SVar (UVar (Uv.fresh env TypeK)) )
                 in (expr, fieldType row)
                 end
 
@@ -532,7 +532,7 @@ end = struct
                   | Left uv =>
                      let val base = SVar (UVar (Uv.freshSibling env (uv, RowK)))
                          val fieldt = SVar (UVar (Uv.freshSibling env (uv, TypeK)))
-                         do Uv.set env (uv, Record (RowExt ({base, field = (label, fieldt)})))
+                         do Uv.set env uv (Record (RowExt ({base, field = (label, fieldt)})))
                      in (expr, fieldt)
                      end)
 
@@ -541,7 +541,7 @@ end = struct
 
               | coerce (expr, typ) =
                 ( Env.error env (UnDottable (expr, typ))
-                ; (expr, SVar (UVar (Uv.fresh (env, TypeK)))) )
+                ; (expr, SVar (UVar (Uv.fresh env TypeK))) )
         in coerce (expr, typ)
         end
 
@@ -565,7 +565,7 @@ end = struct
           | Pure => CallTFn (Env.pureCallsite env))
 
       | resolveTypeArg env _ {var, kind} =
-        SVar (UVar (Uv.new (env, nameFromId var, kind)))
+        SVar (UVar (Uv.new env (nameFromId var, kind)))
 
     and applyImplicit {domain, codomain} callee =
         let val pos = FTerm.exprPos callee
