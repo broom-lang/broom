@@ -22,7 +22,7 @@ signature CST = sig
 
     and expr
         = Fn of Pos.span * expl * clause vector
-        | Let of Pos.span * stmt vector * expr
+        | Begin of Pos.span * stmt vector * expr
         | Match of Pos.span * expr * clause vector
         | Record of Pos.span * recordFields
         | Module of Pos.span * stmt vector
@@ -115,7 +115,7 @@ structure Cst :> CST = struct
 
     and expr
         = Fn of Pos.span * expl * clause vector
-        | Let of Pos.span * stmt vector * expr
+        | Begin of Pos.span * stmt vector * expr
         | Match of Pos.span * expr * clause vector
         | Record of Pos.span * recordFields
         | Module of Pos.span * stmt vector
@@ -150,7 +150,7 @@ structure Cst :> CST = struct
 
     val exprPos =
         fn Fn (pos, _, _) => pos
-         | Let (pos, _, _) => pos
+         | Begin (pos, _, _) => pos
          | Match (pos, _, _) => pos
          | Record (pos, _) => pos
          | Module (pos, _) => pos
@@ -223,9 +223,9 @@ structure Cst :> CST = struct
                 <++> text "end"
          | App (_, {callee, arg}) => parens (exprToDoc callee <+> exprToDoc arg)
          | Field (_, expr, label) => parens (exprToDoc expr <> text "." <> Name.toDoc label)
-         | Let (_, stmts, body) =>
-            text "let" <+> PPrint.align (stmtsToDoc stmts)
-                <++> text "in" <+> exprToDoc body
+         | Begin (_, stmts, body) =>
+            text "begin" <+> PPrint.align (stmtsToDoc stmts)
+                <++> PPrint.semi <+> exprToDoc body
                 <++> text "end"
          | Ann (_, expr, t) => exprToDoc expr <> text ":" <+> typeToDoc t
          | Type (_, t) => text "type" <+> typeToDoc t

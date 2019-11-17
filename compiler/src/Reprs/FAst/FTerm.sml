@@ -16,7 +16,7 @@ signature FAST_TERM = sig
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector1}
         | Field of Pos.span * Type.concr * expr * Name.t
-        | Let of Pos.span * stmt vector1 * expr
+        | Letrec of Pos.span * stmt vector1 * expr
         | Match of Pos.span * Type.concr * expr * clause vector
         | Cast of Pos.span * Type.concr * expr * Type.co
         | Type of Pos.span * Type.concr
@@ -90,7 +90,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector1}
         | Field of Pos.span * Type.concr * expr * Name.t
-        | Let of Pos.span * stmt vector1 * expr
+        | Letrec of Pos.span * stmt vector1 * expr
         | Match of Pos.span * Type.concr * expr * clause vector
         | Cast of Pos.span * Type.concr * expr * Type.co
         | Type of Pos.span * Type.concr
@@ -118,7 +118,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | App (pos, _, _) => pos
          | TApp (pos, _, _) => pos
          | Field (pos, _, _, _) => pos
-         | Let (pos, _, _) => pos
+         | Letrec (pos, _, _) => pos
          | Match (pos, _, _, _) => pos
          | Cast (pos, _, _, _) => pos
          | Type (pos, _) => pos
@@ -176,8 +176,8 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
                                             |> brackets))
         | Field (_, _, expr, label) =>
            parens (exprToDoc env expr <> text "." <> Name.toDoc label)
-        | Let (_, stmts, body) =>
-           text "let" <+> PPrint.align (stmtsToDoc env (Vector1.toVector stmts))
+        | Letrec (_, stmts, body) =>
+           text "letrec" <+> PPrint.align (stmtsToDoc env (Vector1.toVector stmts))
            <++> text "in" <+> align (exprToDoc env body)
            <++> text "end"
         | Match (_, _, matchee, clauses) => let
@@ -245,7 +245,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | Where (_, typ, _) => typ
          | App (_, typ, _) | TApp (_, typ, _) => typ
          | Field (_, typ, _, _) => typ
-         | Let (_, _, body) => typeOf body
+         | Letrec (_, _, body) => typeOf body
          | Match (_, t, _, _) => t
          | Cast (_, t, _, _) => t
          | Type (_, t) => Type.Type t

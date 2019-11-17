@@ -187,7 +187,7 @@ end = struct
          | App app => checkApp env app
          | TApp app => checkTApp env app
          | Field access => checkField env access
-         | Let lett => checkLet env lett
+         | Letrec lett => checkLetrec env lett
          | Match match => checkMatch env match
          | Cast cast => checkCast env cast
          | Use use => checkUse env use
@@ -258,7 +258,7 @@ end = struct
                                     ^ " does not have field " ^ Name.toString label))
          | t => raise Fail ("Not a record: " ^ FFTerm.exprToString () expr ^ ": " ^ FFType.Concr.toString () t)
 
-    and checkLet env (_, stmts, body) =
+    and checkLetrec env (_, stmts, body) =
         let val env = pushStmts env stmts
         in Vector1.app (checkStmt env) stmts
          ; check env body

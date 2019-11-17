@@ -299,7 +299,7 @@ end = struct
                             let val pos = FTerm.exprPos expr
                                 val def = { pos, id = DefId.fresh (), var = Name.fresh ()
                                           , typ = super }
-                            in FTerm.Let ( FTerm.exprPos expr
+                            in FTerm.Letrec ( FTerm.exprPos expr
                                          , valOf (Vector1.fromVector #[FTerm.Val (pos, def, expr)])
                                          , FTerm.Use (pos, def) )
                             end) )
@@ -385,7 +385,7 @@ end = struct
          in  case recCoercer (row, row', row)
              of SOME coerce =>
                  SOME (fn expr =>
-                           FTerm.Let ( pos
+                           FTerm.Letrec ( pos
                                      , valOf (Vector1.fromVector #[FTerm.Val (pos, tmpDef, expr)])
                                      , coerce tmpUse ))
               | NONE => NONE
@@ -631,7 +631,7 @@ end = struct
          in  case recCoercer (uvRow, row, rowUv)
              of SOME coerce =>
                  SOME (fn expr =>
-                           FTerm.Let ( pos
+                           FTerm.Letrec ( pos
                                      , valOf (Vector1.fromVector #[FTerm.Val (pos, tmpDef, expr)])
                                      , coerce tmpUse ))
               | NONE => NONE

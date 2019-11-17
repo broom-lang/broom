@@ -16,7 +16,7 @@
     | FUN ("fun")
     | TYPE ("type")
     | PI ("pi")
-    | DO ("do")
+    | BEGIN ("begin")
     | EXTENDS ("extends")
     | MODULE ("module")
     | INTERFACE ("interface")
@@ -142,17 +142,17 @@ select : nestable fields=("." ID => ((ID_SPAN, ID)))* => (
     );
 
 nestable
-    : "do" stmts "end" => (
+    : "begin" stmts "end" => (
           case stmts
-          of #[] => Term.Let (FULL_SPAN, #[], Term.Const (FULL_SPAN, Const.Unit))
+          of #[] => Term.Begin (FULL_SPAN, #[], Term.Const (FULL_SPAN, Const.Unit))
            | _ => let val lastIndex = Vector.length stmts - 1
                   in case Vector.sub (stmts, lastIndex)
                      of Term.Val _ =>
-                         Term.Let (FULL_SPAN, stmts, Term.Const (FULL_SPAN, Const.Unit))
+                         Term.Begin (FULL_SPAN, stmts, Term.Const (FULL_SPAN, Const.Unit))
                       | Term.Expr body =>
                          let val stmts =
                                  VectorSlice.vector (VectorSlice.slice (stmts, 0, SOME lastIndex))
-                         in Term.Let (FULL_SPAN, stmts, body)
+                         in Term.Begin (FULL_SPAN, stmts, body)
                          end
                   end
       )

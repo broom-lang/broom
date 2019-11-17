@@ -282,7 +282,7 @@ end = struct
                         | Naming => (Closure (support, codomain), Support.empty)
                     end
                  | TFn (_, _, body) => checkExpr ini ctx body
-                 | Let (_, stmts, body) =>
+                 | Letrec (_, stmts, body) =>
                     let val ini = pushBlock ini (Vector1.toVector stmts)
                         val stmtsSupport = checkStmts ini (Vector1.toVector stmts)
                         val (typ, bodySupport) = checkExpr ini ctx body

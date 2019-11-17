@@ -89,14 +89,14 @@ end = struct
                      | NONE => f
                  end )
             end
-         | CTerm.Let (pos, stmts, body) =>
+         | CTerm.Begin (pos, stmts, body) =>
             let val scope = stmtsScope env stmts
                 val env = Env.pushScope env scope
                 val (stmtsEff, stmts) = elaborateStmts env stmts
                 val (bodyEff, typ, body) = elaborateExpr env body
             in ( joinEffs (stmtsEff, bodyEff), typ
                , case Vector1.fromVector stmts
-                 of SOME stmts => FTerm.Let (pos, stmts, body)
+                 of SOME stmts => FTerm.Letrec (pos, stmts, body)
                   | NONE => body )
             end
          | CTerm.Match (_, _, _) =>
@@ -125,7 +125,7 @@ end = struct
                                (EmptyRow, FTerm.EmptyRecord pos) defs
             in ( eff, Record row
                , case Vector1.fromVector stmts
-                 of SOME stmts => FTerm.Let (pos, stmts, body)
+                 of SOME stmts => FTerm.Letrec (pos, stmts, body)
                   | NONE => body )
             end
          | CTerm.App (pos, {callee, arg}) =>
@@ -399,7 +399,7 @@ end = struct
                                    (paths, coercionNames)
             in ( eff
                , case Vector1.fromVector axiomStmts
-                 of SOME axiomStmts => FTerm.Let (pos, axiomStmts, expr)
+                 of SOME axiomStmts => FTerm.Letrec (pos, axiomStmts, expr)
                   | NONE => expr )
             end
 
