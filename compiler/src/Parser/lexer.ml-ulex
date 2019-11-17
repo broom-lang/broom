@@ -16,6 +16,7 @@ fun       => (Tokens.FUN);
 type      => (Tokens.TYPE);
 pi        => (Tokens.PI);
 begin     => (Tokens.BEGIN);
+do        => (Tokens.DO);
 extends   => (Tokens.EXTENDS);
 module    => (Tokens.MODULE);
 interface => (Tokens.INTERFACE);

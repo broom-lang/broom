@@ -99,6 +99,30 @@ end = struct
                  of SOME stmts => FTerm.Letrec (pos, stmts, body)
                   | NONE => body )
             end
+
+         | CTerm.Do (pos, stmts, body) =>
+            let val step =
+                   fn (CTerm.Val (pos, pat, expr), (revStmts, eff, env)) =>
+                       let val (exprEff, t, expr) = elaborateExpr env expr
+                           val (FTerm.Def (_, def), env) = elaboratePatternAs env t pat
+                       in ( FTerm.Val (pos, def, expr) :: revStmts
+                          , joinEffs (eff, exprEff)
+                          , env )
+                       end
+                    | (CTerm.Expr expr, (revStmts, eff, env)) =>
+                       let val (exprEff, t, expr) = elaborateExpr env expr
+                       in ( FTerm.Expr expr :: revStmts
+                          , joinEffs (eff, exprEff)
+                          , env )
+                       end
+                val (revStmts, stmtsEff, env) = Vector.foldl step ([], Pure, env) stmts
+                val (bodyEff, typ, body) = elaborateExpr env body
+            in ( joinEffs (stmtsEff, bodyEff), typ
+               , case Vector1.fromList (List.rev revStmts)
+                 of SOME stmts => FTerm.Let (pos, stmts, body)
+                  | NONE => body )
+            end
+
          | CTerm.Match (_, _, _) =>
             let val t = SVar (UVar (Uv.fresh env TypeK))
                 val (eff, expr) = elaborateExprAs env t expr

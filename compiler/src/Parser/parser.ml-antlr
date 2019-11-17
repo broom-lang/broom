@@ -9,6 +9,20 @@
     datatype row
         = RecordFields of Term.recordFields
         | RowType of Type.typ
+
+    fun block new pos stmts =
+        case stmts
+        of #[] => new (pos, #[], Term.Const (pos, Const.Unit))
+         | _ => let val lastIndex = Vector.length stmts - 1
+                in case Vector.sub (stmts, lastIndex)
+                   of Term.Val _ =>
+                       new (pos, stmts, Term.Const (pos, Const.Unit))
+                    | Term.Expr body =>
+                       let val stmts =
+                               VectorSlice.vector (VectorSlice.slice (stmts, 0, SOME lastIndex))
+                       in new (pos, stmts, body)
+                       end
+                end
 );
 
 %tokens
@@ -17,6 +31,7 @@
     | TYPE ("type")
     | PI ("pi")
     | BEGIN ("begin")
+    | DO ("do")
     | EXTENDS ("extends")
     | MODULE ("module")
     | INTERFACE ("interface")
@@ -142,20 +157,8 @@ select : nestable fields=("." ID => ((ID_SPAN, ID)))* => (
     );
 
 nestable
-    : "begin" stmts "end" => (
-          case stmts
-          of #[] => Term.Begin (FULL_SPAN, #[], Term.Const (FULL_SPAN, Const.Unit))
-           | _ => let val lastIndex = Vector.length stmts - 1
-                  in case Vector.sub (stmts, lastIndex)
-                     of Term.Val _ =>
-                         Term.Begin (FULL_SPAN, stmts, Term.Const (FULL_SPAN, Const.Unit))
-                      | Term.Expr body =>
-                         let val stmts =
-                                 VectorSlice.vector (VectorSlice.slice (stmts, 0, SOME lastIndex))
-                         in Term.Begin (FULL_SPAN, stmts, body)
-                         end
-                  end
-      )
+    : "begin" stmts "end" => (block Term.Begin FULL_SPAN stmts)
+    | "do" stmts "end" => (block Term.Do FULL_SPAN stmts)
     | "match" expr clauses=explicitClause+ "end" =>
           (Term.Match (FULL_SPAN, expr, Vector.fromList clauses))
     | "module" stmts "end" => (Term.Module (FULL_SPAN, stmts))

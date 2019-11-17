@@ -52,11 +52,11 @@ val Array : ARRAY = module
     fun unfoldl len f state = begin
         val builder = Builder.new len
         fun loop state = fn
-            | i when i > 0 -> begin
-                val i' = i - 1
+            | i when i > 0 -> do
+                val i = i - 1
                 val {elem, state = state'} = f state
-                ; Builder.set builder i' elem;
-                ; loop state' i'
+                ; Builder.set builder i elem;
+                ; loop state' i
             end
             | _ -> Builder.build builder
         end
@@ -66,7 +66,7 @@ val Array : ARRAY = module
     fun unfoldr len f state = begin
         val builder = Builder.new len
         fun loop state = fn
-            | i when i < len -> begin
+            | i when i < len -> do
                 val {elem, state = state'} = f state
                 ; Builder.set builder i elem 
                 ; loop state' (i + 1)
@@ -87,9 +87,10 @@ val Array : ARRAY = module
 
     fun foldr f state arr = begin
         fun loop state = fn
-            | i when i > 0 ->
-                i' = i - 1
-                loop (f (get arr i') state) i'
+            | i when i > 0 -> do
+                val i = i - 1
+                loop (f (get arr i) state) i
+            end
             | _ -> state
         end
         ; loop state (count arr)
