@@ -100,7 +100,7 @@ structure FixedFAst = struct
         type concr = sv concr
         type co = sv co'
 
-        type ('expr, 'error) env = (FlexFAst.Type.concr, 'expr, 'error) TypecheckingEnv.t
+        type ('expr, 'error) env = unit
 
         fun svarToDoc _ = PPrint.text o Nothing.toString
 

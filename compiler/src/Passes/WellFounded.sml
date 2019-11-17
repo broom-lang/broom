@@ -41,7 +41,7 @@ end = struct
         type t = FTerm.def
         type ord_key = t
 
-        val toDoc = FTerm.defToDoc
+        val toDoc = FTerm.defToDoc ()
 
         fun compare ({id, ...}: t, {id = id', ...}: t) =
             DefId.compare (id, id')
