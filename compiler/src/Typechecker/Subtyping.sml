@@ -3,12 +3,15 @@ structure Subtyping :> sig
     type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
     type coercer = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
-   
     val applyCoercion: coercer -> FlexFAst.Term.expr -> FlexFAst.Term.expr
-    val subEffect: Pos.span -> effect * effect -> unit
+
     val joinEffs : effect * effect -> effect
-    val subType: env -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercer
     val unify: env -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> FlexFAst.Type.co
+
+    val subEffect: Pos.span -> effect * effect -> unit
+    val subType: env -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercer
+
+    val resolve : Pos.span -> FlexFAst.Type.concr -> FlexFAst.Term.expr
 end = struct
     val op|> = Fn.|>
     datatype either = datatype Either.t
@@ -336,13 +339,14 @@ end = struct
          end
 
       | coercer env pos (Arrow (Implicit, {domain, codomain}), super) =
-         (* FIXME: coercer from `codomain` <: `super` *)
-         (case domain
-          of FType.Type domain =>
-              let val arg = FTerm.Type (pos, domain)
-              in SOME (fn expr => FTerm.App (pos, codomain, {callee = expr, arg}))
-              end
-           | _ => raise Fail "implicit parameter not of type `type`")
+         let val coerceCodomain = coercer env pos (codomain, super)
+             (* NOTE: Must coerce codomain first for when `coercer` is used for resolution: *)
+             val arg = resolve pos domain
+             fun implicitApp callee = FTerm.App (pos, codomain, {callee, arg})
+         in  case coerceCodomain
+             of SOME coerceCodomain => SOME (coerceCodomain o implicitApp)
+              | NONE => SOME implicitApp
+         end
 
       | coercer env pos ( Arrow (Explicit eff, domains as {domain, codomain})
                         , Arrow (Explicit eff', domains' as {domain = domain', codomain = codomain'}) ) =
@@ -681,5 +685,11 @@ end = struct
 
       | doAssign env pos direction uv (t as SVar (Path _)) =
          raise Fail "unimplemented"
+
+(* # Resolution *)
+
+    and resolve pos =
+        fn FType.Type t => FTerm.Type (pos, t)
+         | _ => raise Fail "implicit parameter not of type `type`"
 end
 

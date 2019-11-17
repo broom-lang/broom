@@ -569,13 +569,9 @@ end = struct
 
     and applyImplicit {domain, codomain} callee =
         let val pos = FTerm.exprPos callee
-        in FTerm.App (pos, codomain, {callee, arg = resolveImplicitArg pos domain})
+        in FTerm.App (pos, codomain, {callee, arg = Subtyping.resolve pos domain})
         end
-
-    and resolveImplicitArg pos =
-        fn FType.Type t => FTerm.Type (pos, t)
-         | _ => raise Fail "implicit parameter not of type `type`"
-
+    
 (* Type Checking Entire Program *)
 
     (* TODO: Prevent boundless deepening of REPL env
