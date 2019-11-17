@@ -54,9 +54,9 @@ val Array : ARRAY = module
         fun loop state = fn
             | i when i > 0 -> do
                 val i = i - 1
-                val {elem, state = state'} = f state
+                val {elem, state} = f state
                 ; Builder.set builder i elem;
-                ; loop state' i
+                ; loop state i
             end
             | _ -> Builder.build builder
         end
@@ -67,9 +67,9 @@ val Array : ARRAY = module
         val builder = Builder.new len
         fun loop state = fn
             | i when i < len -> do
-                val {elem, state = state'} = f state
+                val {elem, state} = f state
                 ; Builder.set builder i elem 
-                ; loop state' (i + 1)
+                ; loop state (i + 1)
             end
             | _ -> Builder.build builder
         end
