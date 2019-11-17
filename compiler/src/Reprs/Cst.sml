@@ -62,10 +62,8 @@ signature CST = sig
         structure Prim: PRIM_TYPE where type t = PrimType.t
 
         datatype typ = datatype typ
-        type row = row
 
         val pos: typ -> Pos.span
-        val toDoc: typ -> PPrint.t
     end
 
     structure Term: sig
@@ -73,13 +71,11 @@ signature CST = sig
         datatype stmt = datatype stmt
         datatype pat = datatype pat
         datatype row_edit = datatype row_edit
-        type def = def
         type recordFields = recordFields
 
         val exprPos: expr -> Pos.span
         val exprToDoc: expr -> PPrint.t
         val exprToString: expr -> string
-        val stmtToDoc: stmt -> PPrint.t
         val stmtsToDoc: stmt vector -> PPrint.t
     end
 end
@@ -187,9 +183,8 @@ structure Cst :> CST = struct
          | Explicit () => arrowDoc (Explicit Pure)
 
     val rec typeToDoc =
-        fn Pi (_, {var, typ = domain}, arrow, codomain) =>
-            text "fun" <+> Name.toDoc var <> annToDoc domain
-                <+> arrowDoc arrow <+> typeToDoc codomain
+        fn Pi (_, param, arrow, codomain) =>
+            text "fun" <+> defToDoc param <+> arrowDoc arrow <+> typeToDoc codomain
          | RecordT (_, row) => braces (typeToDoc row)
          | RowExt (_, {base, fields}) =>
             let fun fieldToDoc (label, fieldt) = 
@@ -283,10 +278,8 @@ structure Cst :> CST = struct
         structure Prim = PrimType
 
         datatype typ = datatype typ
-        type row = row
 
         val pos = typePos
-        val toDoc = typeToDoc
     end
 
     structure Term = struct
@@ -294,13 +287,11 @@ structure Cst :> CST = struct
         datatype stmt = datatype stmt
         datatype pat = datatype pat
         datatype row_edit = datatype row_edit
-        type def = def
         type recordFields = recordFields
 
         val exprPos = exprPos
         val exprToDoc = exprToDoc
         val exprToString = PPrint.pretty 80 o exprToDoc
-        val stmtToDoc = stmtToDoc
         val stmtsToDoc = stmtsToDoc
     end
 end

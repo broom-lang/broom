@@ -25,7 +25,6 @@ end = struct
     structure Concr = FType.Concr
     datatype concr = datatype Concr.t
     datatype sv = datatype FType.sv
-    structure Ov = TypeVars.Ov
     structure Uv = TypeVars.Uv
     structure Path = TypeVars.Path
     open TypeError

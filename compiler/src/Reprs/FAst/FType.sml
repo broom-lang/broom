@@ -211,11 +211,30 @@ structure FType :> FAST_TYPE = struct
     and coercionToDoc svarToDoc =
         fn Refl t => concrToDoc svarToDoc t
          | Symm co => text "symm" <+> coercionToDoc svarToDoc co
+         | Trans (co, co') =>
+            coercionToDoc svarToDoc co <+> text "o"
+                <+> coercionToDoc svarToDoc co'
+         | CompCo (co, co') =>
+            coercionToDoc svarToDoc co <+> coercionToDoc svarToDoc co
+         | CallTFnCo def => defToDoc def
+         | ForAllCo (params, body) =>
+            text "forall" <+> PPrint.punctuate1 space (Vector1.map defToDoc params)
+                <+> text "." <+> coercionToDoc svarToDoc body
+         | ExistsCo (params, body) =>
+            text "exists" <+> PPrint.punctuate1 space (Vector1.map defToDoc params)
+                <+> text "." <+> coercionToDoc svarToDoc body
+         | ArrowCo (arrow, {domain, codomain}) =>
+            coercionToDoc svarToDoc domain <+> arrowDoc arrow
+                <+> coercionToDoc svarToDoc codomain
          | InstCo {callee, args} =>
             coercionToDoc svarToDoc callee
                 <+> PPrint.punctuate1 space (Vector1.map (concrToDoc svarToDoc) args)
          | UseCo name => Name.toDoc name
+         | RowExtCo {base, field = (label, fieldc)} =>
+            coercionToDoc svarToDoc base <+> text "with"
+                <+> Name.toDoc label <+> text "=" <+> coercionToDoc svarToDoc fieldc
          | RecordCo rowCo => braces (coercionToDoc svarToDoc rowCo)
+         | TypeCo co => brackets (text "=" <+> coercionToDoc svarToDoc co)
 
     fun mapConcrChildren f =
         fn Exists (params, body) => Exists (params, f body)
@@ -320,7 +339,7 @@ structure FType :> FAST_TYPE = struct
             end
 
         fun kindOf svarKind =
-            fn t as (ForAll _ | Arrow _ | Record _ | Type _ | Prim _)  => TypeK
+            fn t as (Exists _ | ForAll _ | Arrow _ | Record _ | Type _ | Prim _)  => TypeK
              | t as (RowExt _ | EmptyRow) => RowK
              | CallTFn {kind, ...} => kind
              | UseT {kind, ...} => kind

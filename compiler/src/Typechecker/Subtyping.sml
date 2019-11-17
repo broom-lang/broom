@@ -21,13 +21,11 @@ end = struct
     structure Id = FType.Id
     structure Concr = FType.Concr
     val occurs = Concr.occurs
-    val pathOccurs = Concr.pathOccurs
     datatype concr' = datatype FAst.Type.concr'
     type concr = FType.concr
     datatype kind = datatype FType.kind
     datatype sv = datatype FType.sv
     datatype co' = datatype FAst.Type.co'
-    type co = FType.co
     structure FTerm = FAst.Term
     val Cast = FTerm.Cast
     val exprPos = FTerm.exprPos
@@ -114,7 +112,6 @@ end = struct
 (* TODO: Replace this premature optimization with shrinker pass. *)
 
     type coercer = (FTerm.expr -> FTerm.expr) option
-    type field_coercer = (Name.t * concr) * (FTerm.expr -> FTerm.expr) * concr
 
     fun applyCoercion (coerce: coercer) expr =
         case coerce
@@ -173,13 +170,11 @@ end = struct
 
       | coercion env pos (row as RowExt _, RowExt {base = base', field = (label', fieldt')}) =
          let val {base, fieldt} = reorderRow pos label' row
-             val fieldCoercion = coercion env pos (fieldt, fieldt')
-             val baseCoercion = coercion env pos (base, base')
          in RowExtCo { base = coercion env pos (base, base')
                      , field = (label', coercion env pos (fieldt, fieldt')) }
          end
 
-      | coercion env pos (EmptyRow, EmptyRow) = Refl EmptyRow
+      | coercion _ _ (EmptyRow, EmptyRow) = Refl EmptyRow
 
       | coercion env pos (Type t, Type t') = TypeCo (coercion env pos (t, t'))
 
@@ -199,7 +194,7 @@ end = struct
                        (coercion env pos (callee, callee'))
                        (Vector1.zip (args, args')) (* FIXME: Arity errors *)
 
-      | coercion env pos (l as CallTFn name, r as CallTFn name') =
+      | coercion _ pos (l as CallTFn name, r as CallTFn name') =
          if not (name = name')
          then raise TypeError (NonUnifiable (pos, l, r, NONE))
          else CallTFnCo name
@@ -243,12 +238,12 @@ end = struct
 
       | coercion env pos (t, SVar (Path path)) = pathCoercion env pos Down (path, #[]) t
 
-      | coercion env pos (l as Prim p, r as Prim p') =
+      | coercion _ pos (l as Prim p, r as Prim p') =
          if p = p'
          then Refl r
          else raise TypeError (NonUnifiable (pos, l, r, NONE))
 
-      | coercion env pos (l, r) = raise TypeError (NonUnifiable (pos, l, r, NONE))
+      | coercion _ pos (l, r) = raise TypeError (NonUnifiable (pos, l, r, NONE))
 
     and solution env pos (uv, t) =
         ( if occurs env uv t
@@ -275,11 +270,10 @@ end = struct
     and pathCoercion env pos direction (path, args) t =
         case Path.get env path
         of Right (impl, coDef) =>
-            let val face = applyType (Path.face path) args
-                val revealCo = instantiateCoercion (UseCo coDef) args
+            let val revealCo = instantiateCoercion (UseCo coDef) args
             in  case direction
                 of Up => Trans (revealCo, coercion env pos (SVar (UVar impl), t))
-                 | Down => Trans (coercion env pos (SVar (UVar impl), t), Symm revealCo)
+                 | Down => Trans (coercion env pos (t, SVar (UVar impl)), Symm revealCo)
             end
             
          | Left face =>
@@ -311,13 +305,13 @@ end = struct
       | coercer env pos (sub, super as Exists existential) =
          raise Fail "unimplemented"
 
-      | coercer env pos (sub, super as ForAll universal) =
+      | coercer env pos (sub, ForAll universal) =
          skolemize env universal (fn (env, params, body) =>
              Option.map (fn coerce => fn expr => FTerm.TFn (pos, params, coerce expr))
                         (coercer env pos (sub, body))
          )
 
-      | coercer env pos (sub as ForAll universal, super) =
+      | coercer env pos (ForAll universal, super) =
          instantiate env universal (fn (env, args, body) =>
              Option.map (fn coerce => fn expr =>
                              coerce (FTerm.TApp (pos, body, {callee = expr, args})))
@@ -350,12 +344,12 @@ end = struct
             else NONE
          end
 
-      | coercer env pos (sub as Record row, super as Record row') =
+      | coercer env pos (sub as Record row, Record row') =
          let val tmpDef = {pos, id = DefId.fresh (), var = Name.fresh (), typ = sub}
              val tmpUse = FTerm.Use (pos, tmpDef)
 
              val rec recCoercer =
-                 fn (row, row' as RowExt {base = base', field = (label, fieldt')}, tail) =>
+                 fn (row, RowExt {base = base', field = (label, fieldt')}, tail) =>
                      let val {base, fieldt} = reorderRow pos label row
                          val row = RowExt {base, field = (label, fieldt')}
                          val t = Record row
@@ -385,7 +379,7 @@ end = struct
               | NONE => NONE
          end
 
-      | coercer env pos (sub as RowExt _, super as RowExt {base = base', field = (label, fieldt')}) =
+      | coercer env pos (sub as RowExt _, RowExt {base = base', field = (label, fieldt')}) =
          let val {base, fieldt} = reorderRow pos label sub
              (* No values of row type exist => coercer unnecessary: *)
              do ignore (coercer env pos (fieldt, fieldt'))
@@ -393,7 +387,7 @@ end = struct
          in NONE
          end
 
-      | coercer env pos (EmptyRow, EmptyRow) = NONE
+      | coercer _ _ (EmptyRow, EmptyRow) = NONE
 
       | coercer env pos (Type sub, Type super) =
          ( coercer env pos (sub, super)
@@ -416,7 +410,7 @@ end = struct
                        (Vector1.zip (args, args'))
          ; NONE )
 
-      | coercer env pos (sub as CallTFn callee, super as CallTFn callee') =
+      | coercer _ pos (sub as CallTFn callee, super as CallTFn callee') =
          if not (callee = callee')
          then raise TypeError (NonSubType (pos, sub, super, NONE))
          else NONE
@@ -467,12 +461,12 @@ end = struct
       | coercer env pos (sub, SVar (Path path)) =
          pathCoercer env pos Down (path, #[]) sub
 
-      | coercer env pos (sub as Prim p, super as Prim p') =
+      | coercer _ pos (sub as Prim p, super as Prim p') =
          if p = p'
          then NONE
          else raise TypeError (NonSubType (pos, sub, super, NONE))
 
-      | coercer env pos (sub, super) = raise TypeError (NonSubType (pos, sub, super, NONE))
+      | coercer _ pos (sub, super) = raise TypeError (NonSubType (pos, sub, super, NONE))
 
     and subEffect pos effs =
         case effs
@@ -533,12 +527,12 @@ end = struct
     and doAssign env pos direction uv (Exists existential) =
          (case direction
           of Down =>
-              instantiate env existential (fn (env, args, body) =>
+              instantiate env existential (fn (env, _, body) =>
                   ( doAssign env pos direction uv body
                   ; NONE ) (* No values of existential type. *)
               )
            | Up =>
-              skolemize env existential (fn (env, params, body) =>
+              skolemize env existential (fn (env, _, body) =>
                   ( doAssign env pos direction uv body
                   ; NONE ) (* No values of existential type. *)
               ))
@@ -587,7 +581,7 @@ end = struct
              val tmpUse = FTerm.Use (pos, tmpDef)
 
              val rec recCoercer =
-                 fn (uvRow, row' as RowExt {base = base', field = (label, fieldt')}, uv) =>
+                 fn (uvRow, RowExt {base = base', field = (label, fieldt')}, uv) =>
                      let val baseUv = Uv.freshSibling env (uv, RowK)
                          val fieldUv = Uv.freshSibling env (uv, TypeK)
                          val base = SVar (UVar baseUv)
@@ -622,7 +616,7 @@ end = struct
               | NONE => NONE
          end
 
-      | doAssign env pos direction uv (row as (RowExt {base, field = (label, fieldt)})) =
+      | doAssign env pos direction uv (RowExt {base, field = (label, fieldt)}) =
          let val baseUv = Uv.freshSibling env (uv, RowK)
              val fieldUv = Uv.freshSibling env (uv, TypeK)
              val row' = RowExt { base = SVar (UVar baseUv)
@@ -634,24 +628,24 @@ end = struct
          in NONE (* No values of row type. *)
          end
 
-      | doAssign env pos direction uv (t as (EmptyRow | Prim _)) =
+      | doAssign env pos _ uv (t as (EmptyRow | Prim _)) =
          ( solution env pos (uv, t) (* trivially structured *)
          ; NONE )
 
-      | doAssign env pos direction uv (t as (Type _ | App _ | CallTFn _)) =
+      | doAssign env pos _ uv (t as (Type _ | App _ | CallTFn _)) =
          ( solution env pos (uv, t) (* invariance *)
          ; NONE )
 
-      | doAssign env pos direction uv (t as UseT {var, ...}) =
+      | doAssign env pos _ uv (t as UseT {var, ...}) =
          (* Becomes unreachable on return of OVar: *)
          ( solution env pos (uv, t) (* trivially structured *)
          ; NONE )
 
-      | doAssign env pos direction uv (t as SVar (OVar ov)) =
+      | doAssign env pos _ uv (t as SVar (OVar ov)) =
          ( solution env pos (uv, t) (* trivially structured *)
          ; NONE )
 
-      | doAssign env pos direction uv (SVar (UVar uv')) =
+      | doAssign env pos _ uv (SVar (UVar uv')) =
          let val kind = Uv.kind env uv
              val kind' = Uv.kind env uv'
          in if not (kind = kind')

@@ -54,14 +54,6 @@ structure FlexFAst = struct
                 of Either.Left uv' => TypeVars.Uv.eq (uv, uv')
                  | Either.Right t => occurs env uv t
 
-            fun pathOccurs env path = FType.Concr.occurs (pathSvarOccurs env) path
-            and pathSvarOccurs env path =
-                fn Path path' => TypeVars.Path.eq (path', path)
-                 | OVar _ => false
-                 | UVar uv => (case TypeVars.Uv.get env uv
-                               of Either.Left uv => false
-                                | Either.Right t => pathOccurs env path t)
-
             fun substitute env kv = FType.Concr.substitute (svarSubstitute env) kv
             and svarSubstitute env kv =
                 fn Path path =>

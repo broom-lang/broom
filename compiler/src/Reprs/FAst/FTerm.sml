@@ -11,7 +11,7 @@ signature FAST_TERM = sig
         | TFn of Pos.span * Type.def vector1 * expr
         | EmptyRecord of Pos.span
         | With of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
-        | Without of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
+        | Without of Pos.span * Type.concr * {base : expr, field : Name.t}
         | Where of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector1}
@@ -85,7 +85,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | TFn of Pos.span * Type.def vector1 * expr
         | EmptyRecord of Pos.span
         | With of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
-        | Without of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
+        | Without of Pos.span * Type.concr * {base : expr, field : Name.t}
         | Where of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector1}
@@ -111,6 +111,10 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
     val exprPos =
         fn Fn (pos, _, _, _) => pos
          | TFn (pos, _, _) => pos
+         | EmptyRecord pos => pos
+         | With (pos, _, _) => pos
+         | Without (pos, _, _) => pos
+         | Where (pos, _, _) => pos
          | App (pos, _, _) => pos
          | TApp (pos, _, _) => pos
          | Field (pos, _, _, _) => pos
@@ -158,6 +162,8 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | With (_, _, {base, field = (label, fieldExpr)}) =>
            braces(exprToDoc env base <+> text "with" <+> Name.toDoc label
                   <+> text "=" <+> exprToDoc env fieldExpr)
+        | Without (_, _, {base, field = label}) =>
+           braces(exprToDoc env base <+> text "without" <+> Name.toDoc label)
         | Where (_, _, {base, field = (label, fieldExpr)}) =>
            braces(exprToDoc env base <+> text "where" <+> Name.toDoc label
                   <+> text "=" <+> exprToDoc env fieldExpr)
@@ -233,6 +239,10 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         fn Fn (_, {typ = domain, ...}, arrow, body) =>
             Type.Arrow (arrow, {domain, codomain = typeOf body})
          | TFn (_, params, body) => Type.ForAll (params, typeOf body)
+         | EmptyRecord _ => Type.Record Type.EmptyRow
+         | With (_, typ, _) => typ
+         | Without (_, typ, _) => typ
+         | Where (_, typ, _) => typ
          | App (_, typ, _) | TApp (_, typ, _) => typ
          | Field (_, typ, _, _) => typ
          | Let (_, _, body) => typeOf body

@@ -338,7 +338,7 @@ end = struct
         end
 
     and instantiateExistential env (params: FType.def vector, body): concr * concr vector = 
-        let val paths = Vector.map (fn {var, kind} =>
+        let val paths = Vector.map (fn {var = _, kind} =>
                                         let val face = CallTFn (Env.freshAbstract env kind)
                                         in FAst.Type.SVar (Path (Path.new (kind, face)))
                                         end)
@@ -469,7 +469,7 @@ end = struct
 
     (* Coerce `callee` into a function. *)
     and coerceCallee (env: env) (typ: concr, callee: FTerm.expr) : FTerm.expr * effect * {domain: concr, codomain: concr} =
-        let fun coerce (callee, ForAll (universal as (_, body))) =
+        let fun coerce (callee, ForAll (universal)) =
                 coerce (applyPolymorphic env universal callee)
                 
               | coerce (callee, Arrow (Implicit, domains as {domain = _, codomain})) =
@@ -502,7 +502,7 @@ end = struct
    
     (* Coerce `expr` into a record with at least `label`. *)
     and coerceRecord env (typ: concr, expr: FTerm.expr) label: FTerm.expr * concr =
-        let fun coerce (expr, ForAll (universal as (_, body))) =
+        let fun coerce (expr, ForAll (universal)) =
                 coerce (applyPolymorphic env universal expr)
 
               | coerce (expr, Arrow (Implicit, domains as {domain = _, codomain})) =
@@ -559,7 +559,7 @@ end = struct
            , calleeType )
         end
 
-    and resolveTypeArg env eff {var, kind = kind as CallsiteK} =
+    and resolveTypeArg env eff {var = _, kind = kind as CallsiteK} =
         (case eff
          of Impure => CallTFn (Env.freshAbstract env kind)
           | Pure => CallTFn (Env.pureCallsite env))

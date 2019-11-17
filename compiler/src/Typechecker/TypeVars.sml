@@ -61,106 +61,11 @@ end = struct
         val name: ov -> Name.t = #name
     end
 
-
-    datatype 't link
-        = Link of 't uv
-        | Root of {meta: meta, typ: 't option ref, rank: int ref}
-    withtype 't uv = 't link ref
-
-    structure Uv = struct
-        fun new (env, name, kind) =
-            let val scope = Env.Scope.id (Env.innermostScope env)
-            in ref (Root { meta = {name, scope, kind}
-                         , typ = ref NONE
-                         , rank = ref 0 })
-            end
-
-        fun fresh (env, kind) = new (env, Name.fresh (), kind)
-
-        fun find uv =
-            case !uv
-            of Link uv' => let val res = find uv'
-                           in uv := Link res (* path compression *)
-                            ; res
-                           end
-             | Root _ => uv
-
-        fun root uv =
-            case !(find uv)
-            of Root root => root
-             | Link _ => raise Fail "unreachable"
-
-        fun freshSibling (uv, kind) =
-            ref (Root { meta = {name = Name.fresh (), scope = #scope (#meta (root uv)), kind}
-                      , typ = ref NONE
-                      , rank = ref 0 })
-
-        fun get uv =
-            let val uv = find uv
-            in case !uv
-               of Root {typ, ...} => (case !typ
-                                      of SOME t => Either.Right t
-                                       | NONE => Either.Left uv)
-                | Link _ => raise Fail "unreachable"
-            end
-
-        fun assign env (uv, t) =
-            let val {meta = {scope, name, ...}, typ, ...} = root uv
-            in if Env.hasScope env scope
-               then case !typ
-                    of SOME _ => raise Reset
-                     | NONE => typ := SOME t
-               else raise SetPrivate name
-            end
-
-        fun newRank (rank, rank') =
-            if rank = rank'
-            then rank + 1
-            else Int.max (rank, rank')
-
-        fun merge env (uv, uv') =
-            let val uv = find uv
-                val uv' = find uv'
-            in if uv = uv'
-               then uv
-               else case (!uv, !uv')
-                    of ( Root {meta = {scope, name, kind = _}, rank, ...}
-                       , Root { meta = {scope = scope', name = name', kind = _}
-                              , rank = rank', ... } ) =>
-                        if Env.hasScope env scope 
-                        then if Env.hasScope env scope'
-                             then let val (child, parent, parentRank) =
-                                          case Env.Scope.Id.compare (scope, scope')
-                                          of LESS => (uv, uv', rank')
-                                           | GREATER => (uv', uv, rank)
-                                           | EQUAL => (case Int.compare (!rank, !rank')
-                                                       of LESS => (uv, uv', rank')
-                                                        | GREATER => (uv', uv, rank)
-                                                        | EQUAL => (uv, uv', rank'))
-                                  in child := Link parent
-                                   ; parentRank := newRank (!rank, !rank')
-                                   ; parent
-                                  end
-                            else raise SetPrivate name'
-                        else raise SetPrivate name
-                     | _ => raise Fail "unreachable"
-            end
-
-        val set = assign
-
-        val eq = op=
-
-        fun kind uv = #kind (#meta (root uv))
-
-        fun name uv = #name (#meta (root uv))
-    end
-
     type 't uv = (meta, 't) UnionFind.t
 
     structure Uv = struct
         fun make env meta =
-            let val scope = Env.Scope.id (Env.innermostScope env)
-                val subst = Env.currentSubstitution env
+            let val subst = Env.currentSubstitution env
                 val (uv, subst') = UnionFind.new subst meta
             in Env.setSubstitution env subst'
              ; uv
@@ -227,7 +132,7 @@ end = struct
             of SOME (_, {typ = uv, coercion}) => Either.Right (uv, coercion)
              | NONE => Either.Left face
 
-        fun addScope env ({kind, face, impls}: 't path, scope, coercion) =
+        fun addScope env ({kind, face = _, impls}: 't path, scope, coercion) =
             let val uv = Uv.make env {name = Name.fresh (), scope, kind = kindCodomain kind}
             in impls := (scope, {typ = uv, coercion}) :: !impls
             end

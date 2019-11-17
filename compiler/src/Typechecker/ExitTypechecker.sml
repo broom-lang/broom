@@ -48,8 +48,6 @@ end = struct
         of Right t => concrToF env t
          | Left uv => FType.kindDefault (TypeVars.Uv.kind env uv)
 
-    fun axiomToF env (name, l, r) = (name, concrToF env l, concrToF env r)
-
     fun exprToF env: FlexFAst.Term.expr -> FFTerm.expr =
         fn Fn (pos, {pos = defPos, id, var, typ}, expl, body) =>
             FFTerm.Fn (pos, {pos = defPos, id, var, typ = concrToF env typ}, expl, exprToF env body)
