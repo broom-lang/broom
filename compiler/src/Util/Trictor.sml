@@ -87,7 +87,7 @@ structure Trictor :> TRICTOR = struct
         let val i = fromInt i
         in  if i >= len
             then raise Subscript
-            else if i > tailOffset len
+            else if i >= tailOffset len
                  then {root, tail = tailUpdate tail i f, len, shift}
                  else {root = trieUpdate root shift i f, tail, len, shift}
         end
@@ -117,7 +117,7 @@ structure Trictor :> TRICTOR = struct
         let val i = fromInt i
         in  if i >= len
             then NONE
-            else SOME (if i > tailOffset len
+            else SOME (if i >= tailOffset len
                        then tailFind tail i
                        else trieFind root shift i)
         end

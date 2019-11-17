@@ -35,6 +35,16 @@ structure TestTrictor = struct
          ; Assert.eq (Trictor.sub (xs, 23), 99 - 23) "xs did not update"
         end
 
+    fun testGet () =
+        let val xs = Trictor.fromVector (Vector.tabulate (10, fn n => 9 - n))
+            val ys = Trictor.fromVector (Vector.tabulate (100, fn n => 99 - n))
+        in Assert.eq (Trictor.sub (xs, 7), 9 - 7) "xs[7]"
+         ; Assert.eq (Trictor.sub (ys, 7), 99 - 7) "ys[7]"
+         ; Assert.eq (Trictor.sub (ys, 95), 99 - 95) "ys[95]"
+         ; Assert.eq (Trictor.sub (ys, 96), 99 - 96) "ys[96]"
+         ; Assert.eq (Trictor.sub (ys, 99), 0) "ys[99]"
+        end
+
     fun testFoldl () =
         let val xs = Vector.tabulate (100, fn n => 99 - n)
             val ys = Vector.foldl (fn (x, ys) => Trictor.append ys x)
@@ -46,6 +56,7 @@ structure TestTrictor = struct
         ( testEmpty ()
         ; testAppend ()
         ; testUpdate ()
+        ; testGet ()
         ; testFoldl () )
 end
 
