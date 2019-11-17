@@ -256,11 +256,16 @@ end = struct
     and pathsCoercion env pos ((path, args), (path', args')) =
         case (Path.get env path, Path.get env path')
         of (Right (impl, coDef), Right (impl', coDef')) =>
-            raise Fail "unimplemented"
+            Trans ( Trans ( instantiateCoercion (UseCo coDef) args
+                          , coercion env pos (SVar (UVar impl), SVar (UVar impl')) )
+                  , Symm (instantiateCoercion (UseCo coDef') args') )
+
          | (Right _, Left face') =>
             pathCoercion env pos Up (path, args) (applyType face' args')
+
          | (Left face, Right _) =>
             pathCoercion env pos Down (path', args') (applyType face args)
+
          | (Left face, Left face') =>
             let val face = applyType face args
                 val face' = applyType face' args'
@@ -300,10 +305,16 @@ end = struct
                             end) )
 
     and coercer env pos (sub as Exists existential, super) =
-         raise Fail "unimplemented"
+         skolemize env existential (fn (env, params, body) =>
+             ( coercer env pos (body, super)
+             ; NONE ) (* No values of existential type. *)
+         )
 
       | coercer env pos (sub, super as Exists existential) =
-         raise Fail "unimplemented"
+         instantiate env existential (fn (env, args, body) =>
+             ( coercer env pos (sub, body)
+             ; NONE ) (* No values of existential type. *)
+         )
 
       | coercer env pos (sub, ForAll universal) =
          skolemize env universal (fn (env, params, body) =>
@@ -478,11 +489,24 @@ end = struct
     and pathsCoercer env pos ((path, args), (path', args')) =
         case (Path.get env path, Path.get env path')
         of (Right (impl, coDef), Right (impl', coDef')) =>
-            raise Fail "unimplemented"
+            let val face = applyType (Path.face path) args
+                val revealCo = instantiateCoercion (UseCo coDef) args
+                fun reveal expr = Cast (exprPos expr, SVar (UVar impl), expr, revealCo)
+
+                val face' = applyType (Path.face path') args'
+                val hideCo' = Symm (instantiateCoercion (UseCo coDef') args')
+                fun hide expr = Cast (exprPos expr, face', expr, hideCo')
+            in  case coercer env pos (SVar (UVar impl), SVar (UVar impl'))
+                of SOME implToImpl' => SOME (reveal o implToImpl' o hide)
+                 | NONE => SOME (reveal o hide)
+            end
+
          | (Right _, Left face') =>
             pathCoercer env pos Up (path, args) (applyType face' args')
+
          | (Left face, Right _) =>
             pathCoercer env pos Down (path', args') (applyType face args)
+
          | (Left face, Left face') =>
             let val face = applyType face args
                 val face' = applyType face' args'
