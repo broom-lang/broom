@@ -203,7 +203,6 @@ end = struct
          else CallTFnCo name
 
       | coercion env pos (l as UseT {var, kind}, r as UseT {var = var', kind = kind'}) =
-         (* TODO: Go back to using `OVar` => this becomes `raise Fail "unreachable" *)
          if not (var = var')
          then raise TypeError (NonUnifiable (pos, l, r, NONE))
          else if not (idInScope env var)
@@ -211,8 +210,6 @@ end = struct
               else if not (kind = kind')
                    then raise TypeError (InequalKinds (pos, kind, kind'))
                    else Refl l
-
-      | coercion env pos (SVar (OVar ov), SVar (OVar ov')) = raise Fail "unimplemented"
 
       | coercion env pos (SVar (UVar uv), r as SVar (UVar uv')) =
          (case (Uv.get env uv, Uv.get env uv')
@@ -431,16 +428,12 @@ end = struct
          else NONE
 
       | coercer env pos (sub as UseT {var, ...}, super as UseT {var = var', ...}) =
-         (* TODO: Go back to using `OVar` => this becomes `raise Fail "unreachable" *)
          if var = var'
          then if idInScope env var
               then NONE
               else raise TypeError (OutsideScope ( pos
                                                  , Name.fromString ("g__" ^ Id.toString var) ))
          else raise TypeError (NonSubType (pos, sub, super, NONE))
-
-      | coercer env pos (SVar (OVar ov), SVar (OVar ov')) =
-         raise Fail "unimplemented"
 
       | coercer env pos (SVar (UVar uv), SVar (UVar uv')) =
          (case (Uv.get env uv, Uv.get env uv')
@@ -665,11 +658,6 @@ end = struct
          ; NONE )
 
       | doAssign env pos _ uv (t as UseT {var, ...}) =
-         (* Becomes unreachable on return of OVar: *)
-         ( solution env pos (uv, t) (* trivially structured *)
-         ; NONE )
-
-      | doAssign env pos _ uv (t as SVar (OVar ov)) =
          ( solution env pos (uv, t) (* trivially structured *)
          ; NONE )
 

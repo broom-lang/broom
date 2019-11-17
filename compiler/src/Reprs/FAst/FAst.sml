@@ -11,10 +11,9 @@ structure FlexFAst = struct
         datatype concr' = datatype FType.concr
         datatype co' = datatype FType.co
 
-        datatype sv = OVar of ov | UVar of uv | Path of path
+        datatype sv = UVar of uv | Path of path
         withtype concr = sv FType.concr
         and co = sv FType.co
-        and ov = TypeVars.ov
         and uv = sv FType.concr TypeVars.uv
         and path = sv FType.concr TypeVars.path
 
@@ -26,7 +25,6 @@ structure FlexFAst = struct
                 (case TypeVars.Path.get env path
                  of Either.Right (uv, _) => uvToDoc env uv
                   | Either.Left t => text "^^" <> PPrint.parens (concrToDoc env t))
-             | OVar ov => Name.toDoc (TypeVars.Ov.name ov)
              | UVar uv => uvToDoc env uv
         and uvToDoc env uv =
             case TypeVars.Uv.get env uv
@@ -47,7 +45,6 @@ structure FlexFAst = struct
                     (case TypeVars.Path.get env path
                      of Either.Left t => occurs env uv t
                       | Either.Right (uv', _) => uvOccurs env uv uv')
-                 | OVar _ => false
                  | UVar uv' => uvOccurs env uv uv'
             and uvOccurs env uv uv' =
                 case TypeVars.Uv.get env uv'
@@ -58,9 +55,8 @@ structure FlexFAst = struct
             and svarSubstitute env kv =
                 fn Path path =>
                     (case TypeVars.Path.get env path
-                     of Either.Left _ => NONE (* path faces are always CallTFn:s with OVar args *)
+                     of Either.Left _ => NONE (* FIXME? *)
                       | Either.Right (uv, _) => uvSubstitute env kv uv)
-                 | OVar _ => NONE
                  | UVar uv => uvSubstitute env kv uv
             and uvSubstitute env kv uv =
                 case TypeVars.Uv.get env uv

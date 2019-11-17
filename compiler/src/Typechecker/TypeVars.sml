@@ -5,14 +5,6 @@ structure TypeVars :> sig
     exception SetPrivate of Name.t
     exception Reset
 
-    type ov
-
-    structure Ov: sig
-        val new: ScopeId.t * Name.t * kind -> ov
-        val scope: ov -> ScopeId.t
-        val name: ov -> Name.t
-    end
-
     type 't uv
 
     structure Uv: sig
@@ -50,16 +42,6 @@ end = struct
     exception Reset
 
     type meta = {name: Name.t, scope: ScopeId.t, kind: kind}
-
-    type ov = meta
-
-    structure Ov = struct
-        fun new (scope, name, kind) = {name, scope, kind}
-
-        val scope: ov -> ScopeId.t = #scope
-
-        val name: ov -> Name.t = #name
-    end
 
     type 't uv = (meta, 't) UnionFind.t
 
