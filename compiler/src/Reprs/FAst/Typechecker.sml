@@ -150,7 +150,7 @@ end = struct
     fun checkEq currPos env ts =
         if eq env ts
         then ()
-        else raise Fail ( FFType.concrToString (#1 ts) ^ " != " ^ FFType.concrToString (#2 ts)
+        else raise Fail ( FFType.Concr.toString (#1 ts) ^ " != " ^ FFType.Concr.toString (#2 ts)
                         ^ " in " ^ Pos.spanToString (Env.sourcemap env) currPos )
 
     fun checkCo env =
@@ -227,7 +227,7 @@ end = struct
              ; checkEq pos env (codomain, typ)
              ; typ
             end
-         | t => raise Fail ("Uncallable: " ^ FFTerm.exprToString callee ^ ": " ^ FFType.concrToString t)
+         | t => raise Fail ("Uncallable: " ^ FFTerm.exprToString callee ^ ": " ^ FFType.Concr.toString t)
 
     and checkTApp env (pos, typ, {callee, args}) =
         case check env callee
@@ -245,7 +245,7 @@ end = struct
             in checkEq pos env (typ', typ)
              ; typ
             end
-         | t => raise Fail ("Nonuniversal: " ^ FFTerm.exprToString callee ^ ": " ^ FFType.concrToString t)
+         | t => raise Fail ("Nonuniversal: " ^ FFTerm.exprToString callee ^ ": " ^ FFType.Concr.toString t)
 
     and checkField env (pos, typ, expr, label) =
         case check env expr
@@ -254,9 +254,9 @@ end = struct
              of SOME fieldt => 
                  ( checkEq pos env (fieldt, typ)
                  ; fieldt )
-              | NONE => raise Fail ("Record " ^ FFTerm.exprToString expr ^ ": " ^ FFType.concrToString t
+              | NONE => raise Fail ("Record " ^ FFTerm.exprToString expr ^ ": " ^ FFType.Concr.toString t
                                     ^ " does not have field " ^ Name.toString label))
-         | t => raise Fail ("Not a record: " ^ FFTerm.exprToString expr ^ ": " ^ FFType.concrToString t)
+         | t => raise Fail ("Not a record: " ^ FFTerm.exprToString expr ^ ": " ^ FFType.Concr.toString t)
 
     and checkLet env (_, stmts, body) =
         let val env = pushStmts env stmts

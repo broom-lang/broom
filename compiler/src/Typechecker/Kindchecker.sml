@@ -61,7 +61,7 @@ end = struct
                                        in Id.SortedMap.insert (mapping, var, use)
                                        end)
                                   Id.SortedMap.empty params
-            in Concr.substitute (Env.hasScope env) mapping body
+            in Concr.substitute env mapping body
             end
          | t => t
 
@@ -212,7 +212,7 @@ end = struct
             in checkArgKind 0 (monotypeKind env pos callee)
             end
          | CallTFn {kind, ...} => kind
-         | SVar (UVar uv) => Uv.kind uv
+         | SVar (UVar uv) => Uv.kind env uv
          | SVar (OVar ov) => raise Fail "unimplemented"
          | SVar (Path path) => Path.kind path
          | UseT {var, kind} => (* TODO: Should be unreachable on return of Ov: *)

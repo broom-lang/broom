@@ -20,6 +20,7 @@ end = struct
     structure FType = FAst.Type
     structure Id = FType.Id
     structure Concr = FType.Concr
+    val occurs = Concr.occurs
     val pathOccurs = Concr.pathOccurs
     datatype concr' = datatype FAst.Type.concr'
     type concr = FType.concr
@@ -41,10 +42,6 @@ end = struct
 
     fun idInScope env id = isSome (Env.findType env id)
 
-    fun pathGet env = Path.get (Env.hasScope env)
-
-    fun occurs env = Concr.occurs (Env.hasScope env)
-
     (* \forall|\exists a... . T --> [(\hat{a}/a)...]T and push \hat{a}... to env *)
     fun instantiate env (params: FType.def vector1, body) f =
         let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
@@ -54,7 +51,7 @@ end = struct
                         |> Vector1.zipWith (fn ({var, kind = _}, arg) => (var, arg))
                         |> Vector1.toVector
                         |> Id.SortedMap.fromVector
-            val body = Concr.substitute (Env.hasScope env) mapping body
+            val body = Concr.substitute env mapping body
         in f (env, args, body)
         end
 
@@ -67,7 +64,7 @@ end = struct
                         |> Vector1.zipWith (fn ({var, ...}, def') => (var, UseT def'))
                         |> Vector1.toVector
                         |> Id.SortedMap.fromVector
-            val body = Concr.substitute (Env.hasScope env) mapping body
+            val body = Concr.substitute env mapping body
         in f (env, params', body)
         end
 
@@ -84,12 +81,12 @@ end = struct
                         |> Vector1.zipWith (fn ({var, ...}, def') => (var, UseT def'))
                         |> Vector1.toVector
                         |> Id.SortedMap.fromVector
-            val body = Concr.substitute (Env.hasScope env) mapping body
+            val body = Concr.substitute env mapping body
             val mapping' = (params', params'')
                          |> Vector1.zipWith (fn ({var, ...}, def') => (var, UseT def'))
                          |> Vector1.toVector
                          |> Id.SortedMap.fromVector
-            val body' = Concr.substitute (Env.hasScope env) mapping' body'
+            val body' = Concr.substitute env mapping' body'
         in f (env, params'', (body, body'))
         end
  
@@ -220,13 +217,13 @@ end = struct
       | coercion env pos (SVar (OVar ov), SVar (OVar ov')) = raise Fail "unimplemented"
 
       | coercion env pos (SVar (UVar uv), r as SVar (UVar uv')) =
-         (case (Uv.get uv, Uv.get uv')
+         (case (Uv.get env uv, Uv.get env uv')
           of (Right l, Right r) => coercion env pos (l, r)
            | (Left uv, Right t) | (Right t, Left uv) =>
               solution env pos (uv , t)
            | (Left uv, Left uv') =>
-              let val kind = Uv.kind uv
-                  val kind' = Uv.kind uv'
+              let val kind = Uv.kind env uv
+                  val kind' = Uv.kind env uv'
               in if not (kind = kind')
                  then raise TypeError (InequalKinds (pos, kind, kind'))
                  else ()
@@ -235,7 +232,7 @@ end = struct
               end)
 
       | coercion env pos ((SVar (UVar uv), t) | (t, SVar (UVar uv))) =
-         (case Uv.get uv
+         (case Uv.get env uv
           of Right t' => coercion env pos (t, t')
            | Left uv => solution env pos (uv, t))
 
@@ -257,12 +254,12 @@ end = struct
         ( if occurs env uv t
           then raise TypeError (Occurs (pos, SVar (UVar uv), t))
           else ()
-        ; checkMonotypeKind env pos (Uv.kind uv) t
+        ; checkMonotypeKind env pos (Uv.kind env uv) t
         ; Uv.set env (uv, t)
         ; Refl t )
 
     and pathsCoercion env pos ((path, args), (path', args')) =
-        case (pathGet env path, pathGet env path')
+        case (Path.get env path, Path.get env path')
         of (Right (impl, coDef), Right (impl', coDef')) =>
             raise Fail "unimplemented"
          | (Right _, Left face') =>
@@ -276,7 +273,7 @@ end = struct
             end
 
     and pathCoercion env pos direction (path, args) t =
-        case pathGet env path
+        case Path.get env path
         of Right (impl, coDef) =>
             let val face = applyType (Path.face path) args
                 val revealCo = instantiateCoercion (UseCo coDef) args
@@ -437,13 +434,13 @@ end = struct
          raise Fail "unimplemented"
 
       | coercer env pos (SVar (UVar uv), SVar (UVar uv')) =
-         (case (Uv.get uv, Uv.get uv')
+         (case (Uv.get env uv, Uv.get env uv')
           of (Right t, Right t') => coercer env pos (t, t')
            | (Left uv, Right t) => assign env pos (Up, uv, t)
            | (Right t, Left uv) => assign env pos (Down, uv, t)
            | (Left uv, Left uv') =>
-              let val kind = Uv.kind uv
-                  val kind' = Uv.kind uv'
+              let val kind = Uv.kind env uv
+                  val kind' = Uv.kind env uv'
               in if not (kind = kind')
                  then raise TypeError (InequalKinds (pos, kind, kind'))
                  else ()
@@ -452,12 +449,12 @@ end = struct
               end)
 
       | coercer env pos (SVar (UVar uv), super) =
-         (case Uv.get uv
+         (case Uv.get env uv
           of Left uv => assign env pos (Up, uv, super)
            | Right sub => coercer env pos (sub, super))
 
       | coercer env pos (sub, SVar (UVar uv)) =
-         (case Uv.get uv
+         (case Uv.get env uv
           of Left uv => assign env pos (Down, uv, sub)
            | Right super => coercer env pos (sub, super))
 
@@ -485,7 +482,7 @@ end = struct
          | (Impure, Impure) => ()
 
     and pathsCoercer env pos ((path, args), (path', args')) =
-        case (pathGet env path, pathGet env path')
+        case (Path.get env path, Path.get env path')
         of (Right (impl, coDef), Right (impl', coDef')) =>
             raise Fail "unimplemented"
          | (Right _, Left face') =>
@@ -499,7 +496,7 @@ end = struct
             end
 
     and pathCoercer env pos direction (path, args) t =
-        case pathGet env path
+        case Path.get env path
         of Right (impl, coDef) =>
             let val face = applyType (Path.face path) args
                 val revealCo = instantiateCoercion (UseCo coDef) args
@@ -565,8 +562,8 @@ end = struct
          raise Fail "unimplemented"
 
       | doAssign env pos direction uv (Arrow (Explicit eff, arrow as {domain, codomain})) =
-         let val domainUv = Uv.freshSibling (uv, TypeK)
-             val codomainUv = Uv.freshSibling (uv, TypeK)
+         let val domainUv = Uv.freshSibling env (uv, TypeK)
+             val codomainUv = Uv.freshSibling env (uv, TypeK)
              val arrow' = { domain = SVar (UVar domainUv)
                           , codomain = SVar (UVar codomainUv)}
              val t' = Arrow (Explicit eff, arrow')
@@ -583,7 +580,7 @@ end = struct
          end
 
       | doAssign env pos direction uv (Record row) =
-         let val rowUv = Uv.freshSibling (uv, RowK)
+         let val rowUv = Uv.freshSibling env (uv, RowK)
              val uvRow = SVar (UVar rowUv)
              do ignore (Uv.set env (uv, Record uvRow))
              val tmpDef = {pos, id = DefId.fresh (), var = Name.fresh (), typ = SVar (UVar uv)}
@@ -591,8 +588,8 @@ end = struct
 
              val rec recCoercer =
                  fn (uvRow, row' as RowExt {base = base', field = (label, fieldt')}, uv) =>
-                     let val baseUv = Uv.freshSibling (uv, RowK)
-                         val fieldUv = Uv.freshSibling (uv, TypeK)
+                     let val baseUv = Uv.freshSibling env (uv, RowK)
+                         val fieldUv = Uv.freshSibling env (uv, TypeK)
                          val base = SVar (UVar baseUv)
                          val fieldt = SVar (UVar fieldUv)
                          val row = RowExt {base, field = (label, fieldt)}
@@ -626,8 +623,8 @@ end = struct
          end
 
       | doAssign env pos direction uv (row as (RowExt {base, field = (label, fieldt)})) =
-         let val baseUv = Uv.freshSibling (uv, RowK)
-             val fieldUv = Uv.freshSibling (uv, TypeK)
+         let val baseUv = Uv.freshSibling env (uv, RowK)
+             val fieldUv = Uv.freshSibling env (uv, TypeK)
              val row' = RowExt { base = SVar (UVar baseUv)
                                , field = (label, SVar (UVar fieldUv)) }
              do ignore (Uv.set env (uv, row'))
@@ -655,8 +652,8 @@ end = struct
          ; NONE )
 
       | doAssign env pos direction uv (SVar (UVar uv')) =
-         let val kind = Uv.kind uv
-             val kind' = Uv.kind uv'
+         let val kind = Uv.kind env uv
+             val kind' = Uv.kind env uv'
          in if not (kind = kind')
             then raise TypeError (InequalKinds (pos, kind, kind'))
             else ()

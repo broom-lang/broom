@@ -347,7 +347,7 @@ end = struct
             val mapping = (params, paths)
                         |> Vector.zipWith (fn ({var, ...}, path) => (var, path))
                         |> Id.SortedMap.fromVector
-            val implType = Concr.substitute (Env.hasScope env) mapping body
+            val implType = Concr.substitute env mapping body
         in (implType, paths)
         end
 
@@ -370,7 +370,7 @@ end = struct
                 val pos = CTerm.exprPos expr
                 val coercionNames = Vector.map (fn FAst.Type.SVar (Path path) =>
                                                     let val name = Name.freshen (Name.fromString "coImpl")
-                                                        do Path.addScope (path, scopeId, name)
+                                                        do Path.addScope env (path, scopeId, name)
                                                     in name
                                                     end)
                                                paths
@@ -386,7 +386,7 @@ end = struct
                                                          | _ => Vector.fromList (List.rev params)
                                                 in kindParams [] (Path.kind path)
                                                 end
-                                            val (impl, _) = Either.unwrap (Path.get (Env.hasScope env) path)
+                                            val (impl, _) = Either.unwrap (Path.get env path)
                                         in  case Vector1.fromVector params
                                             of SOME params =>
                                                 let val args = Vector1.map (fn def => UseT def) params
@@ -479,11 +479,11 @@ end = struct
                  (callee, eff, domains)
 
               | coerce (callee, SVar (UVar uv)) =
-                (case Uv.get uv
+                (case Uv.get env uv
                  of Right typ => coerce (callee, typ)
                   | Left uv =>
-                     let val domain = SVar (UVar (Uv.freshSibling (uv, TypeK)))
-                         val codomain = SVar (UVar (Uv.freshSibling (uv, TypeK)))
+                     let val domain = SVar (UVar (Uv.freshSibling env (uv, TypeK)))
+                         val codomain = SVar (UVar (Uv.freshSibling env (uv, TypeK)))
                          val eff = Impure
                          val arrow = {domain, codomain}
                          do Uv.set env (uv, Arrow (Explicit eff, arrow))
@@ -515,8 +515,8 @@ end = struct
                             then fieldt
                             else fieldType base
                          | SVar (UVar uv) =>
-                            let val base = SVar (UVar (Uv.freshSibling (uv, RowK)))
-                                val fieldt = SVar (UVar (Uv.freshSibling (uv, TypeK)))
+                            let val base = SVar (UVar (Uv.freshSibling env (uv, RowK)))
+                                val fieldt = SVar (UVar (Uv.freshSibling env (uv, TypeK)))
                                 do Uv.set env (uv, Record (RowExt ({base, field = (label, fieldt)})))
                             in fieldt
                             end
@@ -527,11 +527,11 @@ end = struct
                 end
 
               | coerce (expr, SVar (UVar uv)) =
-                (case Uv.get uv
+                (case Uv.get env uv
                  of Right typ => coerce (expr, typ)
                   | Left uv =>
-                     let val base = SVar (UVar (Uv.freshSibling (uv, RowK)))
-                         val fieldt = SVar (UVar (Uv.freshSibling (uv, TypeK)))
+                     let val base = SVar (UVar (Uv.freshSibling env (uv, RowK)))
+                         val fieldt = SVar (UVar (Uv.freshSibling env (uv, TypeK)))
                          do Uv.set env (uv, Record (RowExt ({base, field = (label, fieldt)})))
                      in (expr, fieldt)
                      end)
@@ -554,7 +554,7 @@ end = struct
                                    end)
                               ([], Id.SortedMap.empty) params
             val args = args |> List.rev |> Vector1.fromList |> valOf
-            val calleeType = Concr.substitute (Env.hasScope env) mapping body
+            val calleeType = Concr.substitute env mapping body
         in ( FTerm.TApp (FTerm.exprPos callee, calleeType, {callee, args})
            , calleeType )
         end

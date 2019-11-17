@@ -1,5 +1,6 @@
 signature FAST_TERM = sig
     structure Type: CLOSED_FAST_TYPE
+    type ('expr, 'error) env = ('expr, 'error) Type.env
 
     type arrow = Type.arrow
 
@@ -41,20 +42,21 @@ signature FAST_TERM = sig
                      -> {pos: Pos.span, id: DefId.t, var: Name.t, typ: 'u}
     val setDefTyp : {pos: Pos.span, id: DefId.t, var: Name.t, typ: 't} -> 'u
                   -> {pos: Pos.span, id: DefId.t, var: Name.t, typ: 'u}
-    val defToDoc : def -> PPrint.t
+    val defToDoc : ('expr, 'error) env -> def -> PPrint.t
     val exprPos: expr -> Pos.span
-    val exprToDoc: expr -> PPrint.t
-    val exprToString: expr -> string
+    val exprToDoc: ('expr, 'error) env -> expr -> PPrint.t
+    val exprToString: ('expr, 'error) env -> expr -> string
     val stmtPos: stmt -> Pos.span
-    val stmtToDoc: stmt -> PPrint.t
-    val stmtsToDoc: stmt vector -> PPrint.t
+    val stmtToDoc: ('expr, 'error) env -> stmt -> PPrint.t
+    val stmtsToDoc: ('expr, 'error) env -> stmt vector -> PPrint.t
     val patPos: pat -> Pos.span
-    val patternToDoc: pat -> PPrint.t
-    val programToDoc: program -> PPrint.t
+    val patternToDoc: ('expr, 'error) env -> pat -> PPrint.t
+    val programToDoc: ('expr, 'error) env -> program -> PPrint.t
     val typeOf: expr -> Type.concr
 end
 
 functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
+    where type ('expr, 'error) env = ('expr, 'error) Type.env
     where type Type.sv = Type.sv
 = struct
     val op|> = Fn.|>
@@ -72,6 +74,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
     val align = PPrint.align
 
     structure Type = Type
+    type ('expr, 'error) env = ('expr, 'error) Type.env
 
     type arrow = Type.arrow
 
@@ -125,86 +128,87 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
     fun updateDefTyp {pos, id, var, typ} f = {pos, id, var, typ = f typ}
     fun setDefTyp def typ' = updateDefTyp def (Fn.constantly typ')
 
-   fun defToDoc {pos = _, id = _, var, typ} =
-       Name.toDoc var <> text ":" <+> Type.Concr.toDoc typ
+   fun defToDoc env {pos = _, id = _, var, typ} =
+       Name.toDoc var <> text ":" <+> Type.Concr.toDoc env typ
 
-   val rec stmtToDoc =
+   fun stmtToDoc env =
        fn Val (_, def, valExpr) =>
-           let val lhs = text "val" <+> defToDoc def <+> text "="
-               val rhs = PPrint.align (exprToDoc valExpr)
+           let val lhs = text "val" <+> defToDoc env def <+> text "="
+               val rhs = PPrint.align (exprToDoc env valExpr)
            in lhs <> (space <> rhs <|> PPrint.nest 4 (newline <> rhs))
            end
         | Axiom (_, name, l, r) =>
            text "axiom" <+> Name.toDoc name <+> text ":"
-           <+> Type.Concr.toDoc l <+> text "~" <+> Type.Concr.toDoc r
-        | Expr expr => exprToDoc expr
+           <+> Type.Concr.toDoc env l <+> text "~" <+> Type.Concr.toDoc env r
+        | Expr expr => exprToDoc env expr
 
-   and stmtsToDoc =
-       fn stmts => PPrint.punctuate PPrint.newline (Vector.map stmtToDoc stmts)
+   and stmtsToDoc env =
+       fn stmts => PPrint.punctuate PPrint.newline (Vector.map (stmtToDoc env) stmts)
 
-   and fieldToDoc =
-       fn (label, expr) => Name.toDoc label <+> text "=" <+> exprToDoc expr
+   and fieldToDoc env =
+       fn (label, expr) => Name.toDoc label <+> text "=" <+> exprToDoc env expr
 
-   and exprToDoc =
+   and exprToDoc env =
        fn Fn (_, param, arrow, body) =>
-           text "\\" <> defToDoc param <+> Type.arrowDoc arrow <+> exprToDoc body
+           text "\\" <> defToDoc env param <+> Type.arrowDoc arrow <+> exprToDoc env body
         | TFn (_, params, body) =>
            text "/\\" <> PPrint.punctuate1 space (Vector1.map Type.defToDoc params)
-               <+> text "=>" <+> exprToDoc body
+               <+> text "=>" <+> exprToDoc env body
         | EmptyRecord _ => text "{}"
         | With (_, _, {base, field = (label, fieldExpr)}) =>
-           braces(exprToDoc base <+> text "with" <+> Name.toDoc label
-                  <+> text "=" <+> exprToDoc fieldExpr)
+           braces(exprToDoc env base <+> text "with" <+> Name.toDoc label
+                  <+> text "=" <+> exprToDoc env fieldExpr)
         | Where (_, _, {base, field = (label, fieldExpr)}) =>
-           braces(exprToDoc base <+> text "where" <+> Name.toDoc label
-                  <+> text "=" <+> exprToDoc fieldExpr)
+           braces(exprToDoc env base <+> text "where" <+> Name.toDoc label
+                  <+> text "=" <+> exprToDoc env fieldExpr)
         | App (_, _, {callee, arg}) =>
-           parens (exprToDoc callee <+> exprToDoc arg)
+           parens (exprToDoc env callee <+> exprToDoc env arg)
         | TApp (_, _, {callee, args}) =>
-           parens (exprToDoc callee <+> (args
-                                        |> Vector1.map Type.Concr.toDoc
-                                        |> PPrint.punctuate1 space
-                                        |> brackets))
+           parens (exprToDoc env callee <+> (args
+                                            |> Vector1.map (Type.Concr.toDoc env)
+                                            |> PPrint.punctuate1 space
+                                            |> brackets))
         | Field (_, _, expr, label) =>
-           parens (exprToDoc expr <> text "." <> Name.toDoc label)
+           parens (exprToDoc env expr <> text "." <> Name.toDoc label)
         | Let (_, stmts, body) =>
-           text "let" <+> PPrint.align (stmtsToDoc (Vector1.toVector stmts))
-           <++> text "in" <+> align (exprToDoc body)
+           text "let" <+> PPrint.align (stmtsToDoc env (Vector1.toVector stmts))
+           <++> text "in" <+> align (exprToDoc env body)
            <++> text "end"
         | Match (_, _, matchee, clauses) => let
-               fun clauseToDoc {pattern, body} = patternToDoc pattern <+> text "->" <+> exprToDoc body
-               in text "match" <+> exprToDoc matchee
+               fun clauseToDoc {pattern, body} =
+                   patternToDoc env pattern <+> text "->" <+> exprToDoc env body
+               in text "match" <+> exprToDoc env matchee
                   <+> braces (newline <> PPrint.punctuate newline (Vector.map clauseToDoc clauses))
            end
-        | Cast (_, _, expr, co) => exprToDoc expr <+> text "via" <+> Type.Co.toDoc co
-        | Type (_, t) => brackets (Type.Concr.toDoc t)
+        | Cast (_, _, expr, co) => exprToDoc env expr <+> text "via" <+> Type.Co.toDoc env co
+        | Type (_, t) => brackets (Type.Concr.toDoc env t)
         | Use (_, {var, ...}) => Name.toDoc var 
         | Const (_, c) => Const.toDoc c
 
-    and recordToDoc =
+    and recordToDoc env =
         fn curtain => fn (_, _, fields, record) =>
-            let val fieldDocs = Vector.map fieldToDoc fields
+            let val fieldDocs = Vector.map (fieldToDoc env) fields
                 val oneLiner = braces (punctuate (text "," <> space) fieldDocs
                                        <> (case record
                                            of SOME record =>
-                                               space <> text curtain <+> exprToDoc record
+                                               space <> text curtain <+> exprToDoc env record
                                             | NONE => PPrint.empty))
                 val multiLiner =
                     align (braces (space
                                    <> punctuate (newline <> text "," <> space) fieldDocs
                                    <> (case record
                                        of SOME record =>
-                                           newline <> text curtain <+> exprToDoc record
+                                           newline <> text curtain <+> exprToDoc env record
                                         | NONE => PPrint.empty)
                                    <> space))
             in oneLiner <|> multiLiner
             end
 
-    and patternToDoc =
-        fn Def (_, def) => defToDoc def
+    and patternToDoc env =
+        fn Def (_, def) => defToDoc env def
          | ConstP (_, c) => Const.toDoc c
 
-    val exprToString = PPrint.pretty 80 o exprToDoc
+    fun exprToString env = PPrint.pretty 80 o exprToDoc env
 
     val stmtPos =
         fn Val (pos, _, _) => pos
@@ -217,13 +221,13 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     fun typeFnToDoc def = text "type" <+> Type.defToDoc def
 
-    fun axiomToDoc (name, l, r) =
+    fun axiomToDoc env (name, l, r) =
         text "axiom" <+> Name.toDoc name <> text ":"
-            <+> Type.Concr.toDoc l <+> text "~" <+> Type.Concr.toDoc r
+            <+> Type.Concr.toDoc env l <+> text "~" <+> Type.Concr.toDoc env r
 
-    fun programToDoc {typeFns, stmts, sourcemap = _} =
+    fun programToDoc env {typeFns, stmts, sourcemap = _} =
         punctuate (newline <> newline) (Vector.map typeFnToDoc typeFns)
-            <++> newline <> stmtsToDoc stmts
+            <++> newline <> stmtsToDoc env stmts
 
     val rec typeOf =
         fn Fn (_, {typ = domain, ...}, arrow, body) =>

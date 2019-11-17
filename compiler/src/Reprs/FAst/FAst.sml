@@ -18,6 +18,8 @@ structure FlexFAst = struct
         and uv = sv FType.concr TypeVars.uv
         and path = sv FType.concr TypeVars.path
 
+        type ('expr, 'error) env = (concr, 'expr, 'error) TypecheckingEnv.t
+
         fun concrToDoc env = fn t => FType.Concr.toDoc (svarToDoc env) t
         and svarToDoc env =
             fn Path path =>
@@ -98,25 +100,25 @@ structure FixedFAst = struct
         type concr = sv concr
         type co = sv co'
 
-        val svarToDoc = PPrint.text o Nothing.toString
+        type ('expr, 'error) env = (FlexFAst.Type.concr, 'expr, 'error) TypecheckingEnv.t
 
-        val concrToString: concr -> string = FType.Concr.toString svarToDoc
+        fun svarToDoc _ = PPrint.text o Nothing.toString
 
         structure Concr = struct
             open Concr
 
             datatype t = datatype concr
 
-            val toDoc = toDoc svarToDoc
-            val substitute = fn hasScope => substitute (fn _ => fn _ => NONE)
+            fun toDoc env = Concr.toDoc (svarToDoc env)
+            fun substitute _ = Concr.substitute (fn _ => fn _ => NONE)
             val kindOf: concr -> kind = kindOf (fn _ => raise Fail "unreachable")
-            val toString = concrToString
+            fun toString env = Concr.toString (svarToDoc env)
         end
 
         structure Co = struct
             open Co
             
-            val toDoc = toDoc svarToDoc
+            fun toDoc env = Co.toDoc (svarToDoc env)
         end
     end
 

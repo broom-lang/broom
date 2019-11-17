@@ -337,6 +337,8 @@ signature CLOSED_FAST_TYPE = sig
     structure Prim: PRIM_TYPE where type t = PrimType.t
     structure ScopeId: ID
 
+    type ('expr, 'error) env
+
     datatype kind = datatype FType.kind
     type def = FType.def
 
@@ -353,18 +355,18 @@ signature CLOSED_FAST_TYPE = sig
     val kindToDoc: kind -> PPrint.t
     val defToDoc: def -> PPrint.t
     val arrowDoc: arrow -> PPrint.t
-    val svarToDoc: sv -> PPrint.t
+    val svarToDoc: ('expr, 'error) env -> sv -> PPrint.t
     val rowExtBase: concr -> concr
 
     structure Concr: sig
         datatype t = datatype concr
 
-        val toDoc: concr -> PPrint.t
-        val substitute: (ScopeId.t -> bool) ->concr Id.SortedMap.map -> concr -> concr
+        val toDoc: ('expr, 'error) env -> concr -> PPrint.t
+        val substitute: ('expr, 'error) env -> concr Id.SortedMap.map -> concr -> concr
     end
 
     structure Co: sig
-        val toDoc: co -> PPrint.t
+        val toDoc: ('expr, 'error) env -> co -> PPrint.t
     end
 end
 
