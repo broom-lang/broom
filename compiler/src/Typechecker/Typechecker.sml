@@ -443,6 +443,7 @@ end = struct
     and elaborateDefs env stmts =
         let val revStmts =
                 Vector.foldl (fn (stmt, stmts') =>
+                                  (* TODO: Allow 'dyn' effect (from sealing `Match`) when it arrives: *)
                                   case elaborateStmt env stmt
                                   of (Pure, stmt) => stmt :: stmts'
                                    | (Impure, _) => raise Fail "Impure stmt in pure context.")
