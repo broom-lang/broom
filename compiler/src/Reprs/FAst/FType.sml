@@ -143,7 +143,7 @@ structure FType :> FAST_TYPE = struct
     val kindToString = PPrint.pretty 80 o kindToDoc
 
     val kindDefault =
-        fn TypeK => Prim Prim.Unit
+        fn TypeK => Record EmptyRow
          | RowK => EmptyRow
 
     fun idToDoc id = text ("g__" ^ Id.toString id)

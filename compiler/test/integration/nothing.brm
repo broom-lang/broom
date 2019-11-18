@@ -5,7 +5,7 @@ type NOTHING = interface
 end
 
 val Nothing: NOTHING = module
-    type t = unit
+    type t = {:}
 
     fun unusable (a: type) (_: t) (x: a) = x
 end

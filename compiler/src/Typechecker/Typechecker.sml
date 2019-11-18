@@ -490,7 +490,7 @@ end = struct
             in (eff, FTerm.Val (pos, def, expr))
             end
          | CTerm.Expr expr =>
-            let val (eff, expr) = elaborateExprAs env (Prim FType.Prim.Unit) expr
+            let val (eff, expr) = elaborateExprAs env (FType.Record FType.EmptyRow) expr
             in (eff, FTerm.Expr expr)
             end
 

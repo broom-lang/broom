@@ -12,11 +12,10 @@
 
     fun block new pos stmts =
         case stmts
-        of #[] => new (pos, #[], Term.Const (pos, Const.Unit))
+        of #[] => new (pos, #[], Term.emptyRecord pos)
          | _ => let val lastIndex = Vector.length stmts - 1
                 in case Vector.sub (stmts, lastIndex)
-                   of Term.Val _ =>
-                       new (pos, stmts, Term.Const (pos, Const.Unit))
+                   of Term.Val _ => new (pos, stmts, Term.emptyRecord pos)
                     | Term.Expr body =>
                        let val stmts =
                                VectorSlice.vector (VectorSlice.slice (stmts, 0, SOME lastIndex))
@@ -238,7 +237,6 @@ atom
           case Name.toString ID (* HACK *)
           of "int"  => Term.Type (ID_SPAN, Type.Prim (ID_SPAN, Type.Prim.I32))
            | "bool" => Term.Type (ID_SPAN, Type.Prim (ID_SPAN, Type.Prim.Bool))
-           | "unit" => Term.Type (ID_SPAN, Type.Prim (ID_SPAN, Type.Prim.Unit))
            | _ => Term.Use (ID_SPAN, ID)
       )
     | const => (Term.Const (const_SPAN, const))

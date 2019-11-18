@@ -39,7 +39,7 @@ val Array : ARRAY = module
         type t elem
 
         val new : pi elem => size -> t elem
-        val set : pi elem => t elem -> key -> elem -> unit
+        val set : pi elem => t elem -> key -> elem -> {:}
         val build : pi elem => t elem -> Array.t elem
     end = module
         type t elem = __array elem

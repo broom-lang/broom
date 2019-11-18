@@ -74,6 +74,7 @@ signature CST = sig
         datatype row_edit = datatype row_edit
         type recordFields = recordFields
 
+        val emptyRecord : Pos.span -> expr
         val exprPos: expr -> Pos.span
         val exprToDoc: expr -> PPrint.t
         val exprToString: expr -> string
@@ -296,6 +297,7 @@ structure Cst :> CST = struct
         datatype row_edit = datatype row_edit
         type recordFields = recordFields
 
+        fun emptyRecord pos = Record (pos, {base = NONE, edits = #[]})
         val exprPos = exprPos
         val exprToDoc = exprToDoc
         val exprToString = PPrint.pretty 80 o exprToDoc
