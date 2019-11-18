@@ -21,7 +21,6 @@ end = struct
                    | Record of value NameHashTable.hash_table
                    | Int of int
                    | Bool of bool
-                   | Unit
 
     and env = Toplevel of bindings
             | FnScope of env * Name.t * value
@@ -38,9 +37,9 @@ end = struct
                    | Forcee
                    | BlockCont of env * stmt Vector1.Slice.slice * expr
                    | Branches of env * clause VectorSlice.slice
-                   | InitField of env * (Name.t * expr) VectorSlice.slice * expr option
-                                * value NameHashTable.hash_table * Name.t
-                   | Splat of value NameHashTable.hash_table
+                   | Extension of env * (Name.t * expr)
+                   | Extend of env * value * Name.t
+                   | Exclude of env * Name.t
                    | GetField of Name.t
 
     structure Value = struct
@@ -50,6 +49,8 @@ end = struct
         val text = PPrint.text
 
         type t = value
+
+        val emptyRecord = Record (NameHashTable.mkTable (0, Subscript))
 
         val rec toDoc =
             fn Closure _ => text "#<fn>"
@@ -65,8 +66,6 @@ end = struct
              | Int n => text (Int.toString n)
              | Bool true => text "True"
              | Bool false => text "False"
-             | Unit => text "()"
-
         and fieldToDoc = fn (label, v) => Name.toDoc label <+> text "=" <+> toDoc v
 
         val toString = PPrint.pretty 80 o toDoc
@@ -120,6 +119,10 @@ end = struct
          | TFn (_, _, body) => continue cont (Thunk (env, body))
          | App (_, _, {callee, arg}) => eval env (Callee (env, arg) :: cont) callee
          | TApp (_, _, {callee, ...}) => eval env (Forcee :: cont) callee
+         | EmptyRecord _ => continue cont Value.emptyRecord
+         | With (_, _, {base, field}) | Where (_, _, {base, field}) =>
+            eval env (Extension (env, field) :: cont) base
+         | Without (_, _, {base, field}) => eval env (Exclude (env, field) :: cont) base
          | Let (_, stmts, body) | Letrec (_, stmts, body) =>
             let val env = enterBlock env
                 val stmt = Vector1.sub (stmts, 0)
@@ -128,32 +131,15 @@ end = struct
             end
          | Match (_, _, matchee, clauses) =>
             eval env (Branches (env, VectorSlice.full clauses) :: cont) matchee
-         (*| Extend (_, _, fields, ext) =>
-            (case Vector.uncons fields
-             of SOME ((label, expr), fields') =>
-                 let val record = NameHashTable.mkTable (Vector.length fields, Subscript)
-                 in eval env (InitField (env, fields', ext, record, label) :: cont) expr
-                 end
-              | NONE =>
-                 (case ext
-                  of SOME ext => eval env cont ext
-                   | NONE => continue cont (Record (NameHashTable.mkTable (0, Subscript)))))
-         | Override (_, _, fields, original) =>
-            (case Vector.uncons fields
-             of SOME ((label, expr), fields') =>
-                 let val record = NameHashTable.mkTable (0, Subscript)
-                 in eval env (InitField (env, fields', SOME original, record, label) :: cont) expr
-                 end
-              | NONE => eval env cont original)*)
          | Field (_, _, expr, label) => eval env (GetField label :: cont) expr
          | Cast (_, _, expr, _) => eval env cont expr
-         | Type _ => continue cont Unit
+         | Type _ => continue cont Value.emptyRecord
          | Use (_, {var, ...}) => continue cont (lookup env var)
          | Const (_, c) => continue cont (constValue c)
 
     and exec env cont =
         fn Val (_, {var, ...}, expr) => eval env (Def (env, var) :: cont) expr
-         | Axiom _ => continue cont Unit
+         | Axiom _ => continue cont Value.emptyRecord
          | Expr expr => eval env cont expr
 
     and apply cont f arg =
@@ -185,8 +171,7 @@ end = struct
                           | (Bool b, Bool nb) =>
                              if b = nb
                              then eval env cont body
-                             else match env cont clauses value
-                          | (Unit, Unit) => eval env cont body)
+                             else match env cont clauses value)
             in matchClause clause
             end
          | NONE => raise Fail ("Missing case for " ^ Value.toString value)
@@ -205,18 +190,24 @@ end = struct
                  exec env (BlockCont (env, stmts, body) :: cont) stmt
               | NONE => eval env cont body)
          | Branches (env, clauses) :: cont => match env cont clauses value
-         | InitField (env, fields, ext, record, label) :: cont =>
-            ( initField record label value
-            ; case VectorSlice.uncons fields
-              of SOME ((label, expr), fields) =>
-                  eval env (InitField (env, fields, ext, record, label) :: cont) expr
-               | NONE => 
-                  (case ext
-                   of SOME ext => eval env (Splat record :: cont) ext
-                    | NONE => continue cont (Record record)) )
-         | Splat record :: cont =>
-            ( splat record value
-            ; continue cont (Record record) )
+         | Extension (env, (label, fielde)) :: cont =>
+            eval env (Extend (env, value, label) :: cont) fielde
+         | Extend (env, record, label) :: cont =>
+            (case record
+             of Record fields =>
+                 let val fields = NameHashTable.copy fields
+                     do NameHashTable.insert fields (label, value)
+                 in continue cont (Record fields)
+                 end
+              | _ => raise Fail "unreachable")
+         | Exclude (env, label) :: cont =>
+            (case value
+             of Record fields =>
+                 let val fields = NameHashTable.copy fields
+                     do ignore (NameHashTable.remove fields label)
+                 in continue cont (Record fields)
+                 end
+              | _ => raise Fail "unreachable")
          | GetField label :: cont => continue cont (getField value label)
          | [] => value
 
