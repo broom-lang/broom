@@ -1,3 +1,5 @@
-val n: int = 5
-val x: int = n 23
+fun main argv = do
+    val n: int = 5
+    ; n 23
+end
 

@@ -3,8 +3,8 @@ type DEFAULT = interface
     val default: t
 end
 
-val Dyfault: DEFAULT =
-    match True
+fun Dyfault isInt = do
+    val res : DEFAULT = match isInt
         | True -> module
             type t = int
             val default = 0
@@ -14,4 +14,6 @@ val Dyfault: DEFAULT =
             val default = {}
         end
     end
+    ; res
+end
 

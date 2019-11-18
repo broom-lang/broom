@@ -12,8 +12,11 @@ val MakeId: TM ~> ID = fn
         fun noop (x: id) = x
     end
 end
-val Id1 = MakeId (module type t = int end)
-val Id2 = MakeId (module type t = int end)
 
-val i = Id2.noop (Id1.zero)
+fun useId _ = do
+    val Id1 = MakeId (module type t = int end)
+    val Id2 = MakeId (module type t = int end)
+
+    ; Id2.noop (Id1.zero)
+end
 

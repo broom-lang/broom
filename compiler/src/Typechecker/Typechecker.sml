@@ -92,9 +92,9 @@ end = struct
          | CTerm.Begin (pos, stmts, body) =>
             let val scope = stmtsScope env stmts
                 val env = Env.pushScope env scope
-                val (stmtsEff, stmts) = elaborateStmts env stmts
-                val (bodyEff, typ, body) = elaborateExpr env body
-            in ( joinEffs (stmtsEff, bodyEff), typ
+                val stmts = elaborateDefs env stmts
+                val (eff, typ, body) = elaborateExpr env body
+            in ( eff, typ
                , case Vector1.fromVector stmts
                  of SOME stmts => FTerm.Letrec (pos, stmts, body)
                   | NONE => body )
@@ -103,11 +103,14 @@ end = struct
          | CTerm.Do (pos, stmts, body) =>
             let val step =
                    fn (CTerm.Val (pos, pat, expr), (revStmts, eff, env)) =>
-                       let val (exprEff, t, expr) = elaborateExpr env expr
-                           val (FTerm.Def (_, def), env) = elaboratePatternAs env t pat
+                       let val ((typeDefs, tbody), pattern as FTerm.Def (_, {pos, id, var, typ = _})) =
+                               elaboratePattern env pat
+                           val (exprEff, t, expr) = elaborateAsExists env (typeDefs, tbody) expr
+                           val def = {pos, id, var, typ = t}
                        in ( FTerm.Val (pos, def, expr) :: revStmts
                           , joinEffs (eff, exprEff)
-                          , env )
+                          , Env.pushScope env (Scope.PatternScope ( Scope.Id.fresh (), var
+                                                                  , Visited (def, SOME (exprEff, expr)) )) )
                        end
                     | (CTerm.Expr expr, (revStmts, eff, env)) =>
                        let val (exprEff, t, expr) = elaborateExpr env expr
@@ -135,7 +138,7 @@ end = struct
          | CTerm.Module (pos, stmts) =>
             let val scope = stmtsScope env stmts
                 val env = Env.pushScope env scope
-                val (eff, stmts) = elaborateStmts env stmts
+                val stmts = elaborateDefs env stmts
                 val defs = Vector.foldr (fn (FTerm.Val (_, def, _), defs) => def :: defs
                                           | (FTerm.Axiom _, defs) | (FTerm.Expr _, defs) => defs)
                                         [] stmts
@@ -147,7 +150,7 @@ end = struct
                                        , FTerm.With (pos, Record row, {base = baseExpr, field = (var, use)}) )
                                     end)
                                (EmptyRow, FTerm.EmptyRecord pos) defs
-            in ( eff, Record row
+            in ( Pure, Record row
                , case Vector1.fromVector stmts
                  of SOME stmts => FTerm.Letrec (pos, stmts, body)
                   | NONE => body )
@@ -205,7 +208,17 @@ end = struct
                             in (matcheeTyp, pattern, env)
                             end
                          | NONE =>
-                            let val (matcheeTyp, pattern, env) = elaboratePattern env pattern
+                            let val (matcheeTyp as (typeDefs, _), pattern) = elaboratePattern env pattern
+                                val env =
+                                    case Vector1.fromVector typeDefs
+                                    of SOME typeDefs =>
+                                        Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), Bindings.Type.fromDefs typeDefs))
+                                     | NONE => env
+                                val env =
+                                    case pattern
+                                    of FTerm.Def (_, def as {var, ...}) =>
+                                        Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), var, Visited (def, NONE)))
+                                     | FTerm.ConstP _ => env
                             in (SOME matcheeTyp, pattern, env)
                             end
                     val (bodyEff, body) = elaborateBody (env, body)
@@ -220,25 +233,16 @@ end = struct
             let val (typeDefs, t) = elaborateType env typ
                 val def = {pos, id = DefId.fresh (), var = name, typ = t}
                 val typeDefs = Vector.fromList typeDefs
-                val env =
-                    case Vector1.fromVector typeDefs
-                    of SOME typeDefs =>
-                        Env.pushScope env (Scope.ForAllScope (Scope.Id.fresh (), Bindings.Type.fromDefs typeDefs))
-                     | NONE => env
-                val patScopeId = Scope.Id.fresh ()
-                val env = Env.pushScope env (Scope.PatternScope (patScopeId, name, Visited (def, NONE)))
-            in ((typeDefs, t), FTerm.Def (pos', def), env)
+            in ((typeDefs, t), FTerm.Def (pos', def))
             end
          | CTerm.Def (pos, name) =>
-            let val scopeId = Scope.Id.fresh ()
-                val t = SVar (UVar (Uv.fresh env TypeK))
+            let val t = SVar (UVar (Uv.fresh env TypeK))
                 val def = {pos, id = DefId.fresh (), var = name, typ = t}
-                val env = Env.pushScope env (Scope.PatternScope (scopeId, name, Visited (def, NONE)))
-            in ((#[], t), FTerm.Def (pos, def), env)
+            in ((#[], t), FTerm.Def (pos, def))
             end
          | CTerm.ConstP (pos, c) =>
             let val cTyp = Prim (Const.typeOf c)
-            in ((#[], cTyp), FTerm.ConstP (pos, c), env)
+            in ((#[], cTyp), FTerm.ConstP (pos, c))
             end
 
     and elaborateRecord env pos ({base, edits}: CTerm.recordFields): effect * concr * FTerm.expr =
@@ -436,14 +440,14 @@ end = struct
 
 (* # Statement Type Checking *)
 
-    and elaborateStmts env stmts =
-        let val (eff, revStmts) =
-                Vector.foldl (fn (stmt, (stmtsEff, stmts)) =>
-                                  let val (eff, stmt) = elaborateStmt env stmt
-                                  in (joinEffs (stmtsEff, eff), stmt :: stmts)
-                                  end)
-                             (Pure, []) stmts
-        in (eff, Vector.fromList (List.rev revStmts))
+    and elaborateDefs env stmts =
+        let val revStmts =
+                Vector.foldl (fn (stmt, stmts') =>
+                                  case elaborateStmt env stmt
+                                  of (Pure, stmt) => stmt :: stmts'
+                                   | (Impure, _) => raise Fail "Impure stmt in pure context.")
+                             [] stmts
+        in Vector.fromList (List.rev revStmts)
         end
 
     and stmtsScope env stmts =
@@ -603,7 +607,7 @@ end = struct
     fun elaborateProgram env stmts =
         let val scope = stmtsScope env stmts
             val env = Env.pushScope env scope
-            val (eff, stmts) = elaborateStmts env stmts
+            val stmts = elaborateDefs env stmts
             val program = { typeFns = Env.typeFns env
                           , stmts
                           , sourcemap = Env.sourcemap env }
