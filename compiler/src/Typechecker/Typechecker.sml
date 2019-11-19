@@ -48,12 +48,14 @@ end = struct
 
     and elaborateType env = (Kindchecker.fix {unvisitedBindingType, elaborateExpr}) env
 
-    and rowWhere env (row, field' as (label', fieldt')) =
+    and rowWhere env pos (row, field' as (label', fieldt')) =
         case row
-        of RowExt {base, field = field as (label, _)} =>
+        of RowExt {base, field = field as (label, fieldt)} =>
             if label = label'
-            then RowExt {base, field = (label, fieldt')}
-            else RowExt {base = rowWhere env (row, field'), field}
+            then let do ignore (subType env pos (fieldt', fieldt))
+                 in RowExt {base, field = (label, fieldt')}
+                 end
+            else RowExt {base = rowWhere env pos (row, field'), field}
 
 (* # Expression Type Synthesis *)
 
@@ -262,8 +264,7 @@ end = struct
                             , fn (typ, base, field) => FTerm.With (pos, typ, {base, field})
                             , fields )
                          | CTerm.Where fields =>
-                            ( rowWhere env
-                              (* TODO: Subtyping between old and new field value: *)
+                            ( rowWhere env pos
                             , fn (typ, base, field) => FTerm.Where (pos, typ, {base, field})
                             , fields )
                 in Vector.foldl (elaborateField editTyp editExpr) acc fields
