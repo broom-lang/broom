@@ -193,14 +193,14 @@ implicitClause : "|" pattern=paramPattern "=>" body=expr => ({pattern, body});
 
 row
     : base=arrow row=( exprRowEdit* => (RecordFields {base = SOME base, edits = Vector.fromList exprRowEdit})
-                     | typRowEdit => (RowType (Type.RowExt (FULL_SPAN, {base = Type.Path base, fields = typRowEdit}))) )
+                     | typRowEdit+ => (RowType (Type.RowExt (FULL_SPAN, {base = Type.Path base, edits = Vector.fromList typRowEdit}))) )
           => (row)
     | exprBaseFields exprRowEdit* => (
           RecordFields {base = NONE, edits = Vector.fromList (Term.With exprBaseFields :: exprRowEdit)}
       )
-    | typRowFields => (RowType (Type.RowExt (FULL_SPAN, {base = Type.EmptyRow FULL_SPAN, fields = typRowFields})))
+    | typRowFields => (RowType (Type.RowExt (FULL_SPAN, {base = Type.EmptyRow FULL_SPAN, edits = #[Type.WithT typRowFields]})))
     | => (RecordFields {base = NONE, edits = #[]})
-    | "&" typRowEdit => (RowType (Type.RowExt (FULL_SPAN, {base = Type.WildRow AMP_SPAN, fields = typRowEdit})))
+    | "&" typRowEdit => (RowType (Type.RowExt (FULL_SPAN, {base = Type.WildRow AMP_SPAN, edits = #[typRowEdit]})))
     | "&" => (RowType (Type.WildRow FULL_SPAN))
     | ":" => (RowType (Type.EmptyRow FULL_SPAN))
     ;
@@ -226,7 +226,10 @@ exprField : ID expr=("=" expr)? => (
          | NONE => (ID, Term.Use (ID_SPAN, ID))
     );
 
-typRowEdit : "with" typRowFields;
+typRowEdit
+    : "with" typRowFields => (Type.WithT typRowFields)
+    | "where" typRowFields => (Type.WhereT typRowFields)
+    ;
 
 typRowFields : field=typRowField fields=("," typRowField)* => (Vector.fromList (field :: fields));
 

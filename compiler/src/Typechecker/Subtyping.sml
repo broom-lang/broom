@@ -36,7 +36,7 @@ end = struct
     structure Scope = Env.Scope
     type env = (FType.concr, FTerm.expr, TypeError.t) Env.t
     structure Bindings = Env.Bindings
-    val checkMonotypeKind = Kindchecker.checkMonotypeKind
+    val checkMonotypeKind = TypecheckingOps.checkMonotypeKind
     open TypeError
 
 (* # Utils *)

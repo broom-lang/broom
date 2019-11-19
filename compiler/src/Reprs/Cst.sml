@@ -20,6 +20,10 @@ signature CST = sig
         | Path of expr
         | Prim of Pos.span * Prim.t
 
+    and row_edit
+        = WithT of (Name.t * typ) vector
+        | WhereT of (Name.t * typ) vector
+
     and expr
         = Fn of Pos.span * expl * clause vector
         | Begin of Pos.span * stmt vector * expr
@@ -43,7 +47,7 @@ signature CST = sig
         | Def of Pos.span * Name.t
         | ConstP of Pos.span * Const.t
 
-    and row_edit
+    and rec_edit
         = With of (Name.t * expr) vector
         | Where of (Name.t * expr) vector
 
@@ -51,10 +55,10 @@ signature CST = sig
     and clause = {pattern: pat, body: expr}
     and recordFields =
         { base : expr option
-        , edits : row_edit vector }
+        , edits : rec_edit vector }
     and row =
         { base : typ
-        , fields : (Name.t * typ) vector }
+        , edits : row_edit vector }
 
     val explDoc: expl -> PPrint.t
     val arrowDoc: arrow -> PPrint.t
@@ -63,6 +67,7 @@ signature CST = sig
         structure Prim: PRIM_TYPE where type t = PrimType.t
 
         datatype typ = datatype typ
+        datatype row_edit = datatype row_edit
 
         val pos: typ -> Pos.span
     end
@@ -71,7 +76,7 @@ signature CST = sig
         datatype expr = datatype expr
         datatype stmt = datatype stmt
         datatype pat = datatype pat
-        datatype row_edit = datatype row_edit
+        datatype rec_edit = datatype rec_edit
         type recordFields = recordFields
 
         val emptyRecord : Pos.span -> expr
@@ -115,6 +120,10 @@ structure Cst :> CST = struct
         | Path of expr
         | Prim of Pos.span * Prim.t
 
+    and row_edit
+        = WithT of (Name.t * typ) vector
+        | WhereT of (Name.t * typ) vector
+
     and expr
         = Fn of Pos.span * expl * clause vector
         | Begin of Pos.span * stmt vector * expr
@@ -138,7 +147,7 @@ structure Cst :> CST = struct
         | Def of Pos.span * Name.t
         | ConstP of Pos.span * Const.t
 
-    and row_edit
+    and rec_edit
         = With of (Name.t * expr) vector
         | Where of (Name.t * expr) vector
 
@@ -146,10 +155,10 @@ structure Cst :> CST = struct
     and clause = {pattern: pat, body: expr}
     and recordFields =
         { base : expr option
-        , edits : row_edit vector }
+        , edits : rec_edit vector }
     and row =
         { base : typ
-        , fields : (Name.t * typ) vector }
+        , edits : row_edit vector }
 
     val exprPos =
         fn Fn (pos, _, _) => pos
@@ -190,12 +199,17 @@ structure Cst :> CST = struct
         fn Pi (_, param, arrow, codomain) =>
             text "fun" <+> defToDoc param <+> arrowDoc arrow <+> typeToDoc codomain
          | RecordT (_, row) => braces (typeToDoc row)
-         | RowExt (_, {base, fields}) =>
+         | RowExt (_, {base, edits}) =>
             let fun fieldToDoc (label, fieldt) = 
                     Name.toDoc label <> text ": " <> typeToDoc fieldt
-                val fieldsDoc =
+                fun fieldsToDoc fields =
                     PPrint.punctuate (text ", ") (Vector.map fieldToDoc fields)
-            in typeToDoc base <+> text "with" <+> fieldsDoc
+                val editToDoc =
+                    fn WithT fields => text "where" <+> fieldsToDoc fields
+                     | WhereT fields => text "where" <+> fieldsToDoc fields
+                val editsDoc =
+                    PPrint.punctuate (text " ") (Vector.map editToDoc edits)
+            in typeToDoc base <+> editsDoc
             end
          | EmptyRow _ => text "(||)"
          | Interface (_, decls) =>
@@ -286,6 +300,7 @@ structure Cst :> CST = struct
         structure Prim = PrimType
 
         datatype typ = datatype typ
+        datatype row_edit = datatype row_edit
 
         val pos = typePos
     end
@@ -294,7 +309,7 @@ structure Cst :> CST = struct
         datatype expr = datatype expr
         datatype stmt = datatype stmt
         datatype pat = datatype pat
-        datatype row_edit = datatype row_edit
+        datatype rec_edit = datatype rec_edit
         type recordFields = recordFields
 
         fun emptyRecord pos = Record (pos, {base = NONE, edits = #[]})

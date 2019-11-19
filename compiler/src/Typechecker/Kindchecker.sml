@@ -8,11 +8,11 @@ structure Kindchecker :> sig
     type unvisited_binding_type =
          Pos.span -> env -> Name.t -> Cst.Type.typ option TypecheckingEnv.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
 
+    val rowWhere : env -> Pos.span -> (FType.concr * (Name.t * FType.concr)) -> FType.concr
     val reAbstract : env -> FType.Concr.t -> FType.Concr.t
     val fix : { unvisitedBindingType : unvisited_binding_type
               , elaborateExpr : env -> Cst.Term.expr -> FType.effect * FType.Concr.t * FTerm.expr }
            -> (env -> Cst.Type.typ -> FType.def list * FType.Concr.t)
-    val checkMonotypeKind : env -> Pos.span -> FType.kind -> FType.concr -> unit
 end = struct
     structure CType = Cst.Type
     structure CTerm = Cst.Term
@@ -33,8 +33,18 @@ end = struct
     datatype binding_state = datatype Bindings.Expr.binding_state
     structure Scope = Env.Scope
     type env = (FType.concr, FTerm.expr, TypeError.t) Env.t
+    val subType = Subtyping.subType
     datatype either = datatype Either.t
     val op|> = Fn.|>
+
+    fun rowWhere env pos (row, field' as (label', fieldt')) =
+        case row
+        of RowExt {base, field = field as (label, fieldt)} =>
+            if label = label'
+            then let do ignore (subType env pos (fieldt', fieldt))
+                 in RowExt {base, field = (label, fieldt')}
+                 end
+            else RowExt {base = rowWhere env pos (row, field'), field}
 
     type unvisited_binding_type =
          Pos.span -> env -> Name.t -> Cst.Type.typ option Env.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
@@ -100,10 +110,21 @@ end = struct
                                 | NONE => arrow
                             end
                          | CType.RecordT (_, row) => FType.Record (elaborate env row)
-                         | CType.RowExt (_, {base, fields}) =>
-                            let fun step ((label, t), base) =
-                                    FType.RowExt {base, field = (label, elaborate env t)}
-                            in Vector.foldl step (elaborate env base) fields
+                         | CType.RowExt (pos, {base, edits}) =>
+                            let fun elaborateEdit (edit, base) =
+                                    let val (step, fields) =
+                                            case edit
+                                            of CType.WithT fields =>
+                                                ( fn ((label, t), base) =>
+                                                      FType.RowExt {base, field = (label, elaborate env t)}
+                                                , fields )
+                                             | CType.WhereT fields =>
+                                                ( fn ((label, t), base) =>
+                                                      rowWhere env pos (base, (label, elaborate env t))
+                                                , fields )
+                                    in Vector.foldl step base fields
+                                    end
+                            in Vector.foldl elaborateEdit (elaborate env base) edits
                             end
                          | CType.EmptyRow _ => FType.EmptyRow
                          | CType.WildRow _ =>
@@ -181,49 +202,5 @@ end = struct
 
     and elaborateEff Cst.Pure = Pure
       | elaborateEff Cst.Impure = Impure
-
-    fun monotypeKind env pos =
-        fn t as Exists _ | t as ForAll _ => raise TypeError (NonMonotype (pos, t))
-         | Arrow (_, {domain, codomain}) =>
-            ( checkMonotypeKind env pos FType.TypeK domain
-            ; checkMonotypeKind env pos FType.TypeK codomain
-            ; FType.TypeK )
-         | Record row =>
-            ( checkMonotypeKind env pos FType.RowK row
-            ; FType.TypeK )
-         | RowExt {base, field = (_, fieldt)} =>
-            ( checkMonotypeKind env pos FType.RowK base
-            ; checkMonotypeKind env pos FType.TypeK fieldt
-            ; FType.TypeK )
-         | EmptyRow => FType.RowK
-         | Type t =>
-            ( checkMonotypeKind env pos FType.TypeK t
-            ; FType.TypeK )
-         | App {callee, args} =>
-            let fun checkArgKind i calleeKind =
-                    if i < Vector1.length args
-                    then case calleeKind
-                         of FType.ArrowK {domain, codomain} =>
-                             ( checkMonotypeKind env pos domain (Vector1.sub (args, i))
-                             ; checkArgKind (i + 1) codomain )
-                          | _ => raise TypeError (TypeCtorArity (pos, callee, calleeKind, Vector1.length args))
-                    else calleeKind
-            in checkArgKind 0 (monotypeKind env pos callee)
-            end
-         | CallTFn {kind, ...} => kind
-         | SVar (UVar uv) => Uv.kind env uv
-         | SVar (Path path) => Path.kind path
-         | UseT {var, kind} => (* TODO: Should be unreachable on return of Ov: *)
-            if isSome (Env.findType env var)
-            then kind
-            else raise TypeError (OutsideScope (pos, var |> FType.Id.toString |> Name.fromString))
-         | Prim _ => FType.TypeK
-
-    and checkMonotypeKind env pos kind t =
-        let val kind' = monotypeKind env pos t
-        in  if kind' = kind
-            then ()
-            else raise TypeError (InequalKinds (pos, kind', kind))
-        end
 end
 

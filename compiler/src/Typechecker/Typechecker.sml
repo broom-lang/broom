@@ -29,13 +29,14 @@ end = struct
     type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
     datatype expr_binding_state = datatype Bindings.Expr.binding_state
     structure Path = TypeVars.Path
- 
+
+    val rowWhere = Kindchecker.rowWhere
+    val reAbstract = Kindchecker.reAbstract
     val applyCoercion = Subtyping.applyCoercion
     val subEffect = Subtyping.subEffect
     val subType = Subtyping.subType
     val unify = Subtyping.unify
     val joinEffs = Subtyping.joinEffs
-    val reAbstract = Kindchecker.reAbstract
 
 (* # Utils *)
 
@@ -47,15 +48,6 @@ end = struct
         #lookupValType (CheckUse.fix {elaborateType, reAbstract, instantiateExistential, elaborateExpr}) pos
 
     and elaborateType env = (Kindchecker.fix {unvisitedBindingType, elaborateExpr}) env
-
-    and rowWhere env pos (row, field' as (label', fieldt')) =
-        case row
-        of RowExt {base, field = field as (label, fieldt)} =>
-            if label = label'
-            then let do ignore (subType env pos (fieldt', fieldt))
-                 in RowExt {base, field = (label, fieldt')}
-                 end
-            else RowExt {base = rowWhere env pos (row, field'), field}
 
 (* # Expression Type Synthesis *)
 
