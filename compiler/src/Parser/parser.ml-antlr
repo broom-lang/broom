@@ -198,10 +198,14 @@ row
     | exprBaseFields exprRowEdit* => (
           RecordFields {base = NONE, edits = Vector.fromList (Term.With exprBaseFields :: exprRowEdit)}
       )
-    | typRowFields => (RowType (Type.RowExt (FULL_SPAN, {base = Type.EmptyRow FULL_SPAN, edits = #[Type.WithT typRowFields]})))
+    | typRowFields typRowEdit* => (
+          RowType (Type.RowExt (FULL_SPAN, { base = Type.EmptyRow FULL_SPAN
+                                           , edits = Vector.fromList (Type.WithT typRowFields :: typRowEdit) }))
+      )
     | => (RecordFields {base = NONE, edits = #[]})
-    | "&" typRowEdit => (RowType (Type.RowExt (FULL_SPAN, {base = Type.WildRow AMP_SPAN, edits = #[typRowEdit]})))
+    | "&" typRowEdit+ => (RowType (Type.RowExt (FULL_SPAN, {base = Type.WildRow AMP_SPAN, edits = Vector.fromList typRowEdit})))
     | "&" => (RowType (Type.WildRow FULL_SPAN))
+    | ":" base=arrow => (RowType (Type.Path base))
     | ":" => (RowType (Type.EmptyRow FULL_SPAN))
     ;
 
