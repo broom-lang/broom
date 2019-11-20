@@ -76,6 +76,7 @@ signature TYPECHECKING_ENV = sig
     val hasScope: ('otyp, 'oexpr, 'error) t -> Scope.Id.t -> bool
 
     val findType: ('otyp, 'oexpr, 'error) t -> type_id -> kind option
+    val existentialParams: ('otyp, 'oexpr, 'error) t -> odef vector
     val universalParams: ('otyp, 'oexpr, 'error) t -> odef vector
     val nearestExists: ('otyp, 'oexpr, 'error) t -> (Scope.Id.t * Bindings.Type.bindings) option
 
@@ -218,7 +219,13 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
                   | InterfaceScope (id, _) => id
                   | Marker id => id
 
-        val rec universalParams =
+        val existentialParams =
+            fn ExistsScope (_, bindings) =>
+                Vector.fromList (Bindings.Type.defs bindings)
+             | TopScope _ | FnScope _ | PatternScope _ | ForAllScope _
+             | BlockScope _ | InterfaceScope _ | Marker _ => #[]
+
+        val universalParams =
             fn ForAllScope (_, bindings) =>
                 Vector.fromList (Bindings.Type.defs bindings)
              | TopScope _ | FnScope _ | PatternScope _ | ExistsScope _
@@ -266,6 +273,9 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
                  | [] => NONE
         in find (#scopes env)
         end
+
+    fun existentialParams ({scopes, ...}: ('otyp, 'oexpr, 'error) t) =
+        Vector.concat (List.map Scope.existentialParams scopes)
 
     fun universalParams ({scopes, ...}: ('otyp, 'oexpr, 'error) t) =
         Vector.concat (List.map Scope.universalParams scopes)

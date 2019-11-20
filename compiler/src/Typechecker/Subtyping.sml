@@ -36,25 +36,13 @@ end = struct
     structure Scope = Env.Scope
     type env = (FType.concr, FTerm.expr, TypeError.t) Env.t
     structure Bindings = Env.Bindings
+    val instantiate = TypecheckingOps.instantiate
     val checkMonotypeKind = TypecheckingOps.checkMonotypeKind
     open TypeError
 
 (* # Utils *)
 
     fun idInScope env id = isSome (Env.findType env id)
-
-    (* \forall|\exists a... . T --> [(\hat{a}/a)...]T and push \hat{a}... to env *)
-    fun instantiate env (params: FType.def vector1, body) f =
-        let val env = Env.pushScope env (Scope.Marker (Scope.Id.fresh ()))
-            val args = Vector1.map (fn {kind, ...} => SVar (UVar (Uv.fresh env kind)))
-                                   params
-            val mapping = (params, args)
-                        |> Vector1.zipWith (fn ({var, kind = _}, arg) => (var, arg))
-                        |> Vector1.toVector
-                        |> Id.SortedMap.fromVector
-            val body = Concr.substitute env mapping body
-        in f (env, args, body)
-        end
 
     (* \forall|\exists a... . T --> T and push a... to env *)
     fun skolemize env (params: FType.def vector1, body) f =
@@ -311,7 +299,7 @@ end = struct
          )
 
       | coercer env pos (sub, super as Exists existential) =
-         instantiate env existential (fn (env, args, body) =>
+         instantiate env (Pair.first Vector1.toVector existential) (fn (env, args, body) =>
              ( coercer env pos (sub, body)
              ; NONE ) (* No values of existential type. *)
          )
@@ -323,9 +311,10 @@ end = struct
          )
 
       | coercer env pos (ForAll universal, super) =
-         instantiate env universal (fn (env, args, body) =>
+         instantiate env (Pair.first Vector1.toVector universal) (fn (env, args, body) =>
              Option.map (fn coerce => fn expr =>
-                             coerce (FTerm.TApp (pos, body, {callee = expr, args})))
+                             coerce (FTerm.TApp (pos, body, { callee = expr
+                                                            , args = valOf (Vector1.fromVector args) })))
                         (coercer env pos (body, super))
          )
 
@@ -548,7 +537,7 @@ end = struct
     and doAssign env pos direction uv (Exists existential) =
          (case direction
           of Down =>
-              instantiate env existential (fn (env, _, body) =>
+              instantiate env (Pair.first Vector1.toVector existential) (fn (env, _, body) =>
                   ( doAssign env pos direction uv body
                   ; NONE ) (* No values of existential type. *)
               )
@@ -567,9 +556,10 @@ end = struct
                              (doAssign env pos direction uv body)
               )
            | Down =>
-              instantiate env universal (fn (env, args, body) =>
+              instantiate env (Pair.first Vector1.toVector universal) (fn (env, args, body) =>
                   Option.map (fn coerce => fn callee =>
-                                  coerce (FTerm.TApp (pos, body, {callee, args})))
+                                  coerce (FTerm.TApp (pos, body, { callee
+                                                                 , args = valOf (Vector1.fromVector args)})))
                              (doAssign env pos direction uv body)
               ))
 

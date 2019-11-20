@@ -33,6 +33,7 @@ end = struct
     structure Scope = Env.Scope
     type env = (FType.concr, FTerm.expr, TypeError.t) Env.t
     val rowWhere = TypecheckingOps.rowWhere
+    val instantiate = TypecheckingOps.instantiate
     val subType = Subtyping.subType
     datatype either = datatype Either.t
     val op|> = Fn.|>
@@ -111,8 +112,11 @@ end = struct
                                                 , fields )
                                              | CType.WhereT fields =>
                                                 ( fn ((label, t), base) =>
-                                                      rowWhere (fn env => fn pos => fn ts => ignore (subType env pos ts))
-                                                               env pos (base, (label, elaborate env t))
+                                                      rowWhere (fn env => fn pos => fn (sub, super) =>
+                                                          instantiate env (Env.existentialParams env, super) (fn (env, _, super) =>
+                                                              ignore (subType env pos (sub, super))
+                                                          )
+                                                      ) env pos (base, (label, elaborate env t))
                                                 , fields )
                                     in Vector.foldl step base fields
                                     end
