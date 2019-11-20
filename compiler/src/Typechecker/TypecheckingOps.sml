@@ -1,6 +1,9 @@
 structure TypecheckingOps :> sig (* HACK: Dependency chains, grrr... *)
     type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
+    val rowWhere : (env -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> unit)
+        -> env -> Pos.span -> (FlexFAst.Type.concr * (Name.t * FlexFAst.Type.concr))
+        -> FlexFAst.Type.concr
     val checkMonotypeKind : env -> Pos.span -> FlexFAst.Type.kind -> FlexFAst.Type.concr -> unit
 end = struct
     datatype typ = datatype FType.concr
@@ -13,6 +16,15 @@ end = struct
     structure Path = TypeVars.Path
     open TypeError
     val op|> = Fn.|>
+
+    fun rowWhere subType env pos (row, field' as (label', fieldt')) =
+        case row
+        of RowExt {base, field = field as (label, fieldt)} =>
+            if label = label'
+            then let do subType env pos (fieldt', fieldt)
+                 in RowExt {base, field = (label, fieldt')}
+                 end
+            else RowExt {base = rowWhere subType env pos (row, field'), field}
 
     fun monotypeKind env pos =
         fn t as Exists _ | t as ForAll _ => raise TypeError (NonMonotype (pos, t))

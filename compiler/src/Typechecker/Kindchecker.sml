@@ -8,7 +8,6 @@ structure Kindchecker :> sig
     type unvisited_binding_type =
          Pos.span -> env -> Name.t -> Cst.Type.typ option TypecheckingEnv.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
 
-    val rowWhere : env -> Pos.span -> (FType.concr * (Name.t * FType.concr)) -> FType.concr
     val reAbstract : env -> FType.Concr.t -> FType.Concr.t
     val fix : { unvisitedBindingType : unvisited_binding_type
               , elaborateExpr : env -> Cst.Term.expr -> FType.effect * FType.Concr.t * FTerm.expr }
@@ -33,18 +32,10 @@ end = struct
     datatype binding_state = datatype Bindings.Expr.binding_state
     structure Scope = Env.Scope
     type env = (FType.concr, FTerm.expr, TypeError.t) Env.t
+    val rowWhere = TypecheckingOps.rowWhere
     val subType = Subtyping.subType
     datatype either = datatype Either.t
     val op|> = Fn.|>
-
-    fun rowWhere env pos (row, field' as (label', fieldt')) =
-        case row
-        of RowExt {base, field = field as (label, fieldt)} =>
-            if label = label'
-            then let do ignore (subType env pos (fieldt', fieldt))
-                 in RowExt {base, field = (label, fieldt')}
-                 end
-            else RowExt {base = rowWhere env pos (row, field'), field}
 
     type unvisited_binding_type =
          Pos.span -> env -> Name.t -> Cst.Type.typ option Env.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
@@ -120,7 +111,8 @@ end = struct
                                                 , fields )
                                              | CType.WhereT fields =>
                                                 ( fn ((label, t), base) =>
-                                                      rowWhere env pos (base, (label, elaborate env t))
+                                                      rowWhere (fn env => fn pos => fn ts => ignore (subType env pos ts))
+                                                               env pos (base, (label, elaborate env t))
                                                 , fields )
                                     in Vector.foldl step base fields
                                     end

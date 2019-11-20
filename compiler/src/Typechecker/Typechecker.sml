@@ -30,7 +30,7 @@ end = struct
     datatype expr_binding_state = datatype Bindings.Expr.binding_state
     structure Path = TypeVars.Path
 
-    val rowWhere = Kindchecker.rowWhere
+    val rowWhere = TypecheckingOps.rowWhere
     val reAbstract = Kindchecker.reAbstract
     val applyCoercion = Subtyping.applyCoercion
     val subEffect = Subtyping.subEffect
@@ -256,7 +256,7 @@ end = struct
                             , fn (typ, base, field) => FTerm.With (pos, typ, {base, field})
                             , fields )
                          | CTerm.Where fields =>
-                            ( rowWhere env pos
+                            ( rowWhere (fn env => fn pos => fn ts => ignore (subType env pos ts)) env pos
                             , fn (typ, base, field) => FTerm.Where (pos, typ, {base, field})
                             , fields )
                 in Vector.foldl (elaborateField editTyp editExpr) acc fields
