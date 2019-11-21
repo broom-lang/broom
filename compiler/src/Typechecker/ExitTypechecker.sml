@@ -59,6 +59,8 @@ end = struct
             FFTerm.Where (pos, concrToF env typ, {base = exprToF env base, field = Pair.second (exprToF env) field})
          | Letrec (pos, stmts, body) =>
             FFTerm.Letrec (pos, Vector1.map (stmtToF env) stmts, exprToF env body)
+         | Let (pos, stmts, body) =>
+            FFTerm.Let (pos, Vector1.map (stmtToF env) stmts, exprToF env body)
          | Match (pos, typ, matchee, clauses) =>
             FFTerm.Match (pos, concrToF env typ, exprToF env matchee, Vector.map (clauseToF env) clauses)
          | App (pos, typ, {callee, arg}) =>

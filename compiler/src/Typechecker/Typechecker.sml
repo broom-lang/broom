@@ -129,26 +129,56 @@ end = struct
                   `module val id = fn _ => fn x => x end : interface val id: fun a: type => a -> a end`
                   will work. It would also avoid an intermediate record in the elaborated code. *)
          | CTerm.Record (pos, fields) => elaborateRecord env pos fields
-         | CTerm.Module (pos, stmts) =>
-            let val scope = stmtsScope env stmts
-                val env = Env.pushScope env scope
+
+         | CTerm.Module (pos, extension, stmts) =>
+            let val (baseEff, FType.Record baseRow, baseStmt, baseUse, env) =
+                    case extension
+                    of SOME (pat, expr) =>
+                        let val (def, var, eff, typ, expr) =
+                                case pat
+                                of SOME pat =>
+                                    let val ((typeDefs, tbody), FTerm.Def (_, def as {var, ...})) =
+                                            elaboratePattern env pat
+                                        val (eff, typ, expr) = elaborateAsExists env (typeDefs, tbody) expr
+                                    in (def, var, eff, typ, expr)
+                                    end
+                                 | NONE =>
+                                    let val (eff, typ, expr) = elaborateExpr env expr
+                                        val id = DefId.fresh ()
+                                        val var = Name.fresh ()
+                                    in ({pos, id, var, typ}, var, eff, typ, expr)
+                                    end
+                        in ( eff
+                           , typ
+                           , SOME (FTerm.Val (pos, def, expr))
+                           , FTerm.Use (pos, def)
+                           , Env.pushScope env (Scope.PatternScope ( Scope.Id.fresh (), var
+                                                                   , Visited (def, SOME (eff, expr)) )) )
+                        end
+                      | NONE => (Pure, FType.Record FType.EmptyRow, NONE, FTerm.EmptyRecord pos , env)
+
+                val env = Env.pushScope env (stmtsScope env stmts)
                 val stmts = elaborateDefs env stmts
-                val defs = Vector.foldr (fn (FTerm.Val (_, def, _), defs) => def :: defs
-                                          | (FTerm.Axiom _, defs) | (FTerm.Expr _, defs) => defs)
-                                        [] stmts
                 val (row, body) =
-                    List.foldl (fn (def as {var, typ, ...}, (baseRow, baseExpr)) =>
-                                    let val row = RowExt {base = baseRow, field = (var, typ)}
-                                        val use = FTerm.Use (pos, def)
-                                    in ( row
-                                       , FTerm.With (pos, Record row, {base = baseExpr, field = (var, use)}) )
-                                    end)
-                               (EmptyRow, FTerm.EmptyRecord pos) defs
-            in ( Pure, Record row
-               , case Vector1.fromVector stmts
-                 of SOME stmts => FTerm.Letrec (pos, stmts, body)
-                  | NONE => body )
+                    Vector.foldl (fn (FTerm.Val (_, def as {var, typ, ...}, _), (baseRow, baseExpr)) =>
+                                      let val row = RowExt {base = baseRow, field = (var, typ)}
+                                          val use = FTerm.Use (pos, def)
+                                      in ( row
+                                         , FTerm.With (pos, Record row, {base = baseExpr, field = (var, use)}) )
+                                      end
+                                   | (FTerm.Axiom _ | FTerm.Expr _, acc) => acc)
+                                 (baseRow, baseUse) stmts
+                val expr =
+                    case Vector1.fromVector stmts
+                    of SOME stmts => FTerm.Letrec (pos, stmts, body)
+                     | NONE => body
+                val expr =
+                    case baseStmt
+                    of SOME baseStmt => FTerm.Let (pos, Vector1.singleton baseStmt, expr)
+                     | NONE => expr
+            in (baseEff, Record row, expr)
             end
+
          | CTerm.App (pos, {callee, arg}) =>
             (* FIXME: generative behaviour when `callEff` is `Impure`: *)
             let val (calleeEff, calleeTyp, callee) = elaborateExpr env callee

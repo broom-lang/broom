@@ -74,18 +74,9 @@ program : stmts ;
 
 (* # Statements *)
 
-stmts : stmts=(firstStmt restStmts=restStmt* ";"?)? => (
-        case stmts
-        of SOME (stmt, stmts) => Vector.fromList (stmt :: stmts)
-         | NONE => #[]
-    );
+stmts : stmts=stmt* => (Vector.fromList stmts);
 
-firstStmt
-    : def
-    | expr => (Term.Expr expr)
-    ;
-
-restStmt
+stmt
     : ";"? def
     | ";" expr => (Term.Expr expr)
     ;
@@ -160,7 +151,9 @@ nestable
     | "do" stmts "end" => (block Term.Do FULL_SPAN stmts)
     | "match" expr clauses=explicitClause+ "end" =>
           (Term.Match (FULL_SPAN, expr, Vector.fromList clauses))
-    | "module" stmts "end" => (Term.Module (FULL_SPAN, stmts))
+    | "module" super=("extends" pat=("val" pattern "=")? expr => (pat, expr))? stmts "end" => (
+          Term.Module (FULL_SPAN, super, stmts)
+      )
     | "interface" decl* "end" => (Term.Type (FULL_SPAN, Type.Interface (FULL_SPAN, Vector.fromList decl)))
     | "fn" fnClauses "end" => (
           let val (explicitness, clauses) = fnClauses

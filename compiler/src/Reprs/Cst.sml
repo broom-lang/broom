@@ -30,7 +30,7 @@ signature CST = sig
         | Do of Pos.span * stmt vector * expr
         | Match of Pos.span * expr * clause vector
         | Record of Pos.span * recordFields
-        | Module of Pos.span * stmt vector
+        | Module of Pos.span * (pat option * expr) option * stmt vector
         | App of Pos.span * {callee: expr, arg: expr}
         | Field of Pos.span * expr * Name.t
         | Ann of Pos.span * expr * typ
@@ -130,7 +130,7 @@ structure Cst :> CST = struct
         | Do of Pos.span * stmt vector * expr
         | Match of Pos.span * expr * clause vector
         | Record of Pos.span * recordFields
-        | Module of Pos.span * stmt vector
+        | Module of Pos.span * (pat option * expr) option * stmt vector
         | App of Pos.span * {callee: expr, arg: expr}
         | Field of Pos.span * expr * Name.t
         | Ann of Pos.span * expr * typ
@@ -166,7 +166,7 @@ structure Cst :> CST = struct
          | Do (pos, _, _) => pos
          | Match (pos, _, _) => pos
          | Record (pos, _) => pos
-         | Module (pos, _) => pos
+         | Module (pos, _, _) => pos
          | App (pos, _) => pos
          | Field (pos, _, _) => pos
          | Ann (pos, _, _) => pos
@@ -235,8 +235,12 @@ structure Cst :> CST = struct
             text "match" <+> exprToDoc matchee
                 <+> braces (PPrint.align (clausesToDoc (Explicit ()) clauses))
          | Record (_, row) => braces (rowToDoc row)
-         | Module (_, stmts) =>
+         | Module (pos, super, stmts) =>
             text "module"
+                <> (case super
+                    of SOME (SOME pat, expr) => stmtToDoc (Val (pos, pat, expr))
+                     | SOME (NONE, expr) => exprToDoc expr
+                     | NONE => PPrint.empty)
                 <> (PPrint.nest 4 (newline <> stmtsToDoc stmts))
                 <++> text "end"
          | App (_, {callee, arg}) => parens (exprToDoc callee <+> exprToDoc arg)

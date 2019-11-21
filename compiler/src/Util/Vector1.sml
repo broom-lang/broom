@@ -1,7 +1,8 @@
 (* Non-empty vector. *)
 structure Vector1 :> sig
     type 'a vector
-
+    
+    val singleton : 'a -> 'a vector
     val fromVector : 'a Vector.vector -> 'a vector option
     val toVector : 'a vector -> 'a Vector.vector
     val fromList : 'a list -> 'a vector option
@@ -27,6 +28,8 @@ structure Vector1 :> sig
     end
 end = struct
     open Vector
+
+    fun singleton v = #[v]
 
     fun fromVector vec =
         if Vector.length vec > 0
