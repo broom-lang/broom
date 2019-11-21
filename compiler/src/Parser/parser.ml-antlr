@@ -154,7 +154,9 @@ nestable
     | "module" super=("extends" pat=("val" pattern "=")? expr => (pat, expr))? stmts "end" => (
           Term.Module (FULL_SPAN, super, stmts)
       )
-    | "interface" decl* "end" => (Term.Type (FULL_SPAN, Type.Interface (FULL_SPAN, Vector.fromList decl)))
+    | "interface" super=("extends" pat=("val" piParam "=")? typ => (pat, typ))? decl* "end" => (
+          Term.Type (FULL_SPAN, Type.Interface (FULL_SPAN, super, Vector.fromList decl))
+      )
     | "fn" fnClauses "end" => (
           let val (explicitness, clauses) = fnClauses
           in Term.Fn (FULL_SPAN, explicitness, clauses)

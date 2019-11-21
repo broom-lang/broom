@@ -13,7 +13,7 @@ signature CST = sig
         | RecordT of Pos.span * typ
         | RowExt of Pos.span * row
         | EmptyRow of Pos.span
-        | Interface of Pos.span * (Pos.span * Name.t * typ) vector
+        | Interface of Pos.span * (def option * typ) option * (Pos.span * Name.t * typ) vector
         | WildRow of Pos.span
         | Singleton of Pos.span * expr
         | TypeT of Pos.span
@@ -113,7 +113,7 @@ structure Cst :> CST = struct
         | RecordT of Pos.span * typ
         | RowExt of Pos.span * row
         | EmptyRow of Pos.span
-        | Interface of Pos.span * (Pos.span * Name.t * typ) vector
+        | Interface of Pos.span * (def option * typ) option * (Pos.span * Name.t * typ) vector
         | WildRow of Pos.span
         | Singleton of Pos.span * expr
         | TypeT of Pos.span
@@ -180,7 +180,7 @@ structure Cst :> CST = struct
          | RowExt (pos, _) => pos
          | EmptyRow pos => pos
          | WildRow pos => pos
-         | Interface (pos, _) => pos
+         | Interface (pos, _, _) => pos
          | Singleton (pos, _) => pos
          | TypeT pos => pos
          | Path expr => exprPos expr
@@ -212,9 +212,13 @@ structure Cst :> CST = struct
             in typeToDoc base <+> editsDoc
             end
          | EmptyRow _ => text "(||)"
-         | Interface (_, decls) =>
+         | Interface (_, super, decls) =>
             let fun declToDoc (_, label, t) = text "val" <+> Name.toDoc label <+> text ":" <+> typeToDoc t
             in text "interface"
+                   <> (case super
+                       of SOME (SOME def, typ) => text "extends" <+> defToDoc def <+> text "=" <+> typeToDoc typ
+                        | SOME (NONE, typ) => text "extends" <+> typeToDoc typ
+                        | NONE => PPrint.empty)
                    <> (PPrint.nest 4 (newline <> PPrint.punctuate newline (Vector.map declToDoc decls)))
                    <++> text "end"
             end
@@ -238,8 +242,8 @@ structure Cst :> CST = struct
          | Module (pos, super, stmts) =>
             text "module"
                 <> (case super
-                    of SOME (SOME pat, expr) => stmtToDoc (Val (pos, pat, expr))
-                     | SOME (NONE, expr) => exprToDoc expr
+                    of SOME (SOME pat, expr) => text "extends" <+> stmtToDoc (Val (pos, pat, expr))
+                     | SOME (NONE, expr) => text "extends" <+> exprToDoc expr
                      | NONE => PPrint.empty)
                 <> (PPrint.nest 4 (newline <> stmtsToDoc stmts))
                 <++> text "end"
