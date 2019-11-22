@@ -128,11 +128,28 @@ end = struct
                                 val var = Bindings.Type.fresh absBindings kind
                             in FType.UseT {var, kind}
                             end
-                         | CType.Interface (_, decls) =>
-                            let val env = Env.pushScope env (declsScope env decls)
+                         | CType.Interface (pos, super, decls) =>
+                            let val (superRow, env) =
+                                    case super
+                                    of SOME {var, typ} =>
+                                        (case elaborate env typ
+                                         of typ as FType.Record row =>
+                                             (case var
+                                              of SOME var =>
+                                                  let val def = {pos, id = DefId.fresh (), var, typ = (typ, NONE)}
+                                                  in ( row
+                                                     , Env.pushScope env (Scope.PatternScope ( Scope.Id.fresh ()
+                                                                                             , var
+                                                                                             , Typed (def, NONE) )) )
+                                                  end
+                                               | NONE => (row, env))
+                                          | _ => raise Fail "unimplemented")
+                                     | NONE => (FType.EmptyRow, env)
+                                
+                                val env = Env.pushScope env (declsScope env decls)
                                 val fields = Vector.map (elaborateDecl env) decls
                                 fun constructStep (field, base) = FType.RowExt {base, field}
-                            in FType.Record (Vector.foldl constructStep FType.EmptyRow fields)
+                            in FType.Record (Vector.foldl constructStep superRow fields)
                             end
                          | CType.Path pathExpr =>
                             let val (eff, t, _) = elaborateExpr env pathExpr

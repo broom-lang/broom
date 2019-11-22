@@ -154,7 +154,7 @@ nestable
     | "module" super=("extends" pat=("val" pattern "=")? expr => (pat, expr))? stmts "end" => (
           Term.Module (FULL_SPAN, super, stmts)
       )
-    | "interface" super=("extends" pat=("val" piParam "=")? typ => (pat, typ))? decl* "end" => (
+    | "interface" super=("extends" var=("val" ID ":")? typ => ({var, typ}))? decl* "end" => (
           Term.Type (FULL_SPAN, Type.Interface (FULL_SPAN, super, Vector.fromList decl))
       )
     | "fn" fnClauses "end" => (
