@@ -183,7 +183,7 @@ end = struct
                               | _ => raise Fail "Impure singleton type expression")
                          | CType.Prim (_, p) => FType.Prim p
 
-                    and elaborateDecl env (_, name, _) =
+                    and elaborateDecl env (Cst.Extend (_, name, _)) =
                         ( name
                         , case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
                           of Unvisited args => #typ (unvisitedBindingType (CType.pos t) env name args)
@@ -198,7 +198,7 @@ end = struct
 
             and declsScope env decls =
                 let val builder = Bindings.Expr.Builder.new ()
-                    do Vector.app (fn (pos, var, t) =>
+                    do Vector.app (fn Cst.Extend (pos, var, t) =>
                                        let val def = {pos, id = DefId.fresh (), var, typ = SOME t}
                                        in case Bindings.Expr.Builder.insert builder pos var (Unvisited (def, NONE))
                                           of Left err => Env.error env (DuplicateBinding err)

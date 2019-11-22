@@ -157,7 +157,7 @@ end = struct
                         end
                       | NONE => (Pure, FType.Record FType.EmptyRow, NONE, FTerm.EmptyRecord pos , env)
 
-                val env = Env.pushScope env (stmtsScope env stmts)
+                val env = Env.pushScope env (membersScope env stmts)
                 val stmts = elaborateDefs env stmts
                 val (row, body) =
                     Vector.foldl (fn (FTerm.Val (_, def as {var, typ, ...}, _), (baseRow, baseExpr)) =>
@@ -490,6 +490,24 @@ end = struct
                                end
                             | CTerm.Expr _ => ())
                           stmts
+        in Scope.BlockScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
+        end
+
+    and membersScope env members =
+        let val builder = Bindings.Expr.Builder.new ()
+            do Vector.app (fn Cst.Extend (_, CTerm.Def (pos, name), expr) =>
+                               let val def = {pos, id = DefId.fresh (), var = name, typ = NONE}
+                               in case Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
+                                  of Left err => Env.error env (DuplicateBinding err)
+                                   | Right res => res
+                               end
+                            | Cst.Extend (_, CTerm.AnnP (_, {pat = CTerm.Def (pos, name), typ}), expr) =>
+                               let val def = {pos, id = DefId.fresh (), var = name, typ = SOME typ}
+                               in case Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
+                                  of Left err => Env.error env (DuplicateBinding err)
+                                   | Right res => res
+                               end)
+                          members
         in Scope.BlockScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
         end
 

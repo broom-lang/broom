@@ -14,7 +14,7 @@ signature CST = sig
         | RowExt of Pos.span * row
         | EmptyRow of Pos.span
         | Interface of Pos.span * {var: Name.t option, typ : typ} option
-                     * (Pos.span * Name.t * typ) vector
+                     * (Name.t, typ) member vector
         | WildRow of Pos.span
         | Singleton of Pos.span * expr
         | TypeT of Pos.span
@@ -27,11 +27,12 @@ signature CST = sig
 
     and expr
         = Fn of Pos.span * expl * clause vector
-        | Begin of Pos.span * stmt vector * expr
+        | Begin of Pos.span * (Pos.span * pat * expr) vector * expr
         | Do of Pos.span * stmt vector * expr
         | Match of Pos.span * expr * clause vector
         | Record of Pos.span * recordFields
-        | Module of Pos.span * (pat option * expr) option * stmt vector
+        | Module of Pos.span * (pat option * expr) option
+                  * (pat, expr) member vector
         | App of Pos.span * {callee: expr, arg: expr}
         | Field of Pos.span * expr * Name.t
         | Ann of Pos.span * expr * typ
@@ -42,6 +43,11 @@ signature CST = sig
     and stmt
         = Val of Pos.span * pat * expr
         | Expr of expr
+
+    and ('p, 'a) member
+        = Extend of Pos.span * 'p * 'a
+        | Override of Pos.span * 'p * 'a
+        | Exclude of Pos.span * Name.t
 
     and pat
         = AnnP of Pos.span * {pat: pat, typ: typ}
@@ -115,7 +121,7 @@ structure Cst :> CST = struct
         | RowExt of Pos.span * row
         | EmptyRow of Pos.span
         | Interface of Pos.span * {var: Name.t option, typ : typ} option
-                     * (Pos.span * Name.t * typ) vector
+                     * (Name.t, typ) member vector
         | WildRow of Pos.span
         | Singleton of Pos.span * expr
         | TypeT of Pos.span
@@ -128,11 +134,12 @@ structure Cst :> CST = struct
 
     and expr
         = Fn of Pos.span * expl * clause vector
-        | Begin of Pos.span * stmt vector * expr
+        | Begin of Pos.span * (Pos.span * pat * expr) vector * expr
         | Do of Pos.span * stmt vector * expr
         | Match of Pos.span * expr * clause vector
         | Record of Pos.span * recordFields
-        | Module of Pos.span * (pat option * expr) option * stmt vector
+        | Module of Pos.span * (pat option * expr) option
+                  * (pat, expr) member vector
         | App of Pos.span * {callee: expr, arg: expr}
         | Field of Pos.span * expr * Name.t
         | Ann of Pos.span * expr * typ
@@ -143,6 +150,11 @@ structure Cst :> CST = struct
     and stmt
         = Val of Pos.span * pat * expr
         | Expr of expr
+
+    and ('p, 'a) member
+        = Extend of Pos.span * 'p * 'a
+        | Override of Pos.span * 'p * 'a
+        | Exclude of Pos.span * Name.t
 
     and pat
         = AnnP of Pos.span * {pat: pat, typ: typ}
@@ -215,7 +227,12 @@ structure Cst :> CST = struct
             end
          | EmptyRow _ => text "(||)"
          | Interface (_, super, decls) =>
-            let fun declToDoc (_, label, t) = text "val" <+> Name.toDoc label <+> text ":" <+> typeToDoc t
+            let val declToDoc =
+                    fn Extend (_, label, t) =>
+                        text "val" <+> Name.toDoc label <+> text ":" <+> typeToDoc t
+                     | Override (_, label, t) =>
+                        text "override" <+> text "val" <+> Name.toDoc label <+> text ":" <+> typeToDoc t
+                     | Exclude (_, label) => text "exclude" <+> Name.toDoc label
             in text "interface"
                    <> (case super
                        of SOME {var = SOME var, typ} => text "extends" <+> defToDoc {var, typ = SOME typ}
@@ -241,20 +258,30 @@ structure Cst :> CST = struct
             text "match" <+> exprToDoc matchee
                 <+> braces (PPrint.align (clausesToDoc (Explicit ()) clauses))
          | Record (_, row) => braces (rowToDoc row)
-         | Module (pos, super, stmts) =>
-            text "module"
-                <> (case super
-                    of SOME (SOME pat, expr) => text "extends" <+> stmtToDoc (Val (pos, pat, expr))
-                     | SOME (NONE, expr) => text "extends" <+> exprToDoc expr
-                     | NONE => PPrint.empty)
-                <> (PPrint.nest 4 (newline <> stmtsToDoc stmts))
-                <++> text "end"
+         | Module (pos, super, members) =>
+            let val defToDoc =
+                    fn Extend (_, pat, expr) =>
+                       text "val" <+> patToDoc pat <+> text "=" <+> exprToDoc expr
+                     | Override (_, pat, expr) =>
+                        text "override" <+> text "val" <+> patToDoc pat <+> text "=" <+> exprToDoc expr
+                     | Exclude (_, label) => text "exclude" <+> Name.toDoc label
+            in  text "module"
+                    <> (case super
+                        of SOME (SOME pat, expr) => text "extends" <+> stmtToDoc (Val (pos, pat, expr))
+                         | SOME (NONE, expr) => text "extends" <+> exprToDoc expr
+                         | NONE => PPrint.empty)
+                    <> (PPrint.nest 4 (newline <> PPrint.punctuate newline (Vector.map defToDoc members)))
+                    <++> text "end"
+            end
          | App (_, {callee, arg}) => parens (exprToDoc callee <+> exprToDoc arg)
          | Field (_, expr, label) => parens (exprToDoc expr <> text "." <> Name.toDoc label)
-         | Begin (_, stmts, body) =>
-            text "begin" <+> PPrint.align (stmtsToDoc stmts)
-                <++> PPrint.semi <+> exprToDoc body
-                <++> text "end"
+         | Begin (_, defs, body) =>
+            let fun defToDoc (_, pat, expr) =
+                    text "val" <+> patToDoc pat <+> text "=" <+> exprToDoc expr
+            in  text "begin" <+> PPrint.align (PPrint.punctuate newline (Vector.map defToDoc defs))
+                    <++> PPrint.semi <+> exprToDoc body
+                    <++> text "end"
+            end
          | Do (_, stmts, body) =>
             text "do" <+> PPrint.align (stmtsToDoc stmts)
                 <++> PPrint.semi <+> exprToDoc body

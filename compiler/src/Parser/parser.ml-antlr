@@ -34,6 +34,8 @@
     | EXTENDS ("extends")
     | MODULE ("module")
     | INTERFACE ("interface")
+    | OVERRIDE ("override")
+    | EXCLUDE ("exclude")
     | FN ("fn")
     | MATCH ("match")
     | END ("end")
@@ -72,21 +74,27 @@
 
 program : stmts ;
 
-(* # Statements *)
+(* # Statements and Definitions *)
 
 stmts : stmts=stmt* => (Vector.fromList stmts);
 
 stmt
-    : ";"? def
+    : ";"? defStmt => (Term.Val defStmt)
     | ";" expr => (Term.Expr expr)
     ;
 
 def
-    : "val" pattern "=" expr => (Term.Val (FULL_SPAN, pattern, expr))
+    : defStmt => (Cst.Extend defStmt)
+    | "override" defStmt => (Cst.Override defStmt)
+    | "exclude" ID => (Cst.Exclude (FULL_SPAN, ID))
+    ;
+
+defStmt
+    : "val" pattern "=" expr => ((FULL_SPAN, pattern, expr))
     | "fun" ID pats=(apat => ((apat_SPAN, apat)))+ "=" expr => (
           let fun step ((pos, pattern), body) =
                   Term.Fn (pos, Explicit (), #[{pattern, body}])
-          in Term.Val (FULL_SPAN, Term.Def (ID_SPAN, ID), List.foldr step expr pats)
+          in (FULL_SPAN, Term.Def (ID_SPAN, ID), List.foldr step expr pats)
           end
       )
     | "type" ID pats=(kpat => ((kpat_SPAN, kpat)))* "=" typ => (
@@ -94,7 +102,7 @@ def
                   Term.Fn ( pos, Explicit ()
                           , #[{pattern = Term.AnnP (pos, { pat = Term.Def (pos, ID), typ})
                                                          , body }])
-          in Term.Val (FULL_SPAN, Term.Def (ID_SPAN, ID), List.foldr step (Term.Type (typ_SPAN, typ)) pats)
+          in (FULL_SPAN, Term.Def (ID_SPAN, ID), List.foldr step (Term.Type (typ_SPAN, typ)) pats)
           end
       )
     ;
@@ -147,12 +155,18 @@ select : nestable fields=("." ID => ((ID_SPAN, ID)))* => (
     );
 
 nestable
-    : "begin" stmts "end" => (block Term.Begin FULL_SPAN stmts)
+    : "begin" defStmt* body=(";" expr)? "end" => (
+          let val defs = Vector.fromList defStmt
+          in  case body
+              of SOME body => Term.Begin (FULL_SPAN, defs, body)
+               | NONE => Term.Begin (FULL_SPAN, defs, Term.emptyRecord body_SPAN)
+          end
+      )
     | "do" stmts "end" => (block Term.Do FULL_SPAN stmts)
     | "match" expr clauses=explicitClause+ "end" =>
           (Term.Match (FULL_SPAN, expr, Vector.fromList clauses))
-    | "module" super=("extends" pat=("val" pattern "=")? expr => (pat, expr))? stmts "end" => (
-          Term.Module (FULL_SPAN, super, stmts)
+    | "module" super=("extends" pat=("val" pattern "=")? expr => (pat, expr))? def* "end" => (
+          Term.Module (FULL_SPAN, super, Vector.fromList def)
       )
     | "interface" super=("extends" var=("val" ID ":")? typ => ({var, typ}))? decl* "end" => (
           Term.Type (FULL_SPAN, Type.Interface (FULL_SPAN, super, Vector.fromList decl))
@@ -277,6 +291,12 @@ kpat
 (* # Declarations *)
 
 decl
+    : baseDecl => (Cst.Extend baseDecl)
+    | "override" baseDecl => (Cst.Override baseDecl)
+    | "exclude" ID => (Cst.Exclude (FULL_SPAN, ID))
+    ;
+
+baseDecl
     : "val" ID ":" typ => ((FULL_SPAN, ID, typ))
     | "type" ID pats=(kpat => ((kpat_SPAN, kpat)))* typ=("=" typ => ((typ_SPAN, typ)))? => (
           let fun step ((pos, {var, typ}), codomain) =
