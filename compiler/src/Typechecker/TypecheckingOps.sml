@@ -29,7 +29,7 @@ end = struct
             then let do subType env pos (fieldt', fieldt)
                  in RowExt {base, field = (label, fieldt')}
                  end
-            else RowExt {base = rowWhere subType env pos (row, field'), field}
+            else RowExt {base = rowWhere subType env pos (base, field'), field}
 
     (* \forall|\exists a... . T --> [(\hat{a}/a)...]T and push \hat{a}... to env *)
     fun instantiate env (params: FType.def vector, body) f =
