@@ -528,13 +528,14 @@ end = struct
 
     and membersScope env members =
         let val builder = Bindings.Expr.Builder.new ()
-            do Vector.app (fn Cst.Extend (_, CTerm.Def (pos, name), expr) =>
+            do Vector.app (fn Cst.Extend (_, CTerm.Def (pos, name), expr) | Cst.Override (_, CTerm.Def (pos, name), expr) =>
                                let val def = {pos, id = DefId.fresh (), var = name, typ = NONE}
                                in case Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
                                   of Left err => Env.error env (DuplicateBinding err)
                                    | Right res => res
                                end
-                            | Cst.Extend (_, CTerm.AnnP (_, {pat = CTerm.Def (pos, name), typ}), expr) =>
+                            | Cst.Extend (_, CTerm.AnnP (_, {pat = CTerm.Def (pos, name), typ}), expr)
+                            | Cst.Override (_, CTerm.AnnP (_, {pat = CTerm.Def (pos, name), typ}), expr) =>
                                let val def = {pos, id = DefId.fresh (), var = name, typ = SOME typ}
                                in case Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
                                   of Left err => Env.error env (DuplicateBinding err)
