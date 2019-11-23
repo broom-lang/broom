@@ -1,3 +1,5 @@
+(* FIXME: where/override should instantiate all of base row. Also, they infinitely loop. *)
+
 structure Kindchecker :> sig
     structure FType : CLOSED_FAST_TYPE where type sv = FlexFAst.Type.sv
     type effect = FType.effect

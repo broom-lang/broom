@@ -1,3 +1,5 @@
+(* FIXME: where/override should instantiate all of base row. Also, they infinitely loop. *)
+
 structure Typechecker :> sig
     type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
@@ -158,16 +160,29 @@ end = struct
                       | NONE => (Pure, FType.Record FType.EmptyRow, NONE, FTerm.EmptyRecord pos , env)
 
                 val env = Env.pushScope env (membersScope env stmts)
-                val stmts = elaborateMembers env stmts
-                val (row, body) =
-                    Vector.foldl (fn (FTerm.Val (_, def as {var, typ, ...}, _), (baseRow, baseExpr)) =>
-                                      let val row = RowExt {base = baseRow, field = (var, typ)}
-                                          val use = FTerm.Use (pos, def)
-                                      in ( row
-                                         , FTerm.With (pos, Record row, {base = baseExpr, field = (var, use)}) )
-                                      end
-                                   | (FTerm.Axiom _ | FTerm.Expr _, acc) => acc)
-                                 (baseRow, baseUse) stmts
+                val (row, revStmts, body) =
+                    Vector.foldl (fn (Cst.Extend defn, (base, revStmts, body)) =>
+                                      (case elaborateDefn env defn
+                                       of (Pure, stmt as FTerm.Val (pos, def as {var, typ, ...}, _)) =>
+                                           let val row = FType.RowExt {base, field = (var, typ)}
+                                               val use = FTerm.Use (pos, def)
+                                           in  ( row
+                                               , stmt :: revStmts
+                                               , FTerm.With (pos, Record row, {base = body, field = (var, use)}) )
+                                           end)
+                                   | (Cst.Override defn, (base, revStmts, body)) =>
+                                      (case elaborateDefn env defn
+                                       of (Pure, stmt as FTerm.Val (pos, def as {var, typ, ...}, _)) =>
+                                           let val row = rowWhere (fn env => fn pos => ignore o subType env pos)
+                                                                  env pos (base, (var, typ))
+                                               val use = FTerm.Use (pos, def)
+                                           in  ( row
+                                               , stmt :: revStmts
+                                               , FTerm.Where (pos, Record row, {base = body, field = (var, use)}) )
+                                           end))
+                                 (baseRow, [], baseUse) stmts
+                val stmts = Vector.fromList (List.rev revStmts)
+
                 val expr =
                     case Vector1.fromVector stmts
                     of SOME stmts => FTerm.Letrec (pos, stmts, body)
@@ -471,18 +486,6 @@ end = struct
                                   of (Pure, stmt) => stmt :: stmts'
                                    | (Impure, _) => raise Fail "Impure stmt in pure context.")
                              [] stmts
-        in Vector.fromList (List.rev revStmts)
-        end
-
-    and elaborateMembers env members =
-        let val revStmts =
-                Vector.foldl (fn (member, stmts') =>
-                                  (* TODO: Allow 'dyn' effect (from sealing `Match`) when it arrives: *)
-                                  case elaborateMember env member
-                                  of SOME (Pure, stmt) => stmt :: stmts'
-                                   | SOME (Impure, _) => raise Fail "Impure stmt in pure context."
-                                   | NONE => stmts')
-                             [] members
         in Vector.fromList (List.rev revStmts)
         end
 
