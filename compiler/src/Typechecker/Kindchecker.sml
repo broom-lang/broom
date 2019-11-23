@@ -128,7 +128,7 @@ end = struct
                                 val var = Bindings.Type.fresh absBindings kind
                             in FType.UseT {var, kind}
                             end
-                         | CType.Interface (pos, super, decls) =>
+                         | CType.Interface (pos, super, specs) =>
                             let val (superRow, env) =
                                     case super
                                     of SOME {var, typ} =>
@@ -146,10 +146,18 @@ end = struct
                                           | _ => raise Fail "unimplemented")
                                      | NONE => (FType.EmptyRow, env)
                                 
-                                val env = Env.pushScope env (declsScope env decls)
-                                val fields = Vector.map (elaborateDecl env) decls
-                                fun constructStep (field, base) = FType.RowExt {base, field}
-                            in FType.Record (Vector.foldl constructStep superRow fields)
+                                val env = Env.pushScope env (declsScope env specs)
+                                val row =
+                                    Vector.foldl (fn (Cst.Extend decl, base) =>
+                                                      FType.RowExt {base, field = elaborateDecl env decl}
+                                                   | (Cst.Override (decl as (pos, _, _)), base) =>
+                                                      rowWhere (fn env => fn pos => fn (sub, super) =>
+                                                          instantiate env (Env.existentialParams env, super) (fn (env, _, super) =>
+                                                              ignore (subType env pos (sub, super))
+                                                          )
+                                                      ) env pos (base, elaborateDecl env decl))
+                                                 superRow specs
+                            in FType.Record row
                             end
                          | CType.Path pathExpr =>
                             let val (eff, t, _) = elaborateExpr env pathExpr
@@ -183,7 +191,7 @@ end = struct
                               | _ => raise Fail "Impure singleton type expression")
                          | CType.Prim (_, p) => FType.Prim p
 
-                    and elaborateDecl env (Cst.Extend (_, name, _)) =
+                    and elaborateDecl env (_, name, _) =
                         ( name
                         , case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
                           of Unvisited args => #typ (unvisitedBindingType (CType.pos t) env name args)
@@ -198,12 +206,13 @@ end = struct
 
             and declsScope env decls =
                 let val builder = Bindings.Expr.Builder.new ()
-                    do Vector.app (fn Cst.Extend (pos, var, t) =>
+                    do Vector.app (fn Cst.Extend (pos, var, t) | Cst.Override (pos, var, t) =>
                                        let val def = {pos, id = DefId.fresh (), var, typ = SOME t}
                                        in case Bindings.Expr.Builder.insert builder pos var (Unvisited (def, NONE))
                                           of Left err => Env.error env (DuplicateBinding err)
                                            | Right res => res
-                                       end)
+                                       end
+                                    | Cst.Exclude _ => ())
                                   decls
                 in Scope.InterfaceScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
                 end
