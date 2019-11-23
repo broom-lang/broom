@@ -3,7 +3,7 @@ structure TypecheckingOps :> sig (* HACK: Dependency chains, grrr... *)
         where type sv = FlexFAst.Type.sv
     type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
-    val rowWhere : (env -> Pos.span -> FType.concr * FType.concr -> unit)
+    val rowWhere : (env -> Pos.span -> FType.concr -> Name.t -> FType.concr * FType.concr -> FType.concr)
         -> env -> Pos.span -> (FType.concr * (Name.t * FType.concr)) -> FType.concr
     val instantiate : env -> FType.def vector * FType.concr
         -> (env * FType.concr vector * FType.concr -> 'a) -> 'a
@@ -22,14 +22,12 @@ end = struct
     open TypeError
     val op|> = Fn.|>
 
-    fun rowWhere subType env pos (row, field' as (label', fieldt')) =
+    fun rowWhere override env pos (row, field' as (label', fieldt')) =
         case row
         of RowExt {base, field = field as (label, fieldt)} =>
             if label = label'
-            then let do subType env pos (fieldt', fieldt)
-                 in RowExt {base, field = (label, fieldt')}
-                 end
-            else RowExt {base = rowWhere subType env pos (base, field'), field}
+            then override env pos base label (fieldt', fieldt)
+            else RowExt {base = rowWhere override env pos (base, field'), field}
 
     (* \forall|\exists a... . T --> [(\hat{a}/a)...]T and push \hat{a}... to env *)
     fun instantiate env (params: FType.def vector, body) f =

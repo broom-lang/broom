@@ -1,5 +1,3 @@
-(* FIXME: where/override should instantiate all of base row. Also, they infinitely loop. *)
-
 structure Kindchecker :> sig
     structure FType : CLOSED_FAST_TYPE where type sv = FlexFAst.Type.sv
     type effect = FType.effect
@@ -34,12 +32,27 @@ end = struct
     datatype binding_state = datatype Bindings.Expr.binding_state
     structure Scope = Env.Scope
     type env = (FType.concr, FTerm.expr, TypeError.t) Env.t
-    val rowWhere = TypecheckingOps.rowWhere
     val instantiate = TypecheckingOps.instantiate
     val subType = Subtyping.subType
     datatype either = datatype Either.t
     val op|> = Fn.|>
 
+    fun rowWhere env pos (row, field' as (label', _)) =
+        let val rec override =
+                fn RowExt {base, field = field as (label, _)} =>
+                    if label = label'
+                    then let val params = Env.existentialParams env (* FIXME: only the params used in `fieldt` *)
+                         in  instantiate env (params, row) (fn (env, _, row) =>
+                                 TypecheckingOps.rowWhere (fn env => fn pos => fn base => fn label => fn (sub, super) =>
+                                     ( subType env pos (sub, super)
+                                     ; RowExt {base, field = (label, sub)} )
+                                 ) env pos (row, field')
+                             )
+                         end
+                    else override base
+        in override row
+        end
+ 
     type unvisited_binding_type =
          Pos.span -> env -> Name.t -> Cst.Type.typ option Env.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
 
@@ -114,11 +127,7 @@ end = struct
                                                 , fields )
                                              | CType.WhereT fields =>
                                                 ( fn ((label, t), base) =>
-                                                      rowWhere (fn env => fn pos => fn (sub, super) =>
-                                                          instantiate env (Env.existentialParams env, super) (fn (env, _, super) =>
-                                                              ignore (subType env pos (sub, super))
-                                                          )
-                                                      ) env pos (base, (label, elaborate env t))
+                                                      rowWhere env pos (base, (label, elaborate env t))
                                                 , fields )
                                     in Vector.foldl step base fields
                                     end
@@ -153,11 +162,7 @@ end = struct
                                     Vector.foldl (fn (Cst.Extend decl, base) =>
                                                       FType.RowExt {base, field = elaborateDecl env decl}
                                                    | (Cst.Override (decl as (pos, _, _)), base) =>
-                                                      rowWhere (fn env => fn pos => fn (sub, super) =>
-                                                          instantiate env (Env.existentialParams env, super) (fn (env, _, super) =>
-                                                              ignore (subType env pos (sub, super))
-                                                          )
-                                                      ) env pos (base, elaborateDecl env decl))
+                                                      rowWhere env pos (base, elaborateDecl env decl))
                                                  superRow specs
                             in FType.Record row
                             end

@@ -1,5 +1,3 @@
-(* FIXME: where/override should instantiate all of base row. Also, they infinitely loop. *)
-
 structure Typechecker :> sig
     type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
@@ -32,7 +30,6 @@ end = struct
     datatype expr_binding_state = datatype Bindings.Expr.binding_state
     structure Path = TypeVars.Path
 
-    val rowWhere = TypecheckingOps.rowWhere
     val reAbstract = Kindchecker.reAbstract
     val applyCoercion = Subtyping.applyCoercion
     val subEffect = Subtyping.subEffect
@@ -41,6 +38,11 @@ end = struct
     val joinEffs = Subtyping.joinEffs
 
 (* # Utils *)
+
+    val rowWhere = TypecheckingOps.rowWhere (fn env => fn pos => fn base => fn label => fn (sub, super) =>
+        ( subType env pos (sub, super)
+        ; FType.RowExt {base, field = (label, sub)} )
+    )
 
     val nameFromId = Name.fromString o Id.toString
 
@@ -173,8 +175,7 @@ end = struct
                                    | (Cst.Override defn, (base, revStmts, body)) =>
                                       (case elaborateDefn env defn
                                        of (Pure, stmt as FTerm.Val (pos, def as {var, typ, ...}, _)) =>
-                                           let val row = rowWhere (fn env => fn pos => ignore o subType env pos)
-                                                                  env pos (base, (var, typ))
+                                           let val row = rowWhere env pos (base, (var, typ))
                                                val use = FTerm.Use (pos, def)
                                            in  ( row
                                                , stmt :: revStmts
@@ -301,7 +302,7 @@ end = struct
                             , fn (typ, base, field) => FTerm.With (pos, typ, {base, field})
                             , fields )
                          | CTerm.Where fields =>
-                            ( rowWhere (fn env => fn pos => fn ts => ignore (subType env pos ts)) env pos
+                            ( rowWhere env pos
                             , fn (typ, base, field) => FTerm.Where (pos, typ, {base, field})
                             , fields )
                 in Vector.foldl (elaborateField editTyp editExpr) acc fields
