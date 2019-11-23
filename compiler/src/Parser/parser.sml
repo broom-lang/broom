@@ -4,8 +4,8 @@ structure Parser : sig
     type repair = BroomTokens.token AntlrRepair.repair
     val repairToString : Pos.sourcemap -> repair -> string
 
-    val parse: input -> ( Cst.Term.stmt vector option * repair list
-                        , Cst.Term.stmt vector ) Either.t
+    val parse: input -> ( Cst.Term.defn vector option * repair list
+                        , Cst.Term.defn vector ) Either.t
 end = struct
     structure BroomParser = BroomParseFn(BroomLexer)
 

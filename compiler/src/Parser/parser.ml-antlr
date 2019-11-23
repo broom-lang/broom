@@ -72,7 +72,7 @@
 
 %start program;
 
-program : stmts ;
+program : defStmt* => (Vector.fromList defStmt);
 
 (* # Statements and Definitions *)
 

@@ -59,6 +59,7 @@ signature CST = sig
         | Where of (Name.t * expr) vector
 
     withtype def = {var: Name.t, typ: typ option}
+    and defn = Pos.span * pat * expr
     and clause = {pattern: pat, body: expr}
     and recordFields =
         { base : expr option
@@ -84,12 +85,14 @@ signature CST = sig
         datatype stmt = datatype stmt
         datatype pat = datatype pat
         datatype rec_edit = datatype rec_edit
+        type defn = defn
         type recordFields = recordFields
 
         val emptyRecord : Pos.span -> expr
         val exprPos: expr -> Pos.span
         val exprToDoc: expr -> PPrint.t
         val exprToString: expr -> string
+        val defnsToDoc: defn vector -> PPrint.t
         val stmtsToDoc: stmt vector -> PPrint.t
     end
 end
@@ -166,6 +169,7 @@ structure Cst :> CST = struct
         | Where of (Name.t * expr) vector
 
     withtype def = {var: Name.t, typ: typ option}
+    and defn = Pos.span * pat * expr
     and clause = {pattern: pat, body: expr}
     and recordFields =
         { base : expr option
@@ -275,13 +279,10 @@ structure Cst :> CST = struct
             end
          | App (_, {callee, arg}) => parens (exprToDoc callee <+> exprToDoc arg)
          | Field (_, expr, label) => parens (exprToDoc expr <> text "." <> Name.toDoc label)
-         | Begin (_, defs, body) =>
-            let fun defToDoc (_, pat, expr) =
-                    text "val" <+> patToDoc pat <+> text "=" <+> exprToDoc expr
-            in  text "begin" <+> PPrint.align (PPrint.punctuate newline (Vector.map defToDoc defs))
-                    <++> PPrint.semi <+> exprToDoc body
-                    <++> text "end"
-            end
+         | Begin (_, defns, body) =>
+            text "begin" <+> PPrint.align (defnsToDoc defns) 
+                <++> PPrint.semi <+> exprToDoc body
+                <++> text "end"
          | Do (_, stmts, body) =>
             text "do" <+> PPrint.align (stmtsToDoc stmts)
                 <++> PPrint.semi <+> exprToDoc body
@@ -320,6 +321,11 @@ structure Cst :> CST = struct
     and clausesToDoc = fn expl => fn clauses =>
         PPrint.punctuate newline (Vector.map (clauseToDoc expl) clauses)
 
+    and defnToDoc = fn (_, pat, expr) =>
+        text "val" <+> patToDoc pat <+> text "=" <+> exprToDoc expr
+
+    and defnsToDoc = fn defns => PPrint.punctuate newline (Vector.map defnToDoc defns)
+
     and stmtToDoc =
         fn Val (_, pat, valExpr) =>
             text "val" <+> patToDoc pat <+> text " = " <> exprToDoc valExpr
@@ -347,6 +353,7 @@ structure Cst :> CST = struct
         datatype stmt = datatype stmt
         datatype pat = datatype pat
         datatype rec_edit = datatype rec_edit
+        type defn = defn
         type recordFields = recordFields
 
         fun emptyRecord pos = Record (pos, {base = NONE, edits = #[]})
@@ -354,6 +361,7 @@ structure Cst :> CST = struct
         val exprToDoc = exprToDoc
         val exprToString = PPrint.pretty 80 o exprToDoc
         val stmtsToDoc = stmtsToDoc
+        val defnsToDoc = defnsToDoc
     end
 end
 

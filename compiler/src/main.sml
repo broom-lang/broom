@@ -51,7 +51,7 @@ end = struct
         let val log = logger debug
         in  case Parser.parse input
             of Right program =>
-                let val _ = log (PPrint.pretty 80 (Cst.Term.stmtsToDoc program) ^ "\n")
+                let val _ = log (PPrint.pretty 80 (Cst.Term.defnsToDoc program) ^ "\n")
                     val _ = log "===\n"
                     val tenv = TypecheckingEnv.default sourcemap
                 in case Typechecker.elaborateProgram tenv program

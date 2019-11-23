@@ -1,7 +1,7 @@
 structure Typechecker :> sig
     type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
-    val elaborateProgram: env -> Cst.Term.stmt vector
+    val elaborateProgram: env -> (Pos.span * Cst.Term.pat * Cst.Term.expr) vector
         -> ( FlexFAst.Term.program * env * TypeError.t list
            , FlexFAst.Term.program * env) Either.t
 end = struct
@@ -83,10 +83,10 @@ end = struct
                      | NONE => f
                  end )
             end
-         | CTerm.Begin (pos, stmts, body) =>
-            let val scope = stmtsScope env stmts
+         | CTerm.Begin (pos, defns, body) =>
+            let val scope = defsScope env defns
                 val env = Env.pushScope env scope
-                val stmts = elaborateDefs env stmts
+                val stmts = elaborateDefs env defns
                 val (eff, typ, body) = elaborateExpr env body
             in ( eff, typ
                , case Vector1.fromVector stmts
@@ -158,7 +158,7 @@ end = struct
                       | NONE => (Pure, FType.Record FType.EmptyRow, NONE, FTerm.EmptyRecord pos , env)
 
                 val env = Env.pushScope env (membersScope env stmts)
-                val stmts = elaborateDefs env stmts
+                val stmts = elaborateMembers env stmts
                 val (row, body) =
                     Vector.foldl (fn (FTerm.Val (_, def as {var, typ, ...}, _), (baseRow, baseExpr)) =>
                                       let val row = RowExt {base = baseRow, field = (var, typ)}
@@ -467,11 +467,41 @@ end = struct
         let val revStmts =
                 Vector.foldl (fn (stmt, stmts') =>
                                   (* TODO: Allow 'dyn' effect (from sealing `Match`) when it arrives: *)
-                                  case elaborateStmt env stmt
+                                  case elaborateDefn env stmt
                                   of (Pure, stmt) => stmt :: stmts'
                                    | (Impure, _) => raise Fail "Impure stmt in pure context.")
                              [] stmts
         in Vector.fromList (List.rev revStmts)
+        end
+
+    and elaborateMembers env members =
+        let val revStmts =
+                Vector.foldl (fn (member, stmts') =>
+                                  (* TODO: Allow 'dyn' effect (from sealing `Match`) when it arrives: *)
+                                  case elaborateMember env member
+                                  of SOME (Pure, stmt) => stmt :: stmts'
+                                   | SOME (Impure, _) => raise Fail "Impure stmt in pure context."
+                                   | NONE => stmts')
+                             [] members
+        in Vector.fromList (List.rev revStmts)
+        end
+
+    and defsScope env defns =
+        let val builder = Bindings.Expr.Builder.new ()
+            do Vector.app (fn (_, CTerm.Def (pos, name), expr) =>
+                               let val def = {pos, id = DefId.fresh (), var = name, typ = NONE}
+                               in case Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
+                                  of Left err => Env.error env (DuplicateBinding err)
+                                   | Right res => res
+                               end
+                            | (_, CTerm.AnnP (_, {pat = CTerm.Def (pos, name), typ}), expr) =>
+                               let val def = {pos, id = DefId.fresh (), var = name, typ = SOME typ}
+                               in case Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
+                                  of Left err => Env.error env (DuplicateBinding err)
+                                   | Right res => res
+                               end)
+                          defns
+        in Scope.BlockScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
         end
 
     and stmtsScope env stmts =
@@ -511,29 +541,35 @@ end = struct
         in Scope.BlockScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
         end
 
+    and elaborateMember env =
+        fn Cst.Extend defn | Cst.Override defn => SOME (elaborateDefn env defn)
+         | Cst.Exclude _ => NONE
+
     (* Elaborate a statement and return the elaborated version. *)
     and elaborateStmt env: Cst.Term.stmt -> effect * FTerm.stmt =
-        fn CTerm.Val (pos, pat, expr) =>
-            let val rec patName =
-                    fn CTerm.Def (_, name) => name
-                     | CTerm.AnnP (_, {pat, ...}) => patName pat
-                val name = patName pat
-                val def as {typ = t, ...} = valOf (lookupValType expr name env) (* `name` is in `env` by construction *)
-                val (eff, expr) =
-                    case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
-                    of Unvisited _ | Visiting _ => raise Fail "unreachable" (* Not possible after `lookupValType`. *)
-                     | Typed ({typ = (_, ctx), ...}, SOME expr) =>
-                        (case ctx
-                         of SOME namedPaths => elaborateAsExistsInst env (t, namedPaths) expr
-                          | NONE => elaborateExprAs env t expr)
-                     | Visited (_, SOME effxpr) => effxpr
-                     | Typed (_, NONE) | Visited (_, NONE) => raise Fail "unreachable"
-            in (eff, FTerm.Val (pos, def, expr))
-            end
+        fn CTerm.Val defn => elaborateDefn env defn
          | CTerm.Expr expr =>
             let val (eff, expr) = elaborateExprAs env (FType.Record FType.EmptyRow) expr
             in (eff, FTerm.Expr expr)
             end
+
+    and elaborateDefn env (pos, pat, expr) =
+        let val rec patName =
+                fn CTerm.Def (_, name) => name
+                 | CTerm.AnnP (_, {pat, ...}) => patName pat
+            val name = patName pat
+            val def as {typ = t, ...} = valOf (lookupValType expr name env) (* `name` is in `env` by construction *)
+            val (eff, expr) =
+                case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
+                of Unvisited _ | Visiting _ => raise Fail "unreachable" (* Not possible after `lookupValType`. *)
+                 | Typed ({typ = (_, ctx), ...}, SOME expr) =>
+                    (case ctx
+                     of SOME namedPaths => elaborateAsExistsInst env (t, namedPaths) expr
+                      | NONE => elaborateExprAs env t expr)
+                 | Visited (_, SOME effxpr) => effxpr
+                 | Typed (_, NONE) | Visited (_, NONE) => raise Fail "unreachable"
+        in (eff, FTerm.Val (pos, def, expr))
+        end
 
 (* # Focalization *)
 
@@ -646,10 +682,10 @@ end = struct
 
     (* TODO: Prevent boundless deepening of REPL env
              and enable forward decl:s for stmts to be input on later lines. *)
-    fun elaborateProgram env stmts =
-        let val scope = stmtsScope env stmts
+    fun elaborateProgram env defns =
+        let val scope = defsScope env defns
             val env = Env.pushScope env scope
-            val stmts = elaborateDefs env stmts
+            val stmts = elaborateDefs env defns
             val program = { typeFns = Env.typeFns env
                           , stmts
                           , sourcemap = Env.sourcemap env }
