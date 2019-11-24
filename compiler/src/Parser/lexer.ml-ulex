@@ -27,6 +27,7 @@ match     => (Tokens.MATCH);
 end       => (Tokens.END);
 with      => (Tokens.WITH);
 where     => (Tokens.WHERE);
+without   => (Tokens.WITHOUT);
 
 "=>" => (Tokens.DARROW);
 "="  => (Tokens.EQ);

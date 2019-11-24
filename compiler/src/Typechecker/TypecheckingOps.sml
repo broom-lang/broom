@@ -5,6 +5,7 @@ structure TypecheckingOps :> sig (* HACK: Dependency chains, grrr... *)
 
     val rowWhere : (env -> Pos.span -> FType.concr -> Name.t -> FType.concr * FType.concr -> FType.concr)
         -> env -> Pos.span -> (FType.concr * (Name.t * FType.concr)) -> FType.concr
+    val rowWithout : env -> Pos.span -> (FType.concr * Name.t) -> FType.concr
     val instantiate : env -> FType.def vector * FType.concr
         -> (env * FType.concr vector * FType.concr -> 'a) -> 'a
     val checkMonotypeKind : env -> Pos.span -> FlexFAst.Type.kind -> FlexFAst.Type.concr -> unit
@@ -28,6 +29,13 @@ end = struct
             if label = label'
             then override env pos base label (fieldt', fieldt)
             else RowExt {base = rowWhere override env pos (base, field'), field}
+
+    fun rowWithout env pos (row, label') =
+        case row
+        of RowExt {base, field = field as (label, _)} =>
+            if label = label'
+            then base
+            else RowExt {base = rowWithout env pos (base, label'), field}
 
     (* \forall|\exists a... . T --> [(\hat{a}/a)...]T and push \hat{a}... to env *)
     fun instantiate env (params: FType.def vector, body) f =

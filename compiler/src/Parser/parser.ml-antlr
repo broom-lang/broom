@@ -41,6 +41,7 @@
     | END ("end")
     | WITH ("with")
     | WHERE ("where")
+    | WITHOUT ("without")
 
     | DARROW ("=>")
     | EQ ("=")
@@ -221,6 +222,7 @@ row
 exprRowEdit
     : "with" exprFields => (Term.With (Vector.fromList exprFields))
     | "where" exprFields => (Term.Where (Vector.fromList exprFields))
+    | "without" label=ID labels=("," ID)* => (Term.Without (Vector.fromList (label :: labels)))
     ;
 
 exprBaseFields : ID "=" expr tail=("," exprFields)? => (
@@ -242,6 +244,7 @@ exprField : ID expr=("=" expr)? => (
 typRowEdit
     : "with" typRowFields => (Type.WithT typRowFields)
     | "where" typRowFields => (Type.WhereT typRowFields)
+    | "without" ":" label=ID labels=("," ID)* => (Type.WithoutT (Vector.fromList (label :: labels))) (* HACK: ":" *)
     ;
 
 typRowFields : field=typRowField fields=("," typRowField)* => (Vector.fromList (field :: fields));

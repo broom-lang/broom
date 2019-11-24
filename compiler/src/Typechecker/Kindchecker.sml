@@ -32,6 +32,7 @@ end = struct
     datatype binding_state = datatype Bindings.Expr.binding_state
     structure Scope = Env.Scope
     type env = (FType.concr, FTerm.expr, TypeError.t) Env.t
+    val rowWithout = TypecheckingOps.rowWithout
     val instantiate = TypecheckingOps.instantiate
     val subType = Subtyping.subType
     datatype either = datatype Either.t
@@ -119,18 +120,18 @@ end = struct
                          | CType.RecordT (_, row) => FType.Record (elaborate env row)
                          | CType.RowExt (pos, {base, edits}) =>
                             let fun elaborateEdit (edit, base) =
-                                    let val (step, fields) =
-                                            case edit
-                                            of CType.WithT fields =>
-                                                ( fn ((label, t), base) =>
-                                                      FType.RowExt {base, field = (label, elaborate env t)}
-                                                , fields )
-                                             | CType.WhereT fields =>
-                                                ( fn ((label, t), base) =>
-                                                      rowWhere env pos (base, (label, elaborate env t))
-                                                , fields )
-                                    in Vector.foldl step base fields
-                                    end
+                                    case edit
+                                    of CType.WithT fields =>
+                                        Vector.foldl (fn ((label, t), base) =>
+                                                          FType.RowExt {base, field = (label, elaborate env t)})
+                                                     base fields
+                                     | CType.WhereT fields =>
+                                        Vector.foldl (fn ((label, t), base) =>
+                                                          rowWhere env pos (base, (label, elaborate env t)))
+                                                     base fields
+                                     | CType.WithoutT labels =>
+                                        Vector.foldl (fn (label, base) => rowWithout env pos (base, label))
+                                                     base labels
                             in Vector.foldl elaborateEdit (elaborate env base) edits
                             end
                          | CType.EmptyRow _ => FType.EmptyRow

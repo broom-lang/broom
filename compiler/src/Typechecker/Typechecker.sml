@@ -36,6 +36,7 @@ end = struct
     val subType = Subtyping.subType
     val unify = Subtyping.unify
     val joinEffs = Subtyping.joinEffs
+    val rowWithout = TypecheckingOps.rowWithout
 
 (* # Utils *)
 
@@ -286,27 +287,32 @@ end = struct
             end
 
     and elaborateRecord env pos ({base, edits}: CTerm.recordFields): effect * concr * FTerm.expr =
-        let fun elaborateField editRow editExpr ((label, expr), (eff, baseRow, baseExpr)) =
-                let val (fieldEff, fieldTyp, fieldExpr) = elaborateExpr env expr
-                    val row = editRow (baseRow, (label, fieldTyp))
-                in ( joinEffs (eff, fieldEff)
-                   , row
-                   , editExpr (Record row, baseExpr, (label, fieldExpr)) )
-                end
-
-            fun elaborateEdit (edit, acc) =
-                let val (editTyp, editExpr, fields) =   
-                        case edit
-                        of CTerm.With fields =>
-                            ( fn (base, field) => RowExt {base, field}
-                            , fn (typ, base, field) => FTerm.With (pos, typ, {base, field})
-                            , fields )
-                         | CTerm.Where fields =>
-                            ( rowWhere env pos
-                            , fn (typ, base, field) => FTerm.Where (pos, typ, {base, field})
-                            , fields )
-                in Vector.foldl (elaborateField editTyp editExpr) acc fields
-                end
+        let fun elaborateEdit (edit, acc) =
+                case edit
+                of CTerm.With fields =>
+                    Vector.foldl (fn ((label, expr), (eff, base, baseExpr)) =>
+                                      let val (fieldEff, fieldTyp, fieldExpr) = elaborateExpr env expr
+                                          val row = RowExt {base, field = (label, fieldTyp)}
+                                      in ( joinEffs (eff, fieldEff)
+                                         , row
+                                         , FTerm.With (pos, Record row, {base = baseExpr, field = (label, fieldExpr)}) )
+                                      end)
+                                 acc fields
+                 | CTerm.Where fields =>
+                    Vector.foldl (fn ((label, expr), (eff, base, baseExpr)) =>
+                                      let val (fieldEff, fieldTyp, fieldExpr) = elaborateExpr env expr
+                                          val row = rowWhere env pos (base, (label, fieldTyp))
+                                      in ( joinEffs (eff, fieldEff)
+                                         , row
+                                         , FTerm.Where (pos, Record row, {base = baseExpr, field = (label, fieldExpr)}) )
+                                      end)
+                                 acc fields
+                 | CTerm.Without labels =>
+                    Vector.foldl (fn (label, (eff, base, baseExpr)) =>
+                                      let val row = rowWithout env pos (base, label)
+                                      in (eff, row, FTerm.Without (pos, Record row, {base = baseExpr, field = label}))
+                                      end)
+                                 acc labels
 
             val (baseEff, baseType, baseExpr) =
                 case base

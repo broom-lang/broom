@@ -57,6 +57,8 @@ end = struct
             FFTerm.With (pos, concrToF env typ, {base = exprToF env base, field = Pair.second (exprToF env) field})
          | Where (pos, typ, {base, field}) =>
             FFTerm.Where (pos, concrToF env typ, {base = exprToF env base, field = Pair.second (exprToF env) field})
+         | Without (pos, typ, {base, field}) =>
+            FFTerm.Without (pos, concrToF env typ, {base = exprToF env base, field})
          | Letrec (pos, stmts, body) =>
             FFTerm.Letrec (pos, Vector1.map (stmtToF env) stmts, exprToF env body)
          | Let (pos, stmts, body) =>

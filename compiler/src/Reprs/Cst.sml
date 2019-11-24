@@ -24,6 +24,7 @@ signature CST = sig
     and row_edit
         = WithT of (Name.t * typ) vector
         | WhereT of (Name.t * typ) vector
+        | WithoutT of Name.t vector
 
     and expr
         = Fn of Pos.span * expl * clause vector
@@ -57,6 +58,7 @@ signature CST = sig
     and rec_edit
         = With of (Name.t * expr) vector
         | Where of (Name.t * expr) vector
+        | Without of Name.t vector
 
     withtype def = {var: Name.t, typ: typ option}
     and defn = Pos.span * pat * expr
@@ -134,6 +136,7 @@ structure Cst :> CST = struct
     and row_edit
         = WithT of (Name.t * typ) vector
         | WhereT of (Name.t * typ) vector
+        | WithoutT of Name.t vector
 
     and expr
         = Fn of Pos.span * expl * clause vector
@@ -167,6 +170,7 @@ structure Cst :> CST = struct
     and rec_edit
         = With of (Name.t * expr) vector
         | Where of (Name.t * expr) vector
+        | Without of Name.t vector
 
     withtype def = {var: Name.t, typ: typ option}
     and defn = Pos.span * pat * expr
@@ -225,6 +229,9 @@ structure Cst :> CST = struct
                 val editToDoc =
                     fn WithT fields => text "where" <+> fieldsToDoc fields
                      | WhereT fields => text "where" <+> fieldsToDoc fields
+                     | WithoutT labels =>
+                        text "without" <+> text ":"
+                            <+> punctuate (text "," <> space) (Vector.map Name.toDoc labels)
                 val editsDoc =
                     PPrint.punctuate (text " ") (Vector.map editToDoc edits)
             in typeToDoc base <+> editsDoc
@@ -303,6 +310,8 @@ structure Cst :> CST = struct
     and editToDoc =
         fn With fields => text "with" <+> fieldsToDoc fields
          | Where fields => text "where" <+> fieldsToDoc fields
+         | Without labels =>
+            text "without" <+> punctuate (text "," <> space) (Vector.map Name.toDoc labels)
 
     and editsToDoc =
         fn edits => punctuate space (Vector.map editToDoc edits)
@@ -314,6 +323,7 @@ structure Cst :> CST = struct
              of SOME (With startFields, edits) =>
                  fieldsToDoc startFields <+> editsToDoc (VectorSlice.vector edits)
               | SOME (Where _, _) => editsToDoc edits
+              | SOME (Without _, _) => editsToDoc edits
               | NONE => PPrint.empty)
 
     and clauseToDoc = fn expl => fn {pattern, body} =>
