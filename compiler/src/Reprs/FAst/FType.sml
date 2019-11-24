@@ -302,6 +302,12 @@ structure FType :> FAST_TYPE = struct
     in  val primopType =
             fn IAdd | ISub | IMul | IDiv =>
                 (#[], {domain = #[Prim Prim.I32, Prim Prim.I32], codomain = Prim Prim.I32})
+             | ArrayT =>
+                let val def = {var = Id.fresh (), kind = Kind.TypeK}
+                in (#[def], { domain = #[Type (UseT def)]
+                            , codomain = Type (App { callee = Prim Prim.Array
+                                                   , args = Vector1.singleton (UseT def) }) })
+                end
              | ArrayNew =>
                 let val def = {var = Id.fresh (), kind = Kind.TypeK}
                 in (#[def], { domain = #[Prim Prim.I32]
