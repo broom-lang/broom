@@ -181,7 +181,13 @@ end = struct
                                            in  ( row
                                                , stmt :: revStmts
                                                , FTerm.Where (pos, Record row, {base = body, field = (var, use)}) )
-                                           end))
+                                           end)
+                                   | (Cst.Exclude (pos, label), (base, revStmts, body)) =>
+                                      let val row = rowWithout env pos (base, label)
+                                      in  ( row
+                                          , revStmts
+                                          , FTerm.Without (pos, Record row, {base = body, field = label}) )
+                                      end)
                                  (baseRow, [], baseUse) stmts
                 val stmts = Vector.fromList (List.rev revStmts)
 
@@ -547,7 +553,8 @@ end = struct
                                in case Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
                                   of Left err => Env.error env (DuplicateBinding err)
                                    | Right res => res
-                               end)
+                               end
+                            | Cst.Exclude _ => ())
                           members
         in Scope.BlockScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
         end

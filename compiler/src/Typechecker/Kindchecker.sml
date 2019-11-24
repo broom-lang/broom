@@ -163,7 +163,9 @@ end = struct
                                     Vector.foldl (fn (Cst.Extend decl, base) =>
                                                       FType.RowExt {base, field = elaborateDecl env decl}
                                                    | (Cst.Override (decl as (pos, _, _)), base) =>
-                                                      rowWhere env pos (base, elaborateDecl env decl))
+                                                      rowWhere env pos (base, elaborateDecl env decl)
+                                                   | (Cst.Exclude (_, label), base) =>
+                                                      rowWithout env pos (base, label))
                                                  superRow specs
                             in FType.Record row
                             end
