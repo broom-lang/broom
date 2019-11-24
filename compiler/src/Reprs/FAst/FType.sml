@@ -2,14 +2,11 @@ signature FAST_TYPE = sig
     structure Id: ID
     structure Prim: PRIM_TYPE where type t = PrimType.t
 
+    type kind = Kind.t
+
     datatype effect = Pure | Impure
 
     type arrow = effect Cst.explicitness
-
-    datatype kind = ArrowK of {domain: kind, codomain: kind}
-                  | TypeK
-                  | RowK
-                  | CallsiteK
 
     type def = {var: Id.t, kind: kind}
 
@@ -44,13 +41,11 @@ signature FAST_TYPE = sig
 
     withtype 'sv row = {base: 'sv concr, field: Name.t * 'sv concr}
 
-    val kindToDoc: kind -> PPrint.t
-    val kindToString: kind -> string
-    val kindDefault: kind -> 'sv concr
     val defToDoc: def -> PPrint.t
     val arrowDoc: arrow -> PPrint.t
     val piEffect: 'sv concr -> effect option
     val rowExtBase: 'sv concr -> 'sv concr
+    val kindDefault : kind -> 'sv concr
     
     structure Concr: sig
         val toDoc: ('sv -> PPrint.t) -> 'sv concr -> PPrint.t
@@ -86,14 +81,11 @@ structure FType :> FAST_TYPE = struct
 
     structure Prim = PrimType
 
+    type kind = Kind.t
+
     datatype effect = Pure | Impure
 
     type arrow = effect Cst.explicitness
-
-    datatype kind = ArrowK of {domain: kind, codomain: kind}
-                  | TypeK
-                  | RowK
-                  | CallsiteK
 
     type def = {var: Id.t, kind: kind}
 
@@ -133,22 +125,9 @@ structure FType :> FAST_TYPE = struct
          | Cst.Explicit Pure => text "->"
          | Cst.Explicit Impure => text "~>"
 
-    val rec kindToDoc =
-        fn TypeK => text "Type"
-         | RowK => text "Row"
-         | ArrowK {domain, codomain} =>
-            kindToDoc domain <+> text "->" <+> kindToDoc codomain
-         | CallsiteK => text "Callsite"
-
-    val kindToString = PPrint.pretty 80 o kindToDoc
-
-    val kindDefault =
-        fn TypeK => Record EmptyRow
-         | RowK => EmptyRow
-
     fun idToDoc id = text ("g__" ^ Id.toString id)
 
-    fun defToDoc {var, kind} = idToDoc var <> text ":" <+> kindToDoc kind
+    fun defToDoc {var, kind} = idToDoc var <> text ":" <+> Kind.toDoc kind
 
     fun concrToDoc svarToDoc =
         let val rec concrToDoc =
@@ -318,6 +297,10 @@ structure FType :> FAST_TYPE = struct
         fn RowExt {base, ...} => rowExtBase base
          | t => t
 
+    val kindDefault =
+        fn TypeK => Record EmptyRow
+         | RowK => EmptyRow
+
     structure Concr = struct
         val toDoc = concrToDoc
         fun toString svarToDoc = PPrint.pretty 80 o toDoc svarToDoc
@@ -339,8 +322,8 @@ structure FType :> FAST_TYPE = struct
             end
 
         fun kindOf svarKind =
-            fn t as (Exists _ | ForAll _ | Arrow _ | Record _ | Type _ | Prim _)  => TypeK
-             | t as (RowExt _ | EmptyRow) => RowK
+            fn t as (Exists _ | ForAll _ | Arrow _ | Record _ | Type _ | Prim _) => Kind.TypeK
+             | t as (RowExt _ | EmptyRow) => Kind.RowK
              | CallTFn {kind, ...} => kind
              | UseT {kind, ...} => kind
              | SVar args => svarKind args
@@ -356,9 +339,10 @@ signature CLOSED_FAST_TYPE = sig
     structure Prim: PRIM_TYPE where type t = PrimType.t
     structure ScopeId: ID
 
+    type kind = Kind.t
+
     type ('expr, 'error) env
 
-    datatype kind = datatype FType.kind
     type def = FType.def
 
     datatype effect = datatype FType.effect
@@ -371,11 +355,11 @@ signature CLOSED_FAST_TYPE = sig
     type concr = sv FType.concr
     type co = sv FType.co
 
-    val kindToDoc: kind -> PPrint.t
     val defToDoc: def -> PPrint.t
     val arrowDoc: arrow -> PPrint.t
     val svarToDoc: ('expr, 'error) env -> sv -> PPrint.t
     val rowExtBase: concr -> concr
+    val kindDefault: kind -> concr
 
     structure Concr: sig
         datatype t = datatype concr

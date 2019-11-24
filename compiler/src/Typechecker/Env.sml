@@ -189,7 +189,7 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
         fun initialToplevel () =
             let val typeFns = Bindings.TypeFn.new ()
             in { typeFns
-               , pureCallsite = Bindings.TypeFn.freshAbstract typeFns FType.CallsiteK
+               , pureCallsite = Bindings.TypeFn.freshAbstract typeFns Kind.CallsiteK
                , vals = Bindings.Expr.Builder.new () |> Bindings.Expr.Builder.build
                , subst = ref (UnionFind.pool ()) }
             end

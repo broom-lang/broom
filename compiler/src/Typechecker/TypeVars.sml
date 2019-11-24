@@ -35,7 +35,7 @@ end = struct
     type ('otyp, 'oexpr, 'error) env = ('otyp, 'oexpr, 'error) Env.t
 
     val rec kindCodomain =
-      fn FType.ArrowK {codomain, ...} => kindCodomain codomain
+      fn Kind.ArrowK {codomain, ...} => kindCodomain codomain
        | kind => kind
 
     exception SetPrivate of Name.t

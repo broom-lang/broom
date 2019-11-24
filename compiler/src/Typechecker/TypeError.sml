@@ -60,7 +60,7 @@ structure TypeError :> TYPE_ERROR = struct
                                           PPrint.empty cause )
                  | InequalKinds (pos, kind, kind') =>
                     ( pos
-                    , text "kind" <+> FType.kindToDoc kind <+> text "is not equal to" <+> FType.kindToDoc kind' )
+                    , text "kind" <+> Kind.toDoc kind <+> text "is not equal to" <+> Kind.toDoc kind' )
                  | NonMonotype (pos, t) =>
                     ( pos
                     , Concr.toDoc env t <+> text "is large and not allowed here" )
@@ -75,7 +75,7 @@ structure TypeError :> TYPE_ERROR = struct
                  | UnboundVal (pos, name) => (pos, text "Unbound variable" <+> Name.toDoc name <> text ".")
                  | TypeCtorArity (pos, calleeType, calleeKind, argc) =>
                     ( pos
-                    , Concr.toDoc env calleeType <+> text ":" <+> FType.kindToDoc calleeKind
+                    , Concr.toDoc env calleeType <+> text ":" <+> Kind.toDoc calleeKind
                       <+> text "applied to too many arguments" <+> PPrint.parens (PPrint.int argc) )
                  | OutsideScope (pos, name) => (pos, text "Type out of scope" <+> Name.toDoc name <> text ".")
                  | MissingField (pos, typ, label) =>

@@ -48,7 +48,7 @@ end = struct
         val sourcemap: t -> Pos.sourcemap = #sourcemap
     end
 
-    datatype kind = datatype FAst.Type.kind
+    datatype kind = datatype Kind.t
     datatype concr = datatype FAst.Type.concr'
     datatype co = datatype FAst.Type.co'
     datatype expr = datatype FAst.Term.expr
@@ -92,7 +92,7 @@ end = struct
 
     fun checkKindEq kinds = if kindEq kinds
                             then ()
-                            else raise Fail (FFType.kindToString (#1 kinds) ^ " != " ^ FFType.kindToString (#2 kinds))
+                            else raise Fail (Kind.toString (#1 kinds) ^ " != " ^ Kind.toString (#2 kinds))
 
     fun skolemize env ((params, body), (params', body')) f =
         let do Vector1.zip (params, params') (* FIXME: arity errors *)

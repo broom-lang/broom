@@ -52,25 +52,25 @@ end = struct
     fun monotypeKind env pos =
         fn t as Exists _ | t as ForAll _ => raise TypeError (NonMonotype (pos, t))
          | Arrow (_, {domain, codomain}) =>
-            ( checkMonotypeKind env pos FType.TypeK domain
-            ; checkMonotypeKind env pos FType.TypeK codomain
-            ; FType.TypeK )
+            ( checkMonotypeKind env pos Kind.TypeK domain
+            ; checkMonotypeKind env pos Kind.TypeK codomain
+            ; Kind.TypeK )
          | Record row =>
-            ( checkMonotypeKind env pos FType.RowK row
-            ; FType.TypeK )
+            ( checkMonotypeKind env pos Kind.RowK row
+            ; Kind.TypeK )
          | RowExt {base, field = (_, fieldt)} =>
-            ( checkMonotypeKind env pos FType.RowK base
-            ; checkMonotypeKind env pos FType.TypeK fieldt
-            ; FType.TypeK )
-         | EmptyRow => FType.RowK
+            ( checkMonotypeKind env pos Kind.RowK base
+            ; checkMonotypeKind env pos Kind.TypeK fieldt
+            ; Kind.TypeK )
+         | EmptyRow => Kind.RowK
          | Type t =>
-            ( checkMonotypeKind env pos FType.TypeK t
-            ; FType.TypeK )
+            ( checkMonotypeKind env pos Kind.TypeK t
+            ; Kind.TypeK )
          | App {callee, args} =>
             let fun checkArgKind i calleeKind =
                     if i < Vector1.length args
                     then case calleeKind
-                         of FType.ArrowK {domain, codomain} =>
+                         of Kind.ArrowK {domain, codomain} =>
                              ( checkMonotypeKind env pos domain (Vector1.sub (args, i))
                              ; checkArgKind (i + 1) codomain )
                           | _ => raise TypeError (TypeCtorArity (pos, callee, calleeKind, Vector1.length args))
@@ -84,7 +84,7 @@ end = struct
             if isSome (Env.findType env var)
             then kind
             else raise TypeError (OutsideScope (pos, var |> FType.Id.toString |> Name.fromString))
-         | Prim _ => FType.TypeK
+         | Prim _ => Kind.TypeK
 
     and checkMonotypeKind env pos kind t =
         let val kind' = monotypeKind env pos t

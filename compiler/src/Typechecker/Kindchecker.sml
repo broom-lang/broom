@@ -64,7 +64,7 @@ end = struct
                     Vector1.foldl (fn ({var, kind}, mapping) =>
                                        let val args = Env.universalParams env
                                            val kind = Vector.foldr (fn ({var = _, kind = argKind}, kind) =>
-                                                                        FType.ArrowK { domain = argKind
+                                                                        Kind.ArrowK { domain = argKind
                                                                                      , codomain = kind })
                                                                    kind args
                                            val var' = Bindings.Type.fresh absBindings kind
@@ -94,8 +94,8 @@ end = struct
                             let val (nonCallsiteTypeDefs, domain) =
                                     case domain
                                     of SOME domain => elaborateType env domain
-                                     | NONE => ([], FType.SVar (FType.UVar (TypeVars.Uv.fresh env FType.TypeK)))
-                                val callsite = {var = FType.Id.fresh (), kind = FType.CallsiteK}
+                                     | NONE => ([], FType.SVar (FType.UVar (TypeVars.Uv.fresh env Kind.TypeK)))
+                                val callsite = {var = FType.Id.fresh (), kind = Kind.CallsiteK}
                                 val typeDefs = callsite :: nonCallsiteTypeDefs
 
                                 val env = Env.pushScope env (Scope.ForAllScope ( Scope.Id.fresh ()
@@ -136,7 +136,7 @@ end = struct
                             end
                          | CType.EmptyRow _ => FType.EmptyRow
                          | CType.WildRow _ =>
-                            let val kind = FType.RowK
+                            let val kind = Kind.RowK
                                 val var = Bindings.Type.fresh absBindings kind
                             in FType.UseT {var, kind}
                             end
@@ -183,8 +183,8 @@ end = struct
                          | CType.TypeT _ =>
                             let val args = Env.universalParams env
                                 val kind = Vector.foldr (fn ({var = _, kind = argKind}, kind) =>
-                                                             FType.ArrowK {domain = argKind, codomain = kind})
-                                                        FType.TypeK args
+                                                             Kind.ArrowK {domain = argKind, codomain = kind})
+                                                        Kind.TypeK args
                                 val var = Bindings.Type.fresh absBindings kind
                                 val use =
                                     case Vector1.fromVector args
