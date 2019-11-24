@@ -120,7 +120,7 @@ end = struct
          | TFn (_, _, body) => continue cont (Thunk (env, body))
          | App (_, _, {callee, arg}) => eval env (Callee (env, arg) :: cont) callee
          | TApp (_, _, {callee, ...}) => eval env (Forcee :: cont) callee
-         | PrimApp (_, _, opn, args) =>
+         | PrimApp (_, _, opn, _, args) =>
             (case Vector.uncons args
              of SOME (arg, args) => eval env (PrimArg (env, opn, args, []) :: cont) arg
               | NONE => applyPrim env cont opn #[])

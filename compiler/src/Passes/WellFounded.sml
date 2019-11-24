@@ -312,7 +312,7 @@ end = struct
                          in (Unknown, Support.union (calleeSupport, argSupport))
                          end)
                  | TApp (_, _, {callee, args = _}) => checkExpr ini ctx callee
-                 | PrimApp (_, _, _, args) =>
+                 | PrimApp (_, _, _, _, args) =>
                     ( Unknown
                     , Vector.foldl (fn (arg, support) =>
                                         let val (_, argSupport) = checkExpr ini ctx arg

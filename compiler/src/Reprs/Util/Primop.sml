@@ -3,8 +3,6 @@ structure Primop :> sig
 
     val fromString : string -> t option
     val toDoc : t -> PPrint.t
-
-    val typeOf : t -> {domain: PrimType.t vector, codomain: PrimType.t}
 end = struct
     datatype t = IAdd | ISub | IMul | IDiv
 
@@ -21,9 +19,5 @@ end = struct
              | ISub => "iSub"
              | IMul => "iMul"
              | IDiv => "iDiv"))
-
-    val typeOf =
-        fn IAdd | ISub | IMul | IDiv =>
-            {domain = #[PrimType.I32, PrimType.I32], codomain = PrimType.I32}
 end
 

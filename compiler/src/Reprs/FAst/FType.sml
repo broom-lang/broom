@@ -1,5 +1,5 @@
 signature FAST_TYPE = sig
-    structure Id: ID
+    structure Id: ID where type t = DefId.t
     structure Prim: PRIM_TYPE where type t = PrimType.t
 
     type kind = Kind.t
@@ -45,6 +45,7 @@ signature FAST_TYPE = sig
     val arrowDoc: arrow -> PPrint.t
     val piEffect: 'sv concr -> effect option
     val rowExtBase: 'sv concr -> 'sv concr
+    val primopType : Primop.t -> def vector * {domain: 'sv concr vector, codomain: 'sv concr}
     val kindDefault : kind -> 'sv concr
     
     structure Concr: sig
@@ -77,7 +78,7 @@ structure FType :> FAST_TYPE = struct
     val braces = PPrint.braces
     val align = PPrint.align
 
-    structure Id = Id(struct end)
+    structure Id = DefId
 
     structure Prim = PrimType
 
@@ -296,6 +297,12 @@ structure FType :> FAST_TYPE = struct
     val rec rowExtBase =
         fn RowExt {base, ...} => rowExtBase base
          | t => t
+
+    local datatype primop = datatype Primop.t
+    in  val primopType =
+            fn IAdd | ISub | IMul | IDiv =>
+                (#[], {domain = #[Prim Prim.I32, Prim Prim.I32], codomain = Prim Prim.I32})
+    end
 
     val kindDefault =
         fn TypeK => Record EmptyRow

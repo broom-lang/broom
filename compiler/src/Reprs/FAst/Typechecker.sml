@@ -186,14 +186,20 @@ end = struct
          | Where args => checkWhere env args
          | App app => checkApp env app
          | TApp app => checkTApp env app
-         | PrimApp (pos, typ, opn, args) =>
-            let val {domain, codomain} = Primop.typeOf opn
+         | PrimApp (pos, typ, opn, targs, args) =>
+            let val (tparams, {domain, codomain}) = FType.primopType opn
+                val mapping = (tparams, targs)
+                    |> Vector.zipWith (fn ({var, ...}, arg) => (var, arg))
+                    |> FType.Id.SortedMap.fromVector
+                val domain = Vector.map (Concr.substitute Fn.undefined mapping) domain
+                val codomain = Concr.substitute Fn.undefined mapping codomain
+                
                 do if not (Vector.length domain = Vector.length args)
                    then raise Fail "argc"
                    else ()
-                do Vector.app (fn (pt, arg) => checkEq pos env (Prim pt, check env arg))
+                do Vector.app (fn (t, arg) => checkEq pos env (t, check env arg))
                               (Vector.zip (domain, args))
-            in checkEq pos env (typ, Prim codomain)
+            in checkEq pos env (typ, codomain)
              ; typ
             end
          | Field access => checkField env access

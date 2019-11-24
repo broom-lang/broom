@@ -15,7 +15,7 @@ signature FAST_TERM = sig
         | Where of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector1}
-        | PrimApp of Pos.span * Type.concr * Primop.t * expr vector
+        | PrimApp of Pos.span * Type.concr * Primop.t * Type.concr vector * expr vector
         | Field of Pos.span * Type.concr * expr * Name.t
         | Letrec of Pos.span * stmt vector1 * expr
         | Let of Pos.span * stmt vector1 * expr
@@ -91,7 +91,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         | Where of Pos.span * Type.concr * {base : expr, field : Name.t * expr}
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector1}
-        | PrimApp of Pos.span * Type.concr * Primop.t * expr vector
+        | PrimApp of Pos.span * Type.concr * Primop.t * Type.concr vector * expr vector
         | Field of Pos.span * Type.concr * expr * Name.t
         | Letrec of Pos.span * stmt vector1 * expr
         | Let of Pos.span * stmt vector1 * expr
@@ -120,7 +120,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | Without (pos, _, _) => pos
          | Where (pos, _, _) => pos
          | App (pos, _, _) => pos
-         | PrimApp (pos, _, _, _) => pos
+         | PrimApp (pos, _, _, _, _) => pos
          | TApp (pos, _, _) => pos
          | Field (pos, _, _, _) => pos
          | Letrec (pos, _, _) => pos
@@ -180,8 +180,10 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
                                             |> Vector1.map (Type.Concr.toDoc env)
                                             |> PPrint.punctuate1 space
                                             |> brackets))
-        | PrimApp (_, _, opn, args) =>
-           parens (Primop.toDoc opn <+> punctuate space (Vector.map (exprToDoc env) args))
+        | PrimApp (_, _, opn, targs, args) =>
+           parens (Primop.toDoc opn
+                   <+> brackets (punctuate (text "," <> space) (Vector.map (Type.Concr.toDoc env) targs))
+                   <+> punctuate space (Vector.map (exprToDoc env) args))
         | Field (_, _, expr, label) =>
            parens (exprToDoc env expr <> text "." <> Name.toDoc label)
         | Letrec (_, stmts, body) =>
@@ -255,7 +257,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | With (_, typ, _) => typ
          | Without (_, typ, _) => typ
          | Where (_, typ, _) => typ
-         | App (_, typ, _) | TApp (_, typ, _) | PrimApp (_, typ, _, _) => typ
+         | App (_, typ, _) | TApp (_, typ, _) | PrimApp (_, typ, _, _, _) => typ
          | Field (_, typ, _, _) => typ
          | Letrec (_, _, body) => typeOf body
          | Let (_, _, body) => typeOf body

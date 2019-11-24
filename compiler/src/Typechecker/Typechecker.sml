@@ -211,19 +211,24 @@ end = struct
                , FTerm.App (pos, codomain, {callee, arg}) )
             end
          | CTerm.PrimApp (pos, opn, args) =>
-            let val {domain, codomain} = Primop.typeOf opn
+            let val (tparams, {domain, codomain}) = FType.primopType opn
+                val mapping = tparams
+                    |> Vector.map (fn {var, kind} => (var, SVar (UVar (Uv.fresh env kind))))
+                    |> Id.SortedMap.fromVector
+                val domain = Vector.map (Concr.substitute env mapping) domain
+                val codomain = Concr.substitute env mapping codomain
+
                 do if not (Vector.length domain = Vector.length args)
                    then raise Fail "argc"
                    else ()
                 val (eff, revArgs) =
                     Vector.foldl (fn ((t, arg), (eff, revArgs)) =>
-                                      let val (argEff, arg) = elaborateExprAs env (FType.Prim t) arg
+                                      let val (argEff, arg) = elaborateExprAs env t arg
                                       in (joinEffs (eff, argEff), arg :: revArgs)
                                       end)
                                  (Pure, [])
                                  (Vector.zip (domain, args))
-                val t = FType.Prim codomain
-            in (eff, t, FTerm.PrimApp (pos, t, opn, Vector.fromList (List.rev revArgs)))
+            in (eff, codomain, FTerm.PrimApp (pos, codomain, opn, domain, Vector.fromList (List.rev revArgs)))
             end
          | CTerm.Field (pos, expr, label) =>
             let val (eff, t, expr) = elaborateExpr env expr
