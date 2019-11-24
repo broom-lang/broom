@@ -212,9 +212,10 @@ end = struct
             end
          | CTerm.PrimApp (pos, opn, args) =>
             let val (tparams, {domain, codomain}) = FType.primopType opn
-                val mapping = tparams
-                    |> Vector.map (fn {var, kind} => (var, SVar (UVar (Uv.fresh env kind))))
-                    |> Id.SortedMap.fromVector
+                val namedTargs = Vector.map (fn {var, kind} => (var, SVar (UVar (Uv.fresh env kind))))
+                                            tparams
+                val targs = Vector.map #2 namedTargs
+                val mapping = Id.SortedMap.fromVector namedTargs
                 val domain = Vector.map (Concr.substitute env mapping) domain
                 val codomain = Concr.substitute env mapping codomain
 
@@ -228,7 +229,7 @@ end = struct
                                       end)
                                  (Pure, [])
                                  (Vector.zip (domain, args))
-            in (eff, codomain, FTerm.PrimApp (pos, codomain, opn, domain, Vector.fromList (List.rev revArgs)))
+            in (eff, codomain, FTerm.PrimApp (pos, codomain, opn, targs, Vector.fromList (List.rev revArgs)))
             end
          | CTerm.Field (pos, expr, label) =>
             let val (eff, t, expr) = elaborateExpr env expr

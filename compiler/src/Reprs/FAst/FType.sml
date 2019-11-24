@@ -302,6 +302,28 @@ structure FType :> FAST_TYPE = struct
     in  val primopType =
             fn IAdd | ISub | IMul | IDiv =>
                 (#[], {domain = #[Prim Prim.I32, Prim Prim.I32], codomain = Prim Prim.I32})
+             | ArrayNew =>
+                let val def = {var = Id.fresh (), kind = Kind.TypeK}
+                in (#[def], { domain = #[Prim Prim.I32]
+                            , codomain = App {callee = Prim Prim.Array, args = Vector1.singleton (UseT def)}} )
+                end
+             | ArrayCount =>
+                let val def = {var = Id.fresh (), kind = Kind.TypeK}
+                in (#[def], { domain = #[App {callee = Prim Prim.Array, args = Vector1.singleton (UseT def)}]
+                            , codomain = Prim Prim.I32 })
+                end
+             | ArrayGet =>
+                let val def = {var = Id.fresh (), kind = Kind.TypeK}
+                in (#[def], { domain = #[ App {callee = Prim Prim.Array, args = Vector1.singleton (UseT def)}
+                                        , Prim Prim.I32 ]
+                            , codomain = UseT def })
+                end
+             | ArrayUnsafeSet =>
+                let val def = {var = Id.fresh (), kind = Kind.TypeK}
+                in (#[def], { domain = #[ App {callee = Prim Prim.Array, args = Vector1.singleton (UseT def)}
+                                        , Prim Prim.I32 , UseT def ]
+                            , codomain = Record EmptyRow })
+                end
     end
 
     val kindDefault =
