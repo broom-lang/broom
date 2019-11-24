@@ -35,6 +35,7 @@ signature CST = sig
         | Module of Pos.span * (pat option * expr) option
                   * (pat, expr) member vector
         | App of Pos.span * {callee: expr, arg: expr}
+        | PrimApp of Pos.span * Primop.t * expr vector
         | Field of Pos.span * expr * Name.t
         | Ann of Pos.span * expr * typ
         | Type of Pos.span * typ
@@ -147,6 +148,7 @@ structure Cst :> CST = struct
         | Module of Pos.span * (pat option * expr) option
                   * (pat, expr) member vector
         | App of Pos.span * {callee: expr, arg: expr}
+        | PrimApp of Pos.span * Primop.t * expr vector
         | Field of Pos.span * expr * Name.t
         | Ann of Pos.span * expr * typ
         | Type of Pos.span * typ
@@ -190,6 +192,7 @@ structure Cst :> CST = struct
          | Record (pos, _) => pos
          | Module (pos, _, _) => pos
          | App (pos, _) => pos
+         | PrimApp (pos, _, _) => pos
          | Field (pos, _, _) => pos
          | Ann (pos, _, _) => pos
          | Type (pos, _) => pos
@@ -285,6 +288,8 @@ structure Cst :> CST = struct
                     <++> text "end"
             end
          | App (_, {callee, arg}) => parens (exprToDoc callee <+> exprToDoc arg)
+         | PrimApp (_, opn, args) =>
+            parens (Primop.toDoc opn <+> punctuate space (Vector.map exprToDoc args))
          | Field (_, expr, label) => parens (exprToDoc expr <> text "." <> Name.toDoc label)
          | Begin (_, defns, body) =>
             text "begin" <+> PPrint.align (defnsToDoc defns) 

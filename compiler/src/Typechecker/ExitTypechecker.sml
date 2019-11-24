@@ -69,6 +69,8 @@ end = struct
             FFTerm.App (pos, concrToF env typ, {callee = exprToF env callee, arg = exprToF env arg})
          | TApp (pos, typ, {callee, args}) =>
             FFTerm.TApp (pos, concrToF env typ, {callee = exprToF env callee, args = Vector1.map (concrToF env) args})
+         | PrimApp (pos, typ, opn, args) =>
+            FFTerm.PrimApp (pos, concrToF env typ, opn, Vector.map (exprToF env) args)
          | Field (pos, typ, expr, label) =>
             FFTerm.Field (pos, concrToF env typ, exprToF env expr, label)
          | Cast (pos, typ, expr, coercion) =>

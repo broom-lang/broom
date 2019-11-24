@@ -63,6 +63,7 @@
     | RBRACE ("}")
 
     | META of Name.t
+    | INTRINSIC of Primop.t
     | ID of Name.t
 
     | INT of int
@@ -145,7 +146,11 @@ arr
 
 binapp : app ;
 
-app : select selects=(select => (select_SPAN, select))* => (
+app
+    : INTRINSIC selects=select* => (
+          Term.PrimApp (FULL_SPAN, INTRINSIC, Vector.fromList selects)
+      )
+    | select selects=(select => (select_SPAN, select))* => (
         List.foldl (fn ((pos, arg), callee) => Term.App (pos, {callee, arg}))
                    select selects
     );

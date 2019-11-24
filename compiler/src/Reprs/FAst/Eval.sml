@@ -34,6 +34,7 @@ end = struct
     datatype frame = Def of env * Name.t
                    | Callee of env * expr
                    | Arg of value
+                   | PrimArg of env * Primop.t * expr VectorSlice.slice * value list
                    | Forcee
                    | BlockCont of env * stmt Vector1.Slice.slice * expr
                    | Branches of env * clause VectorSlice.slice
@@ -119,6 +120,10 @@ end = struct
          | TFn (_, _, body) => continue cont (Thunk (env, body))
          | App (_, _, {callee, arg}) => eval env (Callee (env, arg) :: cont) callee
          | TApp (_, _, {callee, ...}) => eval env (Forcee :: cont) callee
+         | PrimApp (_, _, opn, args) =>
+            (case Vector.uncons args
+             of SOME (arg, args) => eval env (PrimArg (env, opn, args, []) :: cont) arg
+              | NONE => applyPrim env cont opn #[])
          | EmptyRecord _ => continue cont Value.emptyRecord
          | With (_, _, {base, field}) | Where (_, _, {base, field}) =>
             eval env (Extension (env, field) :: cont) base
@@ -152,6 +157,20 @@ end = struct
         of Thunk (env, body) => eval env cont body
          | _ => raise Fail "unreachable"
 
+    and applyPrim env cont opn args =
+        case opn
+        of Primop.IAdd | Primop.ISub | Primop.IMul | Primop.IDiv =>
+            (case args
+             of #[Int a, Int b] =>
+                 let val n =
+                         case opn
+                         of Primop.IAdd => a + b
+                          | Primop.ISub => a - b
+                          | Primop.IMul => a * b
+                          (*| Primop.IDiv => a / b*)
+                 in continue cont (Int n)
+                 end)
+
     (* TODO: When user code can run inside patterns, will need to capture position in pattern in cont: *)
     and match env cont clauses value =
         case VectorSlice.uncons clauses
@@ -184,6 +203,12 @@ end = struct
          | Callee (env, arg) :: cont => eval env (Arg value :: cont) arg
          | Arg f :: cont => apply cont f value
          | Forcee :: cont => force cont value
+         | PrimArg (env, opn, argExprs, args) :: cont =>
+            (case VectorSlice.uncons argExprs
+             of SOME (argExpr, argExprs) =>
+                 eval env (PrimArg (env, opn, argExprs, value :: args) :: cont) argExpr
+              | NONE =>
+                 applyPrim env cont opn (Vector.fromList (List.rev (value :: args))))
          | BlockCont (env, stmts, body) :: cont =>
             (case Vector1.Slice.uncons stmts
              of SOME (stmt, stmts) =>

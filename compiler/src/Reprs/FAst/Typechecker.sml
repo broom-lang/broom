@@ -186,6 +186,16 @@ end = struct
          | Where args => checkWhere env args
          | App app => checkApp env app
          | TApp app => checkTApp env app
+         | PrimApp (pos, typ, opn, args) =>
+            let val {domain, codomain} = Primop.typeOf opn
+                do if not (Vector.length domain = Vector.length args)
+                   then raise Fail "argc"
+                   else ()
+                do Vector.app (fn (pt, arg) => checkEq pos env (Prim pt, check env arg))
+                              (Vector.zip (domain, args))
+            in checkEq pos env (typ, Prim codomain)
+             ; typ
+            end
          | Field access => checkField env access
          | Letrec lett => checkLetrec env lett
          | Match match => checkMatch env match

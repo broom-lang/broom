@@ -53,6 +53,7 @@ True     => (Tokens.BOOL true);
 False    => (Tokens.BOOL false);
 
 @ {constituent}+                  => (Tokens.META (Name.fromString (String.extract (yytext, 1, NONE))));
+__ {constituent}+                 => (Tokens.INTRINSIC (valOf (Primop.fromString yytext)));
 {firstConstituent} {constituent}* => (Tokens.ID (Name.fromString yytext));
 
 # [^\n]*           => (continue ());

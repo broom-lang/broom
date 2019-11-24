@@ -312,6 +312,13 @@ end = struct
                          in (Unknown, Support.union (calleeSupport, argSupport))
                          end)
                  | TApp (_, _, {callee, args = _}) => checkExpr ini ctx callee
+                 | PrimApp (_, _, _, args) =>
+                    ( Unknown
+                    , Vector.foldl (fn (arg, support) =>
+                                        let val (_, argSupport) = checkExpr ini ctx arg
+                                        in Support.union (support, argSupport)
+                                        end)
+                                   Support.empty args )
                  | With (_, _, {base, field = (label, fieldExpr)}) =>
                     let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
                         val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
