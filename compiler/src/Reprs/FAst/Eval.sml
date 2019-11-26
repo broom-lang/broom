@@ -10,6 +10,7 @@ structure FAstEval :> sig
     val newToplevel: unit -> toplevel
     val interpret: toplevel -> FixedFAst.Term.stmt -> Value.t
 end = struct
+    structure FType = FixedFAst.Type
     structure FTerm = FixedFAst.Term
     datatype expr = datatype FTerm.expr
     datatype stmt = datatype FTerm.stmt
@@ -19,8 +20,11 @@ end = struct
     datatype value = Closure of env * Name.t * expr
                    | Thunk of env * expr
                    | Record of value NameHashTable.hash_table
+                   | Array of value array
+                   | TypeWitness of FType.concr
                    | Int of int
                    | Bool of bool
+                   | Uninitialized
 
     and env = Toplevel of bindings
             | FnScope of env * Name.t * value
@@ -64,9 +68,16 @@ end = struct
                 in PPrint.braces (PPrint.punctuate (text "," <> PPrint.space)
                                                    fieldDocs)
                 end
+             | Array vs =>
+                PPrint.brackets (PPrint.punctuate (text "," <> PPrint.space)
+                                                  (Array.vector vs
+                                                  |> Vector.map toDoc))
+             | TypeWitness t =>
+                PPrint.brackets (text "=" <+> FType.Concr.toDoc () t)
              | Int n => text (Int.toString n)
              | Bool true => text "True"
              | Bool false => text "False"
+             | Uninitialized => text "#<uninitialized>"
         and fieldToDoc = fn (label, v) => Name.toDoc label <+> text "=" <+> toDoc v
 
         val toString = PPrint.pretty 80 o toDoc
@@ -138,7 +149,7 @@ end = struct
             eval env (Branches (env, VectorSlice.full clauses) :: cont) matchee
          | Field (_, _, expr, label) => eval env (GetField label :: cont) expr
          | Cast (_, _, expr, _) => eval env cont expr
-         | Type _ => continue cont Value.emptyRecord
+         | Type (_, t) => continue cont (TypeWitness t)
          | Use (_, {var, ...}) => continue cont (lookup env var)
          | Const (_, c) => continue cont (constValue c)
 
@@ -170,6 +181,25 @@ end = struct
                           (*| Primop.IDiv => a / b*)
                  in continue cont (Int n)
                  end)
+         | Primop.ArrayT =>
+            (case args
+             of #[TypeWitness t] =>
+                 continue cont (TypeWitness (FType.App { callee = FType.Prim PrimType.Array
+                                                       , args = Vector1.singleton t })))
+         | Primop.ArrayNew =>
+            (case args
+             of #[Int count] => continue cont (Array (Array.array (count, Uninitialized))))
+         | Primop.ArrayCount =>
+            (case args
+             of #[Array vs] => continue cont (Int (Array.length vs)))
+         | Primop.ArrayGet =>
+            (case args
+             of #[Array vs, Int i] => continue cont (Array.sub (vs, i)))
+         | Primop.ArrayUnsafeSet =>
+            (case args
+             of #[Array vs, Int i, v] =>
+                 ( Array.update (vs, i, v)
+                 ; Value.emptyRecord ))
 
     (* TODO: When user code can run inside patterns, will need to capture position in pattern in cont: *)
     and match env cont clauses value =
