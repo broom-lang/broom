@@ -211,7 +211,7 @@ end = struct
                , FTerm.App (pos, codomain, {callee, arg}) )
             end
          | CTerm.PrimApp (pos, opn, args) =>
-            let val (tparams, {domain, codomain}) = FType.primopType opn
+            let val (tparams, appEff, {domain, codomain}) = FType.primopType opn
                 val namedTargs = Vector.map (fn {var, kind} => (var, SVar (UVar (Uv.fresh env kind))))
                                             tparams
                 val targs = Vector.map #2 namedTargs
@@ -227,7 +227,7 @@ end = struct
                                       let val (argEff, arg) = elaborateExprAs env t arg
                                       in (joinEffs (eff, argEff), arg :: revArgs)
                                       end)
-                                 (Pure, [])
+                                 (appEff, [])
                                  (Vector.zip (domain, args))
             in (eff, codomain, FTerm.PrimApp (pos, codomain, opn, targs, Vector.fromList (List.rev revArgs)))
             end

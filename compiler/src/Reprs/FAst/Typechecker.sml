@@ -187,7 +187,7 @@ end = struct
          | App app => checkApp env app
          | TApp app => checkTApp env app
          | PrimApp (pos, typ, opn, targs, args) =>
-            let val (tparams, {domain, codomain}) = FType.primopType opn
+            let val (tparams, _, {domain, codomain}) = FType.primopType opn
                 val mapping = (tparams, targs)
                     |> Vector.zipWith (fn ({var, ...}, arg) => (var, arg))
                     |> FType.Id.SortedMap.fromVector
