@@ -105,6 +105,12 @@ end = struct
         Option.map (fn {field = _, ext} => withField ext field)
                    (rewriteRow label row)
 
+    fun withoutField (RowExt {ext, field = field as (label, _)}) label' =
+        if label = label'
+        then SOME ext
+        else Option.map (fn ext => RowExt {ext, field})
+                        (withoutField ext label')
+
     fun rowField row label =
         let val rec get =
                 fn RowExt {field = (label', fieldt), ext} =>
@@ -235,7 +241,7 @@ end = struct
                         if DefId.HashTable.inDomain bs name
                         then DefId.HashTable.insert bs (name, Initialized)
                         else init frames
-                     | FnFrame _ :: frames => init frames
+                     | (MatchFrame _ | FnFrame _) :: frames => init frames
                      | [] => raise Fail "unreachable"
             in init ini
             end
@@ -284,7 +290,12 @@ end = struct
                  | TFn (_, _, body) => checkExpr ini ctx body
                  | Letrec (_, stmts, body) =>
                     let val ini = pushBlock ini (Vector1.toVector stmts)
-                        val stmtsSupport = checkStmts ini (Vector1.toVector stmts)
+                        val stmtsSupport = checkDefns ini (Vector1.toVector stmts)
+                        val (typ, bodySupport) = checkExpr ini ctx body
+                    in (typ, Support.union (stmtsSupport, bodySupport))
+                    end
+                 | Let (_, stmts, body) =>
+                    let val (ini, stmtsSupport) = checkStmts ini stmts
                         val (typ, bodySupport) = checkExpr ini ctx body
                     in (typ, Support.union (stmtsSupport, bodySupport))
                     end
@@ -330,6 +341,10 @@ end = struct
                         val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
                     in ( Record (valOf (whereField base (label, fieldTyp)))
                        , Support.union (baseSupport, fieldSupport) )
+                    end
+                 | Without (_, _, {base, field}) =>
+                    let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
+                    in (Record (valOf (withoutField base field)), baseSupport)
                     end
                  | Field (_, _, expr, label) =>
                     let val (recTyp, support) = checkExpr ini ctx expr
@@ -377,12 +392,12 @@ end = struct
                 in IniEnv.pushBlock ini ids
                 end
 
-            and checkStmts ini stmts =
+            and checkDefns ini stmts =
                 Vector.foldl (fn (stmt, support) =>
-                                  Support.union (support, checkStmt ini stmt))
+                                  Support.union (support, checkDefn ini stmt))
                              Support.empty stmts
 
-            and checkStmt ini =
+            and checkDefn ini =
                 fn Axiom _ => Support.empty
                  | Val (_, {id, typ = _, ...}, expr) =>
                     let val (typ, support) = checkExpr ini Naming expr
@@ -392,6 +407,24 @@ end = struct
                     in support
                     end
                  | Expr expr => #2 (checkExpr ini Escaping expr)
+
+            and checkStmts ini stmts =
+                Vector1.foldl (fn (stmt, (ini, support)) =>
+                                   let val (ini, stmtSupport) = checkStmt ini stmt
+                                   in (ini, Support.union (support, stmtSupport))
+                                   end)
+                              (ini, Support.empty) stmts
+
+            and checkStmt ini =
+                fn Axiom _ => (ini, Support.empty)
+                 | Val (_, {id, ...}, expr) =>
+                    let val (typ, support) = checkExpr ini Naming expr
+                        val refineChanged = Env.refine env id typ
+                        do changed := (!changed orelse refineChanged)
+                        val ini = IniEnv.pushMatch ini id
+                    in (ini, support)
+                    end
+                 | Expr expr => (ini, #2 (checkExpr ini Escaping expr))
 
             and checkClause ini ctx {pattern, body} =
                 let val ini = checkPattern ini ctx pattern
@@ -405,7 +438,7 @@ end = struct
             fun iterate stmts =
                 let do changed := false
                     do errors := []
-                    do ignore (checkStmts (pushBlock IniEnv.empty stmts) stmts)
+                    do ignore (checkDefns (pushBlock IniEnv.empty stmts) stmts)
                 in if !changed
                    then iterate stmts
                    else ()
