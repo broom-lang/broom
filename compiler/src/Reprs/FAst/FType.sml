@@ -330,6 +330,28 @@ structure FType :> FAST_TYPE = struct
                                               , Prim Prim.I32 , UseT def ]
                                   , codomain = Record EmptyRow })
                 end
+             | BoxT =>
+                let val def = {var = Id.fresh (), kind = Kind.TypeK}
+                in (#[def], Pure, { domain = #[Type (UseT def)]
+                                  , codomain = Type (App { callee = Prim Prim.Box
+                                                         , args = Vector1.singleton (UseT def) }) })
+                end
+             | BoxNew =>
+                let val def = {var = Id.fresh (), kind = Kind.TypeK}
+                in (#[def], Pure, { domain = #[]
+                                  , codomain = App {callee = Prim Prim.Box, args = Vector1.singleton (UseT def)} })
+                end
+             | BoxGet =>
+                let val def = {var = Id.fresh (), kind = Kind.TypeK}
+                in (#[def], Pure, { domain = #[App {callee = Prim Prim.Box, args = Vector1.singleton (UseT def)}]
+                                  , codomain = UseT def })
+                end
+             | BoxInit =>
+                let val def = {var = Id.fresh (), kind = Kind.TypeK}
+                in (#[def], Pure, { domain = #[ App {callee = Prim Prim.Box, args = Vector1.singleton (UseT def)}
+                                              , UseT def ]
+                                  , codomain = Record EmptyRow })
+                end
     end
 
     val kindDefault =

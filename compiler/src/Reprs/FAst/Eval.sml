@@ -21,6 +21,7 @@ end = struct
                    | Thunk of env * expr
                    | Record of value NameHashTable.hash_table
                    | Array of value array
+                   | Box of value ref
                    | TypeWitness of FType.concr
                    | Int of int
                    | Bool of bool
@@ -72,6 +73,7 @@ end = struct
                 PPrint.brackets (PPrint.punctuate (text "," <> PPrint.space)
                                                   (Array.vector vs
                                                   |> Vector.map toDoc))
+             | Box (ref v) => text "#<box" <+> toDoc v <> text ">"
              | TypeWitness t =>
                 PPrint.brackets (text "=" <+> FType.Concr.toDoc () t)
              | Int n => text (Int.toString n)
@@ -199,6 +201,20 @@ end = struct
             (case args
              of #[Array vs, Int i, v] =>
                  ( Array.update (vs, i, v)
+                 ; Value.emptyRecord ))
+         | Primop.BoxT =>
+            (case args
+             of #[TypeWitness t] =>
+                 continue cont (TypeWitness (FType.App { callee = FType.Prim PrimType.Box
+                                                       , args = Vector1.singleton t })))
+         | Primop.BoxNew => continue cont (Box (ref Uninitialized))
+         | Primop.BoxGet =>
+            (case args
+             of #[Box (ref v)] => continue cont v)
+         | Primop.BoxInit =>
+            (case args
+             of #[Box r, v] =>
+                 ( r := v
                  ; Value.emptyRecord ))
 
     (* TODO: When user code can run inside patterns, will need to capture position in pattern in cont: *)
