@@ -58,8 +58,13 @@ end = struct
                    of Right (program, _) =>
                        let val program = ExitTypechecker.programToF tenv program
                            val _ = log (PPrint.pretty 80 (FixedFAst.Term.programToDoc () program) ^ "\n")
-                       in  case WellFounded.checkProgram program
-                           of Right () =>
+                           do if lint
+                              then case FAstTypechecker.typecheckProgram program
+                                   of SOME err => raise Fail "Lint failed"
+                                   | NONE => ()
+                              else ()
+                       in  case WellFounded.elaborate program
+                           of Right program =>
                                if lint
                                then case FAstTypechecker.typecheckProgram program
                                     of SOME err => raise Fail "Lint failed"
@@ -88,8 +93,8 @@ end = struct
                 (case Typechecker.elaborateProgram tenv stmts
                  of Right (program, tenv) =>
                      let val program as {stmts, ...} = ExitTypechecker.programToF tenv program
-                     in  case WellFounded.checkProgram program
-                         of Right () =>
+                     in  case WellFounded.elaborate program
+                         of Right program =>
                              ( Vector.app (fn stmt as (Val (_, {var, typ, ...}, _)) =>
                                               let val v = FAstEval.interpret venv stmt
                                               in print ( Name.toString var ^ " = "
@@ -122,8 +127,8 @@ end = struct
                 (case Typechecker.elaborateProgram tenv stmts
                  of Right (program, tenv) =>
                      let val program = ExitTypechecker.programToF tenv program
-                     in  case WellFounded.checkProgram program
-                         of Right () =>
+                     in  case WellFounded.elaborate program
+                         of Right program =>
                              ( print (PPrint.pretty 80 (FixedFAst.Term.programToDoc () program))
                              ; tenv )
                           | Left errors =>

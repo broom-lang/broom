@@ -69,5 +69,7 @@ local
        end
     end
 in
-    src/main.sml
+    ann "allowSuccessorML true"
+    in  src/main.sml
+    end
 end

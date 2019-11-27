@@ -9,7 +9,7 @@ structure WellFounded :> sig
     
     val errorToDoc : Pos.sourcemap -> error -> PPrint.t
 
-    val checkProgram : FAst.Term.program -> (error vector, unit) Either.t
+    val elaborate : FAst.Term.program -> (error vector, FAst.Term.program) Either.t
 end = struct
     structure FAst = FixedFAst
     structure FTerm = FAst.Term
@@ -279,109 +279,122 @@ end = struct
             val errors = ref []
             fun error err = errors := err :: !errors
             
-            fun checkExpr ini ctx =
-                fn Fn (_, {id, ...}, _, body) =>
-                    let val ini = IniEnv.pushFn ini ctx id
-                        val (codomain, support) = checkExpr ini ctx body
-                    in case ctx
-                       of Escaping => (Closure (Support.empty, codomain), support)
-                        | Naming => (Closure (support, codomain), Support.empty)
-                    end
-                 | TFn (_, _, body) => checkExpr ini ctx body
-                 | Letrec (_, stmts, body) =>
-                    let val ini = pushBlock ini (Vector1.toVector stmts)
-                        val stmtsSupport = checkDefns ini (Vector1.toVector stmts)
-                        val (typ, bodySupport) = checkExpr ini ctx body
-                    in (typ, Support.union (stmtsSupport, bodySupport))
-                    end
-                 | Let (_, stmts, body) =>
-                    let val (ini, stmtsSupport) = checkStmts ini stmts
-                        val (typ, bodySupport) = checkExpr ini ctx body
-                    in (typ, Support.union (stmtsSupport, bodySupport))
-                    end
-                 | Match (_, _, matchee, clauses) =>
-                    let val (_, matcheeSupport) = checkExpr ini ctx matchee
-                        val (SOME clausesTyp, clausesSupport) =
-                            Vector.foldl (fn (clause, (_, support)) =>
-                                              let val (clauseTyp, clauseSupport) =
-                                                      checkClause ini ctx clause
-                                              in ( SOME clauseTyp
-                                                 , Support.union (support, clauseSupport) )
-                                              end)
-                                         (NONE, Support.empty) clauses
-                    in (clausesTyp, Support.union (matcheeSupport, clausesSupport))
-                    end
-                 | App (_, _, {callee, arg}) =>
-                    (case checkExpr ini Escaping callee
-                     of (Closure (_, codomain), calleeSupport) =>
-                         (*       ^-- should be empty because context was `Escaping`. *)
-                         let val (_, argSupport) = checkExpr ini Escaping arg
-                         in (codomain, Support.union (calleeSupport, argSupport))
-                         end
-                      | (_, calleeSupport) =>
-                         let val (_, argSupport) = checkExpr ini Escaping arg
-                         in (Unknown, Support.union (calleeSupport, argSupport))
-                         end)
-                 | TApp (_, _, {callee, args = _}) => checkExpr ini ctx callee
-                 | PrimApp (_, _, _, _, args) =>
-                    ( Unknown
-                    , Vector.foldl (fn (arg, support) =>
-                                        let val (_, argSupport) = checkExpr ini ctx arg
-                                        in Support.union (support, argSupport)
-                                        end)
-                                   Support.empty args )
-                 | With (_, _, {base, field = (label, fieldExpr)}) =>
-                    let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
-                        val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
-                    in ( Record (withField base (label, fieldTyp))
-                       , Support.union (baseSupport, fieldSupport) )
-                    end
-                 | Where (_, _, {base, field = (label, fieldExpr)}) =>
-                    let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
-                        val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
-                    in ( Record (valOf (whereField base (label, fieldTyp)))
-                       , Support.union (baseSupport, fieldSupport) )
-                    end
-                 | Without (_, _, {base, field}) =>
-                    let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
-                    in (Record (valOf (withoutField base field)), baseSupport)
-                    end
-                 | Field (_, _, expr, label) =>
-                    let val (recTyp, support) = checkExpr ini ctx expr
-                    in ( case recTyp
-                         of RowExt _ => valOf (rowField recTyp label)
-                          | _ => Unknown
-                       , support )
-                    end
-                 | Use (pos, def as {id, var, ...}) =>
-                    let fun access ini via (def as {id, var, ...}) =
-                            case IniEnv.access ini id
-                            of Delayed Initialized | Instant Initialized => (* ok unsupported: *)
-                                Support.empty
-                             | Delayed Uninitialized => (* ok with support: *)
-                                Support.singleton def
-                             | Instant Uninitialized => (* error: *)
-                                ( error (ReadUninitialized (pos, via, var))
-                                ; Support.empty ) (* support won't help, so claim not to need any *)
+            fun checkExpr ini ctx (Fn (_, {id, ...}, _, body)) =
+                let val ini = IniEnv.pushFn ini ctx id
+                    val (codomain, support) = checkExpr ini ctx body
+                in case ctx
+                   of Escaping => (Closure (Support.empty, codomain), support)
+                    | Naming => (Closure (support, codomain), Support.empty)
+                end
 
-                        val immediateSupport = access ini NONE def
-                        val (typ, transitiveSupport) =
-                            case ctx
-                            of Escaping => (* access transitively: *)
-                                let val (typ, typSupport) = accessTyp (Env.lookup env id)
-                                    val support =
-                                        Support.foldl (fn (def, support) =>
-                                                           Support.union ( support
-                                                                         , access ini (SOME var) def ))
-                                                      Support.empty typSupport
-                                in (typ, support)
-                                end
-                             | Naming => (* delayed propagation of support though type: *)
-                                (Env.lookup env id, Support.empty)
-                    in (typ, Support.union (immediateSupport, transitiveSupport))
-                    end
-                 | Cast (_, _, expr, _) => checkExpr ini ctx expr
-                 | EmptyRecord _ | Type _ | Const _ => (Scalar, Support.empty)
+              | checkExpr ini ctx (TFn (_, _, body)) = checkExpr ini ctx body
+
+              | checkExpr ini ctx (Letrec (_, stmts, body)) =
+                let val ini = pushBlock ini (Vector1.toVector stmts)
+                    val stmtsSupport = checkDefns ini (Vector1.toVector stmts)
+                    val (typ, bodySupport) = checkExpr ini ctx body
+                in (typ, Support.union (stmtsSupport, bodySupport))
+                end
+
+              | checkExpr ini ctx (Let (_, stmts, body)) =
+                let val (ini, stmtsSupport) = checkStmts ini stmts
+                    val (typ, bodySupport) = checkExpr ini ctx body
+                in (typ, Support.union (stmtsSupport, bodySupport))
+                end
+
+              | checkExpr ini ctx (Match (_, _, matchee, clauses)) =
+                let val (_, matcheeSupport) = checkExpr ini ctx matchee
+                    val (SOME clausesTyp, clausesSupport) =
+                        Vector.foldl (fn (clause, (_, support)) =>
+                                          let val (clauseTyp, clauseSupport) =
+                                                  checkClause ini ctx clause
+                                          in ( SOME clauseTyp
+                                             , Support.union (support, clauseSupport) )
+                                          end)
+                                     (NONE, Support.empty) clauses
+                in (clausesTyp, Support.union (matcheeSupport, clausesSupport))
+                end
+
+              | checkExpr ini ctx (App (_, _, {callee, arg})) =
+                (case checkExpr ini Escaping callee
+                 of (Closure (_, codomain), calleeSupport) =>
+                     (*       ^-- should be empty because context was `Escaping`. *)
+                     let val (_, argSupport) = checkExpr ini Escaping arg
+                     in (codomain, Support.union (calleeSupport, argSupport))
+                     end
+                  | (_, calleeSupport) =>
+                     let val (_, argSupport) = checkExpr ini Escaping arg
+                     in (Unknown, Support.union (calleeSupport, argSupport))
+                     end)
+
+              | checkExpr ini ctx (TApp (_, _, {callee, args = _})) = checkExpr ini ctx callee
+
+              | checkExpr ini ctx (PrimApp (_, _, _, _, args)) =
+                ( Unknown
+                , Vector.foldl (fn (arg, support) =>
+                                    let val (_, argSupport) = checkExpr ini ctx arg
+                                    in Support.union (support, argSupport)
+                                    end)
+                               Support.empty args )
+
+              | checkExpr ini ctx (With (_, _, {base, field = (label, fieldExpr)})) =
+                let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
+                    val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
+                in ( Record (withField base (label, fieldTyp))
+                   , Support.union (baseSupport, fieldSupport) )
+                end
+
+              | checkExpr ini ctx (Where (_, _, {base, field = (label, fieldExpr)})) =
+                let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
+                    val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
+                in ( Record (valOf (whereField base (label, fieldTyp)))
+                   , Support.union (baseSupport, fieldSupport) )
+                end
+
+              | checkExpr ini ctx (Without (_, _, {base, field})) =
+                let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
+                in (Record (valOf (withoutField base field)), baseSupport)
+                end
+
+              | checkExpr ini ctx (Field (_, _, expr, label)) =
+                let val (recTyp, support) = checkExpr ini ctx expr
+                in ( case recTyp
+                     of RowExt _ => valOf (rowField recTyp label)
+                      | _ => Unknown
+                   , support )
+                end
+
+              | checkExpr ini ctx (Use (pos, def as {id, var, ...})) =
+                let fun access ini via (def as {id, var, ...}) =
+                        case IniEnv.access ini id
+                        of Delayed Initialized | Instant Initialized => (* ok unsupported: *)
+                            Support.empty
+                         | Delayed Uninitialized => (* ok with support: *)
+                            Support.singleton def
+                         | Instant Uninitialized => (* error: *)
+                            ( error (ReadUninitialized (pos, via, var))
+                            ; Support.empty ) (* support won't help, so claim not to need any *)
+
+                    val immediateSupport = access ini NONE def
+                    val (typ, transitiveSupport) =
+                        case ctx
+                        of Escaping => (* access transitively: *)
+                            let val (typ, typSupport) = accessTyp (Env.lookup env id)
+                                val support =
+                                    Support.foldl (fn (def, support) =>
+                                                       Support.union ( support
+                                                                     , access ini (SOME var) def ))
+                                                  Support.empty typSupport
+                            in (typ, support)
+                            end
+                         | Naming => (* delayed propagation of support though type: *)
+                            (Env.lookup env id, Support.empty)
+                in (typ, Support.union (immediateSupport, transitiveSupport))
+                end
+
+              | checkExpr ini ctx (Cast (_, _, expr, _)) = checkExpr ini ctx expr
+
+              | checkExpr ini ctx (EmptyRecord _ | Type _ | Const _) = (Scalar, Support.empty)
 
             and pushBlock ini stmts =
                 let val ids =
@@ -445,8 +458,122 @@ end = struct
                 end
         in iterate stmts
          ; case !errors
-           of [] => Either.Right ()
+           of [] => Either.Right env
             | errs => Either.Left (Vector.fromList (List.rev errs))
         end
+
+        fun emit env {typeFns, stmts, sourcemap} =
+            let fun emitExpr ini ctx (Fn (pos, def as {id, ...}, arr, body)) =
+                let val ini = IniEnv.pushFn ini ctx id
+                in Fn (pos, def, arr, emitExpr ini ctx body)
+                end
+
+              | emitExpr ini ctx (TFn (pos, params, body)) = TFn (pos, params, emitExpr ini ctx body)
+
+              | emitExpr ini ctx (Letrec (pos, stmts, body)) =
+                let val ini = pushBlock ini (Vector1.toVector stmts)
+                    val stmts = valOf (Vector1.fromVector (emitDefns ini (Vector1.toVector stmts)))
+                    val body = emitExpr ini ctx body
+                in Letrec (pos, stmts, body)
+                end
+
+              | emitExpr ini ctx (Let (pos, stmts, body)) =
+                let val stmts = emitStmts ini stmts
+                    val body = emitExpr ini ctx body
+                in Let (pos, stmts, body)
+                end
+
+              | emitExpr ini ctx (Match (pos, t, matchee, clauses)) =
+                let val matchee = emitExpr ini ctx matchee
+                    val clauses = Vector.map (emitClause ini ctx) clauses
+                in Match (pos, t, matchee, clauses)
+                end
+
+              | emitExpr ini ctx (App (pos, t, {callee, arg})) =
+                App (pos, t, {callee = emitExpr ini Escaping callee, arg = emitExpr ini Escaping arg})
+
+              | emitExpr ini ctx (TApp (pos, t, {callee, args})) =
+                TApp (pos, t, {callee = emitExpr ini ctx callee, args})
+
+              | emitExpr ini ctx (PrimApp (pos, t, opn, targs, args)) =
+                PrimApp (pos, t, opn, targs, Vector.map (emitExpr ini ctx) args)
+
+              | emitExpr ini ctx (With (pos, t, {base, field = (label, fieldExpr)})) =
+                With (pos, t, {base = emitExpr ini ctx base, field = (label, emitExpr ini ctx fieldExpr)})
+
+              | emitExpr ini ctx (Where (pos, t, {base, field = (label, fieldExpr)})) =
+                Where (pos, t, {base = emitExpr ini ctx base, field = (label, emitExpr ini ctx fieldExpr)})
+
+              | emitExpr ini ctx (Without (pos, t, {base, field})) =
+                Without (pos, t, {base = emitExpr ini ctx base, field})
+
+              | emitExpr ini ctx (Field (pos, t, expr, label)) =
+                Field (pos, t, emitExpr ini ctx expr, label)
+
+              | emitExpr ini ctx (expr as Use (pos, def as {id, ...})) =
+                (case IniEnv.access ini id
+                 of Delayed Initialized | Instant Initialized => expr
+                  | Delayed Uninitialized => expr (* FIXME: Emit `__boxGet` and flag `id` as needing box. *)
+                  | Instant Uninitialized => raise Fail "unreachable")
+
+              | emitExpr ini ctx (Cast (pos, t, expr, co)) =
+                Cast (pos, t, emitExpr ini ctx expr, co)
+
+              | emitExpr ini ctx (expr as (EmptyRecord _ | Type _ | Const _)) = expr
+
+            and pushBlock ini stmts =
+                let val ids =
+                        Vector.foldl (fn (Axiom _, ids) => ids
+                                       | (Val (_, {id, ...}, _), ids) => id :: ids
+                                       | (Expr _, ids) => ids)
+                                     [] stmts
+                in IniEnv.pushBlock ini ids
+                end
+
+            and emitDefns ini stmts = Vector.map (emitDefn ini) stmts
+
+            and emitDefn ini =
+                fn defn as Axiom _ => defn
+                 | Val (pos, def as {id, ...}, expr) =>
+                    let val expr = emitExpr ini Naming expr
+                        do IniEnv.initialize ini id
+                    in Val (pos, def, expr)
+                    end
+                 | Expr expr => Expr (emitExpr ini Escaping expr)
+
+            and emitStmts ini stmts =
+                Vector1.foldl (fn (stmt, (ini, revStmts)) =>
+                                   let val (ini, stmt) = emitStmt ini stmt
+                                   in (ini, stmt :: revStmts)
+                                   end)
+                              (ini, []) stmts
+                |> #2
+                |> List.rev
+                |> Vector1.fromList
+                |> valOf
+
+            and emitStmt ini =
+                fn stmt as Axiom _ => (ini, stmt)
+                 | Val (pos, def as {id, ...}, expr) =>
+                    let val expr = emitExpr ini Naming expr
+                        val ini = IniEnv.pushMatch ini id
+                    in (ini, Val (pos, def, expr))
+                    end
+                 | Expr expr => (ini, Expr (emitExpr ini Escaping expr))
+
+            and emitClause ini ctx {pattern, body} =
+                let val (ini, pattern) = emitPattern ini ctx pattern
+                in {pattern, body = emitExpr ini ctx body}
+                end
+
+            and emitPattern ini ctx =
+                fn pat as Def (_, {id, ...}) => (IniEnv.pushMatch ini id, pat)
+                 | pat as ConstP _ => (ini, pat)
+        in {typeFns, stmts = emitDefns (pushBlock IniEnv.empty stmts) stmts, sourcemap}
+        end
+
+    fun elaborate program =
+        Either.map (fn ini => emit ini program)
+                   (checkProgram program)
 end
 
