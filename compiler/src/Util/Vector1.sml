@@ -9,6 +9,7 @@ structure Vector1 :> sig
 
     val length : 'a vector -> int
     val sub : 'a vector * int -> 'a
+    val concat : 'a vector list -> 'a vector option
     val foldl : ('a * 'b -> 'b) -> 'b -> 'a vector -> 'b
     val foldr : ('a * 'b -> 'b) -> 'b -> 'a vector -> 'b
     val map : ('a -> 'b) -> 'a vector -> 'b vector

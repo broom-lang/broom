@@ -462,8 +462,10 @@ end = struct
             | errs => Either.Left (Vector.fromList (List.rev errs))
         end
 
-        fun emit env {typeFns, stmts, sourcemap} =
-            let fun emitExpr ini ctx (Fn (pos, def as {id, ...}, arr, body)) =
+    fun emit env {typeFns, stmts, sourcemap} =
+        let val boxDefs = DefId.HashTable.mkTable (0, Subscript)
+
+            fun emitExpr ini ctx (Fn (pos, def as {id, ...}, arr, body)) =
                 let val ini = IniEnv.pushFn ini ctx id
                 in Fn (pos, def, arr, emitExpr ini ctx body)
                 end
@@ -474,6 +476,10 @@ end = struct
                 let val ini = pushBlock ini (Vector1.toVector stmts)
                     val stmts = valOf (Vector1.fromVector (emitDefns ini (Vector1.toVector stmts)))
                     val body = emitExpr ini ctx body
+                    val stmts =
+                        case boxAllocs pos (Vector1.toVector stmts)
+                        of SOME boxStmts => valOf (Vector1.concat [boxStmts, stmts])
+                         | NONE => stmts
                 in Letrec (pos, stmts, body)
                 end
 
@@ -510,10 +516,16 @@ end = struct
               | emitExpr ini ctx (Field (pos, t, expr, label)) =
                 Field (pos, t, emitExpr ini ctx expr, label)
 
-              | emitExpr ini ctx (expr as Use (pos, def as {id, ...})) =
+              | emitExpr ini ctx (expr as Use (pos, def as {pos = defPos, id, typ, ...})) =
                 (case IniEnv.access ini id
                  of Delayed Initialized | Instant Initialized => expr
-                  | Delayed Uninitialized => expr (* FIXME: Emit `__boxGet` and flag `id` as needing box. *)
+                  | Delayed Uninitialized =>
+                     let val boxDef = { pos = defPos, id = DefId.fresh (), var = Name.fresh ()
+                                      , typ = FType.App { callee = FType.Prim PrimType.Box
+                                                        , args = Vector1.singleton typ } }
+                     in DefId.HashTable.insert boxDefs (id, (typ, boxDef))
+                      ; PrimApp (pos, typ, Primop.BoxGet, #[typ], #[Use (pos, boxDef)])
+                     end
                   | Instant Uninitialized => raise Fail "unreachable")
 
               | emitExpr ini ctx (Cast (pos, t, expr, co)) =
@@ -530,16 +542,22 @@ end = struct
                 in IniEnv.pushBlock ini ids
                 end
 
-            and emitDefns ini stmts = Vector.map (emitDefn ini) stmts
+            and emitDefns ini stmts = Vector.flatMap (emitDefn ini) stmts
 
             and emitDefn ini =
-                fn defn as Axiom _ => defn
+                fn defn as Axiom _ => #[defn]
                  | Val (pos, def as {id, ...}, expr) =>
                     let val expr = emitExpr ini Naming expr
                         do IniEnv.initialize ini id
-                    in Val (pos, def, expr)
+                    in case DefId.HashTable.find boxDefs id
+                       of SOME (contentType, boxDef) =>
+                           #[ Val (pos, def, expr)
+                            , Expr (PrimApp ( pos, FType.Record FType.EmptyRow
+                                            , Primop.BoxInit, #[contentType]
+                                            , #[Use (pos, boxDef), Use (pos, def)] )) ]
+                        | NONE => #[Val (pos, def, expr) ]
                     end
-                 | Expr expr => Expr (emitExpr ini Escaping expr)
+                 | Expr expr => #[Expr (emitExpr ini Escaping expr)]
 
             and emitStmts ini stmts =
                 Vector1.foldl (fn (stmt, (ini, revStmts)) =>
@@ -569,7 +587,27 @@ end = struct
             and emitPattern ini ctx =
                 fn pat as Def (_, {id, ...}) => (IniEnv.pushMatch ini id, pat)
                  | pat as ConstP _ => (ini, pat)
-        in {typeFns, stmts = emitDefns (pushBlock IniEnv.empty stmts) stmts, sourcemap}
+
+            and boxAllocs pos stmts =
+                let val revBoxStmts =
+                        Vector.foldl (fn (Val (_, {id, ...}, _), revBoxStmts) =>
+                                          (case DefId.HashTable.find boxDefs id
+                                           of SOME (typ, def as {typ = boxTyp, ...}) =>
+                                               Val (pos, def, PrimApp (pos, boxTyp, Primop.BoxNew, #[typ], #[]))
+                                               :: revBoxStmts
+                                            | NONE => revBoxStmts)
+                                       | (Axiom _ | Expr _, revBoxStmts) => revBoxStmts)
+                                     [] stmts
+                in revBoxStmts |> List.rev |> Vector1.fromList
+                end
+           
+            val ini = pushBlock IniEnv.empty stmts
+            val stmts = emitDefns ini stmts
+            val stmts =
+                case boxAllocs (FTerm.stmtPos (Vector.sub (stmts, 0))) stmts
+                of SOME boxStmts => Vector.concat [Vector1.toVector boxStmts, stmts]
+                 | NONE => stmts
+        in {typeFns, stmts, sourcemap}
         end
 
     fun elaborate program =

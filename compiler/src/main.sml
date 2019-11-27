@@ -57,7 +57,6 @@ end = struct
                 in case Typechecker.elaborateProgram tenv program
                    of Right (program, _) =>
                        let val program = ExitTypechecker.programToF tenv program
-                           val _ = log (PPrint.pretty 80 (FixedFAst.Term.programToDoc () program) ^ "\n")
                            do if lint
                               then case FAstTypechecker.typecheckProgram program
                                    of SOME err => raise Fail "Lint failed"
@@ -65,11 +64,12 @@ end = struct
                               else ()
                        in  case WellFounded.elaborate program
                            of Right program =>
-                               if lint
-                               then case FAstTypechecker.typecheckProgram program
-                                    of SOME err => raise Fail "Lint failed"
-                                     | NONE => ()
-                               else ()
+                               ( log (PPrint.pretty 80 (FixedFAst.Term.programToDoc () program) ^ "\n")
+                               ; if lint
+                                 then case FAstTypechecker.typecheckProgram program
+                                      of SOME err => raise Fail "Lint failed"
+                                       | NONE => ()
+                                 else () )
                             | Left errors =>
                                Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc sourcemap)
                                           errors

@@ -22,6 +22,10 @@ structure Vector = struct
          ; done ()
         end
 
+    (* OPTIMIZE: *)
+    fun flatMap f xs =
+        foldl (fn (x, acc) => concat [acc, f x]) #[] xs
+
     fun zipWith f (xs, ys) =
         let val len = Int.min (Vector.length xs, Vector.length ys)
             val {update, done, ...} = MLton.Vector.create len
