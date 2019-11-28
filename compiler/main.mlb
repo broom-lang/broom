@@ -64,6 +64,7 @@ local
            src/Reprs/FAst/Typechecker.sml
 
            src/Passes/WellFounded.sml
+           src/Passes/PatternMatching.sml
 
            src/Parser/parser.sml
        end

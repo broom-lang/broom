@@ -1,0 +1,57 @@
+structure PatternMatching :> sig
+    val implement : FixedFAst.Term.program -> FixedFAst.Term.program
+end = struct
+    structure FTerm = FixedFAst.Term
+    datatype expr = datatype FTerm.expr
+    datatype stmt = datatype FTerm.stmt
+    datatype pat = datatype FTerm.pat
+
+    fun mapExprs f =
+        fn Fn (pos, param, arr, body) => Fn (pos, param, arr, f body)
+         | TFn (pos, params, body) => TFn (pos, params, f body)
+         | With (pos, t, {base, field = (label, fielde)}) =>
+            With (pos, t, {base = f base, field = (label, f fielde)})
+         | Without (pos, t, {base, field}) => Without (pos, t, {base = f base, field})
+         | Where (pos, t, {base, field = (label, fielde)}) =>
+            Where (pos, t, {base = f base, field = (label, f fielde)})
+         | App (pos, t, {callee, arg}) =>
+            App (pos, t, {callee = f callee, arg = f arg})
+         | TApp (pos, t, {callee, args}) => TApp (pos, t, {callee = f callee, args})
+         | PrimApp (pos, t, opn, targs, args) =>
+            PrimApp (pos, t, opn, targs, Vector.map f args)
+         | Field (pos, t, expr, label) => Field (pos, t, f expr, label)
+         | Letrec (pos, stmts, body) =>
+            Letrec (pos, Vector1.map (mapStmtExprs f) stmts, f body)
+         | Let (pos, stmts, body) =>
+            Let (pos, Vector1.map (mapStmtExprs f) stmts, f body)
+         | Match (pos, t, matchee, clauses) =>
+            Match (pos, t, f matchee, Vector.map (mapClauseExprs f) clauses)
+         | Cast (pos, t, expr, co) => Cast (pos, t, f expr, co)
+         | expr as (EmptyRecord _ | Type _ | Use _ | Const _) => expr
+
+    and mapStmtExprs f =
+        fn stmt as Axiom _ => stmt
+         | Val (pos, def, expr) => Val (pos, def, f expr)
+         | Expr expr => Expr (f expr)
+
+    and mapClauseExprs f {pattern, body} =
+        { pattern = mapPatternExprs f pattern
+        , body = f body }
+
+    and mapPatternExprs f =
+        fn pat as (Def _ | ConstP _) => pat
+
+    fun exprFold f expr = f (mapExprs (exprFold f) expr)
+
+    val implementExpr =
+         exprFold (fn expr as Match (pos, t, matchee, clauses) =>
+                       (* TODO: Actually implement match here: *)
+                       expr
+                    | expr => expr)
+
+    val implementDefn = mapStmtExprs implementExpr
+
+    fun implement {typeFns, stmts, sourcemap} =
+        {typeFns, stmts = Vector.map implementDefn stmts, sourcemap}
+end
+

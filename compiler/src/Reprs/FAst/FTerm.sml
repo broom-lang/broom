@@ -40,21 +40,24 @@ signature FAST_TERM = sig
                    , stmts: stmt vector
                    , sourcemap: Pos.sourcemap }
    
+    val exprPos: expr -> Pos.span
+    val stmtPos: stmt -> Pos.span
+    val patPos: pat -> Pos.span
+
+    val typeOf: expr -> Type.concr
+
     val updateDefTyp : {pos: Pos.span, id: DefId.t, var: Name.t, typ: 't} -> ('t -> 'u)
                      -> {pos: Pos.span, id: DefId.t, var: Name.t, typ: 'u}
     val setDefTyp : {pos: Pos.span, id: DefId.t, var: Name.t, typ: 't} -> 'u
                   -> {pos: Pos.span, id: DefId.t, var: Name.t, typ: 'u}
+
     val defToDoc : ('expr, 'error) env -> def -> PPrint.t
-    val exprPos: expr -> Pos.span
     val exprToDoc: ('expr, 'error) env -> expr -> PPrint.t
     val exprToString: ('expr, 'error) env -> expr -> string
-    val stmtPos: stmt -> Pos.span
     val stmtToDoc: ('expr, 'error) env -> stmt -> PPrint.t
     val stmtsToDoc: ('expr, 'error) env -> stmt vector -> PPrint.t
-    val patPos: pat -> Pos.span
     val patternToDoc: ('expr, 'error) env -> pat -> PPrint.t
     val programToDoc: ('expr, 'error) env -> program -> PPrint.t
-    val typeOf: expr -> Type.concr
 end
 
 functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM

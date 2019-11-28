@@ -69,7 +69,14 @@ end = struct
                                  then case FAstTypechecker.typecheckProgram program
                                       of SOME err => raise Fail "Lint failed"
                                        | NONE => ()
-                                 else () )
+                                 else ()
+                               ; let val program = PatternMatching.implement program
+                                 in  if lint
+                                     then case FAstTypechecker.typecheckProgram program
+                                          of SOME err => raise Fail "Lint failed"
+                                           | NONE => ()
+                                     else ()
+                                 end )
                             | Left errors =>
                                Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc sourcemap)
                                           errors
@@ -95,15 +102,17 @@ end = struct
                      let val program as {stmts, ...} = ExitTypechecker.programToF tenv program
                      in  case WellFounded.elaborate program
                          of Right program =>
-                             ( Vector.app (fn stmt as (Val (_, {var, typ, ...}, _)) =>
-                                              let val v = FAstEval.interpret venv stmt
-                                              in print ( Name.toString var ^ " = "
-                                                       ^ FAstEval.Value.toString v ^ " : "
-                                                       ^ FixedFAst.Type.Concr.toString () typ ^ "\n" )
-                                              end
-                                            | stmt as (Expr _) => ignore (FAstEval.interpret venv stmt))
-                                          stmts
-                             ; (tenv, venv) )
+                             let val program = PatternMatching.implement program
+                             in Vector.app (fn stmt as (Val (_, {var, typ, ...}, _)) =>
+                                               let val v = FAstEval.interpret venv stmt
+                                               in print ( Name.toString var ^ " = "
+                                                        ^ FAstEval.Value.toString v ^ " : "
+                                                        ^ FixedFAst.Type.Concr.toString () typ ^ "\n" )
+                                               end
+                                             | stmt as (Expr _) => ignore (FAstEval.interpret venv stmt))
+                                           stmts
+                              ; (tenv, venv)
+                             end
                           | Left errors =>
                              ( Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc sourcemap)
                                           errors
