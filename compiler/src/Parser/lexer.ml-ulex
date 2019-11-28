@@ -9,7 +9,7 @@
 %let alpha = [a-zA-Z];
 %let digit = [0-9];
 %let firstConstituent = {alpha} | _;
-%let constituent = {firstConstituent} | {digit};
+%let constituent = {firstConstituent} | {digit} | ';
 
 val       => (Tokens.VAL);
 fun       => (Tokens.FUN);
