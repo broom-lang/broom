@@ -27,9 +27,10 @@ val Array : ARRAY = module
     fun get arr i = __arrayGet arr i
 
     fun set arr i v =
-        unfoldl (count arr) fn
-            | i' when i' == i -> {elem = v, state = i' - 1}
-            | i' -> {elem = get arr i', state = i' - 1}
+        unfoldl (count arr) fn i' -> match i' == i
+                | True -> {elem = v, state = i' - 1}
+                | False -> {elem = get arr i', state = i' - 1}
+            end
         end
         (count arr - 1)
 
@@ -52,47 +53,51 @@ val Array : ARRAY = module
 
     fun unfoldl len f state = begin
         val builder = Builder.new len
-        fun loop state = fn
-            | i when i > 0 -> do
-                val i = i - 1
-                val {elem, state} = f state
-                ; Builder.set builder i elem;
-                ; loop state i
+        fun loop state = fn i -> match i > 0
+                | True -> do
+                    val i = i - 1
+                    val es = f state
+                    ; Builder.set builder i es.elem
+                    ; loop es.state i
+                end
+                | False -> Builder.build builder
             end
-            | _ -> Builder.build builder
         end
         ; loop state len
     end
 
     fun unfoldr len f state = begin
         val builder = Builder.new len
-        fun loop state = fn
-            | i when i < len -> do
-                val {elem, state} = f state
-                ; Builder.set builder i elem 
-                ; loop state (i + 1)
+        fun loop state = fn i -> match i < len
+                | True -> do
+                    val es = f state
+                    ; Builder.set builder i es.elem 
+                    ; loop es.state (i + 1)
+                end
+                | False -> Builder.build builder
             end
-            | _ -> Builder.build builder
         end
         ; loop state 0
     end
 
     fun foldl f state arr = begin
         val len = count arr
-        fun loop state = fn
-            | i when i < len -> loop (f state (get arr i)) (i + 1)
-            | _ -> state
+        fun loop state = fn i -> match i < len
+                | True -> loop (f state (get arr i)) (i + 1)
+                | False -> state
+            end
         end
         ; loop state 0
     end
 
     fun foldr f state arr = begin
-        fun loop state = fn
-            | i when i > 0 -> do
-                val i = i - 1
-                loop (f (get arr i) state) i
+        fun loop state = fn i -> match i > 0
+                | True -> do
+                    val i = i - 1
+                    loop (f (get arr i) state) i
+                end
+                | False -> state
             end
-            | _ -> state
         end
         ; loop state (count arr)
     end
