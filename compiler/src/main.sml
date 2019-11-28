@@ -102,7 +102,7 @@ end = struct
                      let val program as {stmts, ...} = ExitTypechecker.programToF tenv program
                      in  case WellFounded.elaborate program
                          of Right program =>
-                             let val program = PatternMatching.implement program
+                             let val program as {stmts, ...} = PatternMatching.implement program
                              in Vector.app (fn stmt as (Val (_, {var, typ, ...}, _)) =>
                                                let val v = FAstEval.interpret venv stmt
                                                in print ( Name.toString var ^ " = "

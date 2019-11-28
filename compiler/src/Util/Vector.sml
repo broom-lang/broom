@@ -22,6 +22,14 @@ structure Vector = struct
          ; done ()
         end
 
+    fun splitWith pred xs =
+        let fun loop i =
+                if i < Vector.length xs andalso pred (Vector.sub (xs, i))
+                then loop (i + 1)
+                else (VectorSlice.slice (xs, 0, SOME i), VectorSlice.slice (xs, i, NONE))
+        in loop 0
+        end
+
     (* OPTIMIZE: *)
     fun flatMap f xs =
         foldl (fn (x, acc) => concat [acc, f x]) #[] xs

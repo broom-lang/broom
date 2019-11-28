@@ -216,6 +216,7 @@ end = struct
              of #[Box r, v] =>
                  ( r := v
                  ; Value.emptyRecord ))
+         | Primop.Panic => raise Fail "Crash: explicit panic"
 
     (* TODO: When user code can run inside patterns, will need to capture position in pattern in cont: *)
     and match env cont clauses value =

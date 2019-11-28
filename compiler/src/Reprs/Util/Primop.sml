@@ -3,6 +3,7 @@ structure Primop :> sig
         = IAdd | ISub | IMul | IDiv
         | ArrayT | ArrayNew | ArrayCount | ArrayGet | ArrayUnsafeSet
         | BoxT | BoxNew | BoxGet | BoxInit
+        | Panic
 
     val fromString : string -> t option
     val toDoc : t -> PPrint.t
@@ -11,6 +12,7 @@ end = struct
         = IAdd | ISub | IMul | IDiv
         | ArrayT | ArrayNew | ArrayCount | ArrayGet | ArrayUnsafeSet
         | BoxT | BoxNew | BoxGet | BoxInit
+        | Panic
 
     val fromString =
         fn "__iAdd" => SOME IAdd
@@ -26,6 +28,7 @@ end = struct
          | "__boxNew" => SOME BoxNew
          | "__boxGet" => SOME BoxGet
          | "__boxInit" => SOME BoxInit
+         | "__panic" => SOME Panic
          | _ => NONE
 
     fun toDoc opn =
@@ -42,6 +45,7 @@ end = struct
              | BoxT => "box"
              | BoxNew => "boxNew"
              | BoxGet => "boxGet"
-             | BoxInit => "boxInit"))
+             | BoxInit => "boxInit"
+             | Panic => "panic"))
 end
 

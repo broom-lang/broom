@@ -43,10 +43,24 @@ end = struct
 
     fun exprFold f expr = f (mapExprs (exprFold f) expr)
 
+    fun discriminatingClause {pattern, body = _} =
+        case pattern
+        of ConstP _ => true
+         | Def _ => false
+
     val implementExpr =
          exprFold (fn expr as Match (pos, t, matchee, clauses) =>
-                       (* TODO: Actually implement match here: *)
-                       expr
+                       let val (discriminators, defaults) =
+                               Vector.splitWith discriminatingClause clauses
+                           val default =
+                               if VectorSlice.length defaults > 0
+                               then VectorSlice.sub (defaults, 0)
+                               else { pattern = Def (pos, { id = DefId.fresh (), var = Name.fresh ()
+                                                          , typ = FTerm.typeOf matchee, pos})
+                                    , body = PrimApp (pos, t, Primop.Panic, #[t], #[]) }
+                       in Match ( pos, t, matchee
+                                , Vector.append (VectorSlice.vector discriminators, default) )
+                       end
                     | expr => expr)
 
     val implementDefn = mapStmtExprs implementExpr
