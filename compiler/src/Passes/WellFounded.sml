@@ -480,7 +480,7 @@ end = struct
                         case boxAllocs pos (Vector1.toVector stmts)
                         of SOME boxStmts => valOf (Vector1.concat [boxStmts, stmts])
                          | NONE => stmts
-                in Letrec (pos, stmts, body)
+                in Let (pos, stmts, body)
                 end
 
               | emitExpr ini ctx (Let (pos, stmts, body)) =

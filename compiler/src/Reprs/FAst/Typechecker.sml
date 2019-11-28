@@ -204,6 +204,18 @@ end = struct
             end
          | Field access => checkField env access
          | Letrec lett => checkLetrec env lett
+         | Let (_, stmts, body) =>
+            let val env =
+                    Vector1.foldl (fn (Val (_, {var, ...}, expr), env) =>
+                                       Env.insert (env, var, check env expr)
+                                    | (Axiom (_, name, l, r), env) =>
+                                       (* TODO: Some checks here (see F_c paper) *)
+                                       Env.insertCo (env, name, l, r)
+                                    | (Expr expr, env) => (check env expr; env))
+                                  env stmts
+            in check env body
+            end
+
          | Match match => checkMatch env match
          | Cast cast => checkCast env cast
          | Use use => checkUse env use
