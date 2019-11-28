@@ -6,6 +6,15 @@
     datatype explicitness = datatype Cst.explicitness
     datatype effect = datatype Cst.effect
 
+    fun binopsl l opapps =
+        List.foldl (fn ((pos, opPos, opn, r), l) =>
+                        let val callee =
+                                Term.App (opPos, { callee = Term.Use (opPos, opn)
+                                                 , arg = l })
+                        in Term.App (pos, {callee, arg = r })
+                        end)
+                   l opapps
+
     datatype row
         = RecordFields of Term.recordFields
         | RowType of Type.typ
@@ -54,6 +63,11 @@
     | COMMA (",")
     | COLON (":")
     | SEMI (";")
+
+    | OP4 of Name.t
+    | OP5 of Name.t
+    | OP6 of Name.t
+    | OP7 of Name.t
 
     | LPAREN ("(")
     | RPAREN (")")
@@ -144,7 +158,12 @@ arr
     | "=>" => (Implicit)
     ;
 
-binapp : app ;
+binapp : binapp4 ;
+
+binapp4 : l=binapp5 opapps=(OP4 r=binapp5 => (FULL_SPAN, OP4_SPAN, OP4, r))* => (binopsl l opapps);
+binapp5 : l=binapp6 opapps=(OP5 r=binapp6 => (FULL_SPAN, OP5_SPAN, OP5, r))* => (binopsl l opapps);
+binapp6 : l=binapp7 opapps=(OP6 r=binapp7 => (FULL_SPAN, OP6_SPAN, OP6, r))* => (binopsl l opapps);
+binapp7 : l=app opapps=(OP7 r=app => (FULL_SPAN, OP7_SPAN, OP7, r))* => (binopsl l opapps);
 
 app
     : INTRINSIC selects=select* => (

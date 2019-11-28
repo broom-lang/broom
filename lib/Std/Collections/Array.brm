@@ -28,9 +28,10 @@ val Array : ARRAY = module
 
     fun set arr i v =
         unfoldl (count arr) fn
-            | i' when i' == i -> (v, i' - 1)
-            | i' -> (get arr i', i' - 1)
+            | i' when i' == i -> {elem = v, state = i' - 1}
+            | i' -> {elem = get arr i', state = i' - 1}
         end
+        (count arr - 1)
 
     fun update arr = set arr i (f (get arr i))
 
@@ -58,7 +59,7 @@ val Array : ARRAY = module
                 ; Builder.set builder i elem;
                 ; loop state i
             end
-            | _ -> Builder.build builder
+            | _ -> Builder.build builder
         end
         ; loop state len
     end

@@ -41,6 +41,11 @@ without   => (Tokens.WITHOUT);
 :    => (Tokens.COLON);
 ";"  => (Tokens.SEMI);
 
+"==" => (Tokens.OP4 (Name.fromString yytext));
+"<" | "<=" | ">=" | ">" => (Tokens.OP5 (Name.fromString yytext));
+"+" | "-" => (Tokens.OP6 (Name.fromString yytext));
+"*" | "/" => (Tokens.OP7 (Name.fromString yytext));
+
 "(" => (Tokens.LPAREN);
 ")" => (Tokens.RPAREN);
 "[" => (Tokens.LBRACKET);
