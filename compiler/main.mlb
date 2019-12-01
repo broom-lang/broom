@@ -10,6 +10,7 @@ local
            ann "warnUnused false" in
                src/Util/Nothing.sml
                src/Util/Fn.sml
+               src/Util/Word32.sml
                src/Util/Option.sml
                src/Util/Either.sml
                src/Util/List.sml
@@ -17,6 +18,7 @@ local
                src/Util/VectorSlice.sml
                src/Util/Vector1.sml
                src/Util/Trictor.sml
+               src/Util/HashMap.sml
                src/Util/String.sml
                src/Util/Monoid.sml
                src/Util/Bimappable.sml

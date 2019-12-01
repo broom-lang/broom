@@ -22,6 +22,19 @@ structure Vector = struct
          ; done ()
         end
 
+    fun pushAt (xs, i, y) =
+        let val len = Vector.length xs + 1
+            val {update, done, ...} = MLton.Vector.create len
+            val _ = VectorSlice.appi update (VectorSlice.slice (xs, 0, SOME i))
+            val _ = update (i, y)
+            fun loop j =
+                if j < len
+                then ( update (j, Vector.sub (xs, j - 1))
+                     ; loop (j + 1) )
+                else done ()
+        in loop (i + 1)
+        end
+
     fun splitWith pred xs =
         let fun loop i =
                 if i < Vector.length xs andalso pred (Vector.sub (xs, i))
