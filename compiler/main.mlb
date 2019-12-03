@@ -11,6 +11,8 @@ local
                src/Util/Nothing.sml
                src/Util/Fn.sml
                src/Util/Word32.sml
+               src/Util/Bimappable.sml
+               src/Util/Pair.sml
                src/Util/Option.sml
                src/Util/Either.sml
                src/Util/List.sml
@@ -21,8 +23,6 @@ local
                src/Util/HashMap.sml
                src/Util/String.sml
                src/Util/Monoid.sml
-               src/Util/Bimappable.sml
-               src/Util/Pair.sml
                src/Util/UnionFind.sml
                src/Util/PPrint.sml
                src/Util/Id.sml

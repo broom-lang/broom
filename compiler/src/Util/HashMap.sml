@@ -7,6 +7,7 @@ functor HashMap (Key : HASH_KEY) :> sig
     val find : 'v t -> key -> 'v option
     val length : 'v t -> int
     val fold : ((key * 'v) * 'a -> 'a) -> 'a -> 'v t -> 'a
+    val map : ('v -> 'a) -> 'v t -> 'a t
 end = struct
     open Word32
     infix 5 << >>
@@ -111,5 +112,14 @@ end = struct
             Vector.foldl (fn (trie, acc) => foldTrie f acc trie) acc nodes
          | Collision {hash = _, kvs} => Vector.foldl f acc kvs
          | Leaf kv => f (kv, acc)
+
+    fun map f {root, len} = {root = mapTrie f root, len}
+
+    and mapTrie f =
+        fn Bitmapped {bitmap, nodes} =>
+            Bitmapped {bitmap, nodes = Vector.map (mapTrie f) nodes}
+         | Collision {hash, kvs} =>
+            Collision {hash, kvs = Vector.map (Pair.second f) kvs}
+         | Leaf (k, v) => Leaf (k, f v)
 end
 
