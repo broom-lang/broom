@@ -56,14 +56,19 @@ end = struct
                      , len = Int.+ (len, 1) }
             end
 
-         | Collision {hash = hash', kvs} => (* If we got here, must be `hash = hash'` *)
-            (case Vector.findi (fn (i, (k', _)) => eq (k', k)) kvs
-             of SOME (i, _) =>
-                 { root = Collision {hash = hash', kvs = Vector.update (kvs, i, kv)}
-                 , len }
-              | NONE =>
-                 { root = Collision {hash = hash', kvs = Vector.append (kvs, kv)}
-                 , len = Int.+ (len, 1) })
+         | Collision {hash = hash', kvs} =>
+            if hash = hash'
+            then case Vector.findi (fn (i, (k', _)) => eq (k', k)) kvs
+                 of SOME (i, _) =>
+                     { root = Collision {hash = hash', kvs = Vector.update (kvs, i, kv)}
+                     , len }
+                  | NONE =>
+                     { root = Collision {hash = hash', kvs = Vector.append (kvs, kv)}
+                     , len = Int.+ (len, 1) }
+            else let val node = Bitmapped { bitmap = bitpos hash' shift
+                                          , nodes = #[trie] }
+                 in trieInsert len node shift hash kv
+                 end
 
          | Leaf (kv' as (k', _)) =>
             if eq (k, k')
@@ -73,8 +78,8 @@ end = struct
                          if hash = hash'
                          then Collision {hash, kvs = #[kv', kv]}
                          else let val node = Bitmapped {bitmap = 0w0, nodes = #[]}
-                                  val node = #root (trieInsert len trie shift hash' kv')
-                              in #root (trieInsert len trie shift hash kv)
+                                  val node = #root (trieInsert len node shift hash' kv')
+                              in #root (trieInsert len node shift hash kv)
                               end
                  in {root = node, len = Int.+ (len, 1)}
                  end
