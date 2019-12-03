@@ -5,6 +5,8 @@ functor HashMap (Key : HASH_KEY) :> sig
     val empty : 'v t
     val insert : 'v t -> key * 'v -> 'v t
     val find : 'v t -> key -> 'v option
+    val length : 'v t -> int
+    val fold : ((key * 'v) * 'a -> 'a) -> 'a -> 'v t -> 'a
 end = struct
     open Word32
     infix 5 << >>
@@ -19,6 +21,8 @@ end = struct
         | Leaf of key * 'v
 
     type 'v t = {root : 'v trie, len : int}
+
+    val length : 'v t -> int = #len
 
     val bits = 0w5
     val width = 0w1 << bits
@@ -94,5 +98,13 @@ end = struct
 
          | Leaf (k', v) =>
             if eq (k', k) then SOME v else NONE
+
+    fun fold f acc {root, len = _} = foldTrie f acc root
+
+    and foldTrie f acc =
+        fn Bitmapped {bitmap = _, nodes} =>
+            Vector.foldl (fn (trie, acc) => foldTrie f acc trie) acc nodes
+         | Collision {hash = _, kvs} => Vector.foldl f acc kvs
+         | Leaf kv => f (kv, acc)
 end
 
