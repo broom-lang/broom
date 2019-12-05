@@ -1,16 +1,21 @@
 local
     $(SML_LIB)/basis/basis.mlb
     $(SML_LIB)/basis/mlton.mlb
+    $(SML_LIB)/smlnj-lib/Util/smlnj-lib.mlb
 in  ann "allowSuccessorML true"
     in  local
             ../../src/Util/Fn.sml
+            ../../src/Util/Bimappable.sml
+            ../../src/Util/Pair.sml
             ../../src/Util/Vector.sml
             ../../src/Util/Word32.sml
             ../../src/Util/Trictor.sml
+            ../../src/Util/HashMap.sml
         in
             Assert.sml
             TestWord32.sml
             TestTrictor.sml
+            TestHashMap.sml
             unit.sml
         end
     end
