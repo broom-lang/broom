@@ -60,12 +60,3 @@ structure TestTrictor = struct
         ; testFoldl () )
 end
 
-val status =
-    ( TestTrictor.runTests ()
-    ; OS.Process.success )
-    handle TestTrictor.Assert.AssertFailed msg =>
-            ( TextIO.output (TextIO.stdErr, "Assert failed: " ^ msg ^ "\n")
-            ; OS.Process.failure )
-
-do OS.Process.exit status
-

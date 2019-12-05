@@ -14,7 +14,7 @@ structure Word32 = struct
             let val x = x - andb (x >> 0w1, c1)
                 val x = andb (x, c2) + andb(x >> 0w2, c2)
                 val x = andb (x + (x >> 0w4), c4)
-            in (x * c01) >> 0w56
+            in (x * c01) >> 0w24
             end
     end
 end

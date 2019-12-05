@@ -5,10 +5,13 @@ in  ann "allowSuccessorML true"
     in  local
             ../../src/Util/Fn.sml
             ../../src/Util/Vector.sml
+            ../../src/Util/Word32.sml
             ../../src/Util/Trictor.sml
         in
             Assert.sml
+            TestWord32.sml
             TestTrictor.sml
+            unit.sml
         end
     end
 end
