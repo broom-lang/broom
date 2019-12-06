@@ -114,7 +114,7 @@ end = struct
                 in text "fn" <+> optionalArgs PPrint.brackets tDocs
                              <+> optionalArgs PPrint.parens vDocs
                 end
-             | TParam {var, kind = _} => Name.toDoc var
+             | TParam {var, kind = _} => text (DefId.toString var)
              | Prim p => Prim.toDoc p
     end
 
