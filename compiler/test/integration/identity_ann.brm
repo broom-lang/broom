@@ -1,0 +1,3 @@
+val identity: pi (a: type) -> a -> a = fn _ -> fn x -> x end end
+val n: int = identity int 5
+

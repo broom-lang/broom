@@ -1,204 +1,382 @@
-structure Cst = struct
-    structure Type :> sig
+signature CST = sig
+    structure Prim: PRIM_TYPE where type t = PrimType.t
+
+    datatype 'eff explicitness = Implicit | Explicit of 'eff
+
+    datatype effect = Pure | Impure
+
+    type expl = unit explicitness
+    type arrow = effect explicitness
+
+    datatype typ
+        = Pi of Pos.span * def * arrow * typ
+        | RecordT of Pos.span * typ
+        | RowExt of Pos.span * row
+        | EmptyRow of Pos.span
+        | Interface of Pos.span * {var: Name.t option, typ : typ} option
+                     * (Name.t, typ) member vector
+        | WildRow of Pos.span
+        | Singleton of Pos.span * expr
+        | TypeT of Pos.span
+        | Path of expr
+        | Prim of Pos.span * Prim.t
+
+    and row_edit
+        = WithT of (Name.t * typ) vector
+        | WhereT of (Name.t * typ) vector
+        | WithoutT of Name.t vector
+
+    and expr
+        = Fn of Pos.span * expl * clause vector
+        | Begin of Pos.span * (Pos.span * pat * expr) vector * expr
+        | Do of Pos.span * stmt vector * expr
+        | Match of Pos.span * expr * clause vector
+        | Record of Pos.span * recordFields
+        | Module of Pos.span * (pat option * expr) option
+                  * (pat, expr) member vector
+        | App of Pos.span * {callee: expr, arg: expr}
+        | PrimApp of Pos.span * Primop.t * expr vector
+        | Field of Pos.span * expr * Name.t
+        | Ann of Pos.span * expr * typ
+        | Type of Pos.span * typ
+        | Use of Pos.span * Name.t
+        | Const of Pos.span * Const.t
+
+    and stmt
+        = Val of Pos.span * pat * expr
+        | Expr of expr
+
+    and ('p, 'a) member
+        = Extend of Pos.span * 'p * 'a
+        | Override of Pos.span * 'p * 'a
+        | Exclude of Pos.span * Name.t
+
+    and pat
+        = AnnP of Pos.span * {pat: pat, typ: typ}
+        | Def of Pos.span * Name.t
+        | ConstP of Pos.span * Const.t
+
+    and rec_edit
+        = With of (Name.t * expr) vector
+        | Where of (Name.t * expr) vector
+        | Without of Name.t vector
+
+    withtype def = {var: Name.t, typ: typ option}
+    and defn = Pos.span * pat * expr
+    and clause = {pattern: pat, body: expr}
+    and recordFields =
+        { base : expr option
+        , edits : rec_edit vector }
+    and row =
+        { base : typ
+        , edits : row_edit vector }
+
+    val explDoc: expl -> PPrint.t
+    val arrowDoc: arrow -> PPrint.t
+
+    structure Type: sig
         structure Prim: PRIM_TYPE where type t = PrimType.t
 
-        datatype ('typ, 'expr) typ = Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
-                                   | Record of Pos.t * 'typ
-                                   | RowExt of Pos.t * ('typ, 'expr) row_ext
-                                   | EmptyRow of Pos.t
-                                   | WildRow of Pos.t
-                                   | Singleton of Pos.t * 'expr
-                                   | Type of Pos.t
-                                   | Path of 'expr
-                                   | Prim of Pos.t * Prim.t
+        datatype typ = datatype typ
+        datatype row_edit = datatype row_edit
 
-        withtype ('typ, 'expr) row_ext = {fields: (Name.t * 'typ) vector, ext: 'typ}
-
-        val toDoc: ('typ -> PPrint.t) -> ('expr -> PPrint.t) -> ('typ, 'expr) typ -> PPrint.t
-        val pos: ('expr -> Pos.t) -> ('typ, 'expr) typ -> Pos.t
-        val shallowFoldl: ('typ * 'a -> 'a) -> 'a -> ('typ, 'expr) typ -> 'a
-        val rowExtTail: ('typ, 'expr) typ -> ('typ, 'expr) typ
-    end = struct
-        structure Prim = PrimType
-        val op<> = PPrint.<>
-        val op<+> = PPrint.<+>
-        val text = PPrint.text
-        val parens = PPrint.parens
-        val braces = PPrint.braces
-
-        datatype ('typ, 'expr) typ = Arrow of Pos.t * {domain: 'typ, codomain: 'typ}
-                                   | Record of Pos.t * 'typ
-                                   | RowExt of Pos.t * ('typ, 'expr) row_ext
-                                   | EmptyRow of Pos.t
-                                   | WildRow of Pos.t
-                                   | Singleton of Pos.t * 'expr
-                                   | Type of Pos.t
-                                   | Path of 'expr
-                                   | Prim of Pos.t * Prim.t
-
-        withtype ('typ, 'expr) row_ext = {fields: (Name.t * 'typ) vector, ext: 'typ}
-
-        fun toDoc typeToDoc exprToDoc t =
-            let val rec toDoc = fn Arrow (_, {domain, codomain}) =>
-                                       typeToDoc domain <> text " -> " <> typeToDoc codomain
-                                    | Record (_, row) => braces (typeToDoc row)
-                                    | RowExt (_, {fields, ext}) =>
-                                       let fun fieldToDoc (label, fieldt) = 
-                                               Name.toDoc label <> text ": " <> typeToDoc fieldt
-                                           val fieldsDoc =
-                                               PPrint.punctuate (text ", ")
-                                                                (Vector.map fieldToDoc fields)
-                                       in fieldsDoc <+> text "|" <+> typeToDoc ext
-                                       end
-                                    | EmptyRow _ => text "(||)"
-                                    | WildRow _ => text ".."
-                                    | Singleton (_, expr) => parens (text "= " <> exprToDoc expr)
-                                    | Type _ => text "type"
-                                    | Path expr => exprToDoc expr
-                                    | Prim (_, p) => Prim.toDoc p
-            in toDoc t
-            end
-
-        fun pos exprPos =
-            fn Arrow (pos, _) => pos
-             | Record (pos, _) => pos
-             | RowExt (pos, _) => pos
-             | EmptyRow pos => pos
-             | WildRow pos => pos
-             | Singleton (pos, _) => pos
-             | Type pos => pos
-             | Path expr => exprPos expr
-             | Prim (pos, _) => pos
-
-        fun shallowFoldl f acc =
-            fn Arrow (_, {domain, codomain}) => f (codomain, f (domain, acc))
-
-        fun rowExtTail t = t
+        val pos: typ -> Pos.span
     end
 
-    structure Term :> sig
-        datatype ('typ, 'bt, 'expr, 'be) stmt = Val of Pos.t * Name.t * 'bt * 'be
-                                              | Expr of 'expr
-    
-        and ('typ, 'bt, 'expr, 'be) expr = Fn of Pos.t * Name.t * 'bt * 'expr
-                                         | Let of Pos.t * ('typ, 'bt, 'expr, 'be) stmt vector * 'expr
-                                         | If of Pos.t * 'expr * 'expr * 'expr
-                                         | Record of Pos.t * 'expr row
-                                         | App of Pos.t * {callee: 'expr, arg: 'expr}
-                                         | Field of Pos.t * 'expr * Name.t
-                                         | Ann of Pos.t * 'expr * 'typ
-                                         | Type of Pos.t * 'typ
-                                         | Use of Pos.t * Name.t
-                                         | Const of Pos.t * Const.t
+    structure Term: sig
+        datatype expr = datatype expr
+        datatype stmt = datatype stmt
+        datatype pat = datatype pat
+        datatype rec_edit = datatype rec_edit
+        type defn = defn
+        type recordFields = recordFields
 
-        withtype 'expr row = {fields: (Name.t * 'expr) vector, ext: 'expr option}
-
-        val exprPos: ('typ, 'bt, 'expr, 'be) expr -> Pos.t
-        val exprToDoc: ('typ -> PPrint.t) -> ('bt -> PPrint.t) -> ('expr -> PPrint.t) -> ('be -> PPrint.t)
-                        -> ('typ, 'bt, 'expr, 'be) expr -> PPrint.t
-        val stmtToDoc: ('typ -> PPrint.t) -> ('bt -> PPrint.t) -> ('expr -> PPrint.t) -> ('be -> PPrint.t)
-                        -> ('typ, 'bt, 'expr, 'be) stmt -> PPrint.t
-    end = struct
-        val op<> = PPrint.<>
-        val op<+> = PPrint.<+>
-        val op<++> = PPrint.<++>
-        val text = PPrint.text
-        val newline = PPrint.newline
-        val parens = PPrint.parens
-        val braces = PPrint.braces
-
-        datatype ('typ, 'bt, 'expr, 'be) stmt = Val of Pos.t * Name.t * 'bt * 'be
-                                              | Expr of 'expr
-    
-        and ('typ, 'bt, 'expr, 'be) expr = Fn of Pos.t * Name.t * 'bt * 'expr
-                                         | Let of Pos.t * ('typ, 'bt, 'expr, 'be) stmt vector * 'expr
-                                         | If of Pos.t * 'expr * 'expr * 'expr
-                                         | Record of Pos.t * 'expr row
-                                         | App of Pos.t * {callee: 'expr, arg: 'expr}
-                                         | Field of Pos.t * 'expr * Name.t
-                                         | Ann of Pos.t * 'expr * 'typ
-                                         | Type of Pos.t * 'typ
-                                         | Use of Pos.t * Name.t
-                                         | Const of Pos.t * Const.t
-
-        withtype 'expr row = {fields: (Name.t * 'expr) vector, ext: 'expr option}
-
-        val exprPos =
-            fn Fn (pos, _, _, _) => pos
-             | Let (pos, _, _) => pos
-             | If (pos, _, _, _) => pos
-             | Record (pos, _) => pos
-             | App (pos, _) => pos
-             | Field (pos, _, _) => pos
-             | Ann (pos, _, _) => pos
-             | Type (pos, _) => pos
-             | Use (pos, _) => pos
-             | Const (pos, _) => pos
-
-        fun stmtToDoc typeToDoc btToDoc exprToDoc beToDoc =
-            fn Val (_, name, ann, valExpr) =>
-                text "val " <> Name.toDoc name <> btToDoc ann <> text " = " <> beToDoc valExpr
-             | Expr expr => exprToDoc expr
-
-        fun rowToDoc exprToDoc {fields, ext} =
-            let fun entryToDoc (label, expr) = Name.toDoc label <+> text "=" <+> exprToDoc expr
-                val fieldsDoc = PPrint.punctuate (text ", ") (Vector.map entryToDoc fields)
-                val extDoc = Option.mapOr (fn ext => text " .." <+> exprToDoc ext) PPrint.empty ext
-            in fieldsDoc <> extDoc
-            end
-
-        fun exprToDoc typeToDoc btToDoc exprToDoc beToDoc expr =
-            let val rec toDoc = fn Fn (_, param, ann, body) =>
-                                       text "fn" <+> Name.toDoc param <> btToDoc ann <> text " => " <> exprToDoc body
-                                 | If (_, cond, conseq, alt) =>
-                                    text "if" <+> exprToDoc cond
-                                        <+> text "then" <+> exprToDoc conseq
-                                        <+> text "else" <+> exprToDoc alt
-                                    | Record (_, row) => braces (rowToDoc exprToDoc row)
-                                    | App (_, {callee, arg}) => parens (exprToDoc callee <+> exprToDoc arg)
-                                    | Field (_, expr, label) => parens (exprToDoc expr <> text "." <> Name.toDoc label)
-                                    | Let (_, stmts, body) =>
-                                       let val stmtToDoc = stmtToDoc typeToDoc btToDoc exprToDoc beToDoc
-                                       in text "let" <+> PPrint.align (PPrint.punctuate newline (Vector.map stmtToDoc stmts))
-                                          <++> text "in" <+> exprToDoc body
-                                          <++> text "end"
-                                       end
-                                    | Ann (_, expr, t) => exprToDoc expr <> text ":" <+> typeToDoc t
-                                    | Type (_, t) => text "type" <+> typeToDoc t
-                                    | Use (_, name) => Name.toDoc name
-                                    | Const (_, c) => Const.toDoc c
-            in toDoc expr
-            end
+        val emptyRecord : Pos.span -> expr
+        val exprPos: expr -> Pos.span
+        val exprToDoc: expr -> PPrint.t
+        val exprToString: expr -> string
+        val defnsToDoc: defn vector -> PPrint.t
+        val stmtsToDoc: stmt vector -> PPrint.t
     end
 end
 
-structure FixedCst = struct
-    datatype typ' = FixT of (typ', expr') Cst.Type.typ
-    and expr' = Fix of (typ', typ' option, expr', expr') Cst.Term.expr
+structure Cst :> CST = struct
+    val op<> = PPrint.<>
+    val op<+> = PPrint.<+>
+    val op<++> = PPrint.<++>
+    val text = PPrint.text
+    val space = PPrint.space
+    val newline = PPrint.newline
+    val comma = PPrint.comma
+    val parens = PPrint.parens
+    val braces = PPrint.braces
+    val punctuate = PPrint.punctuate
 
-    fun typeToDoc' (FixT t) = Cst.Type.toDoc typeToDoc' exprToDoc' t
-    and exprToDoc' (Fix expr) =
-        let val op<+> = PPrint.<+>
-            val annToDoc = Option.mapOr (fn t => PPrint.text ":" <+> typeToDoc' t) PPrint.empty
-        in Cst.Term.exprToDoc typeToDoc' annToDoc exprToDoc' exprToDoc' expr 
-        end
+    structure Prim = PrimType
+
+    datatype 'eff explicitness = Implicit | Explicit of 'eff
+
+    datatype effect = Pure | Impure
+
+    type arrow = effect explicitness
+    type expl = unit explicitness
+
+    datatype typ
+        = Pi of Pos.span * def * arrow * typ
+        | RecordT of Pos.span * typ
+        | RowExt of Pos.span * row
+        | EmptyRow of Pos.span
+        | Interface of Pos.span * {var: Name.t option, typ : typ} option
+                     * (Name.t, typ) member vector
+        | WildRow of Pos.span
+        | Singleton of Pos.span * expr
+        | TypeT of Pos.span
+        | Path of expr
+        | Prim of Pos.span * Prim.t
+
+    and row_edit
+        = WithT of (Name.t * typ) vector
+        | WhereT of (Name.t * typ) vector
+        | WithoutT of Name.t vector
+
+    and expr
+        = Fn of Pos.span * expl * clause vector
+        | Begin of Pos.span * (Pos.span * pat * expr) vector * expr
+        | Do of Pos.span * stmt vector * expr
+        | Match of Pos.span * expr * clause vector
+        | Record of Pos.span * recordFields
+        | Module of Pos.span * (pat option * expr) option
+                  * (pat, expr) member vector
+        | App of Pos.span * {callee: expr, arg: expr}
+        | PrimApp of Pos.span * Primop.t * expr vector
+        | Field of Pos.span * expr * Name.t
+        | Ann of Pos.span * expr * typ
+        | Type of Pos.span * typ
+        | Use of Pos.span * Name.t
+        | Const of Pos.span * Const.t
+
+    and stmt
+        = Val of Pos.span * pat * expr
+        | Expr of expr
+
+    and ('p, 'a) member
+        = Extend of Pos.span * 'p * 'a
+        | Override of Pos.span * 'p * 'a
+        | Exclude of Pos.span * Name.t
+
+    and pat
+        = AnnP of Pos.span * {pat: pat, typ: typ}
+        | Def of Pos.span * Name.t
+        | ConstP of Pos.span * Const.t
+
+    and rec_edit
+        = With of (Name.t * expr) vector
+        | Where of (Name.t * expr) vector
+        | Without of Name.t vector
+
+    withtype def = {var: Name.t, typ: typ option}
+    and defn = Pos.span * pat * expr
+    and clause = {pattern: pat, body: expr}
+    and recordFields =
+        { base : expr option
+        , edits : rec_edit vector }
+    and row =
+        { base : typ
+        , edits : row_edit vector }
+
+    val exprPos =
+        fn Fn (pos, _, _) => pos
+         | Begin (pos, _, _) => pos
+         | Do (pos, _, _) => pos
+         | Match (pos, _, _) => pos
+         | Record (pos, _) => pos
+         | Module (pos, _, _) => pos
+         | App (pos, _) => pos
+         | PrimApp (pos, _, _) => pos
+         | Field (pos, _, _) => pos
+         | Ann (pos, _, _) => pos
+         | Type (pos, _) => pos
+         | Use (pos, _) => pos
+         | Const (pos, _) => pos
+
+    val typePos =
+        fn Pi (pos, _, _, _) => pos
+         | RecordT (pos, _) => pos
+         | RowExt (pos, _) => pos
+         | EmptyRow pos => pos
+         | WildRow pos => pos
+         | Interface (pos, _, _) => pos
+         | Singleton (pos, _) => pos
+         | TypeT pos => pos
+         | Path expr => exprPos expr
+         | Prim (pos, _) => pos
+
+    val arrowDoc =
+        fn Implicit => text "=>"
+         | Explicit Pure => text "->"
+         | Explicit Impure => text "~>"
+
+    val explDoc =
+        fn Implicit => arrowDoc Implicit
+         | Explicit () => arrowDoc (Explicit Pure)
+
+    val rec typeToDoc =
+        fn Pi (_, param, arrow, codomain) =>
+            text "fun" <+> defToDoc param <+> arrowDoc arrow <+> typeToDoc codomain
+         | RecordT (_, row) => braces (typeToDoc row)
+         | RowExt (_, {base, edits}) =>
+            let fun fieldToDoc (label, fieldt) = 
+                    Name.toDoc label <> text ": " <> typeToDoc fieldt
+                fun fieldsToDoc fields =
+                    PPrint.punctuate (text ", ") (Vector.map fieldToDoc fields)
+                val editToDoc =
+                    fn WithT fields => text "where" <+> fieldsToDoc fields
+                     | WhereT fields => text "where" <+> fieldsToDoc fields
+                     | WithoutT labels =>
+                        text "without" <+> text ":"
+                            <+> punctuate (text "," <> space) (Vector.map Name.toDoc labels)
+                val editsDoc =
+                    PPrint.punctuate (text " ") (Vector.map editToDoc edits)
+            in typeToDoc base <+> editsDoc
+            end
+         | EmptyRow _ => text "(||)"
+         | Interface (_, super, decls) =>
+            let val declToDoc =
+                    fn Extend (_, label, t) =>
+                        text "val" <+> Name.toDoc label <+> text ":" <+> typeToDoc t
+                     | Override (_, label, t) =>
+                        text "override" <+> text "val" <+> Name.toDoc label <+> text ":" <+> typeToDoc t
+                     | Exclude (_, label) => text "exclude" <+> Name.toDoc label
+            in text "interface"
+                   <> (case super
+                       of SOME {var = SOME var, typ} => text "extends" <+> defToDoc {var, typ = SOME typ}
+                        | SOME {var = NONE, typ} => text "extends" <+> typeToDoc typ
+                        | NONE => PPrint.empty)
+                   <> (PPrint.nest 4 (newline <> PPrint.punctuate newline (Vector.map declToDoc decls)))
+                   <++> text "end"
+            end
+         | WildRow _ => text ".."
+         | Singleton (_, expr) => parens (text "= " <> exprToDoc expr)
+         | TypeT _ => text "type"
+         | Path expr => exprToDoc expr
+         | Prim (_, p) => Prim.toDoc p
+
+    and annToDoc =
+        fn SOME t => text ":" <+> typeToDoc t
+         | NONE => PPrint.empty
+
+    and exprToDoc =
+        fn Fn (_, arrow, clauses) =>
+            braces (PPrint.align (clausesToDoc arrow clauses))
+         | Match (_, matchee, clauses) =>
+            text "match" <+> exprToDoc matchee
+                <+> braces (PPrint.align (clausesToDoc (Explicit ()) clauses))
+         | Record (_, row) => braces (rowToDoc row)
+         | Module (pos, super, members) =>
+            let val defToDoc =
+                    fn Extend (_, pat, expr) =>
+                       text "val" <+> patToDoc pat <+> text "=" <+> exprToDoc expr
+                     | Override (_, pat, expr) =>
+                        text "override" <+> text "val" <+> patToDoc pat <+> text "=" <+> exprToDoc expr
+                     | Exclude (_, label) => text "exclude" <+> Name.toDoc label
+            in  text "module"
+                    <> (case super
+                        of SOME (SOME pat, expr) => text "extends" <+> stmtToDoc (Val (pos, pat, expr))
+                         | SOME (NONE, expr) => text "extends" <+> exprToDoc expr
+                         | NONE => PPrint.empty)
+                    <> (PPrint.nest 4 (newline <> PPrint.punctuate newline (Vector.map defToDoc members)))
+                    <++> text "end"
+            end
+         | App (_, {callee, arg}) => parens (exprToDoc callee <+> exprToDoc arg)
+         | PrimApp (_, opn, args) =>
+            parens (Primop.toDoc opn <+> punctuate space (Vector.map exprToDoc args))
+         | Field (_, expr, label) => parens (exprToDoc expr <> text "." <> Name.toDoc label)
+         | Begin (_, defns, body) =>
+            text "begin" <+> PPrint.align (defnsToDoc defns) 
+                <++> PPrint.semi <+> exprToDoc body
+                <++> text "end"
+         | Do (_, stmts, body) =>
+            text "do" <+> PPrint.align (stmtsToDoc stmts)
+                <++> PPrint.semi <+> exprToDoc body
+                <++> text "end"
+         | Ann (_, expr, t) => exprToDoc expr <> text ":" <+> typeToDoc t
+         | Type (_, t) => text "type" <+> typeToDoc t
+         | Use (_, name) => Name.toDoc name
+         | Const (_, c) => Const.toDoc c
+
+    and defToDoc = fn {var, typ} => Name.toDoc var <> annToDoc typ
+
+    and fieldToDoc =
+        fn (name, expr) => Name.toDoc name <+> text "=" <+> exprToDoc expr
+
+    and fieldsToDoc =
+        fn fields => PPrint.punctuate (space <> comma) (Vector.map fieldToDoc fields)
+
+    and editToDoc =
+        fn With fields => text "with" <+> fieldsToDoc fields
+         | Where fields => text "where" <+> fieldsToDoc fields
+         | Without labels =>
+            text "without" <+> punctuate (text "," <> space) (Vector.map Name.toDoc labels)
+
+    and editsToDoc =
+        fn edits => punctuate space (Vector.map editToDoc edits)
+    
+    and rowToDoc = 
+        fn {base = SOME base, edits} => exprToDoc base <+> editsToDoc edits
+         | {base = NONE, edits} =>
+            (case Vector.uncons edits
+             of SOME (With startFields, edits) =>
+                 fieldsToDoc startFields <+> editsToDoc (VectorSlice.vector edits)
+              | SOME (Where _, _) => editsToDoc edits
+              | SOME (Without _, _) => editsToDoc edits
+              | NONE => PPrint.empty)
+
+    and clauseToDoc = fn expl => fn {pattern, body} =>
+        patToDoc pattern <+> explDoc expl <+> exprToDoc body
+    and clausesToDoc = fn expl => fn clauses =>
+        PPrint.punctuate newline (Vector.map (clauseToDoc expl) clauses)
+
+    and defnToDoc = fn (_, pat, expr) =>
+        text "val" <+> patToDoc pat <+> text "=" <+> exprToDoc expr
+
+    and defnsToDoc = fn defns => PPrint.punctuate newline (Vector.map defnToDoc defns)
+
+    and stmtToDoc =
+        fn Val (_, pat, valExpr) =>
+            text "val" <+> patToDoc pat <+> text " = " <> exprToDoc valExpr
+         | Expr expr => exprToDoc expr
+
+    and stmtsToDoc =
+        fn stmts => PPrint.punctuate newline (Vector.map stmtToDoc stmts)
+
+    and patToDoc =
+        fn AnnP (_, {pat, typ}) => patToDoc pat <> text ":" <+> typeToDoc typ
+         | Def (_, name) => Name.toDoc name
+         | ConstP (_, c) => Const.toDoc c
 
     structure Type = struct
-        open Cst.Type
- 
-        datatype ftyp = datatype typ'
-        
-        val toDoc = typeToDoc'
+        structure Prim = PrimType
+
+        datatype typ = datatype typ
+        datatype row_edit = datatype row_edit
+
+        val pos = typePos
     end
 
     structure Term = struct
-        open Cst.Term
+        datatype expr = datatype expr
+        datatype stmt = datatype stmt
+        datatype pat = datatype pat
+        datatype rec_edit = datatype rec_edit
+        type defn = defn
+        type recordFields = recordFields
 
-        datatype fexpr = datatype expr'
-        
-        type stmt = (Type.ftyp, Type.ftyp option, fexpr, fexpr) Cst.Term.stmt
-
-        val exprToDoc = exprToDoc'
+        fun emptyRecord pos = Record (pos, {base = NONE, edits = #[]})
+        val exprPos = exprPos
+        val exprToDoc = exprToDoc
+        val exprToString = PPrint.pretty 80 o exprToDoc
+        val stmtsToDoc = stmtsToDoc
+        val defnsToDoc = defnsToDoc
     end
 end
 

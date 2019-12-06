@@ -1,0 +1,7 @@
+val Std = module
+    @include "./Std/Fn"
+    @include "./Std/Option"
+
+    @include "./Std/Collections"
+end
+

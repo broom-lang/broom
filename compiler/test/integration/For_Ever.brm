@@ -1,0 +1,12 @@
+val For : interface
+    val forev : int -> int
+end = module
+    fun forev (n: int) = Ever.orever n
+end
+
+val Ever : interface 
+    val orever : int -> int
+end = module
+    fun orever (n: int) = For.forev n
+end
+

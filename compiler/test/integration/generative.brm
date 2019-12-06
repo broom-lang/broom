@@ -1,0 +1,22 @@
+type TM = interface type t end
+type ID = interface
+    type id
+    val zero: id
+    val noop: id -> id
+end
+
+val MakeId: TM ~> ID = fn
+    | Arg -> module
+        type id = int
+        val zero = 0
+        fun noop (x: id) = x
+    end
+end
+
+fun useId _ = do
+    val Id1 = MakeId (module type t = int end)
+    val Id2 = MakeId (module type t = int end)
+
+    ; Id2.noop (Id1.zero)
+end
+

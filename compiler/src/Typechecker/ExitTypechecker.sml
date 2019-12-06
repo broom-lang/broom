@@ -1,64 +1,99 @@
 structure ExitTypechecker :> sig
-    val exprToF: TypecheckingCst.typ FAst.Term.expr -> FixedFAst.Term.expr
+    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
+
+    val exprToF: env -> FlexFAst.Term.expr -> FixedFAst.Term.expr
+    val stmtToF: env -> FlexFAst.Term.stmt -> FixedFAst.Term.stmt
+    val programToF: env -> FlexFAst.Term.program -> FixedFAst.Term.program
 end = struct
-    structure TC = TypecheckingCst
-    datatype tc_typ = datatype TC.typ
-    datatype tc_expr = datatype TC.expr
+    datatype sv = datatype FlexFAst.Type.sv
     structure FFType = FixedFAst.Type
-    datatype typ = datatype FAst.Type.typ
     structure FFTerm = FixedFAst.Term
-    datatype expr = datatype FAst.Term.expr
-    datatype stmt = datatype FAst.Term.stmt
+    datatype concr = datatype FlexFAst.Type.concr'
+    datatype co = datatype FlexFAst.Type.co'
+    datatype expr = datatype FlexFAst.Term.expr
+    datatype stmt = datatype FlexFAst.Term.stmt
+    datatype pat = datatype FlexFAst.Term.pat
     datatype either = datatype Either.t
+    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
-    fun typeToUnFixedF (typ: TC.typ): FFType.typ FAst.Type.typ =
-        case typ
-        of OutputType typ =>
-            (case typ
-             of ForAll (pos, param, body) => ForAll (pos, param, typeToF body)
-              | Arrow (pos, {domain, codomain}) =>
-                 Arrow (pos, {domain = typeToF domain, codomain = typeToF codomain})
-              | Record (pos, row) => Record (pos, typeToF row)
-              | RowExt (pos, {field = (label, fieldt), ext}) =>
-                 RowExt (pos, {field = (label, typeToF fieldt), ext = typeToF ext})
-              | EmptyRow pos => EmptyRow pos
-              | FFType.Type (pos, typ) => FFType.Type (pos, typeToF typ)
-              | UseT (pos, def) => UseT (pos, def)
-              | Prim (pos, p) => Prim (pos, p))
-         | InputType _ => raise Fail "unreachable"
-         | ScopeType {typ, ...} => typeToUnFixedF typ
-         (* HACK: *)
-         | OVar (pos, ov) => UseT (pos, {var = TypeVars.ovName ov, kind = FFType.TypeK pos})
-         | UVar (pos, uv) => (case TypeVars.uvGet uv
-                               of Right t => typeToUnFixedF t
-                                | Left _ => Prim (pos, FFType.Prim.Unit))
+    fun concrToF env: FlexFAst.Type.concr -> FFType.concr =
+        fn Exists (params, body) => Exists (params, concrToF env body)
+         | ForAll (params, body) => ForAll (params, concrToF env body)
+         | Arrow (expl, {domain, codomain}) =>
+            Arrow (expl, {domain = concrToF env domain, codomain = concrToF env codomain})
+         | FType.Record row => FType.Record (concrToF env row)
+         | RowExt {base, field = (label, fieldt)} =>
+            RowExt {base = concrToF env base, field = (label, concrToF env fieldt)}
+         | EmptyRow => EmptyRow
+         | FFType.App {callee, args} =>
+            FFType.App {callee = concrToF env callee, args = Vector1.map (concrToF env) args}
+         | CallTFn name => CallTFn name
+         | FFType.Type typ => FFType.Type (concrToF env typ)
+         | UseT def => UseT def
+         | Prim p => Prim p
+         | SVar (UVar uv) => uvToF env uv
+         | SVar (Path path) => (case TypeVars.Path.get env path
+                                of Right (uv, _) => uvToF env uv
+                                 | Left t => concrToF env t)
 
-    and typeToF (typ: TC.typ): FFType.typ = FFType.Fix (typeToUnFixedF typ)
+    and coercionToF env: FlexFAst.Type.co -> FFType.co =
+        fn Refl t => Refl (concrToF env t)
+         | Symm co => Symm (coercionToF env co)
+         | InstCo {callee, args} =>
+            InstCo {callee = coercionToF env callee, args = Vector1.map (concrToF env) args}
+         | UseCo name => UseCo name
 
-    val rec exprToF: TC.typ FAst.Term.expr -> FFTerm.expr =
-        fn Fn (pos, {var, typ}, body) =>
-            Fn (pos, {var, typ = typeToF typ}, exprToF body)
-         | TFn (pos, param, body) => TFn (pos, param, exprToF body)
-         | Extend (pos, typ, fields, record) =>
-            Extend ( pos, typeToF typ
-                   , Vector.map (Pair.second (exprToF)) fields
-                   , Option.map (exprToF) record)
+    and uvToF env uv =
+        case TypeVars.Uv.get env uv
+        of Right t => concrToF env t
+         | Left uv => FType.kindDefault (TypeVars.Uv.kind env uv)
+
+    fun exprToF env: FlexFAst.Term.expr -> FFTerm.expr =
+        fn Fn (pos, {pos = defPos, id, var, typ}, expl, body) =>
+            FFTerm.Fn (pos, {pos = defPos, id, var, typ = concrToF env typ}, expl, exprToF env body)
+         | TFn (pos, param, body) => FFTerm.TFn (pos, param, exprToF env body)
+         | EmptyRecord pos => FFTerm.EmptyRecord pos
+         | With (pos, typ, {base, field}) =>
+            FFTerm.With (pos, concrToF env typ, {base = exprToF env base, field = Pair.second (exprToF env) field})
+         | Where (pos, typ, {base, field}) =>
+            FFTerm.Where (pos, concrToF env typ, {base = exprToF env base, field = Pair.second (exprToF env) field})
+         | Without (pos, typ, {base, field}) =>
+            FFTerm.Without (pos, concrToF env typ, {base = exprToF env base, field})
+         | Letrec (pos, stmts, body) =>
+            FFTerm.Letrec (pos, Vector1.map (stmtToF env) stmts, exprToF env body)
          | Let (pos, stmts, body) =>
-            Let (pos, Vector.map (stmtToF) stmts, exprToF body)
-         | If (pos, cond, conseq, alt) =>
-            If (pos, exprToF cond, exprToF conseq, exprToF alt)
+            FFTerm.Let (pos, Vector1.map (stmtToF env) stmts, exprToF env body)
+         | Match (pos, typ, matchee, clauses) =>
+            FFTerm.Match (pos, concrToF env typ, exprToF env matchee, Vector.map (clauseToF env) clauses)
          | App (pos, typ, {callee, arg}) =>
-            App (pos, typeToF typ, {callee = exprToF callee, arg = exprToF arg})
-         | TApp (pos, typ, {callee, arg}) =>
-            TApp (pos, typeToF typ, {callee = exprToF callee, arg = typeToF arg})
+            FFTerm.App (pos, concrToF env typ, {callee = exprToF env callee, arg = exprToF env arg})
+         | TApp (pos, typ, {callee, args}) =>
+            FFTerm.TApp (pos, concrToF env typ, {callee = exprToF env callee, args = Vector1.map (concrToF env) args})
+         | PrimApp (pos, typ, opn, targs, args) =>
+            FFTerm.PrimApp (pos, concrToF env typ, opn, Vector.map (concrToF env) targs, Vector.map (exprToF env) args)
          | Field (pos, typ, expr, label) =>
-            Field (pos, typeToF typ, exprToF expr, label)
-         | Type (pos, typ) => Type (pos, typeToF typ)
-         | Use (pos, {var, typ}) => Use (pos, {var, typ = typeToF typ})
-         | Const (pos, c) => Const (pos, c)
+            FFTerm.Field (pos, concrToF env typ, exprToF env expr, label)
+         | Cast (pos, typ, expr, coercion) =>
+            FFTerm.Cast (pos, concrToF env typ, exprToF env expr, coercionToF env coercion)
+         | Type (pos, typ) => FFTerm.Type (pos, concrToF env typ)
+         | Use (pos, {pos = defPos, id, var, typ}) =>
+            FFTerm.Use (pos, {pos = defPos, id, var, typ = concrToF env typ})
+         | Const (pos, c) => FFTerm.Const (pos, c)
 
-    and stmtToF =
-        fn Val (pos, {var, typ}, expr) => Val (pos, {var, typ = typeToF typ}, exprToF expr)
-         | Expr expr => Expr (exprToF expr)
+    and clauseToF env = fn {pattern, body} => {pattern = patternToF env pattern, body = exprToF env body}
+
+    and patternToF env =
+        fn Def (pos, {pos = defPos, id, var, typ}) =>
+            FFTerm.Def (pos, {pos = defPos, id, var, typ = concrToF env typ})
+         | ConstP (pos, c) => FFTerm.ConstP (pos, c)
+
+    and stmtToF env =
+        fn Val (pos, {pos = defPos, id, var, typ}, expr) =>
+            FFTerm.Val (pos, {pos = defPos, id, var, typ = concrToF env typ}, exprToF env expr)
+         | Axiom (pos, name, l, r) => FFTerm.Axiom (pos, name, concrToF env l, concrToF env r)
+         | Expr expr => FFTerm.Expr (exprToF env expr)
+
+    fun programToF env {typeFns, stmts, sourcemap} =
+        {typeFns, stmts = Vector.map (stmtToF env) stmts, sourcemap}
 end
 

@@ -1,0 +1,2 @@
+fun forever (n: int) = forever n
+

@@ -1,0 +1,1 @@
+Error: Cannot prove that ans (via f) is initialized in [test/integration/bad_fwd_closure.brm:2.8-2.10]

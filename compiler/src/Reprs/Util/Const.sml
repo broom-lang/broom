@@ -12,9 +12,8 @@ end = struct
     val toString = fn Int n => Int.toString n (* HACK *)
                     | Bool true => "True"
                     | Bool false => "False"
-    
-    structure ToDoc = ToDocFromToString(struct type t = t val toString = toString end)
-    val toDoc = ToDoc.toDoc
+
+    val toDoc = PPrint.text o toString
 
     val typeOf = fn Int _ => PrimType.I32
                   | Bool _ => PrimType.Bool

@@ -1,0 +1,6 @@
+fun getX (point: {x: int, y: int}) = point.x
+val xr: {x: int} = {x = 23}
+val y = 17
+val xy: {x: int, y: int} = {xr with y}
+val x: int = getX xy
+

@@ -36,6 +36,7 @@ end = struct
     val toString = fn String s => s
                     | Fresh i => "g__" ^ Int.toString i
                     | FreshString (s, i) => s ^ Int.toString i
+    val toDoc = PPrint.text o toString
 
     local
         val counter = ref 0
@@ -58,9 +59,6 @@ end = struct
         type ord_key = t
         val compare = compare
     end
-
-    structure ToDoc = ToDocFromToString(struct type t = t val toString = toString end)
-    open ToDoc
 end
 
 structure NameHashTable = HashTableFn(type hash_key = Name.t
@@ -68,4 +66,5 @@ structure NameHashTable = HashTableFn(type hash_key = Name.t
                                       val sameKey = op=)
 
 structure NameSortedMap = BinaryMapFn(Name.OrdKey)
+structure NameSortedSet = BinarySetFn(Name.OrdKey)
 

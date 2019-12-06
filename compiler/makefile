@@ -1,43 +1,48 @@
-BROOMC = broomc
-
+BROOM = broom 
 .PHONY: dev
-dev: $(BROOMC)
+dev: $(BROOM)
 
-$(BROOMC): main.mlb src/Parser/lexer.x.sml src/Parser/parser.y.sml src/Parser/parser.y.sig \
+$(BROOM): main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
            $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
-	mlton -const 'Exn.keepHistory true' -output $(BROOMC) main.mlb
+	mlton -const 'Exn.keepHistory true' -output $(BROOM) main.mlb
 
 .PHONY: prod
-prod: src/Parser/lexer.x.sml src/Parser/parser.y.sml src/Parser/parser.y.sig \
+prod: main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
       $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
-	mlton -output $(BROOMC) main.mlb
+	mlton -output $(BROOM) main.mlb
 
-src/Parser/lexer.x.sml: src/Parser/lexer.x
-	mllex $^
+.PHONY: check
+check: main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
+      $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
+	mlton -stop tc main.mlb
 
-src/Parser/parser.y.sml: src/Parser/parser.y
-	mlyacc $^
+%.ml-antlr.sml: %.ml-antlr
+	ml-antlr $<
 
-src/Parser/parser.y.sig: src/Parser/parser.y
-	mlyacc $^
+%.ml-ulex.sml: %.ml-ulex
+	ml-ulex --strict-sml $<
+
+.PHONY: utest
+utest: $(shell find test/unit -name '*.sml' -or -name '*.mlb')
+	mlton -const 'Exn.keepHistory true' test/unit/unit.mlb && ./test/unit/unit
 
 .PHONY: itest
 itest: itests
 	@echo "All integration tests passed."
 
 .PHONY: itests
-itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.ml)))
+itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.brm)))
 
 .PHONY: %.test
-%.test: %.ml $(BROOMC)
+%.test: %.brm $(BROOM)
 	@expected_err=$(addsuffix .err, $(basename $<)); \
 	if [ -f $$expected_err ]; then \
-          ./$(BROOMC) --lint $< 2>&1 >/dev/null | diff $$expected_err -; \
+          ./$(BROOM) build $< 2>&1 >/dev/null | diff $$expected_err -; \
         else \
-	  ./$(BROOMC) --lint $< 2>&1 | diff /dev/null -; \
+	  ./$(BROOM) build --lint $< 2>&1 | diff /dev/null -; \
         fi
 
 .PHONY: clean
 clean:
-	rm -rf src/Parser/lexer.x.sml src/Parser/parser.y.* $(BROOMC)
+	rm -rf src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml $(BROOM)
 

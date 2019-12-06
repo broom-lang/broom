@@ -1,0 +1,3 @@
+val m: int = 5
+val n: int = m
+

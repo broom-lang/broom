@@ -1,0 +1,32 @@
+if exists('b:current_syntax')
+    finish
+endif
+
+syntax keyword broomKeyword module interface extends override exclude begin do end val fun type pi fn match when where with without
+highlight default link broomKeyword Keyword
+
+syntax match broomColon ":"
+highlight default link broomColon Operator
+syntax match broomEq '='
+highlight default link broomEq Operator
+syntax match broomArrow "->"
+highlight default link broomArrow Operator
+syntax match broomDArrow "=>"
+highlight default link broomDArrow Operator
+syntax match broomBar "|"
+highlight default link broomBar Operator
+
+syntax match broomMacro '@\w\+'
+highlight default link broomMacro PreProc
+
+syntax match broomIntrinsic '__\w\+'
+highlight default link broomIntrinsic PreProc
+
+syntax region broomString start=/"/ end=/"/
+highlight default link broomString String
+
+syntax region broomLineComment start=/#/ end=/\n/
+highlight default link broomLineComment Comment
+
+let b:current_syntax = 'broom'
+

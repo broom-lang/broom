@@ -1,63 +1,25 @@
 structure Parser : sig
-    type config = {debug: bool, lint: bool, instream: TextIO.instream, name: string}
-    val parse : config -> unit
+    type input = {instream: TextIO.instream, sourcemap: Pos.sourcemap}
+
+    type repair = BroomTokens.token AntlrRepair.repair
+    val repairToString : Pos.sourcemap -> repair -> string
+
+    val parse: input -> ( Cst.Term.defn vector option * repair list
+                        , Cst.Term.defn vector ) Either.t
 end = struct
-  structure BroomLrVals = BroomLrValsFun(structure Token = LrParser.Token)
+    structure BroomParser = BroomParseFn(BroomLexer)
 
-  structure BroomLex = BroomLexFun(structure Tokens = BroomLrVals.Tokens)
+    type input = {instream: TextIO.instream, sourcemap: Pos.sourcemap}
+        
+    type repair = BroomTokens.token AntlrRepair.repair
 
-  structure BroomParser = JoinWithArg(structure LrParser = LrParser
-                                      structure ParserData = BroomLrVals.ParserData
-                                      structure Lex = BroomLex)
+    val repairToString = AntlrRepair.repairToString BroomTokens.toString
 
-  structure TC = TypecheckingCst
-  exception TypeError = TypeError.TypeError
-
-  fun logger debug str = if debug then TextIO.output(TextIO.stdOut, str) else ()
-
-  fun invoke lexstream =
-      let fun print_error (s, i, _) =
-              TextIO.output(TextIO.stdOut,
-                            "Error, line " ^ (Pos.toString i) ^ ", " ^ s ^ "\n")
-      in  BroomParser.parse(0, lexstream, print_error, ())
-      end
-
-  type config = {debug: bool, lint: bool, instream: TextIO.instream, name: string}
-
-  fun parse ({debug, lint, instream, name}: config): unit =
-      let val log = logger debug
-          val lexer = BroomParser.makeLexer (fn _ => (case TextIO.inputLine instream
-                                                      of SOME s => s
-                                                       | _ => ""))
-                                            (Pos.default name)
-          val dummyEOF = BroomLrVals.Tokens.EOF(Pos.default name, Pos.default name)
-          fun loop lexer =
-              let val (program,lexer) = invoke lexer
-                  val (nextToken,lexer) = BroomParser.Stream.get lexer
-                  val _ = log (PPrint.pretty 80 (FixedCst.Term.exprToDoc program) ^ "\n")
-                  
-                  val _ = log "===\n"
-
-                  val (program, rootScope) = EnterTypechecker.toTypechecking program
-                  val (_, program) = Typechecker.elaborateExpr [TC.ExprScope rootScope] program
-
-                  val program = ExitTypechecker.exprToF program
-                  val _ = log (PPrint.pretty 80 (FixedFAst.Term.toDoc program) ^ "\n")
-
-                  val _ = if lint
-                          then ignore (Either.unwrap (FAstTypechecker.typecheck program))
-                          else ()
-                  
-                  val _ = log "===\n"
-                  
-                  val program = CpsConvert.cpsConvert program
-                  val _ = log (PPrint.pretty 80 (Cps.Program.toDoc program) ^ "\n")
-              in if BroomParser.sameToken(nextToken,dummyEOF)
-                 then ()
-                 else loop lexer
-              end
-              handle TypeError err =>
-                      TextIO.output (TextIO.stdErr, PPrint.pretty 80 (TypeError.toDoc err))
-       in loop lexer
-      end
+    fun parse {instream, sourcemap} =
+        let val tokenStream = BroomLexer.streamifyInstream instream
+            val lex = BroomLexer.lex sourcemap
+        in  case BroomParser.parse lex tokenStream
+            of (SOME stmts, _, []) => Either.Right stmts
+             | (optStmts, _, repairs) => Either.Left (optStmts, repairs)
+        end
 end

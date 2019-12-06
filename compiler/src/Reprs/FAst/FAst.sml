@@ -1,132 +1,115 @@
-structure FAst = struct
-    structure Type = FType
+structure FlexFAst = struct
+    structure ScopeId = ScopeId
 
-    structure Term = struct
-        val text = PPrint.text
-        val op<> = PPrint.<>
-        val op<+> = PPrint.<+>
-        val op<++> = PPrint.<++>
-        val parens = PPrint.parens
-        val brackets = PPrint.brackets
-        val braces = PPrint.braces
+    val text = PPrint.text
+    val op<> = PPrint.<>
 
-        type 'typ def = {var: Name.t, typ: 'typ}
+    structure Type = struct
+        open FType
+        structure ScopeId = ScopeId
 
-        datatype 'typ expr = Fn of Pos.t * 'typ def * 'typ expr
-                           | TFn of Pos.t * Type.def * 'typ expr
-                           | Extend of Pos.t * 'typ * (Name.t * 'typ expr) vector * 'typ expr option
-                           | App of Pos.t * 'typ * {callee: 'typ expr, arg: 'typ expr}
-                           | TApp of Pos.t * 'typ * {callee: 'typ expr, arg: 'typ}
-                           | Field of Pos.t * 'typ * 'typ expr * Name.t
-                           | Let of Pos.t * 'typ stmt vector * 'typ expr
-                           | If of Pos.t * 'typ expr * 'typ expr * 'typ expr
-                           | Type of Pos.t * 'typ
-                           | Use of Pos.t * 'typ def
-                           | Const of Pos.t * Const.t
+        datatype concr' = datatype FType.concr
+        datatype co' = datatype FType.co
 
-        and 'typ stmt = Val of Pos.t * 'typ def * 'typ expr
-                      | Expr of 'typ expr
+        datatype sv = UVar of uv | Path of path
+        withtype concr = sv FType.concr
+        and co = sv FType.co
+        and uv = sv FType.concr TypeVars.uv
+        and path = sv FType.concr TypeVars.path
 
-        val exprPos =
-            fn Fn (pos, _, _) => pos
-             | TFn (pos, _, _) => pos
-             | Extend (pos, _, _, _) => pos
-             | App (pos, _, _) => pos
-             | TApp (pos, _, _) => pos
-             | Field (pos, _, _, _) => pos
-             | Let (pos, _, _) => pos
-             | If (pos, _, _, _) => pos
-             | Type (pos, _) => pos
-             | Use (pos, _) => pos
-             | Const (pos, _) => pos
+        type ('expr, 'error) env = (concr, 'expr, 'error) TypecheckingEnv.t
 
-       fun defToDoc typeToDoc {var, typ} = Name.toDoc var <> text ":" <+> typeToDoc typ
+        fun concrToDoc env = fn t => FType.Concr.toDoc (svarToDoc env) t
+        and svarToDoc env =
+            fn Path path =>
+                (case TypeVars.Path.get env path
+                 of Either.Right (uv, _) => uvToDoc env uv
+                  | Either.Left t => text "^^" <> PPrint.parens (concrToDoc env t))
+             | UVar uv => uvToDoc env uv
+        and uvToDoc env uv =
+            case TypeVars.Uv.get env uv
+            of Either.Right t => concrToDoc env t
+             | Either.Left uv => text "^" <> Name.toDoc (TypeVars.Uv.name env uv)
 
-       fun stmtToDoc typeToDoc =
-           fn Val (_, def, valExpr) =>
-               text "val" <+> defToDoc typeToDoc def <+> text "="
-                   <+> PPrint.align (exprToDoc typeToDoc valExpr)
-            | Expr expr => exprToDoc typeToDoc expr
+        structure Concr = struct
+            open Concr
 
-       and fieldToDoc exprToDoc (label, expr) = Name.toDoc label <+> text "=" <+> exprToDoc expr
+            datatype t = datatype concr
 
-       and exprToDoc typeToDoc =
-           fn Fn (_, param, body) =>
-               text "\\" <> defToDoc typeToDoc param <+> text "=>" <+> exprToDoc typeToDoc body
-            | TFn (_, param, body) =>
-               text "/\\" <> Type.defToDoc param <+> text "=>" <+> exprToDoc typeToDoc body
-            | Extend (_, _, fields, record) =>
-               braces (PPrint.align (PPrint.punctuate PPrint.newline
-                                                      (Vector.map (fieldToDoc (exprToDoc typeToDoc)) fields)
-                                     <> (case record
-                                         of SOME record => text " with" <+> exprToDoc typeToDoc record
-                                          | NONE => PPrint.empty)))
-            | App (_, _, {callee, arg}) =>
-               parens (exprToDoc typeToDoc callee <+> exprToDoc typeToDoc arg)
-            | TApp (_, _, {callee, arg}) =>
-               parens (exprToDoc typeToDoc callee <+> brackets (typeToDoc arg))
-            | Field (_, _, expr, label) =>
-               parens (exprToDoc typeToDoc expr <> text "." <> Name.toDoc label)
-            | Let (_, stmts, body) =>
-               text "let" <+> PPrint.align (PPrint.punctuate PPrint.newline
-                                                             (Vector.map (stmtToDoc typeToDoc) stmts))
-               <++> text "in" <+> exprToDoc typeToDoc body
-               <++> text "end"
-            | If (_, cond, conseq, alt) =>
-               text "if" <+> exprToDoc typeToDoc cond
-                   <+> text "then" <+> exprToDoc typeToDoc conseq
-                   <+> text "else" <+> exprToDoc typeToDoc alt
-            | Type (_, t) => brackets (typeToDoc t)
-            | Use (_, {var, ...}) => Name.toDoc var 
-            | Const (_, c) => Const.toDoc c
+            val toDoc = concrToDoc
+            fun toString env = Concr.toString (svarToDoc env)
 
-        fun exprToString toDoc = PPrint.pretty 80 o toDoc
+            fun occurs env uv = FType.Concr.occurs (svarOccurs env) uv
+            and svarOccurs env uv =
+                fn Path path =>
+                    (case TypeVars.Path.get env path
+                     of Either.Left t => occurs env uv t
+                      | Either.Right (uv', _) => uvOccurs env uv uv')
+                 | UVar uv' => uvOccurs env uv uv'
+            and uvOccurs env uv uv' =
+                case TypeVars.Uv.get env uv'
+                of Either.Left uv' => TypeVars.Uv.eq (uv, uv')
+                 | Either.Right t => occurs env uv t
 
-        fun typeOf (fixT: 'typ Type.typ -> 'typ): 'typ expr -> 'typ =
-            fn Fn (pos, {typ = domain, ...}, body) =>
-                fixT (Type.Arrow (pos, {domain, codomain = typeOf fixT body}))
-             | TFn (pos, param, body) =>
-                fixT (Type.ForAll (pos, param, typeOf fixT body))
-             | Extend (_, typ, _, _) | App (_, typ, _) | TApp (_, typ, _) => typ
-             | Field (_, typ, _, _) => typ
-             | Let (_, _, body) => typeOf fixT body
-             | If (_, _, conseq, _) => typeOf fixT conseq
-             | Type (pos, t) => fixT (Type.Type (pos, t))
-             | Use (_, {typ, ...}) => typ
-             | Const (pos, c) => fixT (Type.Prim (pos, Const.typeOf c))
+            fun substitute env kv = FType.Concr.substitute (svarSubstitute env) kv
+            and svarSubstitute env kv =
+                fn Path path =>
+                    (case TypeVars.Path.get env path
+                     of Either.Left _ => NONE (* FIXME? *)
+                      | Either.Right (uv, _) => uvSubstitute env kv uv)
+                 | UVar uv => uvSubstitute env kv uv
+            and uvSubstitute env kv uv =
+                case TypeVars.Uv.get env uv
+                of Either.Left _ => NONE
+                 | Either.Right t => SOME (substitute env kv t)
+        end
 
-        datatype 'typ binder = ValueBinder of 'typ def * 'typ expr option
-                             | TypeBinder of Type.def * 'typ option
+        structure Co = struct
+            open Co
 
-        fun foldBinders f acc =
-            fn Fn (_, def, _) => f (ValueBinder (def, NONE), acc)
-             | TFn (_, def, _) => f (TypeBinder (def, NONE), acc)
-             | Let (_, stmts, _) =>
-                Vector.foldl (fn (Val (_, def, expr), acc) => f (ValueBinder (def, SOME expr), acc)
-                               | (Expr _, acc) => acc)
-                             acc stmts
-             | Extend _ | App _ | TApp _ | Field _ | Type _ | Use _ | Const _ => acc
+            fun toDoc env = Co.toDoc (svarToDoc env)
+        end
     end
+
+    structure Term = FTerm(Type)
 end
 
 structure FixedFAst = struct
+    structure ScopeId = FlexFAst.ScopeId
+
     structure Type = struct
-        open FAst.Type
+        open FType
+        structure ScopeId = ScopeId
 
-        datatype typ = Fix of typ FAst.Type.typ
+        datatype concr' = datatype FType.concr
+        datatype co' = datatype FType.co
 
-        fun toDoc (Fix t) = FAst.Type.toDoc toDoc t
-        val toString = FAst.Type.toString toDoc
+        type sv = Nothing.t
+        type concr = sv concr
+        type co = sv co'
+
+        type ('expr, 'error) env = unit
+
+        fun svarToDoc _ = PPrint.text o Nothing.toString
+
+        structure Concr = struct
+            open Concr
+
+            datatype t = datatype concr
+
+            fun toDoc env = Concr.toDoc (svarToDoc env)
+            fun substitute _ = Concr.substitute (fn _ => fn _ => NONE)
+            val kindOf: concr -> kind = kindOf (fn _ => raise Fail "unreachable")
+            fun toString env = Concr.toString (svarToDoc env)
+        end
+
+        structure Co = struct
+            open Co
+            
+            fun toDoc env = Co.toDoc (svarToDoc env)
+        end
     end
 
-    structure Term = struct
-        open FAst.Term
-
-        type expr = Type.typ FAst.Term.expr
-
-        val toDoc = FAst.Term.exprToDoc Type.toDoc
-        val toString = FAst.Term.exprToString toDoc
-        val typeOf = FAst.Term.typeOf Type.Fix
-    end
+    structure Term = FTerm(Type)
 end
 

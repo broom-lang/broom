@@ -1,0 +1,11 @@
+type FN = interface
+    val id : pi a => a -> a
+    val const : pi a b => a -> (b -> a)
+end
+
+val Fn = module
+    fun id x = x
+
+    fun const v = fn _ => v end
+end
+

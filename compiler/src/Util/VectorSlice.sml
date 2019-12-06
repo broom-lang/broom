@@ -1,9 +1,9 @@
 structure VectorSlice = struct
     open VectorSlice
 
-    fun uncons slice =
-        case length slice 
-        of 0 => NONE
-         | _ => SOME (sub (slice, 0), subslice (slice, 1, NONE))
+    fun uncons xs =
+        if length xs > 0
+        then SOME (sub (xs, 0), subslice (xs, 1, NONE))
+        else NONE
 end
 

@@ -1,0 +1,2 @@
+TypeError in [test/integration/generative.brm:20.21-20.25]: ^^(12()) I32 15() is not a subtype of ^^(12()) I32 16()
+because TypeError in [test/integration/generative.brm:20.21-20.25]: 15() is not a subtype of 16()

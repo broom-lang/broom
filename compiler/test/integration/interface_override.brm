@@ -1,0 +1,14 @@
+type DEFAULT = interface
+    type t
+    val default : t
+end
+
+val IntDefault : interface extends DEFAULT
+    override type t = int
+end = module
+    type t = int
+    val default = 0
+end
+
+val n : int = IntDefault.default
+

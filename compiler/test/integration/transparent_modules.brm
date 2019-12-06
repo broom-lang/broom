@@ -1,0 +1,14 @@
+val Prelude = module
+    val Fn = module
+        fun identity (a: type) (x: a) = x
+    end
+
+    val Integer = module
+        type t = int
+
+        val zero: t = 0
+    end
+end
+
+val n: Prelude.Integer.t = Prelude.Fn.identity Prelude.Integer.t Prelude.Integer.zero
+

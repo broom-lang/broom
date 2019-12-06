@@ -1,0 +1,5 @@
+type FOO_FOO = interface
+    val foo : int
+    val foo : bool
+end
+

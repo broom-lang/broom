@@ -1,0 +1,355 @@
+%name Broom;
+
+%defs (
+    structure Term = Cst.Term
+    structure Type = Cst.Type
+    datatype explicitness = datatype Cst.explicitness
+    datatype effect = datatype Cst.effect
+
+    fun binopsl l opapps =
+        List.foldl (fn ((pos, opPos, opn, r), l) =>
+                        let val callee =
+                                Term.App (opPos, { callee = Term.Use (opPos, opn)
+                                                 , arg = l })
+                        in Term.App (pos, {callee, arg = r })
+                        end)
+                   l opapps
+
+    datatype row
+        = RecordFields of Term.recordFields
+        | RowType of Type.typ
+
+    fun block new pos stmts =
+        case stmts
+        of #[] => new (pos, #[], Term.emptyRecord pos)
+         | _ => let val lastIndex = Vector.length stmts - 1
+                in case Vector.sub (stmts, lastIndex)
+                   of Term.Val _ => new (pos, stmts, Term.emptyRecord pos)
+                    | Term.Expr body =>
+                       let val stmts =
+                               VectorSlice.vector (VectorSlice.slice (stmts, 0, SOME lastIndex))
+                       in new (pos, stmts, body)
+                       end
+                end
+);
+
+%tokens
+    : VAL ("val")
+    | FUN ("fun")
+    | TYPE ("type")
+    | PI ("pi")
+    | BEGIN ("begin")
+    | DO ("do")
+    | EXTENDS ("extends")
+    | MODULE ("module")
+    | INTERFACE ("interface")
+    | OVERRIDE ("override")
+    | EXCLUDE ("exclude")
+    | FN ("fn")
+    | MATCH ("match")
+    | END ("end")
+    | WITH ("with")
+    | WHERE ("where")
+    | WITHOUT ("without")
+
+    | DARROW ("=>")
+    | EQ ("=")
+    | ARROW ("->")
+    | WARROW ("~>")
+    | BAR ("|")
+    | AMP ("&")
+    | DDOT ("..")
+    | DOT (".")
+    | COMMA (",")
+    | COLON (":")
+    | SEMI (";")
+
+    | OP4 of Name.t
+    | OP5 of Name.t
+    | OP6 of Name.t
+    | OP7 of Name.t
+
+    | LPAREN ("(")
+    | RPAREN (")")
+    | LBRACKET ("[")
+    | RBRACKET ("]")
+    | LBRACE ("{")
+    | RBRACE ("}")
+
+    | META of Name.t
+    | INTRINSIC of Primop.t
+    | ID of Name.t
+
+    | INT of int
+    | BOOL of bool
+    ;
+
+(* # Program *)
+
+%start program;
+
+program : defStmt* => (Vector.fromList defStmt);
+
+(* # Statements and Definitions *)
+
+stmts : stmts=stmt* => (Vector.fromList stmts);
+
+stmt
+    : ";"? defStmt => (Term.Val defStmt)
+    | ";" expr => (Term.Expr expr)
+    ;
+
+def
+    : defStmt => (Cst.Extend defStmt)
+    | "override" defStmt => (Cst.Override defStmt)
+    | "exclude" ID => (Cst.Exclude (FULL_SPAN, ID))
+    ;
+
+defStmt
+    : "val" pattern "=" expr => ((FULL_SPAN, pattern, expr))
+    | "fun" ID pats=(apat => ((apat_SPAN, apat)))+ "=" expr => (
+          let fun step ((pos, pattern), body) =
+                  Term.Fn (pos, Explicit (), #[{pattern, body}])
+          in (FULL_SPAN, Term.Def (ID_SPAN, ID), List.foldr step expr pats)
+          end
+      )
+    | "type" ID pats=(kpat => ((kpat_SPAN, kpat)))* "=" typ => (
+          let fun step ((pos, {var = ID, typ}), body) =
+                  Term.Fn ( pos, Explicit ()
+                          , #[{pattern = Term.AnnP (pos, { pat = Term.Def (pos, ID), typ})
+                                                         , body }])
+          in (FULL_SPAN, Term.Def (ID_SPAN, ID), List.foldr step (Term.Type (typ_SPAN, typ)) pats)
+          end
+      )
+    ;
+
+(* # Expressions *)
+
+expr
+    : ascription
+    | "type" => (Term.Type (TYPE_SPAN, Type.TypeT TYPE_SPAN))
+    ;
+
+ascription : arrow typ=(":" typ)? => (
+        case typ
+        of SOME typ => Term.Ann (FULL_SPAN, arrow, typ)
+         | NONE => arrow
+    );
+
+arrow
+    : "pi" params=(piParam => ((piParam_SPAN, piParam)))+ arr body=arrow => (
+        let fun step ((pos, param), body) = Type.Pi (pos, param, arr, body)
+        in Term.Type (FULL_SPAN, List.foldr step (Type.Path body) params)
+        end
+      )
+    | binapp codomain=(arr arrow)? => (
+          case codomain
+          of SOME (arr, cd) =>
+              let val def = {var = Name.fresh (), typ = SOME (Type.Path binapp)}
+              in Term.Type (FULL_SPAN, Type.Pi (FULL_SPAN, def, arr, Type.Path cd))
+              end
+           | NONE => binapp
+      )
+    ;
+
+arr
+    : "->" => (Explicit Pure)
+    | "~>" => (Explicit Impure)
+    | "=>" => (Implicit)
+    ;
+
+binapp : binapp4 ;
+
+binapp4 : l=binapp5 opapps=(OP4 r=binapp5 => (FULL_SPAN, OP4_SPAN, OP4, r))* => (binopsl l opapps);
+binapp5 : l=binapp6 opapps=(OP5 r=binapp6 => (FULL_SPAN, OP5_SPAN, OP5, r))* => (binopsl l opapps);
+binapp6 : l=binapp7 opapps=(OP6 r=binapp7 => (FULL_SPAN, OP6_SPAN, OP6, r))* => (binopsl l opapps);
+binapp7 : l=app opapps=(OP7 r=app => (FULL_SPAN, OP7_SPAN, OP7, r))* => (binopsl l opapps);
+
+app
+    : INTRINSIC selects=select* => (
+          Term.PrimApp (FULL_SPAN, INTRINSIC, Vector.fromList selects)
+      )
+    | select selects=(select => (select_SPAN, select))* => (
+        List.foldl (fn ((pos, arg), callee) => Term.App (pos, {callee, arg}))
+                   select selects
+    );
+
+select : nestable fields=("." ID => ((ID_SPAN, ID)))* => (
+        List.foldl (fn ((pos, field), r) => Term.Field (pos, r, field))
+                   nestable fields
+    );
+
+nestable
+    : "begin" defStmt* body=(";" expr)? "end" => (
+          let val defs = Vector.fromList defStmt
+          in  case body
+              of SOME body => Term.Begin (FULL_SPAN, defs, body)
+               | NONE => Term.Begin (FULL_SPAN, defs, Term.emptyRecord body_SPAN)
+          end
+      )
+    | "do" stmts "end" => (block Term.Do FULL_SPAN stmts)
+    | "match" expr clauses=explicitClause+ "end" =>
+          (Term.Match (FULL_SPAN, expr, Vector.fromList clauses))
+    | "module" super=("extends" pat=("val" pattern "=")? expr => (pat, expr))? def* "end" => (
+          Term.Module (FULL_SPAN, super, Vector.fromList def)
+      )
+    | "interface" super=("extends" var=("val" ID ":")? typ => ({var, typ}))? decl* "end" => (
+          Term.Type (FULL_SPAN, Type.Interface (FULL_SPAN, super, Vector.fromList decl))
+      )
+    | "fn" fnClauses "end" => (
+          let val (explicitness, clauses) = fnClauses
+          in Term.Fn (FULL_SPAN, explicitness, clauses)
+          end
+      )
+    | "{" row "}" => (
+          case row
+          of RecordFields fields => Term.Record (FULL_SPAN, fields)
+           | RowType row => Term.Type (FULL_SPAN, Type.RecordT (FULL_SPAN, row))
+      )
+    | "(" "=" expr ")" => (Term.Type (FULL_SPAN, Type.Singleton (FULL_SPAN, expr)))
+    | "(" expr ")"
+    | atom
+    ;
+
+fnClauses : "|"? pattern=paramPattern clausesTail => (
+        let val (explicitness, body, clauses) = clausesTail
+        in (explicitness, Vector.fromList ({pattern, body} :: clauses))
+        end
+    );
+
+clausesTail
+    : "->" body=expr clauses=explicitClause* => ((Explicit (), body, clauses))
+    | "=>" body=expr clauses=implicitClause* => ((Implicit, body, clauses))
+    ;
+
+explicitClause : "|" pattern=paramPattern "->" body=expr => ({pattern, body});
+implicitClause : "|" pattern=paramPattern "=>" body=expr => ({pattern, body});
+
+row
+    : base=arrow row=( exprRowEdit* => (RecordFields {base = SOME base, edits = Vector.fromList exprRowEdit})
+                     | typRowEdit+ => (RowType (Type.RowExt (FULL_SPAN, {base = Type.Path base, edits = Vector.fromList typRowEdit}))) )
+          => (row)
+    | exprBaseFields exprRowEdit* => (
+          RecordFields {base = NONE, edits = Vector.fromList (Term.With exprBaseFields :: exprRowEdit)}
+      )
+    | typRowFields typRowEdit* => (
+          RowType (Type.RowExt (FULL_SPAN, { base = Type.EmptyRow FULL_SPAN
+                                           , edits = Vector.fromList (Type.WithT typRowFields :: typRowEdit) }))
+      )
+    | => (RecordFields {base = NONE, edits = #[]})
+    | "&" typRowEdit+ => (RowType (Type.RowExt (FULL_SPAN, {base = Type.WildRow AMP_SPAN, edits = Vector.fromList typRowEdit})))
+    | "&" => (RowType (Type.WildRow FULL_SPAN))
+    | ":" base=arrow => (RowType (Type.Path base))
+    | ":" => (RowType (Type.EmptyRow FULL_SPAN))
+    ;
+
+exprRowEdit
+    : "with" exprFields => (Term.With (Vector.fromList exprFields))
+    | "where" exprFields => (Term.Where (Vector.fromList exprFields))
+    | "without" label=ID labels=("," ID)* => (Term.Without (Vector.fromList (label :: labels)))
+    ;
+
+exprBaseFields : ID "=" expr tail=("," exprFields)? => (
+        case tail
+        of SOME tail => Vector.fromList ((ID, expr) :: tail)
+         | NONE => #[(ID, expr)]
+    );
+
+exprFields : fields=(field=exprField fields=("," exprField)* => (field :: fields))? => (
+        getOpt (fields, [])
+    );
+
+exprField : ID expr=("=" expr)? => (
+        case expr
+        of SOME expr => (ID, expr)
+         | NONE => (ID, Term.Use (ID_SPAN, ID))
+    );
+
+typRowEdit
+    : "with" typRowFields => (Type.WithT typRowFields)
+    | "where" typRowFields => (Type.WhereT typRowFields)
+    | "without" ":" label=ID labels=("," ID)* => (Type.WithoutT (Vector.fromList (label :: labels))) (* HACK: ":" *)
+    ;
+
+typRowFields : field=typRowField fields=("," typRowField)* => (Vector.fromList (field :: fields));
+
+typRowField : ID ":" typ ;
+
+atom
+    : ID => (
+          case Name.toString ID (* HACK *)
+          of "int"  => Term.Type (ID_SPAN, Type.Prim (ID_SPAN, Type.Prim.I32))
+           | "bool" => Term.Type (ID_SPAN, Type.Prim (ID_SPAN, Type.Prim.Bool))
+           | _ => Term.Use (ID_SPAN, ID)
+      )
+    | const => (Term.Const (const_SPAN, const))
+    ;
+
+(* # Patterns *)
+
+pattern : apat typ=(":" typ)? => (
+        case typ
+        of SOME typ => Term.AnnP (FULL_SPAN, {pat = apat, typ})
+         | NONE => apat
+    );
+
+paramPattern : apat typ=(":" nonArrowTyp)? => (
+        case typ
+        of SOME typ => Term.AnnP (FULL_SPAN, {pat = apat, typ})
+         | NONE => apat
+    );
+
+apat
+    : "(" pattern ")"
+    | ID => (Term.Def (ID_SPAN, ID))
+    | const => (Term.ConstP (const_SPAN, const))
+    ;
+
+piParam
+    : ID                 => ({var = ID, typ = NONE})
+    | "(" ID ":" typ ")" => ({var = ID, typ = SOME typ})
+    ;
+
+kpat
+    : ID                 => ({var = ID, typ = Type.TypeT FULL_SPAN})
+    | "(" ID ":" typ ")" => ({var = ID, typ})
+    ;
+
+(* # Declarations *)
+
+decl
+    : baseDecl => (Cst.Extend baseDecl)
+    | "override" baseDecl => (Cst.Override baseDecl)
+    | "exclude" ID => (Cst.Exclude (FULL_SPAN, ID))
+    ;
+
+baseDecl
+    : "val" ID ":" typ => ((FULL_SPAN, ID, typ))
+    | "type" ID pats=(kpat => ((kpat_SPAN, kpat)))* typ=("=" typ => ((typ_SPAN, typ)))? => (
+          let fun step ((pos, {var, typ}), codomain) =
+                  Type.Pi (pos, {var, typ = SOME typ}, Explicit Pure, codomain)
+              val codomain =
+                  case typ
+                  of SOME (ptyp as (pos, typ)) => Type.Singleton (pos, Term.Type ptyp)
+                   | NONE => Type.TypeT FULL_SPAN
+          in (FULL_SPAN, ID, List.foldr step codomain pats)
+          end
+      )
+    ;
+
+(* # Types *)
+
+typ : expr => (Type.Path expr);
+
+nonArrowTyp
+    : binapp => (Type.Path binapp)
+    | "type" => (Type.TypeT TYPE_SPAN)
+    ;
+
+(* # Constants *)
+
+const
+    : INT  => (Const.Int INT)
+    | BOOL => (Const.Bool BOOL)
+    ;
+
