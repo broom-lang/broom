@@ -58,7 +58,7 @@ end = struct
                      in { root = Bitmapped {bitmap, nodes = Vector.update (nodes, index, node)}
                         , len }
                      end
-                else { root = Bitmapped { bitmap = andb (bitmap, bit)
+                else { root = Bitmapped { bitmap = orb (bitmap, bit)
                                         , nodes = Vector.pushAt (nodes, index, Leaf kv) }
                      , len = Int.+ (len, 1) }
             end
