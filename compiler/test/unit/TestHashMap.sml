@@ -26,6 +26,7 @@ structure TestHashMap = struct
             
             val kvs = Vector.foldli (fn (k, v, acc) => Map.insert acc (k, v))
                                     Map.empty vs
+            val kvs' = Map.insert kvs (23, 42)
         in Assert.eq (Map.length kvs, 1000) "1000 items"
          ; Vector.appi (fn (k, v) =>
                             case Map.find kvs k
@@ -33,6 +34,8 @@ structure TestHashMap = struct
                              | NONE => Assert.ok false (Int.toString k ^ " found"))
                        vs
          ; Assert.ok (Map.find kvs 1001 = NONE) "1001 not found"
+         ; Assert.eq (valOf (Map.find kvs 23), 999 - 23) "kvs 23 unchanged"
+         ; Assert.eq (valOf (Map.find kvs' 23), 42) "kvs' 23 updated"
         end
 
     fun runTests () =
