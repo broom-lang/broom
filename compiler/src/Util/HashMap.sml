@@ -1,4 +1,7 @@
-functor HashMap (Key : HASH_KEY) :> sig
+functor HashMap (Key : sig
+    include HASH_KEY
+    val toString : hash_key -> string
+end) :> sig
     type key = Key.hash_key
     type 'v t
 
@@ -8,6 +11,9 @@ functor HashMap (Key : HASH_KEY) :> sig
     val length : 'v t -> int
     val fold : ((key * 'v) * 'a -> 'a) -> 'a -> 'v t -> 'a
     val map : ('v -> 'a) -> 'v t -> 'a t
+
+    val toString : ('v -> string) -> 'v t -> string
+    val inspect : ('v -> string) -> 'v t -> string
 end = struct
     open Word32
     infix 5 << >>
@@ -121,5 +127,42 @@ end = struct
          | Collision {hash, kvs} =>
             Collision {hash, kvs = Vector.map (Pair.second f) kvs}
          | Leaf (k, v) => Leaf (k, f v)
+
+    fun toString valToString {root, len = _} = "{" ^ trieToString valToString root ^ "}"
+
+    and trieToString valToString =
+        fn Bitmapped {bitmap = _, nodes} =>
+            (case nodes
+             of #[] => ""
+              | _ =>
+                VectorSlice.foldl (fn (node, acc) =>
+                                       acc ^ ", " ^ trieToString valToString node)
+                                  (trieToString valToString (Vector.sub (nodes, 0)))
+                                  (VectorSlice.slice (nodes, 1, NONE)))
+         | Collision {hash = _, kvs} =>
+            (case kvs
+             of #[] => ""
+              | _ =>
+                VectorSlice.foldl (fn (kv, acc) => acc ^ ", " ^ kvToString valToString kv)
+                                  (kvToString valToString (Vector.sub (kvs, 0)))
+                                  (VectorSlice.slice (kvs, 1, NONE)))
+         | Leaf kv => kvToString valToString kv
+
+    and kvToString valToString (k, v) = Key.toString k ^ " = " ^ valToString v
+
+    fun inspect valToString {root, len} =
+        let fun inspectTrie indent =
+                fn Bitmapped {bitmap, nodes} =>
+                    indent ^ "- Bitmapped " ^ Word32.toString bitmap ^ "\n"
+                    ^ Vector.foldl (fn (node, acc) =>
+                                        acc ^ inspectTrie (indent ^ "    ") node)
+                                   "" nodes
+                 | Collision {hash, kvs} =>
+                    indent ^ "- Collision " ^ Word32.toString hash ^ " "
+                    ^ Vector.inspect (kvToString valToString) kvs ^ "\n"
+                 | Leaf kv => indent ^ kvToString valToString kv ^ "\n"
+        in "len = " ^ Int.toString len ^ "\n"
+         ^ "root =\n" ^ inspectTrie "    " root
+        end
 end
 

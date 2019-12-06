@@ -3,6 +3,7 @@ structure TestHashMap = struct
         type hash_key = int
         val hashVal = Word32.fromInt
         val sameKey = op=
+        val toString = Int.toString
     end)
 
     structure Assert = Assert(struct
@@ -21,17 +22,17 @@ structure TestHashMap = struct
         end
 
     fun testInsert () =
-        let val vs = Vector.tabulate (1000, fn n => 99 - n)
+        let val vs = Vector.tabulate (100, fn n => 99 - n)
             
             val kvs = Vector.foldli (fn (k, v, acc) => Map.insert acc (k, v))
                                     Map.empty vs
-        in Assert.eq (Map.length kvs, 1000) "1000 items"
+        in Assert.eq (Map.length kvs, 100) "100 items"
          ; Vector.appi (fn (k, v) =>
                             case Map.find kvs k
                             of SOME v' => Assert.eq (v', v) (Int.toString k)
                              | NONE => Assert.ok false (Int.toString k ^ " found"))
                        vs
-         ; Assert.ok (Map.find kvs 1001 = NONE) "1001 not found"
+         ; Assert.ok (Map.find kvs 101 = NONE) "101 not found"
         end
 
     fun runTests () =
