@@ -1,0 +1,20 @@
+fun callCC f = perform ('CallCC f)
+
+fun ctak x y z =
+  match callCC (fn k -> ctak' k x y z)
+  | ! ('CallCC f) k -> k (f k)
+  | v -> v
+  end
+
+fun ctak' k x y z =
+  match y < x
+  | False -> k z
+  | True ->
+    callCC (fn k ->
+      ctak' k
+            (callCC (ctak' _ (x - 1) y z))
+            (callCC (ctak' _ (y - 1) z x))
+            (callCC (ctak' _ (z - 1) x y))
+    )
+  end
+

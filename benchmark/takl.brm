@@ -1,0 +1,26 @@
+val (::) = List.(::)
+
+fun listn 0 = List.Empty
+  | listn n = n :: listn (n - 1)
+
+fun nlist List.Empty = 0
+  | nlist (n :: _) = n
+
+fun x < y =
+    not (List.isEmpty y)
+    && (List.isEmpty x
+        || List.tail! x < List.tail! y)
+
+fun takl x y z =
+  match y < x
+  | False -> z
+  | True ->
+    takl (takl (List.tail! x) y z)
+         (takl (List.tail! y) z x)
+         (takl (List.tail! z) x y)
+  end
+
+fun tak x y z =
+    takl (listn x) (listn y) (listn z)
+    |> nlist
+
