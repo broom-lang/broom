@@ -6,5 +6,9 @@ structure Option = struct
 
     fun orElse thunk = fn opt as SOME _ => opt
                         | NONE => thunk ()
+
+    fun unwrapOrElse thunk =
+        fn SOME v => v
+         | NONE => thunk ()
 end
 

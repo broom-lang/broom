@@ -5,15 +5,42 @@
     structure Type = Cst.Type
     datatype explicitness = datatype Cst.explicitness
     datatype effect = datatype Cst.effect
+    val op|> = Fn.|>
 
-    fun binopsl l opapps =
-        List.foldl (fn ((pos, opPos, opn, r), l) =>
-                        let val callee =
-                                Term.App (opPos, { callee = Term.Use (opPos, opn)
-                                                 , arg = l })
-                        in Term.App (pos, {callee, arg = r })
-                        end)
-                   l opapps
+    datatype arg
+      = ArgExpr of Term.expr
+      | ArgAny of Pos.span
+
+    fun analyzeArg arg param =
+        case arg
+        of ArgExpr arg => (arg, param)
+         | ArgAny pos =>
+            let val param =
+                    Option.unwrapOrElse (fn () => (pos, Name.fresh ())) param
+            in (Term.Use param, SOME param)
+            end
+
+    (* FIXME: `_ + 5 - _` should *not* work: *)
+    fun binopsl pos l opapps =
+        case opapps
+        of _ :: _ =>
+            let val acc = analyzeArg l NONE
+                fun step ((pos, opPos, opn, r), (l, param)) =
+                    let val callee = 
+                            Term.App (opPos, { callee = Term.Use (opPos, opn)
+                                             , arg = l })
+                        val (r, param) = analyzeArg r param
+                    in (Term.App (pos, {callee, arg = r}), param)
+                    end
+                val (body, param) = List.foldl step acc opapps
+            in (case param
+                of SOME param =>
+                    Term.Fn ( pos, Cst.Explicit ()
+                            , #[{pattern = Term.Def param, body}] )
+                 | NONE => body)
+               |> ArgExpr
+            end
+         | [] => l
 
     datatype row
         = RecordFields of Term.recordFields
@@ -79,6 +106,7 @@
     | META of Name.t
     | INTRINSIC of Primop.t
     | ID of Name.t
+    | WILDCARD
 
     | INT of int
     | BOOL of bool
@@ -158,26 +186,69 @@ arr
     | "=>" => (Implicit)
     ;
 
-binapp : binapp4 ;
+binapp : binapp4 => (
+        case binapp4
+        of ArgExpr expr => expr
+         | ArgAny pos => raise Fail "Uncurryable _"
+    );
 
-binapp4 : l=binapp5 opapps=(OP4 r=binapp5 => (FULL_SPAN, OP4_SPAN, OP4, r))* => (binopsl l opapps);
-binapp5 : l=binapp6 opapps=(OP5 r=binapp6 => (FULL_SPAN, OP5_SPAN, OP5, r))* => (binopsl l opapps);
-binapp6 : l=binapp7 opapps=(OP6 r=binapp7 => (FULL_SPAN, OP6_SPAN, OP6, r))* => (binopsl l opapps);
-binapp7 : l=app opapps=(OP7 r=app => (FULL_SPAN, OP7_SPAN, OP7, r))* => (binopsl l opapps);
+binapp4 : l=binapp5 opapps=(OP4 r=binapp5 => (FULL_SPAN, OP4_SPAN, OP4, r))* => (binopsl FULL_SPAN l opapps);
+binapp5 : l=binapp6 opapps=(OP5 r=binapp6 => (FULL_SPAN, OP5_SPAN, OP5, r))* => (binopsl FULL_SPAN l opapps);
+binapp6 : l=binapp7 opapps=(OP6 r=binapp7 => (FULL_SPAN, OP6_SPAN, OP6, r))* => (binopsl FULL_SPAN l opapps);
+binapp7 : l=app opapps=(OP7 r=app => (FULL_SPAN, OP7_SPAN, OP7, r))* => (binopsl FULL_SPAN l opapps);
 
 app
     : INTRINSIC selects=select* => (
-          Term.PrimApp (FULL_SPAN, INTRINSIC, Vector.fromList selects)
+          let val args = Vector.fromList selects
+              fun step (i, param) = analyzeArg (Vector.sub (args, i)) param
+              val (args, param) = MLton.Vector.unfoldi (Vector.length args, NONE, step)
+              val body = Term.PrimApp (FULL_SPAN, INTRINSIC, args)
+          in (case param
+              of SOME param =>
+                  Term.Fn (FULL_SPAN, Cst.Explicit (), #[{pattern = Term.Def param, body}])
+               | NONE => body)
+             |> ArgExpr
+          end
       )
     | select selects=(select => (select_SPAN, select))* => (
-        List.foldl (fn ((pos, arg), callee) => Term.App (pos, {callee, arg}))
-                   select selects
+        case selects
+        of _ :: _ =>
+            let fun step ((pos, arg), (callee, param)) =
+                    let val (arg, param) = analyzeArg arg param
+                    in (Term.App (pos, {callee, arg}), param)
+                    end
+                val acc = analyzeArg select NONE
+                val (body, param) = List.foldl step acc selects
+            in (case param
+                of SOME param =>
+                    Term.Fn (FULL_SPAN, Cst.Explicit (), #[{pattern = Term.Def param, body}])
+                 | NONE => body)
+               |> ArgExpr
+            end
+         | [] => select
     );
 
-select : nestable fields=("." ID => ((ID_SPAN, ID)))* => (
-        List.foldl (fn ((pos, field), r) => Term.Field (pos, r, field))
-                   nestable fields
-    );
+select
+    : nestable fields=("." ID => ((ID_SPAN, ID)))* => (
+          List.foldl (fn ((pos, field), r) => Term.Field (pos, r, field))
+                     nestable fields
+          |> ArgExpr
+      )
+    | WILDCARD fields=("." ID => ((ID_SPAN, ID)))* => (
+          case fields
+          of _ :: _ =>
+              let val param = Name.fresh ()
+                  val body =
+                      List.foldl (fn ((pos, field), r) => Term.Field (pos, r, field))
+                                 (Term.Use (WILDCARD_SPAN, param))
+                                 fields
+              in ArgExpr (Term.Fn ( FULL_SPAN
+                                  , Cst.Explicit ()
+                                  , #[{pattern = Term.Def (FULL_SPAN, param), body}] ))
+              end
+          | [] => ArgAny FULL_SPAN
+      )
+    ;
 
 nestable
     : "begin" defStmt* body=(";" expr)? "end" => (
