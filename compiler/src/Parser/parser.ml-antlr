@@ -373,6 +373,7 @@ paramPattern : apat typ=(":" nonArrowTyp)? => (
 apat
     : "(" pattern ")"
     | ID => (Term.Def (ID_SPAN, ID))
+    | WILDCARD => (Term.AnyP WILDCARD_SPAN)
     | const => (Term.ConstP (const_SPAN, const))
     ;
 

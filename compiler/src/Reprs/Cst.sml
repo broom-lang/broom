@@ -54,6 +54,7 @@ signature CST = sig
     and pat
         = AnnP of Pos.span * {pat: pat, typ: typ}
         | Def of Pos.span * Name.t
+        | AnyP of Pos.span
         | ConstP of Pos.span * Const.t
 
     and rec_edit
@@ -167,6 +168,7 @@ structure Cst :> CST = struct
     and pat
         = AnnP of Pos.span * {pat: pat, typ: typ}
         | Def of Pos.span * Name.t
+        | AnyP of Pos.span
         | ConstP of Pos.span * Const.t
 
     and rec_edit
@@ -352,6 +354,7 @@ structure Cst :> CST = struct
     and patToDoc =
         fn AnnP (_, {pat, typ}) => patToDoc pat <> text ":" <+> typeToDoc typ
          | Def (_, name) => Name.toDoc name
+         | AnyP _ => text "_"
          | ConstP (_, c) => Const.toDoc c
 
     structure Type = struct

@@ -39,27 +39,38 @@ end = struct
         , body = f body }
 
     and mapPatternExprs f =
-        fn pat as (Def _ | ConstP _) => pat
+        fn pat as (Def _ | AnyP _ | ConstP _) => pat
 
     fun exprFold f expr = f (mapExprs (exprFold f) expr)
 
     fun discriminatingClause {pattern, body = _} =
         case pattern
         of ConstP _ => true
+         | AnyP _ => false
          | Def _ => false
 
     val implementExpr =
          exprFold (fn expr as Match (pos, t, matchee, clauses) =>
                        let val (discriminators, defaults) =
                                Vector.splitWith discriminatingClause clauses
-                           val default =
+                           val (stmt, matchee, default) =
                                if VectorSlice.length defaults > 0
-                               then VectorSlice.sub (defaults, 0)
-                               else { pattern = Def (pos, { id = DefId.fresh (), var = Name.fresh ()
-                                                          , typ = FTerm.typeOf matchee, pos})
-                                    , body = PrimApp (pos, t, Primop.Panic, #[t], #[]) }
-                       in Match ( pos, t, matchee
-                                , Vector.append (VectorSlice.vector discriminators, default) )
+                               then case VectorSlice.sub (defaults, 0)
+                                    of clause as {pattern = AnyP _, ...} =>
+                                        (NONE, matchee, clause)
+                                     | {pattern = Def (pos, def), body} =>
+                                        ( SOME (Val (pos, def, matchee))
+                                        , Use (FTerm.exprPos matchee, def)
+                                        , {pattern = AnyP pos, body} )
+                               else ( NONE
+                                    , matchee
+                                    , { pattern = AnyP pos
+                                      , body = PrimApp (pos, t, Primop.Panic, #[t], #[]) } )
+                           val match = Match ( pos, t, matchee
+                                             , Vector.append (VectorSlice.vector discriminators, default) )
+                       in case stmt
+                          of SOME stmt => Let (pos, Vector1.singleton stmt, match)
+                           | NONE => match
                        end
                     | expr => expr)
 

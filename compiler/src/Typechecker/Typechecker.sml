@@ -286,6 +286,7 @@ end = struct
                                     case pattern
                                     of FTerm.Def (_, def as {var, ...}) =>
                                         Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), var, Visited (def, NONE)))
+                                     | FTerm.AnyP _ => env
                                      | FTerm.ConstP _ => env
                             in (SOME matcheeTyp, pattern, env)
                             end
@@ -308,6 +309,7 @@ end = struct
                 val def = {pos, id = DefId.fresh (), var = name, typ = t}
             in ((#[], t), FTerm.Def (pos, def))
             end
+         | CTerm.AnyP pos => ((#[], SVar (UVar (Uv.fresh env TypeK))), FTerm.AnyP pos)
          | CTerm.ConstP (pos, c) =>
             let val cTyp = Prim (Const.typeOf c)
             in ((#[], cTyp), FTerm.ConstP (pos, c))
@@ -425,6 +427,7 @@ end = struct
             in ( FTerm.Def (pos, def)
                , Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), name, Visited (def, NONE))) )
             end
+         | CTerm.AnyP pos => (FTerm.AnyP pos, env)
          | CTerm.ConstP (pos, c) =>
             let val cTyp = Prim (Const.typeOf c)
                 val _ = unify env pos (cTyp, t)
