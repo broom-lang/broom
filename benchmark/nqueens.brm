@@ -2,7 +2,7 @@ val (::) = List.(::)
 
 fun nqueens n = begin
   fun iota1 n = begin
-    fun loop l = fn
+    fun loop l = fn match
      | 0 -> l
      | i -> loop (i - 1) (i :: l)
      end
