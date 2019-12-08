@@ -298,11 +298,10 @@ end = struct
         end
 
     and elaboratePattern env =
-        fn CTerm.AnnP (pos, {pat = CTerm.Def (pos', name), typ}) =>
+        fn CTerm.AnnP (pos, {pat, typ}) =>
             let val (typeDefs, t) = elaborateType env typ
-                val def = {pos, id = DefId.fresh (), var = name, typ = t}
-                val typeDefs = Vector.fromList typeDefs
-            in ((typeDefs, t), FTerm.Def (pos', def))
+                val (pat, _) = elaboratePatternAs env t pat
+            in ((Vector.fromList typeDefs, t), pat)
             end
          | CTerm.Def (pos, name) =>
             let val t = SVar (UVar (Uv.fresh env TypeK))
