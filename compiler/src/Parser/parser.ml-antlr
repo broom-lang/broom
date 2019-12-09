@@ -347,12 +347,7 @@ typRowFields : field=typRowField fields=("," typRowField)* => (Vector.fromList (
 typRowField : ID ":" typ ;
 
 atom
-    : ID => (
-          case Name.toString ID (* HACK *)
-          of "int"  => Term.Type (ID_SPAN, Type.Prim (ID_SPAN, Type.Prim.I32))
-           | "bool" => Term.Type (ID_SPAN, Type.Prim (ID_SPAN, Type.Prim.Bool))
-           | _ => Term.Use (ID_SPAN, ID)
-      )
+    : ID => (Term.Use (ID_SPAN, ID))
     | const => (Term.Const (const_SPAN, const))
     ;
 
