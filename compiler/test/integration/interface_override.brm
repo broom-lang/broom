@@ -4,11 +4,11 @@ type DEFAULT = interface
 end
 
 val IntDefault : interface extends DEFAULT
-    override type t = int
+    override type t = __int
 end = module
-    type t = int
+    type t = __int
     val default = 0
 end
 
-val n : int = IntDefault.default
+val n : __int = IntDefault.default
 

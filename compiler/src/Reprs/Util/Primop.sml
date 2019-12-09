@@ -1,6 +1,6 @@
 structure Primop :> sig
     datatype t
-        = IAdd | ISub | IMul | IDiv
+        = IntT | IAdd | ISub | IMul | IDiv
         | ArrayT | ArrayNew | ArrayCount | ArrayGet | ArrayUnsafeSet
         | BoxT | BoxNew | BoxGet | BoxInit
         | Panic
@@ -9,13 +9,14 @@ structure Primop :> sig
     val toDoc : t -> PPrint.t
 end = struct
     datatype t
-        = IAdd | ISub | IMul | IDiv
+        = IntT | IAdd | ISub | IMul | IDiv
         | ArrayT | ArrayNew | ArrayCount | ArrayGet | ArrayUnsafeSet
         | BoxT | BoxNew | BoxGet | BoxInit
         | Panic
 
     val fromString =
-        fn "__iAdd" => SOME IAdd
+        fn "__int" => SOME IntT
+         | "__iAdd" => SOME IAdd
          | "__iSub" => SOME ISub
          | "__iMul" => SOME IMul
          | "__iDiv" => SOME IDiv
@@ -33,7 +34,8 @@ end = struct
 
     fun toDoc opn =
         PPrint.text ("__" ^ (case opn
-            of IAdd => "iAdd"
+            of IntT => "int"
+             | IAdd => "iAdd"
              | ISub => "iSub"
              | IMul => "iMul"
              | IDiv => "iDiv"

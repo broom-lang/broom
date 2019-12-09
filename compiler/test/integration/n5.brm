@@ -1,2 +1,2 @@
-val n: int = 5
+val n: __int = 5
 

@@ -1,2 +1,2 @@
-val m: int = n
-val n: int = 5
+val m: __int = n
+val n: __int = 5

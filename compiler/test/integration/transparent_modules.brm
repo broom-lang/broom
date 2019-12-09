@@ -4,7 +4,7 @@ val Prelude = module
     end
 
     val Integer = module
-        type t = int
+        type t = __int
 
         val zero: t = 0
     end

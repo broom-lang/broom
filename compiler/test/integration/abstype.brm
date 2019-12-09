@@ -1,2 +1,2 @@
-val t = int: type
+val t = __int: type
 

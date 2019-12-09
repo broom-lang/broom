@@ -300,7 +300,8 @@ structure FType :> FAST_TYPE = struct
 
     local datatype primop = datatype Primop.t
     in  val primopType =
-            fn IAdd | ISub | IMul | IDiv =>
+            fn IntT => (#[], Pure, {domain = #[], codomain = Type (Prim Prim.I32)})
+             | IAdd | ISub | IMul | IDiv =>
                 (#[], Pure, {domain = #[Prim Prim.I32, Prim Prim.I32], codomain = Prim Prim.I32})
              | ArrayT =>
                 let val def = {var = Id.fresh (), kind = Kind.TypeK}
