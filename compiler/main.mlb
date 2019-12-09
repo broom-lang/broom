@@ -58,6 +58,7 @@ local
 
            src/Typechecker/TypecheckingOps.sml
            src/Typechecker/Subtyping.sml
+           src/Typechecker/TypePattern.sml
            src/Typechecker/Kindchecker.sml
            src/Typechecker/CheckUse.sml
            src/Typechecker/Typechecker.sml
