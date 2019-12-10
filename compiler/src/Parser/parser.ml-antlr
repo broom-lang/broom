@@ -373,7 +373,7 @@ apat
     ;
 
 piParam
-    : ID                 => ({var = ID, typ = NONE})
+    : ID                 => ({var = ID, typ = SOME (Type.TypeT FULL_SPAN)})
     | "(" ID ":" typ ")" => ({var = ID, typ = SOME typ})
     ;
 
