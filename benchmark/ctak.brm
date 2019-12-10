@@ -1,7 +1,7 @@
 fun callCC f = perform ('CallCC f)
 
 fun ctak x y z =
-  match callCC (fn k -> ctak' k x y z)
+  match callCC (ctak' _ x y z)
   | ! ('CallCC f) k -> k (f k)
   | v -> v
   end
