@@ -15,6 +15,6 @@ end = struct
 
     val toDoc = PPrint.text o toString
 
-    val typeOf = fn Int _ => PrimType.I32
+    val typeOf = fn Int _ => PrimType.Int
                   | Bool _ => PrimType.Bool
 end

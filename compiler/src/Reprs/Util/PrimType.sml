@@ -1,6 +1,6 @@
 signature PRIM_TYPE = sig
     datatype t
-        = Bool | I32 
+        = Bool | Int | UInt
         | Array | Box
 
     val toString: t -> string
@@ -9,12 +9,13 @@ end
 
 structure PrimType :> PRIM_TYPE = struct
     datatype t
-        = Bool | I32
+        = Bool | Int | UInt
         | Array | Box
     
     val toString =
         fn Bool => "Bool"
-         | I32 => "I32"
+         | Int => "Int"
+         | UInt => "UInt"
          | Array => "Array"
          | Box => "Box"
 
