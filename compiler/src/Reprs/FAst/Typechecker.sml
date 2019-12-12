@@ -306,6 +306,7 @@ end = struct
 
     and checkPattern env matcheeTyp =
         fn Def (_, {pos = _, id, var, typ}) => Env.insert (env, var, typ)
+         | AnyP _ => env
          | ConstP (pos, c) => (checkEq pos env (Prim (Const.typeOf c), matcheeTyp); env)
 
     and checkCast env (pos, typ, expr, co) =

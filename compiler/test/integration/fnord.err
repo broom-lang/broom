@@ -1,1 +1,1 @@
-TypeError in [test/integration/fnord.brm:1.15-2.0]: Unbound variable fnord.
+TypeError in [test/integration/fnord.brm:1.17-2.0]: Unbound variable fnord.

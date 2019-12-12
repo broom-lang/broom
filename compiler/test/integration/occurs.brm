@@ -1,2 +1,2 @@
-fun foo (_: int) = foo
+fun foo (_: __int) = foo
 

@@ -8,8 +8,8 @@
 
 %let alpha = [a-zA-Z];
 %let digit = [0-9];
-%let firstConstituent = {alpha} | _;
-%let constituent = {firstConstituent} | {digit} | ';
+%let firstConstituent = {alpha};
+%let constituent = {firstConstituent} | _ | {digit} | ';
 
 val       => (Tokens.VAL);
 fun       => (Tokens.FUN);
@@ -59,6 +59,7 @@ False    => (Tokens.BOOL false);
 
 @ {constituent}+                  => (Tokens.META (Name.fromString (String.extract (yytext, 1, NONE))));
 __ {constituent}+                 => (Tokens.INTRINSIC (valOf (Primop.fromString yytext)));
+_                                 => (Tokens.WILDCARD);
 {firstConstituent} {constituent}* => (Tokens.ID (Name.fromString yytext));
 
 # [^\n]*           => (continue ());

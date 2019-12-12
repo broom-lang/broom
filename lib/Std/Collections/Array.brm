@@ -1,7 +1,7 @@
 type ARRAY = interface
     type t elem
-    type size = uint
-    type key = uint
+    type size = __uint # TODO: Get this from its module
+    type key = __uint
 
     val count : pi elem => t elem -> size
     val get : pi elem => t elem -> key -> elem
@@ -19,8 +19,8 @@ end
 
 val Array : ARRAY = module
     type t elem = __array elem
-    type size = uint
-    type key = uint
+    type size = __uint
+    type key = __uint
 
     fun count arr = __arrayCount arr
 

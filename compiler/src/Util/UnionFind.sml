@@ -75,7 +75,7 @@ structure UnionFind :> UNION_FIND = struct
                                               , newRank ( Trictor.sub (ranks, repr)
                                                         , Trictor.sub (ranks, repr') )) }
                   | GREATER =>
-                     { parents = ref (Trictor.update (parents, repr', Link repr'))
+                     { parents = ref (Trictor.update (parents, repr', Link repr))
                      , ranks = Trictor.update ( ranks, repr
                                               , newRank ( Trictor.sub (ranks, repr)
                                                         , Trictor.sub (ranks, repr') )) }

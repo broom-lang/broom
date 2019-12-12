@@ -286,6 +286,7 @@ end = struct
                                     case pattern
                                     of FTerm.Def (_, def as {var, ...}) =>
                                         Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), var, Visited (def, NONE)))
+                                     | FTerm.AnyP _ => env
                                      | FTerm.ConstP _ => env
                             in (SOME matcheeTyp, pattern, env)
                             end
@@ -297,17 +298,17 @@ end = struct
         end
 
     and elaboratePattern env =
-        fn CTerm.AnnP (pos, {pat = CTerm.Def (pos', name), typ}) =>
+        fn CTerm.AnnP (pos, {pat, typ}) =>
             let val (typeDefs, t) = elaborateType env typ
-                val def = {pos, id = DefId.fresh (), var = name, typ = t}
-                val typeDefs = Vector.fromList typeDefs
-            in ((typeDefs, t), FTerm.Def (pos', def))
+                val (pat, _) = elaboratePatternAs env t pat
+            in ((Vector.fromList typeDefs, t), pat)
             end
          | CTerm.Def (pos, name) =>
             let val t = SVar (UVar (Uv.fresh env TypeK))
                 val def = {pos, id = DefId.fresh (), var = name, typ = t}
             in ((#[], t), FTerm.Def (pos, def))
             end
+         | CTerm.AnyP pos => ((#[], SVar (UVar (Uv.fresh env TypeK))), FTerm.AnyP pos)
          | CTerm.ConstP (pos, c) =>
             let val cTyp = Prim (Const.typeOf c)
             in ((#[], cTyp), FTerm.ConstP (pos, c))
@@ -425,6 +426,7 @@ end = struct
             in ( FTerm.Def (pos, def)
                , Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), name, Visited (def, NONE))) )
             end
+         | CTerm.AnyP pos => (FTerm.AnyP pos, env)
          | CTerm.ConstP (pos, c) =>
             let val cTyp = Prim (Const.typeOf c)
                 val _ = unify env pos (cTyp, t)
@@ -612,110 +614,15 @@ end = struct
 
 (* # Focalization *)
 
-    (* Coerce `callee` into a function. *)
-    and coerceCallee (env: env) (typ: concr, callee: FTerm.expr) : FTerm.expr * effect * {domain: concr, codomain: concr} =
-        let fun coerce (callee, ForAll (universal)) =
-                coerce (applyPolymorphic env universal callee)
-                
-              | coerce (callee, Arrow (Implicit, domains as {domain = _, codomain})) =
-                coerce (applyImplicit domains callee, codomain)
-
-              | coerce (callee, Arrow (Explicit eff, domains)) =
-                 (callee, eff, domains)
-
-              | coerce (callee, SVar (UVar uv)) =
-                (case Uv.get env uv
-                 of Right typ => coerce (callee, typ)
-                  | Left uv =>
-                     let val domain = SVar (UVar (Uv.freshSibling env (uv, TypeK)))
-                         val codomain = SVar (UVar (Uv.freshSibling env (uv, TypeK)))
-                         val eff = Impure
-                         val arrow = {domain, codomain}
-                         do Uv.set env uv (Arrow (Explicit eff, arrow))
-                     in (callee, eff, arrow)
-                     end)
-
-              | coerce (callee, SVar (Path path)) =
-                 raise Fail "unimplemented"
-
-              | coerce (callee, _) =
-                 ( Env.error env (UnCallable (callee, typ))
-                 ; (callee, Impure, { domain = SVar (UVar (Uv.fresh env TypeK))
-                                    , codomain = typ }) )
-        in coerce (callee, typ)
-        end
+    and coerceCallee env (typ, callee) =
+        case TypePattern.coerce env TypePattern.callable (callee, typ)
+        of (callee, TypePattern.Callable (eff, domains)) => (callee, eff, domains)
+         | _ => raise Fail "unreachable"
    
-    (* Coerce `expr` into a record with at least `label`. *)
-    and coerceRecord env (typ: concr, expr: FTerm.expr) label: FTerm.expr * concr =
-        let fun coerce (expr, ForAll (universal)) =
-                coerce (applyPolymorphic env universal expr)
-
-              | coerce (expr, Arrow (Implicit, domains as {domain = _, codomain})) =
-                coerce (applyImplicit domains expr, codomain)
-
-              | coerce (expr, Record row) =
-                let val rec fieldType =
-                        fn RowExt ({base, field = (label', fieldt)}) =>
-                            if label' = label
-                            then fieldt
-                            else fieldType base
-                         | SVar (UVar uv) =>
-                            let val base = SVar (UVar (Uv.freshSibling env (uv, RowK)))
-                                val fieldt = SVar (UVar (Uv.freshSibling env (uv, TypeK)))
-                                do Uv.set env uv (Record (RowExt ({base, field = (label, fieldt)})))
-                            in fieldt
-                            end
-                         | _ =>
-                            ( Env.error env (UnDottable (expr, typ))
-                            ; SVar (UVar (Uv.fresh env TypeK)) )
-                in (expr, fieldType row)
-                end
-
-              | coerce (expr, SVar (UVar uv)) =
-                (case Uv.get env uv
-                 of Right typ => coerce (expr, typ)
-                  | Left uv =>
-                     let val base = SVar (UVar (Uv.freshSibling env (uv, RowK)))
-                         val fieldt = SVar (UVar (Uv.freshSibling env (uv, TypeK)))
-                         do Uv.set env uv (Record (RowExt ({base, field = (label, fieldt)})))
-                     in (expr, fieldt)
-                     end)
-
-              | coerce (callee, SVar (Path path)) =
-                 raise Fail "unimplemented"
-
-              | coerce (expr, typ) =
-                ( Env.error env (UnDottable (expr, typ))
-                ; (expr, SVar (UVar (Uv.fresh env TypeK))) )
-        in coerce (expr, typ)
-        end
-
-    and applyPolymorphic env (params, body) callee =
-        let val eff = valOf (FType.piEffect body)
-            val (args, mapping) =
-                Vector1.foldl (fn (def as {var, kind = _}, (args, mapping)) =>
-                                   let val arg = resolveTypeArg env eff def
-                                   in (arg :: args, Id.SortedMap.insert (mapping, var, arg))
-                                   end)
-                              ([], Id.SortedMap.empty) params
-            val args = args |> List.rev |> Vector1.fromList |> valOf
-            val calleeType = Concr.substitute env mapping body
-        in ( FTerm.TApp (FTerm.exprPos callee, calleeType, {callee, args})
-           , calleeType )
-        end
-
-    and resolveTypeArg env eff {var = _, kind = kind as CallsiteK} =
-        (case eff
-         of Impure => CallTFn (Env.freshAbstract env kind)
-          | Pure => CallTFn (Env.pureCallsite env))
-
-      | resolveTypeArg env _ {var, kind} =
-        SVar (UVar (Uv.new env (nameFromId var, kind)))
-
-    and applyImplicit {domain, codomain} callee =
-        let val pos = FTerm.exprPos callee
-        in FTerm.App (pos, codomain, {callee, arg = Subtyping.resolve pos domain})
-        end
+    and coerceRecord env (typ, expr) label =
+        case TypePattern.coerce env (TypePattern.hasField label) (expr, typ)
+        of (expr, TypePattern.HasField (_, fieldt)) => (expr, fieldt)
+         | _ => raise Fail "unreachable"
     
 (* Type Checking Entire Program *)
 

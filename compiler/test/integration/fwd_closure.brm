@@ -1,4 +1,4 @@
-fun f (n: int) = ans
+fun f (n: __int) = ans
 val ans = 42
 val n = f 23
 

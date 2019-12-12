@@ -1,2 +1,2 @@
-fun forever (n: int) = forever n
+fun forever (n: __int) = forever n
 

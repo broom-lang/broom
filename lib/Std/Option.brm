@@ -22,22 +22,22 @@ val Option : OPTION = module
 
     val pure = Some
 
-    fun map f = fn
+    fun map f = fn match
+    | Some v -> Some (f v)
+    | None -> None
+    end
+
+    val apply = fn match
+    | Some f -> fn
         | Some v -> Some (f v)
-        | None -> None
-    end
-
-    val apply = fn
-        | Some f -> fn
-            | Some v -> Some (f v)
-            | None -> None
+        | None -> None
         end
-        | None -> Fn.const None
+    | None -> Fn.const None
     end
 
-    fun flatMap f = fn
-        | Some v -> f v
-        | None -> None
+    fun flatMap f = fn match
+    | Some v -> f v
+    | None -> None
     end
 end
 

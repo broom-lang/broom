@@ -446,6 +446,7 @@ end = struct
 
             and checkPattern ini ctx =
                 fn Def (_, {id, ...}) => IniEnv.pushMatch ini id
+                 | AnyP _ => ini
                  | ConstP _ => ini
 
             fun iterate stmts =
@@ -586,6 +587,7 @@ end = struct
 
             and emitPattern ini ctx =
                 fn pat as Def (_, {id, ...}) => (IniEnv.pushMatch ini id, pat)
+                 | pat as AnyP _ => (ini, pat)
                  | pat as ConstP _ => (ini, pat)
 
             and boxAllocs pos stmts =

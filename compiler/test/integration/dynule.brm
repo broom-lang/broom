@@ -6,7 +6,7 @@ end
 fun Dyfault isInt = do
     val res : DEFAULT = match isInt
         | True -> module
-            type t = int
+            type t = __int
             val default = 0
         end 
         | False -> module

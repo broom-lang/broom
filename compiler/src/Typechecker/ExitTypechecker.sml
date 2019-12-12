@@ -85,6 +85,7 @@ end = struct
     and patternToF env =
         fn Def (pos, {pos = defPos, id, var, typ}) =>
             FFTerm.Def (pos, {pos = defPos, id, var, typ = concrToF env typ})
+         | AnyP pos => FFTerm.AnyP pos
          | ConstP (pos, c) => FFTerm.ConstP (pos, c)
 
     and stmtToF env =

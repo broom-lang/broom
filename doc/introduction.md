@@ -116,6 +116,10 @@ Record fields can be read with the familiar dot notation:
 val x: int = point'.x # = 42
 ```
 
+### Variants
+
+### Closed Algebraic Datatypes (Structs and Enums?)
+
 ## Functions
 
 Like every functional (and nowadays even dysfunctional) language we have first

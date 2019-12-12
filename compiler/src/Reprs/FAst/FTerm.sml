@@ -32,6 +32,7 @@ signature FAST_TERM = sig
 
     and pat
         = Def of Pos.span * def
+        | AnyP of Pos.span
         | ConstP of Pos.span * Const.t
 
     withtype clause = {pattern: pat, body: expr}
@@ -111,6 +112,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     and pat
         = Def of Pos.span * def
+        | AnyP of Pos.span
         | ConstP of Pos.span * Const.t
 
     withtype clause = {pattern: pat, body: expr}
@@ -229,6 +231,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     and patternToDoc env =
         fn Def (_, def) => defToDoc env def
+         | AnyP _ => text "_"
          | ConstP (_, c) => Const.toDoc c
 
     fun exprToString env = PPrint.pretty 80 o exprToDoc env
@@ -240,6 +243,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
 
     val patPos =
         fn Def (pos, _) => pos
+         | AnyP pos => pos
          | ConstP (pos, _) => pos
 
     fun typeFnToDoc def = text "type" <+> Type.defToDoc def

@@ -1,6 +1,7 @@
 structure Primop :> sig
     datatype t
-        = IAdd | ISub | IMul | IDiv
+        = IntT | IAdd | ISub | IMul | IDiv
+        | UIntT | UAdd | USub | UMul | UDiv
         | ArrayT | ArrayNew | ArrayCount | ArrayGet | ArrayUnsafeSet
         | BoxT | BoxNew | BoxGet | BoxInit
         | Panic
@@ -9,16 +10,23 @@ structure Primop :> sig
     val toDoc : t -> PPrint.t
 end = struct
     datatype t
-        = IAdd | ISub | IMul | IDiv
+        = IntT | IAdd | ISub | IMul | IDiv
+        | UIntT | UAdd | USub | UMul | UDiv
         | ArrayT | ArrayNew | ArrayCount | ArrayGet | ArrayUnsafeSet
         | BoxT | BoxNew | BoxGet | BoxInit
         | Panic
 
     val fromString =
-        fn "__iAdd" => SOME IAdd
+        fn "__int" => SOME IntT
+         | "__iAdd" => SOME IAdd
          | "__iSub" => SOME ISub
          | "__iMul" => SOME IMul
          | "__iDiv" => SOME IDiv
+         | "__uint" => SOME UIntT
+         | "__uAdd" => SOME UAdd
+         | "__uSub" => SOME USub
+         | "__uMul" => SOME UMul
+         | "__uDiv" => SOME UDiv
          | "__array" => SOME ArrayT
          | "__arrayNew" => SOME ArrayNew
          | "__arrayCount" => SOME ArrayCount
@@ -33,10 +41,16 @@ end = struct
 
     fun toDoc opn =
         PPrint.text ("__" ^ (case opn
-            of IAdd => "iAdd"
+            of IntT => "int"
+             | IAdd => "iAdd"
              | ISub => "iSub"
              | IMul => "iMul"
              | IDiv => "iDiv"
+             | UIntT => "uint"
+             | UAdd => "uAdd"
+             | USub => "uSub"
+             | UMul => "uMul"
+             | UDiv => "uDiv"
              | ArrayT => "array"
              | ArrayNew => "arrayNew"
              | ArrayCount => "arrayCount"

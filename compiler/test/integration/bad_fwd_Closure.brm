@@ -1,5 +1,5 @@
 val M = module
-    fun f (n: int) = N.ans
+    fun f (n: __int) = N.ans
 end
 
 val n = M.f 23

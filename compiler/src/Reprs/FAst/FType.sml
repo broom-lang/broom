@@ -300,8 +300,12 @@ structure FType :> FAST_TYPE = struct
 
     local datatype primop = datatype Primop.t
     in  val primopType =
-            fn IAdd | ISub | IMul | IDiv =>
-                (#[], Pure, {domain = #[Prim Prim.I32, Prim Prim.I32], codomain = Prim Prim.I32})
+            fn IntT => (#[], Pure, {domain = #[], codomain = Type (Prim Prim.Int)})
+             | IAdd | ISub | IMul | IDiv =>
+                (#[], Pure, {domain = #[Prim Prim.Int, Prim Prim.Int], codomain = Prim Prim.Int})
+             | UIntT => (#[], Pure, {domain = #[], codomain = Type (Prim Prim.UInt)})
+             | UAdd | USub | UMul | UDiv =>
+                (#[], Pure, {domain = #[Prim Prim.UInt, Prim Prim.UInt], codomain = Prim Prim.UInt})
              | ArrayT =>
                 let val def = {var = Id.fresh (), kind = Kind.TypeK}
                 in (#[def], Pure, { domain = #[Type (UseT def)]
@@ -310,24 +314,24 @@ structure FType :> FAST_TYPE = struct
                 end
              | ArrayNew =>
                 let val def = {var = Id.fresh (), kind = Kind.TypeK}
-                in (#[def], Pure, { domain = #[Prim Prim.I32]
+                in (#[def], Pure, { domain = #[Prim Prim.Int]
                                   , codomain = App {callee = Prim Prim.Array, args = Vector1.singleton (UseT def)}} )
                 end
              | ArrayCount =>
                 let val def = {var = Id.fresh (), kind = Kind.TypeK}
                 in (#[def], Pure, { domain = #[App {callee = Prim Prim.Array, args = Vector1.singleton (UseT def)}]
-                                  , codomain = Prim Prim.I32 })
+                                  , codomain = Prim Prim.Int })
                 end
              | ArrayGet =>
                 let val def = {var = Id.fresh (), kind = Kind.TypeK}
                 in (#[def], Pure, { domain = #[ App {callee = Prim Prim.Array, args = Vector1.singleton (UseT def)}
-                                              , Prim Prim.I32 ]
+                                              , Prim Prim.Int ]
                                   , codomain = UseT def })
                 end
              | ArrayUnsafeSet =>
                 let val def = {var = Id.fresh (), kind = Kind.TypeK}
                 in (#[def], Pure, { domain = #[ App {callee = Prim Prim.Array, args = Vector1.singleton (UseT def)}
-                                              , Prim Prim.I32 , UseT def ]
+                                              , Prim Prim.Int , UseT def ]
                                   , codomain = Record EmptyRow })
                 end
              | BoxT =>

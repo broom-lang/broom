@@ -5,7 +5,7 @@ type USER_ID = interface
 end
 
 val UserId: USER_ID = module
-    type t = int
+    type t = __int
 
     fun sudo (_: t) = 0
 end

@@ -1,12 +1,12 @@
 val For : interface
-    val forev : int -> int
+    val forev : __int -> __int
 end = module
-    fun forev (n: int) = Ever.orever n
+    fun forev (n: __int) = Ever.orever n
 end
 
 val Ever : interface 
-    val orever : int -> int
+    val orever : __int -> __int
 end = module
-    fun orever (n: int) = For.forev n
+    fun orever (n: __int) = For.forev n
 end
 
