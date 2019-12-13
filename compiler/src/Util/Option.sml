@@ -14,5 +14,9 @@ structure Option = struct
     fun unwrapOrElse thunk =
         fn SOME v => v
          | NONE => thunk ()
+
+    fun hash hashInner =
+        fn SOME v => hashInner v
+         | NONE => 0w0
 end
 

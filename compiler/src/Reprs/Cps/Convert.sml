@@ -1,4 +1,10 @@
 structure CpsConvert :> sig
+    val cpsConvert : FixedFAst.Term.program -> Cps.Program.t
+end = struct
+    fun cpsConvert program = raise Fail "unimplemented"
+end
+
+(*structure CpsConvert :> sig
     val cpsConvert: FixedFAst.Term.expr -> Cps.Program.program
 end = struct
     type 'a slice = 'a VectorSlice.slice
@@ -141,4 +147,4 @@ end = struct
             do Builder.insertCont (builder, startLabel, startCont)
         in Builder.build builder
         end
-end
+end*)

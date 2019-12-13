@@ -1,20 +1,23 @@
-functor HashMap (Key : sig
-    include HASH_KEY
-    val toString : hash_key -> string
-end) :> sig
-    type key = Key.hash_key
+signature HASH_MAP = sig
+    type key
     type 'v t
 
     val empty : 'v t
     val insert : 'v t -> key * 'v -> 'v t
     val find : 'v t -> key -> 'v option
+    val lookup : 'v t -> key -> 'v
     val length : 'v t -> int
     val fold : ((key * 'v) * 'a -> 'a) -> 'a -> 'v t -> 'a
     val map : ('v -> 'a) -> 'v t -> 'a t
 
     val toString : ('v -> string) -> 'v t -> string
     val inspect : ('v -> string) -> 'v t -> string
-end = struct
+end
+
+functor HashMap (Key : sig
+    include HASH_KEY
+    val toString : hash_key -> string
+end) :> HASH_MAP where type key = Key.hash_key = struct
     open Word32
     infix 5 << >>
 
@@ -110,6 +113,11 @@ end = struct
 
          | Leaf (k', v) =>
             if eq (k', k) then SOME v else NONE
+
+    fun lookup kvs k =
+        case find kvs k
+        of SOME v => v
+         | NONE => raise Subscript
 
     fun fold f acc {root, len = _} = foldTrie f acc root
 

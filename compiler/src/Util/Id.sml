@@ -5,6 +5,7 @@ signature ID = sig
     val hash: t -> word
     val compare: t * t -> order
     val toString: t -> string
+    val toDoc : t -> PPrint.t
 
     structure HashKey: HASH_KEY where type hash_key = t
     structure OrdKey: ORD_KEY where type ord_key = t
@@ -32,6 +33,8 @@ functor Id(UnitStruct: sig end) :> ID = struct
     val compare = Word.compare
 
     val toString = Int.toString o Word.toInt
+
+    val toDoc = PPrint.text o toString
 
     structure HashKey = struct
         type hash_key = t

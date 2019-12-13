@@ -1,245 +1,236 @@
-structure Label :> ID = Id
-structure ExprId :> ID = Id
-
-signature CPS_TYPE = sig
-    structure Prim: PRIM_TYPE
-
-    type kind = FType.kind
+structure CpsId = struct
+    structure Super = Id(struct end)
+    open Super
+structure SortedSet = BinarySetFn(OrdKey) structure HashSetMut = HashSetFn(HashKey) end signature CPS_TYPE = sig structure Prim : PRIM_TYPE 
     type param = FType.def
+    
+    datatype t
+        = FnT of {tDomain : param vector, vDomain : t vector, codomain : t}
+        | TParam of param
+        | Prim of Prim.t
 
-    datatype typ = FnT of {typeParams: param vector, paramTypes: typ vector}
-                 | TParam of param
-                 | Prim of Prim.t
-
-    val int: typ
-    val cont: typ -> typ
-
-    val toDoc: typ -> PPrint.t
+    val toDoc : t -> PPrint.t
 end
 
 signature CPS_TERM = sig
-    type typ
-    type param = {var: Name.t, typ: typ}
+    structure Type : CPS_TYPE
 
-    datatype oper = PrimApp of primapp
-                  | Param of param
-                  | Label of Label.t
-                  | Const of Const.t
-    and primapp = IAdd of expr * expr
-    withtype expr = {id: ExprId.t, oper: oper}
+    type def = CpsId.t
 
-    datatype transfer = Goto of expr * typ vector * expr vector
-                      | If of expr * expr * expr 
+    structure Transfer : sig
+        datatype pat
+            = AnyP
+            | ConstP of Const.t
 
-    val newExpr: oper -> expr
+        datatype t
+            = Goto of {callee : def, tArgs : Type.t vector, vArgs : def vector}
+            | Match of def * {pattern : pat, target : def} vector
 
-    val foldChildren: (expr * 'a -> 'a) -> 'a -> expr -> 'a
-    val foldTransferExprs: (expr * 'a -> 'a) -> 'a -> transfer -> 'a
+        val toDoc : t -> PPrint.t
+    end
 
-    val exprToDoc: ExprId.HashSet.set -> expr -> PPrint.t
-    val transferToDoc: ExprId.HashSet.set -> transfer -> PPrint.t
-end
+    structure Expr : sig
+        structure ParentMap : HASH_MAP where type key = def option
 
-signature CPS_CONT = sig
-    structure Type: CPS_TYPE
-    structure Term: CPS_TERM
+        datatype oper
+            = Fn of { name : Name.t option
+                    , tParams : Type.param vector, vParams : Type.t vector
+                    , body : Transfer.t }
+            | PrimApp of {opn : Primop.t, tArgs : Type.t vector, vArgs : def vector}
+            | Param of def * int
+            | Const of Const.t
 
-    type cont = { name: Name.t
-                , typeParams: Type.param vector
-                , valParams: Term.param vector
-                , body: Term.transfer }
+        type t = {parent : def option, oper : oper}
 
-    val toDoc: ExprId.HashSet.set -> cont -> PPrint.t
-end
+        val toDoc : t -> PPrint.t
 
-signature CPS_PROGRAM = sig
-    type cont
-    type program
-
-    val toDoc: program -> PPrint.t
-    val findCont: program * Label.t -> cont option
-
-    (* TODO: new: unit -> t, build: t * Label.t * cont -> program *)
-    structure Builder: sig
-        type t
-        
-        val new: Label.t -> t
-        val insertCont: t * Label.t * cont -> unit
-        val build: t -> program
+        val foldDefs : (CpsId.t * 'a -> 'a) -> 'a -> oper -> 'a
     end
 end
 
+signature CPS_PROGRAM = sig
+    structure Term : CPS_TERM
+
+    structure Map : HASH_MAP where type key = Term.def
+
+    type t = {typeFns : FType.def vector, stmts : Term.Expr.t Map.t, main : Term.def}
+
+    val byParent : t -> CpsId.SortedSet.set Term.Expr.ParentMap.t
+
+    val toDoc : t -> PPrint.t
+end
+
 structure Cps :> sig
-    structure Type: CPS_TYPE where type Prim.t = PrimType.t
-    structure Term: CPS_TERM where type typ = Type.typ
-    structure Cont: CPS_CONT where
-        type Type.typ = Type.typ
-        and type Term.typ = Type.typ
-        and type Term.transfer = Term.transfer
-    structure Program: CPS_PROGRAM where type cont = Cont.cont
+    structure Type : CPS_TYPE
+    structure Term : CPS_TERM where type Type.t = Type.t
+    structure Program : CPS_PROGRAM where type Term.Expr.oper = Term.Expr.oper
 end = struct
+    structure DefSet = CpsId.SortedSet
+    structure DefSetMut = CpsId.HashSetMut
+
     val text = PPrint.text
     val space = PPrint.space
+    val newline = PPrint.newline
+    val comma = PPrint.comma
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
     val op<++> = PPrint.<++>
-
-    fun optionalArgs delims argDocs =
-        if Vector.length argDocs > 0
-        then delims (PPrint.punctuate (text "," <> space) argDocs)
-        else PPrint.empty
+    val parens = PPrint.parens
+    val brackets = PPrint.brackets
+    val punctuate = PPrint.punctuate
+    val nest = PPrint.nest
 
     structure Type = struct
-        structure Prim = FType.Prim
-
-        type kind = FType.kind
+        structure Prim = PrimType
 
         type param = FType.def
-
-        datatype typ = FnT of {typeParams: param vector, paramTypes: typ vector}
-                     | TParam of param
-                     | Prim of Prim.t
-
-        val int = Prim Prim.I32
         
-        fun cont paramTyp = FnT { typeParams = Vector.fromList []
-                                , paramTypes = Vector.fromList [paramTyp] }
-
-        val paramToDoc = FType.defToDoc
+        datatype t
+            = FnT of {tDomain : param vector, vDomain : t vector, codomain : t}
+            | TParam of param
+            | Prim of Prim.t
 
         val rec toDoc =
-            fn FnT {typeParams, paramTypes} =>
-                let val tDocs = Vector.map paramToDoc typeParams
-                    val vDocs = Vector.map toDoc paramTypes
-                in text "fn" <+> optionalArgs PPrint.brackets tDocs
-                             <+> optionalArgs PPrint.parens vDocs
-                end
-             | TParam {var, kind = _} => text (DefId.toString var)
+            fn FnT {tDomain, vDomain, codomain} =>
+                text "fn"
+                <+> brackets (punctuate (comma <> space) (Vector.map FType.defToDoc tDomain))
+                <+> parens (punctuate (comma <> space) (Vector.map toDoc vDomain))
+                <+> text "->" <+> toDoc codomain
+             | TParam {var, ...} => text (FType.Id.toString var)
              | Prim p => Prim.toDoc p
     end
 
     structure Term = struct
-        type typ = Type.typ
-
-        type id = word
-
-        type param = {var: Name.t, typ: Type.typ}
-
-        datatype oper = PrimApp of primapp
-                      | Param of param 
-                      | Label of Label.t
-                      | Const of Const.t
-
-        and primapp = IAdd of expr * expr
-
-        withtype expr = {id: ExprId.t, oper: oper}
-
-        datatype transfer = Goto of expr * Type.typ vector * expr vector
-                          | If of expr * expr * expr
-
-        fun newExpr oper = {id = ExprId.fresh (), oper}
-        fun foldChildren f acc {oper, ...} =
-            case oper
-            of PrimApp (IAdd (l, r)) => f (r, f (l, acc))
-             | Param _ | Label _ | Const _ => acc
-
-        fun foldTransferExprs f acc =
-            fn Goto (dest, _, vArgs) => Vector.foldl f (f (dest, acc)) vArgs
-             | If (cond, conseq, alt) => f (alt, f (conseq, f (cond, acc)))
-
-        fun paramToDoc {var, typ} = Name.toDoc var <> text ":" <+> Type.toDoc typ
-
-        fun exprToIdDoc {id, oper = _} = text "#" <> ExprId.toDoc id
-
-        val primappToDoc =
-            fn oper as IAdd (l, r) =>
-                text "iadd" <+> exprToIdDoc l <> text "," <+> exprToIdDoc r
-
-        val operToDoc =
-            fn PrimApp papp => PPrint.parens (primappToDoc papp)
-             | Param {var, ...} => Name.toDoc var
-             | Label label => text "$" <> Label.toDoc label
-             | Const c => Const.toDoc c
-
-        fun exprToDoc visited (expr as {id, oper}) =
-            let val childrenDoc =
-                    foldChildren (fn (child, SOME acc) =>
-                                      SOME (acc <++> exprToDoc visited child)
-                                   | (child, NONE) => SOME (exprToDoc visited child))
-                                 NONE expr
-            in if ExprId.HashSet.member (visited, id)
-               then getOpt (childrenDoc, PPrint.empty)
-               else ( ExprId.HashSet.add (visited, id)
-                    ; Option.mapOr (fn cdoc => cdoc <> PPrint.newline) PPrint.empty childrenDoc
-                          <> ExprId.toDoc id <+> text "=" <+> operToDoc oper )
-            end
-
-        fun transferToDoc visited transfer =
-            let val exprsDoc =
-                    foldTransferExprs (fn (expr, SOME acc) =>
-                                           SOME (acc <++> exprToDoc visited expr)
-                                        | (expr, NONE) => SOME (exprToDoc visited expr))
-                                      NONE transfer
-            in Option.mapOr (fn doc => doc <> PPrint.newline) PPrint.empty exprsDoc
-                   <> (case transfer
-                       of Goto (dest, tArgs, vArgs) =>
-                           (* FIXME: Get `name` from cont in program: *)
-                           let val destDoc = exprToIdDoc dest
-                               val tDocs = Vector.map Type.toDoc tArgs
-                               val vDocs = Vector.map exprToIdDoc vArgs
-                           in destDoc <> optionalArgs PPrint.brackets tDocs
-                                      <> optionalArgs PPrint.parens vDocs
-                           end 
-                        | If (cond, conseq, alt) =>
-                           text "if" <+> exprToIdDoc cond
-                               <+> text "then" <+> exprToIdDoc conseq
-                               <+> text "else" <+> exprToIdDoc alt)
-            end
-    end
-
-    structure Cont = struct
         structure Type = Type
-        structure Term = Term
 
-        type cont = { name: Name.t
-                    , typeParams: Type.param vector
-                    , valParams: Term.param vector
-                    , body: Term.transfer }
+        type def = CpsId.t
 
-        fun toDoc visited {name, typeParams, valParams, body} =
-            text "fn" <+> Name.toDoc name
-                <> optionalArgs PPrint.brackets (Vector.map Type.paramToDoc typeParams)
-                <> optionalArgs PPrint.parens (Vector.map Term.paramToDoc valParams)
-                <+> PPrint.lBrace
-                <> PPrint.nest 4 (PPrint.newline <> Term.transferToDoc visited body)
-                <++> PPrint.rBrace
+        structure Transfer = struct
+            datatype pat
+                = AnyP
+                | ConstP of Const.t
+
+            datatype t
+                = Goto of {callee : def, tArgs : Type.t vector, vArgs : def vector}
+                | Match of def * {pattern : pat, target : def} vector
+
+            val patToDoc =
+                fn AnyP => text "_"
+                 | ConstP c => Const.toDoc c
+
+            fun clauseToDoc {pattern, target} =
+                patToDoc pattern <+> text "->" <+> CpsId.toDoc target
+
+            val toDoc =
+                fn Goto {callee, tArgs, vArgs} =>
+                    CpsId.toDoc callee
+                    <+> brackets (punctuate (comma <> space) (Vector.map Type.toDoc tArgs))
+                    <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
+                 | Match (matchee, clauses) =>
+                    text "match" <+> CpsId.toDoc matchee
+                    <> nest 4 (newline <> (punctuate newline (Vector.map clauseToDoc clauses)))
+        end
+
+        structure Expr = struct
+            structure ParentMap = HashMap(struct
+                type hash_key = def option
+
+                val hashVal = Option.hash CpsId.hash
+                val sameKey = op=
+                val toString =
+                    fn SOME def => CpsId.toString def
+                     | NONE => "-"
+            end)
+
+            datatype oper
+                = Fn of { name : Name.t option
+                        , tParams : Type.param vector, vParams : Type.t vector
+                        , body : Transfer.t }
+                | PrimApp of {opn : Primop.t, tArgs : Type.t vector, vArgs : def vector}
+                | Param of def * int
+                | Const of Const.t
+
+            type t = {parent : def option, oper : oper}
+
+            fun foldDefs f acc =
+                fn Fn _ => acc
+                 | PrimApp {opn = _, tArgs = _, vArgs} => Vector.foldl f acc vArgs
+                 | Param _ => acc
+                 | Const _ => acc
+
+            val operToDoc =
+                fn Fn {name, ...} => text "fn" <+> Option.mapOr Name.toDoc PPrint.empty name
+                 | PrimApp {opn, tArgs, vArgs} =>
+                    Primop.toDoc opn
+                    <+> brackets (punctuate (comma <> space) (Vector.map Type.toDoc tArgs))
+                    <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
+                 | Param (def, i) => text "param" <+> CpsId.toDoc def <+> PPrint.int i
+                 | Const c => Const.toDoc c
+
+            fun toDoc {parent = _, oper} = operToDoc oper
+        end
     end
 
     structure Program = struct
-        type cont = Cont.cont
-        type program = {conts: Cont.cont Label.SortedMap.map, start: Label.t}
+        structure Term = Term
+        structure ParentMap = Term.Expr.ParentMap
 
-        fun toDoc {conts, start} =
-            let val visited = ExprId.HashSet.mkEmpty 0
-                val step = fn (label, cont, SOME acc) => 
-                               SOME (acc <++> PPrint.newline <> Label.toDoc label <+> text "=" <+> Cont.toDoc visited cont)
-                            | (label, cont, NONE) =>
-                               SOME (Label.toDoc label <+> text "=" <+> Cont.toDoc visited cont)
-            in getOpt (Label.SortedMap.foldli step NONE conts, PPrint.empty)
+        structure Map = HashMap(struct
+            open CpsId.HashKey
+
+            val toString = CpsId.toString
+        end)
+
+        type t = {typeFns : FType.def vector, stmts : Term.Expr.t Map.t, main : Term.def}
+
+        fun byParent ({stmts, ...}: t) =
+            let fun step ((def, {parent, ...}), acc) =
+                    case ParentMap.find acc parent
+                    of SOME vs => ParentMap.insert acc (parent, DefSet.add (vs, def))
+                     | NONE => ParentMap.insert acc (parent, DefSet.singleton def)
+            in Map.fold step ParentMap.empty stmts
             end
 
-        fun findCont ({conts, start = _}, label) = Label.SortedMap.find (conts, label)
+        fun fnToDoc ({stmts, ...} : t) visited fnDef fnExprs =
+            let fun depsToDoc oper =
+                    Term.Expr.foldDefs (fn (depDef, acc) => acc <++> stmtToDoc depDef)
+                                       PPrint.empty oper
 
-        structure Builder = struct
-            type t = {conts: cont Label.SortedMap.map ref, start: Label.t}
+                and stmtToDoc def =
+                    if not (DefSet.member (fnExprs, def))
+                       orelse DefSetMut.member (visited, def)
+                    then PPrint.empty
+                    else let do DefSetMut.add (visited, def)
+                             val {parent = _, oper} = Map.lookup stmts def
+                         in depsToDoc oper
+                            <++> CpsId.toDoc def <+> text "=" <+> Term.Expr.operToDoc oper
+                         end
 
-            fun new start = {conts = ref Label.SortedMap.empty, start}
+                val {parent = _, oper = Term.Expr.Fn {name, tParams, vParams, body}} = Map.lookup stmts fnDef
+            in CpsId.toDoc fnDef <+> text "=" <+> text "fn"
+               <> Option.mapOr (fn name => space <> Name.toDoc name) PPrint.empty name
+               <+> brackets (punctuate (comma <> space) (Vector.map FType.defToDoc tParams))
+               <+> parens (punctuate (comma <> space) (Vector.map Type.toDoc vParams))
+               <> nest 4 (newline
+                          <> DefSet.foldl (fn (def, acc) => acc <++> stmtToDoc def) PPrint.empty fnExprs
+                          <++> Term.Transfer.toDoc body)
+            end
 
-            fun insertCont ({conts, start = _}, label, cont) =
-                conts := Label.SortedMap.insert (!conts, label, cont)
-            
-            fun build {conts, start} = {conts = !conts, start}
-        end
+        (* FIXME: Handle parent = NONE case (before all the others): *)
+        fun stmtsToDoc program =
+            let val visited = DefSetMut.mkEmpty 0
+            in ParentMap.fold (fn ((SOME fnDef, fnExprs), acc) =>
+                                   acc <++> fnToDoc program visited fnDef fnExprs)
+                              PPrint.empty (byParent program)
+            end
+
+        fun typeFnToDoc def = text "type" <+> FType.defToDoc def
+
+        (* TODO: Nest functions in output: *)
+        fun toDoc (program as {typeFns, stmts = _, main}) =
+            punctuate newline (Vector.map typeFnToDoc typeFns)
+            <++> stmtsToDoc program
+            <++> text "entry" <+> CpsId.toDoc main
     end
 end
 
