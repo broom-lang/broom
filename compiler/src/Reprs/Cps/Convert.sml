@@ -4,21 +4,22 @@ end = struct
     structure FFType = FixedFAst.Type
     structure FFTerm = FixedFAst.Term
     structure Type = Cps.Type
-    structure Term = Cps.Term
+    structure Expr = Cps.Expr
+    structure Cont = Cps.Cont
     structure Builder = Cps.Program.Builder
 
     datatype typ = datatype Type.t
-    type def = Term.def
-    datatype oper = datatype Term.Expr.oper
-    datatype transfer = datatype Term.Transfer.t
-    datatype pat = datatype Term.Transfer.pat
+    type def = Expr.def
+    datatype oper = datatype Expr.oper
+    datatype transfer = datatype Cont.Transfer.t
+    datatype pat = datatype Cont.Transfer.pat
 
     datatype cont_param
         = Named of FFTerm.def
         | Anon of FFType.concr
 
     datatype cont
-        = FnK of cont_param  * ({parent : def option, stack : def, expr : def} -> transfer)
+        = FnK of cont_param  * ({parent : Label.t option, stack : def, expr : def} -> transfer)
         | TrivK of def
 
     structure Env = FType.Id.SortedMap (* TODO: HashMap *)
@@ -37,7 +38,8 @@ end = struct
         let val builder = Builder.new typeFns
             
             fun convertExpr parent stack cont env : FFTerm.expr -> transfer =
-                fn FFTerm.Fn f => continue parent stack cont (convertFn parent env f)
+                fn FFTerm.Fn f =>
+                    continue parent stack cont (Builder.label builder parent (convertFn parent env f))
 
                  | FFTerm.Let (_, stmts, body) =>
                     convertBlock parent stack cont env (Vector1.Slice.full stmts) body
@@ -71,22 +73,22 @@ end = struct
                  | FFTerm.Const (_, c) =>
                     continue parent stack cont (Builder.const builder parent c)
 
-            and convertFn parent env (_, {id = paramId, typ = domain, var = _, pos = _}, _, body) =
-                let val fnDef = CpsId.fresh ()
+            and convertFn parent env (pos, {id = paramId, typ = domain, var = _, pos = _}, _, body) =
+                let val label = Label.fresh ()
                     val stackTyp = StackT
-                    val stack = Builder.param builder (SOME fnDef) fnDef 0
+                    val stack = Builder.param builder (SOME label) label 0
                     val codomain = convertType (FFTerm.typeOf body)
                     val contTyp = FnT {tDomain = #[], vDomain = #[StackT, codomain]}
-                    val cont = TrivK (Builder.param builder (SOME fnDef) fnDef 1)
+                    val cont = TrivK (Builder.param builder (SOME label) label 1)
                     val domain = convertType domain
-                    val param = Builder.param builder (SOME fnDef) fnDef 2
+                    val param = Builder.param builder (SOME label) label 2
 
                     val env = Env.insert (env, paramId, param)
-                    val f = Fn { name = NONE (* TODO: SOME when possible *)
-                               , tParams = #[], vParams = #[stackTyp, contTyp, domain]
-                               , body = convertExpr (SOME fnDef) stack cont env body }
-                    do Builder.insert builder (fnDef, {parent, oper = f})
-                in fnDef
+                    val f = { name = NONE (* TODO: SOME when possible *)
+                            , tParams = #[], vParams = #[stackTyp, contTyp, domain]
+                            , body = convertExpr (SOME label) stack cont env body }
+                    do Builder.insertCont builder (label, f)
+                in label
                 end
 
             and convertBlock parent stack cont env stmts body =
@@ -111,11 +113,11 @@ end = struct
 
             and convertClause parent stack cont env {pattern, body} =
                 let val pattern = convertPattern pattern
-                    val kDef = CpsId.fresh ()
-                    val k = Fn { name = NONE, tParams = #[], vParams = #[]
-                               , body = convertExpr (SOME kDef) stack cont env body }
-                    do Builder.insert builder (kDef, {parent, oper = k})
-                in {pattern, target = kDef}
+                    val kLabel = Label.fresh ()
+                    val k = { name = NONE, tParams = #[], vParams = #[]
+                            , body = convertExpr (SOME kLabel) stack cont env body }
+                    do Builder.insertCont builder (kLabel, k)
+                in {pattern, target = Builder.label builder parent kLabel}
                 end
 
             and convertPattern (FFTerm.AnyP _) = AnyP
@@ -129,18 +131,18 @@ end = struct
             and trivializeCont parent cont =
                 case cont
                 of FnK (paramHint, kf) =>
-                    let val kDef = CpsId.fresh ()
-                        val stack = Builder.param builder (SOME kDef) kDef 0
+                    let val kLabel = Label.fresh ()
+                        val stack = Builder.param builder (SOME kLabel) kLabel 0
                         val param =
                             case paramHint
                             of Named {id, typ, ...} => convertType typ
                              | Anon typ => convertType typ
-                        val paramUse = Builder.param builder (SOME kDef) kDef 1
+                        val paramUse = Builder.param builder (SOME kLabel) kLabel 1
                         val k = { name = NONE
                                 , tParams = #[], vParams = #[StackT, param]
-                                , body = kf {parent = SOME kDef, stack, expr = paramUse} }
-                        do Builder.insert builder (kDef, {parent, oper = Fn k})
-                    in kDef
+                                , body = kf {parent = SOME kLabel, stack, expr = paramUse} }
+                        do Builder.insertCont builder (kLabel, k)
+                    in Builder.label builder parent kLabel
                     end
                  | TrivK kDef => kDef
 
@@ -152,8 +154,8 @@ end = struct
                 ( startPos, mainParam, Cst.Explicit FType.Impure
                 , FFTerm.Let ( startPos, valOf (Vector1.fromVector stmts)
                              , FFTerm.Const (endPos, Const.Int 0) ) )
-            val mainDef = convertFn NONE Env.empty main
-        in Builder.build builder mainDef
+            val mainLabel = convertFn NONE Env.empty main
+        in Builder.build builder mainLabel
         end
 end
 
