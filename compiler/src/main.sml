@@ -52,7 +52,7 @@ end = struct
         in  case Parser.parse input
             of Right program =>
                 let val _ = log (PPrint.pretty 80 (Cst.Term.defnsToDoc program) ^ "\n")
-                    val _ = log "===\n"
+                    val _ = log "===\n\n"
                     val tenv = TypecheckingEnv.default sourcemap
                 in case Typechecker.elaborateProgram tenv program
                    of Right (program, _) =>
@@ -65,6 +65,7 @@ end = struct
                        in  case WellFounded.elaborate program
                            of Right program =>
                                ( log (PPrint.pretty 80 (FixedFAst.Term.programToDoc () program) ^ "\n")
+                               ; log "===\n\n"
                                ; if lint
                                  then case FAstTypechecker.typecheckProgram program
                                       of SOME err => raise Fail "Lint failed"

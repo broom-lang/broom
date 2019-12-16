@@ -23,6 +23,7 @@ structure Vector1 :> sig
     structure Slice : sig
         type 'a slice
 
+        val full : 'a vector -> 'a slice
         val slice : 'a vector * int * int option -> 'a slice
         val uncons : 'a slice -> ('a * 'a slice) option
         val foldl : ('a * 'b -> 'b) -> 'b -> 'a slice -> 'b
