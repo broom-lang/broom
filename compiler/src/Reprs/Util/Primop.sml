@@ -8,6 +8,8 @@ structure Primop :> sig
 
     val fromString : string -> t option
     val toDoc : t -> PPrint.t
+
+    val isTotal : t -> bool
 end = struct
     datatype t
         = IntT | IAdd | ISub | IMul | IDiv
@@ -61,5 +63,15 @@ end = struct
              | BoxGet => "boxGet"
              | BoxInit => "boxInit"
              | Panic => "panic"))
+
+    val isTotal =
+        fn IntT => true
+         | IAdd | ISub | IMul | IDiv => false
+         | UIntT => true
+         | UAdd | USub | UMul | UDiv => false
+         | ArrayT | ArrayNew | ArrayCount => true
+         | ArrayGet | ArrayUnsafeSet => false
+         | BoxT | BoxNew | BoxGet | BoxInit => true
+         | Panic => false
 end
 
