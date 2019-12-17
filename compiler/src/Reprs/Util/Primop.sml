@@ -71,7 +71,8 @@ end = struct
          | UAdd | USub | UMul | UDiv => false
          | ArrayT | ArrayNew | ArrayCount => true
          | ArrayGet | ArrayUnsafeSet => false
-         | BoxT | BoxNew | BoxGet | BoxInit => true
+         | BoxT | BoxNew => true
+         | BoxGet | BoxInit => false
          | Panic => false
 end
 

@@ -52,6 +52,7 @@ signature CPS_EXPR = sig
 
     datatype oper
         = PrimApp of {opn : Primop.t, tArgs : Type.t vector, vArgs : def vector}
+        | Result of def * int
         | EmptyRecord
         | With of {base : def, field : Name.t * def}
         | Where of {base : def, field : Name.t * def}
@@ -265,6 +266,7 @@ end = struct
 
         datatype oper
             = PrimApp of {opn : Primop.t, tArgs : Type.t vector, vArgs : def vector}
+            | Result of def * int
             | EmptyRecord
             | With of {base : def, field : Name.t * def}
             | Where of {base : def, field : Name.t * def}
@@ -280,6 +282,7 @@ end = struct
 
         fun foldDeps f acc =
             fn PrimApp {opn = _, tArgs = _, vArgs} => Vector.foldl f acc vArgs
+             | Result (expr, _) => f (expr, acc)
              | With {base, field = (_, fielde)} => f (fielde, f (base, acc))
              | Where {base, field = (_, fielde)} => f (fielde, f (base, acc))
              | Without {base, field = _} => f (base, acc)
@@ -296,6 +299,7 @@ end = struct
                 Primop.toDoc opn
                 <+> brackets (punctuate (comma <> space) (Vector.map Type.toDoc tArgs))
                 <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
+             | Result (expr, i) => text "result" <+> CpsId.toDoc expr <+> PPrint.int i
              | EmptyRecord => braces PPrint.empty
              | With {base, field = (label, fielde)} =>
                 CpsId.toDoc base <+> text "with"

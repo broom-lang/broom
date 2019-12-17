@@ -84,6 +84,33 @@ end = struct
                     in convertExpr parent stack cont env callee
                     end
 
+                 | FFTerm.PrimApp (_, _, opn, tArgs, vArgs) =>
+                    let val tArgs = Vector.map convertType tArgs
+
+                        fun convertArgs parent stack cont env args revArgs =
+                            case VectorSlice.uncons args
+                            of SOME (arg, args) =>
+                                let val cont =
+                                        FnK ( Anon (FFTerm.typeOf arg)
+                                            , fn {parent, stack, expr = arg} =>
+                                                  convertArgs parent stack cont env args (arg :: revArgs) )
+                                in convertExpr parent stack cont env arg
+                                end
+                             | NONE =>
+                                let val vArgs = Vector.fromList (List.rev revArgs)
+                                    val (stack, expr) =
+                                        if Primop.isTotal opn
+                                        then (stack, Builder.express builder {parent, oper = PrimApp {opn, tArgs, vArgs}})
+                                        else let val vArgs = Vector.prepend (stack, vArgs)
+                                                 val results = Builder.express builder {parent, oper = PrimApp {opn, tArgs, vArgs}}
+                                             in ( Builder.express builder {parent, oper = Result (results, 0)}
+                                                , Builder.express builder {parent, oper = Result (results, 1)} )
+                                             end
+                                in continue parent stack cont expr
+                                end
+                    in convertArgs parent stack cont env (VectorSlice.full vArgs) []
+                    end
+
                  | FFTerm.EmptyRecord _ =>
                     Builder.express builder {parent, oper = EmptyRecord}
                     |> continue parent stack cont
