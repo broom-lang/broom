@@ -78,6 +78,17 @@ end = struct
                     in convertExpr parent stack cont env callee
                     end
 
+                 | FFTerm.TApp (_, _, {callee, args}) =>
+                    let val cont =
+                            FnK ( Anon (FFTerm.typeOf callee)
+                                , fn {parent, stack, expr = callee} =>
+                                      let val tArgs = Vector1.toVector (Vector1.map convertType args)
+                                          val ret = trivializeCont parent cont
+                                      in Goto {callee, tArgs, vArgs = #[stack, ret]}
+                                      end )
+                    in convertExpr parent stack cont env callee
+                    end
+
                  | FFTerm.Type (_, t) =>
                     continue parent stack cont (Builder.typ builder parent (convertType t))
 
