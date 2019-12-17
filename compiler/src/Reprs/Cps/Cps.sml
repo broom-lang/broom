@@ -44,6 +44,11 @@ signature CPS_EXPR = sig
 
     datatype oper
         = PrimApp of {opn : Primop.t, tArgs : Type.t vector, vArgs : def vector}
+        | EmptyRecord
+        | With of {base : def, field : Name.t * def}
+        | Where of {base : def, field : Name.t * def}
+        | Without of {base : def, field : Name.t}
+        | Field of def * Name.t
         | Type of Type.t
         | Label of Label.t
         | Param of Label.t * int
@@ -53,7 +58,7 @@ signature CPS_EXPR = sig
 
     val toDoc : t -> PPrint.t
 
-    val foldDefs : (CpsId.t * 'a -> 'a) -> 'a -> oper -> 'a
+    val foldDeps : (CpsId.t * 'a -> 'a) -> 'a -> oper -> 'a
 end
 
 signature CPS_CONT = sig
@@ -104,11 +109,7 @@ signature CPS_PROGRAM = sig
 
         val new : FType.def vector -> builder
         val insertCont : builder -> Label.t * Cont.t -> unit
-        val insert : builder -> Expr.def * Expr.t -> unit
-        val typ : builder -> Label.t option -> Expr.Type.t -> Expr.def
-        val label : builder -> Label.t option -> Label.t -> Expr.def
-        val param : builder -> Label.t option -> Label.t -> int -> Expr.def
-        val const : builder -> Label.t option -> Const.t -> Expr.def
+        val express : builder -> Expr.t -> Expr.def
         val build : builder -> Label.t -> t
     end
 end
@@ -229,6 +230,11 @@ end = struct
 
         datatype oper
             = PrimApp of {opn : Primop.t, tArgs : Type.t vector, vArgs : def vector}
+            | EmptyRecord
+            | With of {base : def, field : Name.t * def}
+            | Where of {base : def, field : Name.t * def}
+            | Without of {base : def, field : Name.t}
+            | Field of def * Name.t
             | Type of Type.t
             | Label of Label.t
             | Param of Label.t * int
@@ -236,8 +242,13 @@ end = struct
 
         type t = {parent : Label.t option, oper : oper}
 
-        fun foldDefs f acc =
+        fun foldDeps f acc =
             fn PrimApp {opn = _, tArgs = _, vArgs} => Vector.foldl f acc vArgs
+             | With {base, field = (_, fielde)} => f (fielde, f (base, acc))
+             | Where {base, field = (_, fielde)} => f (fielde, f (base, acc))
+             | Without {base, field = _} => f (base, acc)
+             | Field (expr, _) => f (expr, acc)
+             | EmptyRecord => acc
              | Type _ => acc
              | Label _ => acc
              | Param _ => acc
@@ -248,6 +259,16 @@ end = struct
                 Primop.toDoc opn
                 <+> brackets (punctuate (comma <> space) (Vector.map Type.toDoc tArgs))
                 <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
+             | EmptyRecord => braces PPrint.empty
+             | With {base, field = (label, fielde)} =>
+                CpsId.toDoc base <+> text "with"
+                <+> Name.toDoc label <+> text "=" <+> CpsId.toDoc fielde
+             | Where {base, field = (label, fielde)} =>
+                CpsId.toDoc base <+> text "where"
+                <+> Name.toDoc label <+> text "=" <+> CpsId.toDoc fielde
+             | Without {base, field} =>
+                CpsId.toDoc base <+> text "without" <+> Name.toDoc field
+             | Field (expr, label) => CpsId.toDoc expr <+> text "." <+> Name.toDoc label
              | Type t => brackets (Type.toDoc t)
              | Label label => text "fn" <+> Label.toDoc label
              | Param (label, i) => text "param" <+> Label.toDoc label <+> PPrint.int i
@@ -289,7 +310,7 @@ end = struct
 
         fun exprsToDoc ({stmts, ...}: t) visited exprs =
             let fun depsToDoc oper =
-                    Expr.foldDefs (fn (depDef, acc) => acc <++> stmtToDoc depDef)
+                    Expr.foldDeps (fn (depDef, acc) => acc <++> stmtToDoc depDef)
                                   PPrint.empty oper
 
                 and stmtToDoc def =
@@ -344,23 +365,13 @@ end = struct
 
             fun insert {typeFns = _, stmts, conts = _} stmt = stmts := Map.insert (!stmts) stmt
 
-            fun push builder expr =
+            fun express builder expr =
                 let val def = CpsId.fresh ()
                     do insert builder (def, expr)
                 in def
                 end
 
-            fun typ builder parent t = push builder {parent, oper = Expr.Type t}
-
-            fun label builder parent label = push builder {parent, oper = Expr.Label label}
-
-            fun param builder parent label i =
-                push builder {parent, oper = Expr.Param (label, i)}
-
-            fun const builder parent c = push builder {parent, oper = Expr.Const c}
-
-            fun build {typeFns, stmts, conts} main =
-                {typeFns, stmts = !stmts, conts = !conts, main}
+            fun build {typeFns, stmts, conts} main = {typeFns, stmts = !stmts, conts = !conts, main}
         end
     end
 end
