@@ -28,20 +28,7 @@ end = struct
     structure Env = FType.Id.SortedMap (* TODO: HashMap *)
     type env = def Env.map
 
-    val rec convertType =
-        fn FFType.Arrow (_, {domain, codomain}) =>
-            let val contTyp = FnT {tDomain = #[], vDomain = #[StackT, convertType codomain]}
-            in FnT {tDomain = #[], vDomain = #[StackT, contTyp, convertType domain]}
-            end
-         | FFType.ForAll (params, body) =>
-            let val contTyp = FnT {tDomain = #[], vDomain = #[StackT, convertType body]}
-            in FnT {tDomain = Vector1.toVector params, vDomain = #[StackT, contTyp]}
-            end
-         | FFType.Record row => Record (convertType row)
-         | FFType.EmptyRow => EmptyRow
-         | FFType.Type t => Cps.Type.Type (convertType t)
-         | FFType.UseT def => TParam def
-         | FFType.Prim p => Prim p
+    val convertType = Cps.Type.fromF
 
     val rec convertCoercion =
         fn FFType.Refl t => Refl (convertType t)

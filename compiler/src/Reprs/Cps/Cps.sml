@@ -34,6 +34,8 @@ signature CPS_TYPE = sig
 
     val toDoc : t -> PPrint.t
 
+    val fromF : FixedFAst.Type.concr -> t
+
     structure Coercion : sig
         datatype co = Refl of t
 
@@ -65,6 +67,8 @@ signature CPS_EXPR = sig
 
     val toDoc : t -> PPrint.t
 
+    val primopType : Primop.t
+        -> {tParams : Type.param vector, vParams : Type.t vector, codomain : Type.t vector}
     val foldDeps : (CpsId.t * 'a -> 'a) -> 'a -> oper -> 'a
 end
 
@@ -174,6 +178,21 @@ end = struct
              | Type t => brackets (text "=" <+> toDoc t)
              | TParam {var, ...} => text ("g__" ^ FType.Id.toString var) (* HACK: g__ *)
              | Prim p => Prim.toDoc p
+
+        val rec fromF =
+            fn FType.Arrow (_, {domain, codomain}) =>
+                let val contTyp = FnT {tDomain = #[], vDomain = #[StackT, fromF codomain]}
+                in FnT {tDomain = #[], vDomain = #[StackT, contTyp, fromF domain]}
+                end
+             | FType.ForAll (params, body) =>
+                let val contTyp = FnT {tDomain = #[], vDomain = #[StackT, fromF body]}
+                in FnT {tDomain = Vector1.toVector params, vDomain = #[StackT, contTyp]}
+                end
+             | FType.Record row => Record (fromF row)
+             | FType.EmptyRow => EmptyRow
+             | FType.Type t => Type (fromF t)
+             | FType.UseT def => TParam def
+             | FType.Prim p => Prim p
 
         structure Coercion = struct
             datatype co = Refl of t
@@ -294,6 +313,16 @@ end = struct
              | Const c => text "const" <+> Const.toDoc c
 
         fun toDoc {parent = _, oper} = operToDoc oper
+
+        (* OPTIMIZE: *)
+        fun primopType opn =
+            let val (tParams, _, {domain, codomain}) = FlexFAst.Type.primopType opn
+            in  if Primop.isTotal opn
+                then { tParams, vParams = Vector.map Type.fromF domain
+                     , codomain = #[Type.fromF codomain] }
+                else { tParams, vParams = Vector.prepend (Type.StackT, Vector.map Type.fromF domain)
+                     , codomain = #[Type.StackT, Type.fromF codomain] }
+            end
     end
 
     structure Program = struct
