@@ -30,8 +30,14 @@ end = struct
             let val contTyp = FnT {tDomain = #[], vDomain = #[StackT, convertType codomain]}
             in FnT {tDomain = #[], vDomain = #[StackT, contTyp, convertType domain]}
             end
+         | FFType.ForAll (params, body) =>
+            let val contTyp = FnT {tDomain = #[], vDomain = #[StackT, convertType body]}
+            in FnT {tDomain = Vector1.toVector params, vDomain = #[StackT, contTyp]}
+            end
          | FFType.Record row => Record (convertType row)
          | FFType.EmptyRow => EmptyRow
+         | FFType.Type t => Cps.Type.Type (convertType t)
+         | FFType.UseT def => TParam def
          | FFType.Prim p => Prim p
 
     fun cpsConvert {typeFns, stmts, sourcemap = _} =
@@ -41,8 +47,13 @@ end = struct
                 fn FFTerm.Fn f =>
                     continue parent stack cont (Builder.label builder parent (convertFn parent env f))
 
+                 | FFTerm.TFn f =>
+                    continue parent stack cont (Builder.label builder parent (convertTFn parent env f))
+
                  | FFTerm.Let (_, stmts, body) =>
                     convertBlock parent stack cont env (Vector1.Slice.full stmts) body
+
+                 | FFTerm.Letrec _ => raise Fail "unreachable"
 
                  | FFTerm.Match (_, _, matchee, clauses) =>
                     let val join = TrivK (trivializeCont parent cont)
@@ -67,13 +78,15 @@ end = struct
                     in convertExpr parent stack cont env callee
                     end
 
-                 | FFTerm.Use (_, {id, ...}) =>
-                    continue parent stack cont (Env.lookup (env, id))
+                 | FFTerm.Type (_, t) =>
+                    continue parent stack cont (Builder.typ builder parent (convertType t))
+
+                 | FFTerm.Use (_, {id, ...}) => continue parent stack cont (Env.lookup (env, id))
 
                  | FFTerm.Const (_, c) =>
                     continue parent stack cont (Builder.const builder parent c)
 
-            and convertFn parent env (pos, {id = paramId, typ = domain, var = _, pos = _}, _, body) =
+            and convertFn parent env (_, {id = paramId, typ = domain, var = _, pos = _}, _, body) =
                 let val label = Label.fresh ()
                     val stackTyp = StackT
                     val stack = Builder.param builder (SOME label) label 0
@@ -86,6 +99,21 @@ end = struct
                     val env = Env.insert (env, paramId, param)
                     val f = { name = NONE (* TODO: SOME when possible *)
                             , tParams = #[], vParams = #[stackTyp, contTyp, domain]
+                            , body = convertExpr (SOME label) stack cont env body }
+                    do Builder.insertCont builder (label, f)
+                in label
+                end
+
+            and convertTFn parent env (_, params, body) =
+                let val label = Label.fresh ()
+                    val stackTyp = StackT
+                    val stack = Builder.param builder (SOME label) label 0
+                    val codomain = convertType (FFTerm.typeOf body)
+                    val contTyp = FnT {tDomain = #[], vDomain = #[StackT, codomain]}
+                    val cont = TrivK (Builder.param builder (SOME label) label 1)
+
+                    val f = { name = NONE (* TODO: SOME when possible *)
+                            , tParams = Vector1.toVector params, vParams = #[stackTyp, contTyp]
                             , body = convertExpr (SOME label) stack cont env body }
                     do Builder.insertCont builder (label, f)
                 in label

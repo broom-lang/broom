@@ -28,6 +28,7 @@ signature CPS_TYPE = sig
         | Record of t
         | EmptyRow
         | StackT
+        | Type of t
         | TParam of param
         | Prim of Prim.t
 
@@ -43,6 +44,7 @@ signature CPS_EXPR = sig
 
     datatype oper
         = PrimApp of {opn : Primop.t, tArgs : Type.t vector, vArgs : def vector}
+        | Type of Type.t
         | Label of Label.t
         | Param of Label.t * int
         | Const of Const.t
@@ -103,6 +105,7 @@ signature CPS_PROGRAM = sig
         val new : FType.def vector -> builder
         val insertCont : builder -> Label.t * Cont.t -> unit
         val insert : builder -> Expr.def * Expr.t -> unit
+        val typ : builder -> Label.t option -> Expr.Type.t -> Expr.def
         val label : builder -> Label.t option -> Label.t -> Expr.def
         val param : builder -> Label.t option -> Label.t -> int -> Expr.def
         val const : builder -> Label.t option -> Const.t -> Expr.def
@@ -115,6 +118,7 @@ structure Cps :> sig
     structure Expr : CPS_EXPR where type Type.t = Type.t
     structure Cont : CPS_CONT where type Type.t = Type.t
     structure Program : CPS_PROGRAM
+        where type Expr.Type.t = Type.t
         where type Expr.oper = Expr.oper
         where type Cont.Type.t = Cont.Type.t
         where type Cont.Transfer.t = Cont.Transfer.t
@@ -145,6 +149,7 @@ end = struct
             | Record of t
             | EmptyRow
             | StackT
+            | Type of t
             | TParam of param
             | Prim of Prim.t
 
@@ -156,7 +161,8 @@ end = struct
              | Record row => braces (toDoc row)
              | EmptyRow => PPrint.empty
              | StackT => text "__stack"
-             | TParam {var, ...} => text (FType.Id.toString var)
+             | Type t => brackets (text "=" <+> toDoc t)
+             | TParam {var, ...} => text ("g__" ^ FType.Id.toString var) (* HACK: g__ *)
              | Prim p => Prim.toDoc p
     end
 
@@ -223,6 +229,7 @@ end = struct
 
         datatype oper
             = PrimApp of {opn : Primop.t, tArgs : Type.t vector, vArgs : def vector}
+            | Type of Type.t
             | Label of Label.t
             | Param of Label.t * int
             | Const of Const.t
@@ -231,6 +238,7 @@ end = struct
 
         fun foldDefs f acc =
             fn PrimApp {opn = _, tArgs = _, vArgs} => Vector.foldl f acc vArgs
+             | Type _ => acc
              | Label _ => acc
              | Param _ => acc
              | Const _ => acc
@@ -240,6 +248,7 @@ end = struct
                 Primop.toDoc opn
                 <+> brackets (punctuate (comma <> space) (Vector.map Type.toDoc tArgs))
                 <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
+             | Type t => brackets (Type.toDoc t)
              | Label label => text "fn" <+> Label.toDoc label
              | Param (label, i) => text "param" <+> Label.toDoc label <+> PPrint.int i
              | Const c => text "const" <+> Const.toDoc c
@@ -340,6 +349,8 @@ end = struct
                     do insert builder (def, expr)
                 in def
                 end
+
+            fun typ builder parent t = push builder {parent, oper = Expr.Type t}
 
             fun label builder parent label = push builder {parent, oper = Expr.Label label}
 
