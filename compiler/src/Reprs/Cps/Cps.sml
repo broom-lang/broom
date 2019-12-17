@@ -33,6 +33,12 @@ signature CPS_TYPE = sig
         | Prim of Prim.t
 
     val toDoc : t -> PPrint.t
+
+    structure Coercion : sig
+        datatype co = Refl of t
+
+        val toDoc : co -> PPrint.t
+    end
 end
 
 signature CPS_EXPR = sig
@@ -49,6 +55,7 @@ signature CPS_EXPR = sig
         | Where of {base : def, field : Name.t * def}
         | Without of {base : def, field : Name.t}
         | Field of def * Name.t
+        | Cast of def * Type.Coercion.co
         | Type of Type.t
         | Label of Label.t
         | Param of Label.t * int
@@ -116,7 +123,9 @@ end
 
 structure Cps :> sig
     structure Type : CPS_TYPE
-    structure Expr : CPS_EXPR where type Type.t = Type.t
+    structure Expr : CPS_EXPR
+        where type Type.t = Type.t
+        where type Type.Coercion.co = Type.Coercion.co
     structure Cont : CPS_CONT where type Type.t = Type.t
     structure Program : CPS_PROGRAM
         where type Expr.Type.t = Type.t
@@ -165,6 +174,13 @@ end = struct
              | Type t => brackets (text "=" <+> toDoc t)
              | TParam {var, ...} => text ("g__" ^ FType.Id.toString var) (* HACK: g__ *)
              | Prim p => Prim.toDoc p
+
+        structure Coercion = struct
+            datatype co = Refl of t
+
+            val toDoc =
+                fn Refl t => toDoc t
+        end
     end
 
     structure Cont = struct
@@ -235,6 +251,7 @@ end = struct
             | Where of {base : def, field : Name.t * def}
             | Without of {base : def, field : Name.t}
             | Field of def * Name.t
+            | Cast of def * Type.Coercion.co
             | Type of Type.t
             | Label of Label.t
             | Param of Label.t * int
@@ -248,6 +265,7 @@ end = struct
              | Where {base, field = (_, fielde)} => f (fielde, f (base, acc))
              | Without {base, field = _} => f (base, acc)
              | Field (expr, _) => f (expr, acc)
+             | Cast (expr, _) => f (expr, acc)
              | EmptyRecord => acc
              | Type _ => acc
              | Label _ => acc
@@ -269,6 +287,7 @@ end = struct
              | Without {base, field} =>
                 CpsId.toDoc base <+> text "without" <+> Name.toDoc field
              | Field (expr, label) => CpsId.toDoc expr <+> text "." <+> Name.toDoc label
+             | Cast (expr, co) => CpsId.toDoc expr <+> text "as" <+> Type.Coercion.toDoc co
              | Type t => brackets (Type.toDoc t)
              | Label label => text "fn" <+> Label.toDoc label
              | Param (label, i) => text "param" <+> Label.toDoc label <+> PPrint.int i

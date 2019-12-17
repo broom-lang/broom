@@ -9,6 +9,7 @@ end = struct
     structure Builder = Cps.Program.Builder
 
     datatype typ = datatype Type.t
+    datatype co = datatype Type.Coercion.co
     type def = Expr.def
     datatype oper = datatype Expr.oper
     datatype transfer = datatype Cont.Transfer.t
@@ -41,6 +42,9 @@ end = struct
          | FFType.Type t => Cps.Type.Type (convertType t)
          | FFType.UseT def => TParam def
          | FFType.Prim p => Prim p
+
+    val rec convertCoercion =
+        fn FFType.Refl t => Refl (convertType t)
 
     fun cpsConvert {typeFns, stmts, sourcemap = _} =
         let val builder = Builder.new typeFns
@@ -141,6 +145,15 @@ end = struct
                             FnK ( Anon (FFTerm.typeOf expr)
                                 , fn {parent, stack, expr} =>
                                       Builder.express builder {parent, oper = Field (expr, label)}
+                                      |> continue parent stack cont )
+                    in convertExpr parent stack cont env expr
+                    end
+
+                 | FFTerm.Cast (_, _, expr, co) =>
+                    let val cont =
+                            FnK ( Anon (FFTerm.typeOf expr)
+                                , fn {parent, stack, expr} =>
+                                      Builder.express builder {parent, oper = Cast (expr, convertCoercion co)}
                                       |> continue parent stack cont )
                     in convertExpr parent stack cont env expr
                     end
