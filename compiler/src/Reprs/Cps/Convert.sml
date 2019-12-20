@@ -33,7 +33,7 @@ end = struct
     val rec convertCoercion =
         fn FFType.Refl t => Refl (convertType t)
 
-    fun cpsConvert {typeFns, stmts, sourcemap = _} =
+    fun cpsConvert {typeFns, code, sourcemap = _} =
         let val builder = Builder.new typeFns
             
             fun convertExpr parent stack cont env : FFTerm.expr -> transfer =
@@ -271,14 +271,10 @@ end = struct
                     end
                  | TrivK kDef => kDef
 
-            val startPos = FFTerm.stmtPos (Vector.sub (stmts, 0))
-            val endPos = FFTerm.stmtPos (Vector.sub (stmts, Vector.length stmts - 1))
-            val mainParam = { pos = startPos, id = DefId.fresh (), var = Name.fresh ()
+            val codePos = #1 code
+            val mainParam = { pos = codePos, id = DefId.fresh (), var = Name.fresh ()
                             , typ = FFType.Record FFType.EmptyRow }
-            val main =
-                ( startPos, mainParam, Cst.Explicit FType.Impure
-                , FFTerm.Let ( startPos, valOf (Vector1.fromVector stmts)
-                             , FFTerm.Const (endPos, Const.Int 0) ) )
+            val main = (codePos, mainParam, Cst.Explicit FType.Impure, FFTerm.Let code)
             val mainLabel = convertFn NONE Env.empty main
         in Builder.build builder mainLabel
         end

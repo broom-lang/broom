@@ -76,7 +76,9 @@ end = struct
 
     val implementDefn = mapStmtExprs implementExpr
 
-    fun implement {typeFns, stmts, sourcemap} =
-        {typeFns, stmts = Vector.map implementDefn stmts, sourcemap}
+    fun implement {typeFns, code, sourcemap} =
+        case implementExpr (Let code)
+        of Let code => {typeFns, code, sourcemap}
+         | _ => raise Fail "unreachable"
 end
 

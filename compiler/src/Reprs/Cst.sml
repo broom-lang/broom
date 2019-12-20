@@ -28,7 +28,7 @@ signature CST = sig
 
     and expr
         = Fn of Pos.span * expl * clause vector
-        | Begin of Pos.span * (Pos.span * pat * expr) vector * expr
+        | Begin of begin
         | Do of Pos.span * stmt vector * expr
         | Match of Pos.span * expr * clause vector
         | Record of Pos.span * recordFields
@@ -64,6 +64,7 @@ signature CST = sig
 
     withtype def = {var: Name.t, typ: typ option}
     and defn = Pos.span * pat * expr
+    and begin = Pos.span * (Pos.span * pat * expr) vector * expr
     and clause = {pattern: pat, body: expr}
     and recordFields =
         { base : expr option
@@ -90,6 +91,7 @@ signature CST = sig
         datatype pat = datatype pat
         datatype rec_edit = datatype rec_edit
         type defn = defn
+        type begin = begin
         type recordFields = recordFields
 
         val emptyRecord : Pos.span -> expr
@@ -97,6 +99,7 @@ signature CST = sig
         val exprToDoc: expr -> PPrint.t
         val exprToString: expr -> string
         val defnsToDoc: defn vector -> PPrint.t
+        val beginToDoc : begin -> PPrint.t
         val stmtsToDoc: stmt vector -> PPrint.t
     end
 end
@@ -142,7 +145,7 @@ structure Cst :> CST = struct
 
     and expr
         = Fn of Pos.span * expl * clause vector
-        | Begin of Pos.span * (Pos.span * pat * expr) vector * expr
+        | Begin of begin
         | Do of Pos.span * stmt vector * expr
         | Match of Pos.span * expr * clause vector
         | Record of Pos.span * recordFields
@@ -178,6 +181,7 @@ structure Cst :> CST = struct
 
     withtype def = {var: Name.t, typ: typ option}
     and defn = Pos.span * pat * expr
+    and begin = Pos.span * (Pos.span * pat * expr) vector * expr
     and clause = {pattern: pat, body: expr}
     and recordFields =
         { base : expr option
@@ -293,10 +297,7 @@ structure Cst :> CST = struct
          | PrimApp (_, opn, args) =>
             parens (Primop.toDoc opn <+> punctuate space (Vector.map exprToDoc args))
          | Field (_, expr, label) => parens (exprToDoc expr <> text "." <> Name.toDoc label)
-         | Begin (_, defns, body) =>
-            text "begin" <+> PPrint.align (defnsToDoc defns) 
-                <++> PPrint.semi <+> exprToDoc body
-                <++> text "end"
+         | Begin begin => beginToDoc begin
          | Do (_, stmts, body) =>
             text "do" <+> PPrint.align (stmtsToDoc stmts)
                 <++> PPrint.semi <+> exprToDoc body
@@ -343,6 +344,11 @@ structure Cst :> CST = struct
 
     and defnsToDoc = fn defns => PPrint.punctuate newline (Vector.map defnToDoc defns)
 
+    and beginToDoc = fn (_, defns, body) =>
+        text "begin" <+> PPrint.align (defnsToDoc defns) 
+        <++> PPrint.semi <+> exprToDoc body
+        <++> text "end"
+
     and stmtToDoc =
         fn Val (_, pat, valExpr) =>
             text "val" <+> patToDoc pat <+> text " = " <> exprToDoc valExpr
@@ -372,6 +378,7 @@ structure Cst :> CST = struct
         datatype pat = datatype pat
         datatype rec_edit = datatype rec_edit
         type defn = defn
+        type begin = begin
         type recordFields = recordFields
 
         fun emptyRecord pos = Record (pos, {base = NONE, edits = #[]})
@@ -380,6 +387,7 @@ structure Cst :> CST = struct
         val exprToString = PPrint.pretty 80 o exprToDoc
         val stmtsToDoc = stmtsToDoc
         val defnsToDoc = defnsToDoc
+        val beginToDoc = beginToDoc
     end
 end
 

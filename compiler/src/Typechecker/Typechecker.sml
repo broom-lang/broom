@@ -1,7 +1,7 @@
 structure Typechecker :> sig
     type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
-    val elaborateProgram: env -> (Pos.span * Cst.Term.pat * Cst.Term.expr) vector
+    val elaborateProgram: env -> Cst.Term.begin
         -> ( FlexFAst.Term.program * env * TypeError.t list
            , FlexFAst.Term.program * env) Either.t
 end = struct
@@ -628,12 +628,14 @@ end = struct
 
     (* TODO: Prevent boundless deepening of REPL env
              and enable forward decl:s for stmts to be input on later lines. *)
-    fun elaborateProgram env defns =
+    fun elaborateProgram env (codePos, defns, body) =
         let val scope = defsScope env defns
             val env = Env.pushScope env scope
             val stmts = elaborateDefs env defns
+            val (eff, body) = elaborateExprAs env (FType.Prim PrimType.Int) body
             val program = { typeFns = Env.typeFns env
-                          , stmts
+                            (* `valOf` is fine since the empty program also lacks `main`: *)
+                          , code = (codePos, valOf (Vector1.fromVector stmts), body)
                           , sourcemap = Env.sourcemap env }
         in case Env.errors env
            of [] => Right (program, env)

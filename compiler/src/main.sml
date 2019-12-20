@@ -51,7 +51,7 @@ end = struct
         let val log = logger debug
         in  case Parser.parse input
             of Right program =>
-                let val _ = log (PPrint.pretty 80 (Cst.Term.defnsToDoc program) ^ "\n")
+                let val _ = log (PPrint.pretty 80 (Cst.Term.beginToDoc program) ^ "\n")
                     val _ = log "===\n\n"
                     val tenv = TypecheckingEnv.default sourcemap
                 in case Typechecker.elaborateProgram tenv program
@@ -108,17 +108,17 @@ end = struct
             of Right stmts =>
                 (case Typechecker.elaborateProgram tenv stmts
                  of Right (program, tenv) =>
-                     let val program as {stmts, ...} = ExitTypechecker.programToF tenv program
+                     let val program = ExitTypechecker.programToF tenv program
                      in  case WellFounded.elaborate program
                          of Right program =>
-                             let val program as {stmts, ...} = PatternMatching.implement program
-                             in Vector.app (fn stmt as (Val (_, {var, typ, ...}, _)) =>
-                                               let val v = FAstEval.interpret venv stmt
-                                               in print ( Name.toString var ^ " = "
-                                                        ^ FAstEval.Value.toString v ^ " : "
-                                                        ^ FixedFAst.Type.Concr.toString () typ ^ "\n" )
-                                               end
-                                             | stmt as (Expr _) => ignore (FAstEval.interpret venv stmt))
+                             let val program as {code = (_, stmts, _), ...} = PatternMatching.implement program
+                             in Vector1.app (fn stmt as (Val (_, {var, typ, ...}, _)) =>
+                                                let val v = FAstEval.interpret venv stmt
+                                                in print ( Name.toString var ^ " = "
+                                                         ^ FAstEval.Value.toString v ^ " : "
+                                                         ^ FixedFAst.Type.Concr.toString () typ ^ "\n" )
+                                                end
+                                              | stmt as (Expr _) => ignore (FAstEval.interpret venv stmt))
                                            stmts
                               ; (tenv, venv)
                              end

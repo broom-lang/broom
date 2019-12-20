@@ -94,7 +94,9 @@ end = struct
          | Axiom (pos, name, l, r) => FFTerm.Axiom (pos, name, concrToF env l, concrToF env r)
          | Expr expr => FFTerm.Expr (exprToF env expr)
 
-    fun programToF env {typeFns, stmts, sourcemap} =
-        {typeFns, stmts = Vector.map (stmtToF env) stmts, sourcemap}
+    fun programToF env {typeFns, code = (codePos, defns, body), sourcemap} =
+        { typeFns
+        , code = (codePos, Vector1.map (stmtToF env) defns, exprToF env body)
+        , sourcemap }
 end
 

@@ -116,7 +116,14 @@
 
 %start program;
 
-program : defStmt* => (Vector.fromList defStmt);
+program : defStmt+ => (
+    let val endPos = (#2 FULL_SPAN, #2 FULL_SPAN)
+    in ( FULL_SPAN
+       , Vector.fromList defStmt
+       , Term.App (endPos, { callee = Term.Use (endPos, Name.fromString "main")
+                           , arg = Term.Record (endPos, {base = NONE, edits = #[]}) }) )
+    end
+);
 
 (* # Statements and Definitions *)
 

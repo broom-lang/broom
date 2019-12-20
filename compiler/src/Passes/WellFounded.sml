@@ -1,6 +1,7 @@
 structure WellFounded :> sig
     structure FAst : sig
         structure Term : FAST_TERM
+            where type expr = FixedFAst.Term.expr
             where type stmt = FixedFAst.Term.stmt
             where type Type.sv = FixedFAst.Type.sv
     end
@@ -273,7 +274,7 @@ end = struct
             end
     end
 
-    fun checkProgram {typeFns = _, stmts, sourcemap = _} =
+    fun checkProgram {typeFns = _, code, sourcemap = _} =
         let val env = Env.new ()
             val changed = ref false
             val errors = ref []
@@ -289,12 +290,7 @@ end = struct
 
               | checkExpr ini ctx (TFn (_, _, body)) = checkExpr ini ctx body
 
-              | checkExpr ini ctx (Letrec (_, stmts, body)) =
-                let val ini = pushBlock ini (Vector1.toVector stmts)
-                    val stmtsSupport = checkDefns ini (Vector1.toVector stmts)
-                    val (typ, bodySupport) = checkExpr ini ctx body
-                in (typ, Support.union (stmtsSupport, bodySupport))
-                end
+              | checkExpr ini ctx (Letrec letrec) = checkLetrec ini ctx letrec
 
               | checkExpr ini ctx (Let (_, stmts, body)) =
                 let val (ini, stmtsSupport) = checkStmts ini stmts
@@ -421,6 +417,13 @@ end = struct
                     end
                  | Expr expr => #2 (checkExpr ini Escaping expr)
 
+            and checkLetrec ini ctx (pos, stmts, body) =
+                let val ini = pushBlock ini (Vector1.toVector stmts)
+                    val stmtsSupport = checkDefns ini (Vector1.toVector stmts)
+                    val (typ, bodySupport) = checkExpr ini ctx body
+                in (typ, Support.union (stmtsSupport, bodySupport))
+                end
+
             and checkStmts ini stmts =
                 Vector1.foldl (fn (stmt, (ini, support)) =>
                                    let val (ini, stmtSupport) = checkStmt ini stmt
@@ -449,21 +452,21 @@ end = struct
                  | AnyP _ => ini
                  | ConstP _ => ini
 
-            fun iterate stmts =
+            fun iterate code =
                 let do changed := false
                     do errors := []
-                    do ignore (checkDefns (pushBlock IniEnv.empty stmts) stmts)
+                    do ignore (checkLetrec IniEnv.empty Escaping code)
                 in if !changed
-                   then iterate stmts
+                   then iterate code
                    else ()
                 end
-        in iterate stmts
+        in iterate code
          ; case !errors
            of [] => Either.Right env
             | errs => Either.Left (Vector.fromList (List.rev errs))
         end
 
-    fun emit env {typeFns, stmts, sourcemap} =
+    fun emit env {typeFns, code, sourcemap} =
         let val boxDefs = DefId.HashTable.mkTable (0, Subscript)
 
             fun emitExpr ini ctx (Fn (pos, def as {id, ...}, arr, body)) =
@@ -473,16 +476,7 @@ end = struct
 
               | emitExpr ini ctx (TFn (pos, params, body)) = TFn (pos, params, emitExpr ini ctx body)
 
-              | emitExpr ini ctx (Letrec (pos, stmts, body)) =
-                let val ini = pushBlock ini (Vector1.toVector stmts)
-                    val stmts = valOf (Vector1.fromVector (emitDefns ini (Vector1.toVector stmts)))
-                    val body = emitExpr ini ctx body
-                    val stmts =
-                        case boxAllocs pos (Vector1.toVector stmts)
-                        of SOME boxStmts => valOf (Vector1.concat [boxStmts, stmts])
-                         | NONE => stmts
-                in Let (pos, stmts, body)
-                end
+              | emitExpr ini ctx (Letrec letrec) = Let (emitLetrec ini ctx letrec)
 
               | emitExpr ini ctx (Let (pos, stmts, body)) =
                 let val stmts = emitStmts ini stmts
@@ -560,6 +554,17 @@ end = struct
                     end
                  | Expr expr => #[Expr (emitExpr ini Escaping expr)]
 
+            and emitLetrec ini ctx (pos, stmts, body) =
+                let val ini = pushBlock ini (Vector1.toVector stmts)
+                    val stmts = valOf (Vector1.fromVector (emitDefns ini (Vector1.toVector stmts)))
+                    val body = emitExpr ini ctx body
+                    val stmts =
+                        case boxAllocs pos (Vector1.toVector stmts)
+                        of SOME boxStmts => valOf (Vector1.concat [boxStmts, stmts])
+                         | NONE => stmts
+                in (pos, stmts, body)
+                end
+
             and emitStmts ini stmts =
                 Vector1.foldl (fn (stmt, (ini, revStmts)) =>
                                    let val (ini, stmt) = emitStmt ini stmt
@@ -603,13 +608,8 @@ end = struct
                 in revBoxStmts |> List.rev |> Vector1.fromList
                 end
            
-            val ini = pushBlock IniEnv.empty stmts
-            val stmts = emitDefns ini stmts
-            val stmts =
-                case boxAllocs (FTerm.stmtPos (Vector.sub (stmts, 0))) stmts
-                of SOME boxStmts => Vector.concat [Vector1.toVector boxStmts, stmts]
-                 | NONE => stmts
-        in {typeFns, stmts, sourcemap}
+            val code = emitLetrec IniEnv.empty Escaping code
+        in {typeFns, code, sourcemap}
         end
 
     fun elaborate program =

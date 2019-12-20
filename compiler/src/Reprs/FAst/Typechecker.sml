@@ -334,13 +334,8 @@ end = struct
          | Axiom _ => () (* TODO: Some checks here (see F_c paper) *)
          | Expr expr => ignore (check env expr)
 
-    fun typecheckProgram {typeFns = _, stmts, sourcemap} =
-        let val env =
-                case Vector1.fromVector stmts
-                of SOME stmts => pushStmts (Env.empty sourcemap) stmts
-                 | NONE => Env.empty sourcemap
-        in Vector.app (checkStmt env) stmts (* TODO: Use `typeFns` *)
-         ; NONE
-        end
+    fun typecheckProgram {typeFns = _, code, sourcemap} =
+        ( checkLetrec (Env.empty sourcemap) code (* TODO: Use `typeFns` *)
+        ; NONE )
 end
 

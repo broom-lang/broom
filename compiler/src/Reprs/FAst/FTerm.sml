@@ -38,7 +38,7 @@ signature FAST_TERM = sig
     withtype clause = {pattern: pat, body: expr}
 
     type program = { typeFns: Type.def vector
-                   , stmts: stmt vector
+                   , code: Pos.span * stmt vector1 * expr
                    , sourcemap: Pos.sourcemap }
    
     val exprPos: expr -> Pos.span
@@ -137,7 +137,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | Const (pos, _) => pos
 
     type program = { typeFns: Type.def vector
-                   , stmts: stmt vector
+                   , code: Pos.span * stmt vector1 * expr
                    , sourcemap: Pos.sourcemap }
 
     fun updateDefTyp {pos, id, var, typ} f = {pos, id, var, typ = f typ}
@@ -252,9 +252,10 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
         text "axiom" <+> Name.toDoc name <> text ":"
             <+> Type.Concr.toDoc env l <+> text "~" <+> Type.Concr.toDoc env r
 
-    fun programToDoc env {typeFns, stmts, sourcemap = _} =
+    fun programToDoc env {typeFns, code = (_, stmts, body), sourcemap = _} =
         punctuate (newline <> newline) (Vector.map typeFnToDoc typeFns)
-            <++> newline <> stmtsToDoc env stmts
+            <++> newline <> stmtsToDoc env (Vector1.toVector stmts)
+            <++> exprToDoc env body
 
     val rec typeOf =
         fn Fn (_, {typ = domain, ...}, arrow, body) =>
