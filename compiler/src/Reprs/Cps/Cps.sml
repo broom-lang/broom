@@ -35,6 +35,7 @@ signature CPS_TYPE = sig
     val toDoc : t -> PPrint.t
 
     val fromF : FixedFAst.Type.concr -> t
+    val eq : t * t -> bool
 
     structure Coercion : sig
         datatype co = Refl of t
@@ -194,6 +195,10 @@ end = struct
              | FType.Type t => Type (fromF t)
              | FType.UseT def => TParam def
              | FType.Prim p => Prim p
+
+        val eq =
+            fn (StackT, StackT) => true
+             | (Prim p, Prim p') => true
 
         structure Coercion = struct
             datatype co = Refl of t

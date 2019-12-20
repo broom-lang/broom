@@ -67,6 +67,7 @@ local
            src/Reprs/Cps/Id.sml
            src/Reprs/Cps/Cps.sml
            src/Reprs/Cps/Convert.sml
+           src/Reprs/Cps/Typechecker.sml
            
            src/Reprs/FAst/Typechecker.sml
 
