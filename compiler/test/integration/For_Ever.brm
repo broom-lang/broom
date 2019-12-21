@@ -10,3 +10,5 @@ end = module
     fun orever (n: __int) = For.forev n
 end
 
+fun main _ = 0
+

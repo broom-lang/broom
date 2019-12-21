@@ -12,3 +12,5 @@ end
 
 val n: Prelude.Integer.t = Prelude.Fn.identity Prelude.Integer.t Prelude.Integer.zero
 
+fun main _ = n
+

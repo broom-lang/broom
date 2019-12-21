@@ -2,3 +2,5 @@ fun f (n: __int) = ans
 val ans = 42
 val n = f 23
 
+fun main _ = 0
+

@@ -10,3 +10,5 @@ val UserId: USER_ID = module
     fun sudo (_: t) = 0
 end
 
+fun main _ = 0
+

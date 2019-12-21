@@ -13,10 +13,12 @@ val MakeId: TM ~> ID = fn
     end
 end
 
-fun useId _ = do
+fun main _ = do
     val Id1 = MakeId (module type t = __int end)
     val Id2 = MakeId (module type t = __int end)
 
     ; Id2.noop (Id1.zero)
+
+    ; 0
 end
 

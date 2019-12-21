@@ -1,5 +1,7 @@
 val n: __int = match True
     | True -> 23
     | False -> 42
-end
+    end
+
+fun main _ = 0
 

@@ -4,3 +4,5 @@ val y = 17
 val xy: {x: __int, y: __int} = {xr with y}
 val x: __int = getX xy
 
+fun main _ = 0
+

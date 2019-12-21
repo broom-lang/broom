@@ -1,3 +1,5 @@
 val m: __int = 5
 val n: __int = m
 
+fun main _ = 0
+

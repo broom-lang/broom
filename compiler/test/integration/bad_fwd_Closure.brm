@@ -8,3 +8,5 @@ val N = module
     val ans = 42
 end
 
+fun main _ = 0
+

@@ -17,3 +17,5 @@ fun Dyfault isInt = do
     ; res
 end
 
+fun main _ = 0
+

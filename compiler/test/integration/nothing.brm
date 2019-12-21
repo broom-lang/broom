@@ -10,3 +10,5 @@ val Nothing: NOTHING = module
     fun unusable (a: type) (_: t) (x: a) = x
 end
 
+fun main _ = 0
+

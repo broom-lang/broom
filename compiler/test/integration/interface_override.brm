@@ -10,5 +10,5 @@ end = module
     val default = 0
 end
 
-val n : __int = IntDefault.default
+fun main _ = IntDefault.default
 

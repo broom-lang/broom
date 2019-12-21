@@ -3,3 +3,5 @@ type FOO_FOO = interface
     val foo : bool
 end
 
+fun main _ = 0
+

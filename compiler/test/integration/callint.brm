@@ -1,4 +1,4 @@
-fun main argv = do
+fun main _ = do
     val n: __int = 5
     ; n 23
 end
