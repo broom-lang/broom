@@ -25,7 +25,9 @@ signature CPS_TYPE = sig
     
     datatype t
         = FnT of {tDomain : param vector, vDomain : t vector}
+        | AppT of {callee : t, args : t vector1}
         | Record of t
+        | Results of t vector
         | EmptyRow
         | StackT
         | Type of t
@@ -142,6 +144,7 @@ end = struct
     structure DefSet = CpsId.SortedSet
     structure DefSetMut = CpsId.HashSetMut
 
+    val op|> = Fn.|>
     val text = PPrint.text
     val space = PPrint.space
     val newline = PPrint.newline
@@ -162,7 +165,9 @@ end = struct
         
         datatype t
             = FnT of {tDomain : param vector, vDomain : t vector}
+            | AppT of {callee : t, args : t vector1}
             | Record of t
+            | Results of t vector
             | EmptyRow
             | StackT
             | Type of t
@@ -174,7 +179,10 @@ end = struct
                 text "fn"
                 <+> brackets (punctuate (comma <> space) (Vector.map FType.defToDoc tDomain))
                 <+> parens (punctuate (comma <> space) (Vector.map toDoc vDomain))
+             | AppT {callee, args} =>
+                parens (toDoc callee <+> punctuate space (Vector.map toDoc (Vector1.toVector args)))
              | Record row => braces (toDoc row)
+             | Results ts => parens (punctuate (comma <> space) (Vector.map toDoc ts))
              | EmptyRow => PPrint.empty
              | StackT => text "__stack"
              | Type t => brackets (text "=" <+> toDoc t)
@@ -192,13 +200,29 @@ end = struct
                 end
              | FType.Record row => Record (fromF row)
              | FType.EmptyRow => EmptyRow
+             | FType.App {callee, args} =>
+                AppT {callee = fromF callee, args = Vector1.map fromF args}
              | FType.Type t => Type (fromF t)
              | FType.UseT def => TParam def
              | FType.Prim p => Prim p
 
-        val eq =
-            fn (StackT, StackT) => true
+        val rec eq =
+            fn (FnT {tDomain, vDomain}, FnT {tDomain = tDomain', vDomain = vDomain'}) =>
+                (case (tDomain, tDomain')
+                 of (#[], #[]) =>
+                     Vector.zip (vDomain, vDomain')
+                     |> Vector.all eq
+                  | _ => raise Fail "unimplemented")
+             | (AppT {callee, args}, AppT {callee = callee', args = args'}) =>
+                eq (callee, callee')
+                andalso Vector1.length args = Vector1.length args'
+                andalso Vector1.all eq (Vector1.zip (args, args'))
+             | (Record row, Record row') => eq (row, row')
+             | (EmptyRow, EmptyRow) => true
+             | (StackT, StackT) => true
              | (Prim p, Prim p') => true
+             | (t, t') =>
+                raise Fail ("unimplemented " ^ PPrint.pretty 80 (toDoc t <+> text "?=" <+> toDoc t'))
 
         structure Coercion = struct
             datatype co = Refl of t
