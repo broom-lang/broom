@@ -23,7 +23,7 @@ end = struct
 
     datatype cont
         = FnK of cont_param  * ({parent : Label.t option, stack : def, expr : def} -> transfer)
-        | TrivK of def
+        | TrivK of def * Label.t option
 
     structure Env = FType.Id.SortedMap (* TODO: HashMap *)
     type env = def Env.map
@@ -58,13 +58,15 @@ end = struct
                     in convertExpr parent stack split env matchee
                     end
 
+                 (* OPTIMIZE: (Via Builder?:) When callee label is known, emit goto instead of jump: *)
+
                  | FFTerm.App (_, _, {callee, arg}) =>
                     let val cont =
                            FnK ( Anon (FFTerm.typeOf callee)
                                , fn {parent, stack, expr = callee} =>
                                      let val cont = FnK ( Anon (FFTerm.typeOf arg)
                                                         , fn {parent, stack, expr = arg} =>
-                                                              let val ret = trivializeCont parent cont
+                                                              let val (ret, _) = trivializeCont parent cont
                                                               in Jump { callee, tArgs = #[]
                                                                       , vArgs = #[stack, ret, arg] }
                                                               end)
@@ -78,7 +80,7 @@ end = struct
                             FnK ( Anon (FFTerm.typeOf callee)
                                 , fn {parent, stack, expr = callee} =>
                                       let val tArgs = Vector1.toVector (Vector1.map convertType args)
-                                          val ret = trivializeCont parent cont
+                                          val (ret, _) = trivializeCont parent cont
                                       in Jump {callee, tArgs, vArgs = #[stack, ret]}
                                       end )
                     in convertExpr parent stack cont env callee
@@ -188,7 +190,7 @@ end = struct
                     val stack = Builder.express builder {parent = SOME label, oper = Param (label, 0)}
                     val codomain = convertType (FFTerm.typeOf body)
                     val contTyp = FnT {tDomain = #[], vDomain = #[StackT, codomain]}
-                    val cont = TrivK (Builder.express builder {parent = SOME label, oper = Param (label, 1)})
+                    val cont = TrivK (Builder.express builder {parent = SOME label, oper = Param (label, 1)}, NONE)
                     val domain = convertType domain
                     val param = Builder.express builder {parent = SOME label, oper = Param (label, 2)}
 
@@ -206,7 +208,7 @@ end = struct
                     val stack = Builder.express builder {parent = SOME label, oper = Param (label, 0)}
                     val codomain = convertType (FFTerm.typeOf body)
                     val contTyp = FnT {tDomain = #[], vDomain = #[StackT, codomain]}
-                    val cont = TrivK (Builder.express builder {parent = SOME label, oper = Param (label, 1)})
+                    val cont = TrivK (Builder.express builder {parent = SOME label, oper = Param (label, 1)}, NONE)
 
                     val f = { name = NONE (* TODO: SOME when possible *)
                             , tParams = Vector1.toVector params, vParams = #[stackTyp, contTyp]
@@ -250,7 +252,8 @@ end = struct
             and continue parent stack cont expr =
                 case cont
                 of FnK (paramHint, k) => k {parent, stack, expr} (* FIXME: use `paramHint` *)
-                 | TrivK k => Jump {callee = k, tArgs = #[], vArgs = #[stack, expr]}
+                 | TrivK (_, SOME k) => Goto {callee = k, tArgs = #[], vArgs = #[stack, expr]}
+                 | TrivK (k, NONE) => Jump {callee = k, tArgs = #[], vArgs = #[stack, expr]}
 
             and trivializeCont parent cont =
                 case cont
@@ -266,7 +269,7 @@ end = struct
                                 , tParams = #[], vParams = #[StackT, param]
                                 , body = kf {parent = SOME kLabel, stack, expr = paramUse} }
                         do Builder.insertCont builder (kLabel, k)
-                    in Builder.express builder {parent, oper = Label kLabel}
+                    in (Builder.express builder {parent, oper = Label kLabel}, SOME kLabel)
                     end
                  | TrivK kDef => kDef
 

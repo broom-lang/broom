@@ -285,7 +285,7 @@ end = struct
                     <+> brackets (punctuate (comma <> space) (Vector.map Type.toDoc tArgs))
                     <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
                  | Jump {callee, tArgs, vArgs} =>
-                    text "goto" <+> CpsId.toDoc callee
+                    text "jump" <+> CpsId.toDoc callee
                     <+> brackets (punctuate (comma <> space) (Vector.map Type.toDoc tArgs))
                     <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
                  | Match (matchee, clauses) =>
@@ -438,10 +438,9 @@ end = struct
 
         fun fnToDoc (program as {stmts, conts, ...} : t) visited label exprs =
             let val {name, tParams, vParams, body} = LabelMap.lookup conts label
-            in Label.toDoc label <+> text "=" <+> text "fn"
-               <> Option.mapOr (fn name => space <> Name.toDoc name) PPrint.empty name
+            in text "fun" <+> Label.toDoc label
                <+> brackets (punctuate (comma <> space) (Vector.map FType.defToDoc tParams))
-               <+> parens (punctuate (comma <> space) (Vector.map Type.toDoc vParams))
+               <+> parens (punctuate (comma <> space) (Vector.map Type.toDoc vParams)) <> text ":"
                <> nest 4 (newline <> exprsToDoc program visited exprs <++> Cont.Transfer.toDoc body)
             end
 
