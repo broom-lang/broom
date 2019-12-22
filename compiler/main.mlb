@@ -64,15 +64,17 @@ local
            src/Typechecker/Typechecker.sml
            src/Typechecker/ExitTypechecker.sml
 
+           src/Reprs/FAst/Typechecker.sml
+
+           src/Passes/WellFounded.sml
+           src/Passes/PatternMatching.sml
+
            src/Reprs/Cps/Id.sml
            src/Reprs/Cps/Cps.sml
            src/Reprs/Cps/Convert.sml
            src/Reprs/Cps/Typechecker.sml
            
-           src/Reprs/FAst/Typechecker.sml
-
-           src/Passes/WellFounded.sml
-           src/Passes/PatternMatching.sml
+           src/Passes/ContEscapism.sml
 
            src/Parser/parser.sml
        end

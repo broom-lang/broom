@@ -79,11 +79,14 @@ end = struct
                                         else ()
                                      val program = CpsConvert.cpsConvert program
                                      val _ = log (PPrint.pretty 80 (Cps.Program.toDoc program) ^ "\n")
+                                     do log "===\n\n"
                                      do if lint
                                         then case CpsTypechecker.checkProgram program
                                              of Right () => ()
                                               | Left err => raise Fail "CPS lint failed"
                                         else ()
+                                     val program = ContEscapism.specialize program
+                                     val _ = log (PPrint.pretty 80 (Cps.Program.toDoc program) ^ "\n")
                                  in ()
                                  end )
                             | Left errors =>
