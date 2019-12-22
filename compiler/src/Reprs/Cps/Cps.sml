@@ -38,6 +38,7 @@ signature CPS_TYPE = sig
 
     val fromF : FixedFAst.Type.concr -> t
     val eq : t * t -> bool
+    val substitute : t FType.Id.SortedMap.map -> t -> t
 
     structure Coercion : sig
         datatype co = Refl of t
@@ -190,19 +191,19 @@ end = struct
              | Prim p => Prim.toDoc p
 
         val rec fromF =
-            fn FType.Arrow (_, {domain, codomain}) =>
-                let val contTyp = FnT {tDomain = #[], vDomain = #[StackT, fromF codomain]}
-                in FnT {tDomain = #[], vDomain = #[StackT, contTyp, fromF domain]}
-                end
-             | FType.ForAll (params, body) =>
+            fn FType.ForAll (params, body) =>
                 let val contTyp = FnT {tDomain = #[], vDomain = #[StackT, fromF body]}
                 in FnT {tDomain = Vector1.toVector params, vDomain = #[StackT, contTyp]}
                 end
+             | FType.Arrow (_, {domain, codomain}) =>
+                let val contTyp = FnT {tDomain = #[], vDomain = #[StackT, fromF codomain]}
+                in FnT {tDomain = #[], vDomain = #[StackT, contTyp, fromF domain]}
+                end
              | FType.Record row => Record (fromF row)
              | FType.EmptyRow => EmptyRow
+             | FType.Type t => Type (fromF t)
              | FType.App {callee, args} =>
                 AppT {callee = fromF callee, args = Vector1.map fromF args}
-             | FType.Type t => Type (fromF t)
              | FType.UseT def => TParam def
              | FType.Prim p => Prim p
 
@@ -223,6 +224,29 @@ end = struct
              | (Prim p, Prim p') => true
              | (t, t') =>
                 raise Fail ("unimplemented " ^ PPrint.pretty 80 (toDoc t <+> text "?=" <+> toDoc t'))
+
+        fun mapChildren f t =
+            case t
+            of FnT {tDomain, vDomain} => FnT {tDomain, vDomain = Vector.map f vDomain}
+             | AppT {callee, args} => AppT {callee = f callee, args = Vector1.map f args}
+             | Record row => Record (f row)
+             | Results ts => Results (Vector.map f ts)
+             | Type t => Type (f t)
+             | TParam _ | EmptyRow | StackT | Prim _ => t
+
+        fun substitute mapping =
+            fn t as FnT {tDomain, vDomain} =>
+                let val mapping =
+                        Vector.foldl (fn ({var, ...}, mapping) =>
+                                          #1 (FType.Id.SortedMap.remove (mapping, var)))
+                                     mapping tDomain
+                in mapChildren (substitute mapping) t
+                end
+             | t as TParam {var, ...} =>
+                (case FType.Id.SortedMap.find (mapping, var)
+                 of SOME t' => t'
+                  | NONE => t)
+             | t => mapChildren (substitute mapping) t
 
         structure Coercion = struct
             datatype co = Refl of t

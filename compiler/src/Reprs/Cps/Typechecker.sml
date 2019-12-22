@@ -59,11 +59,15 @@ end = struct
     fun operType (program : Program.t) =
         fn PrimApp {opn, tArgs, vArgs} =>
             let val {tParams, vParams, codomain} = Expr.primopType opn
-            in if Vector.length tArgs = Vector.length tParams
-               then Vector.zip (Vector.map #kind tParams, tArgs)
-                    |> Vector.app (checkKind program)
-               else raise TypeError (ArgcT (Vector.length tParams, Vector.length tArgs))
-             ; if Vector.length vArgs = Vector.length vParams
+                do if Vector.length tArgs = Vector.length tParams
+                   then Vector.zip (Vector.map #kind tParams, tArgs)
+                        |> Vector.app (checkKind program)
+                   else raise TypeError (ArgcT (Vector.length tParams, Vector.length tArgs))
+                val mapping = Vector.zip (Vector.map #var tParams, tArgs)
+                              |> FType.Id.SortedMap.fromVector
+                val vParams = Vector.map (Type.substitute mapping) vParams
+                val codomain = Vector.map (Type.substitute mapping) codomain
+            in if Vector.length vArgs = Vector.length vParams
                then Vector.zip (vParams, vArgs)
                     |> Vector.app (checkDef program)
                else raise TypeError (Argc (Vector.length vParams, Vector.length vArgs))
@@ -122,14 +126,18 @@ end = struct
         fn Goto {callee, tArgs, vArgs} =>
             (case defType program callee
              of FnT {tDomain, vDomain} =>
-                 ( if Vector.length tArgs = Vector.length tDomain
-                   then Vector.zip (Vector.map #kind tDomain, tArgs)
-                        |> Vector.app (checkKind program)
-                   else raise TypeError (ArgcT (Vector.length tDomain, Vector.length tArgs))
-                 ; if Vector.length vArgs = Vector.length vDomain
+                let do if Vector.length tArgs = Vector.length tDomain
+                       then Vector.zip (Vector.map #kind tDomain, tArgs)
+                            |> Vector.app (checkKind program)
+                       else raise TypeError (ArgcT (Vector.length tDomain, Vector.length tArgs))
+                    val mapping = Vector.zip (Vector.map #var tDomain, tArgs)
+                                  |> FType.Id.SortedMap.fromVector
+                    val vDomain = Vector.map (Type.substitute mapping) vDomain
+                in if Vector.length vArgs = Vector.length vDomain
                    then Vector.zip (vDomain, vArgs)
                         |> Vector.app (checkDef program)
-                   else raise TypeError (Argc (Vector.length vDomain, Vector.length vArgs)) )
+                   else raise TypeError (Argc (Vector.length vDomain, Vector.length vArgs))
+                end
               | t => raise TypeError (UnCallable (callee, t)))
          | Match (matchee, clauses) =>
             let val matcheeTyp = defType program matchee
