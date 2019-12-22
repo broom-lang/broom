@@ -88,8 +88,9 @@ signature CPS_CONT = sig
             | ConstP of Const.t
 
         datatype t
-            = Goto of {callee : def, tArgs : Type.t vector, vArgs : def vector}
-            | Match of def * {pattern : pat, target : def} vector
+            = Goto of {callee : Label.t, tArgs : Type.t vector, vArgs : def vector}
+            | Jump of {callee : def, tArgs : Type.t vector, vArgs : def vector}
+            | Match of def * {pattern : pat, target : Label.t} vector
 
         val toDoc : t -> PPrint.t
     end
@@ -267,18 +268,23 @@ end = struct
                 | ConstP of Const.t
 
             datatype t
-                = Goto of {callee : def, tArgs : Type.t vector, vArgs : def vector}
-                | Match of def * {pattern : pat, target : def} vector
+                = Goto of {callee : Label.t, tArgs : Type.t vector, vArgs : def vector}
+                | Jump of {callee : def, tArgs : Type.t vector, vArgs : def vector}
+                | Match of def * {pattern : pat, target : Label.t} vector
 
             val patToDoc =
                 fn AnyP => text "_"
                  | ConstP c => Const.toDoc c
 
             fun clauseToDoc {pattern, target} =
-                patToDoc pattern <+> text "->" <+> CpsId.toDoc target
+                patToDoc pattern <+> text "->" <+> Label.toDoc target
 
             val toDoc =
                 fn Goto {callee, tArgs, vArgs} =>
+                    text "goto" <+> Label.toDoc callee
+                    <+> brackets (punctuate (comma <> space) (Vector.map Type.toDoc tArgs))
+                    <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
+                 | Jump {callee, tArgs, vArgs} =>
                     text "goto" <+> CpsId.toDoc callee
                     <+> brackets (punctuate (comma <> space) (Vector.map Type.toDoc tArgs))
                     <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))

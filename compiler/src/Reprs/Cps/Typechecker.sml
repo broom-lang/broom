@@ -5,7 +5,7 @@ structure CpsTypechecker :> sig
         = InequalKinds of Kind.t * Kind.t
         | Inequal of Cps.Type.t * Cps.Type.t
         | UnCallable of CpsId.t * Cps.Type.t
-        | NonThunk of CpsId.t * Cps.Type.t
+        | NonThunk of Label.t * Cps.Type.t
         | NonResults of CpsId.t * Cps.Type.t
         | Unbound of CpsId.t
         | UnboundLabel of Label.t
@@ -34,7 +34,7 @@ end = struct
         = InequalKinds of Kind.t * Kind.t
         | Inequal of Cps.Type.t * Cps.Type.t
         | UnCallable of CpsId.t * Cps.Type.t
-        | NonThunk of CpsId.t * Cps.Type.t
+        | NonThunk of Label.t * Cps.Type.t
         | NonResults of CpsId.t * Cps.Type.t
         | Unbound of CpsId.t
         | UnboundLabel of Label.t
@@ -118,12 +118,12 @@ end = struct
 
     and checkClause program matcheeTyp {pattern, target} =
         ( checkPattern program matcheeTyp pattern
-        ; case defType program target
+        ; case checkCont program target
           of FnT {tDomain = #[], vDomain = #[]} => ()
            | targetTyp => raise TypeError (NonThunk (target, targetTyp)) )
 
     and checkTransfer (program : Program.t) =
-        fn Goto {callee, tArgs, vArgs} =>
+        fn Jump {callee, tArgs, vArgs} =>
             (case defType program callee
              of FnT {tDomain, vDomain} =>
                 let do if Vector.length tArgs = Vector.length tDomain

@@ -65,7 +65,7 @@ end = struct
                                      let val cont = FnK ( Anon (FFTerm.typeOf arg)
                                                         , fn {parent, stack, expr = arg} =>
                                                               let val ret = trivializeCont parent cont
-                                                              in Goto { callee, tArgs = #[]
+                                                              in Jump { callee, tArgs = #[]
                                                                       , vArgs = #[stack, ret, arg] }
                                                               end)
                                      in convertExpr parent stack cont env arg
@@ -79,7 +79,7 @@ end = struct
                                 , fn {parent, stack, expr = callee} =>
                                       let val tArgs = Vector1.toVector (Vector1.map convertType args)
                                           val ret = trivializeCont parent cont
-                                      in Goto {callee, tArgs, vArgs = #[stack, ret]}
+                                      in Jump {callee, tArgs, vArgs = #[stack, ret]}
                                       end )
                     in convertExpr parent stack cont env callee
                     end
@@ -241,8 +241,7 @@ end = struct
                     val k = { name = NONE, tParams = #[], vParams = #[]
                             , body = convertExpr (SOME kLabel) stack cont env body }
                     do Builder.insertCont builder (kLabel, k)
-                    val target = Builder.express builder {parent, oper = Label kLabel}
-                in {pattern, target}
+                in {pattern, target = kLabel}
                 end
 
             and convertPattern (FFTerm.AnyP _) = AnyP
@@ -251,7 +250,7 @@ end = struct
             and continue parent stack cont expr =
                 case cont
                 of FnK (paramHint, k) => k {parent, stack, expr} (* FIXME: use `paramHint` *)
-                 | TrivK k => Goto {callee = k, tArgs = #[], vArgs = #[stack, expr]}
+                 | TrivK k => Jump {callee = k, tArgs = #[], vArgs = #[stack, expr]}
 
             and trivializeCont parent cont =
                 case cont
