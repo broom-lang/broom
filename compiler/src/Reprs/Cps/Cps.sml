@@ -176,10 +176,14 @@ end = struct
             | TParam of param
             | Prim of Prim.t
 
+        fun argsDoc toDoc =
+            fn #[] => PPrint.empty
+             | ts => brackets (punctuate (comma <> space) (Vector.map toDoc ts))
+
         val rec toDoc =
             fn FnT {tDomain, vDomain} =>
                 text "fn"
-                <+> brackets (punctuate (comma <> space) (Vector.map FType.defToDoc tDomain))
+                <+> argsDoc FType.defToDoc tDomain
                 <+> parens (punctuate (comma <> space) (Vector.map toDoc vDomain))
              | AppT {callee, args} =>
                 parens (toDoc callee <+> punctuate space (Vector.map toDoc (Vector1.toVector args)))
@@ -282,11 +286,11 @@ end = struct
             val toDoc =
                 fn Goto {callee, tArgs, vArgs} =>
                     text "goto" <+> Label.toDoc callee
-                    <+> brackets (punctuate (comma <> space) (Vector.map Type.toDoc tArgs))
+                    <+> Type.argsDoc Type.toDoc tArgs
                     <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
                  | Jump {callee, tArgs, vArgs} =>
                     text "jump" <+> CpsId.toDoc callee
-                    <+> brackets (punctuate (comma <> space) (Vector.map Type.toDoc tArgs))
+                    <+> Type.argsDoc Type.toDoc tArgs
                     <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
                  | Match (matchee, clauses) =>
                     text "match" <+> CpsId.toDoc matchee
@@ -303,7 +307,7 @@ end = struct
             <> (case name
                 of SOME name => space <> Name.toDoc name
                  | NONE => PPrint.empty)
-            <+> brackets (punctuate (comma <> space) (Vector.map FType.defToDoc tParams))
+            <+> Type.argsDoc FType.defToDoc tParams
             <+> parens (punctuate (comma <> space) (Vector.map Type.toDoc vParams))
             <> nest 4 (newline <> Transfer.toDoc body)
     end
@@ -356,7 +360,7 @@ end = struct
         val operToDoc =
             fn PrimApp {opn, tArgs, vArgs} =>
                 Primop.toDoc opn
-                <+> brackets (punctuate (comma <> space) (Vector.map Type.toDoc tArgs))
+                <+> Type.argsDoc Type.toDoc tArgs
                 <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
              | Result (expr, i) => text "result" <+> CpsId.toDoc expr <+> PPrint.int i
              | EmptyRecord => braces PPrint.empty
@@ -439,7 +443,7 @@ end = struct
         fun fnToDoc (program as {stmts, conts, ...} : t) visited label exprs =
             let val {name, tParams, vParams, body} = LabelMap.lookup conts label
             in text "fun" <+> Label.toDoc label
-               <+> brackets (punctuate (comma <> space) (Vector.map FType.defToDoc tParams))
+                <+> Type.argsDoc FType.defToDoc tParams
                <+> parens (punctuate (comma <> space) (Vector.map Type.toDoc vParams)) <> text ":"
                <> nest 4 (newline <> exprsToDoc program visited exprs <++> Cont.Transfer.toDoc body)
             end
