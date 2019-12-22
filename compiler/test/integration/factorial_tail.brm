@@ -1,0 +1,12 @@
+fun factorial n = begin
+  val fact : __int -> __int -> __int = fn acc -> fn
+      | 0 -> acc
+      | n -> fact (__iMul acc n) (__iSub n 1)
+    end
+  end
+
+  ; fact 1 n
+end
+
+fun main _ = factorial 5
+        
