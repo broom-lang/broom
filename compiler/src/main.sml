@@ -85,7 +85,7 @@ end = struct
                                              of Right () => ()
                                               | Left err => raise Fail "CPS lint failed"
                                         else ()
-                                     val program = ContEscapism.specialize program
+                                     val program = ClosureConvert.convert program
                                      val _ = log (PPrint.pretty 80 (Cps.Program.toDoc program) ^ "\n")
                                  in ()
                                  end )

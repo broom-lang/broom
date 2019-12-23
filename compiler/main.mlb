@@ -73,8 +73,9 @@ local
            src/Reprs/Cps/Cps.sml
            src/Reprs/Cps/Convert.sml
            src/Reprs/Cps/Typechecker.sml
-           
-           src/Passes/ContEscapism.sml
+          
+           src/Passes/DefUses.sml
+           src/Passes/ClosureConvert.sml
 
            src/Parser/parser.sml
        end
