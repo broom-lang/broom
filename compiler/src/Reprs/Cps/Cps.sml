@@ -93,6 +93,8 @@ signature CPS_CONT = sig
             | Match of def * {pattern : pat, target : Label.t} vector
 
         val toDoc : t -> PPrint.t
+
+        val foldDeps : (def * 'a -> 'a) -> 'a -> t -> 'a
     end
 
     type t =
@@ -117,6 +119,7 @@ signature CPS_PROGRAM = sig
         , conts : Cont.t LabelMap.t
         , main : Label.t }
 
+    val defSite : t -> CpsId.t -> Expr.t
     val byParent : t -> CpsId.SortedSet.set Expr.ParentMap.t
 
     val toDoc : t -> PPrint.t
@@ -295,6 +298,11 @@ end = struct
                  | Match (matchee, clauses) =>
                     text "match" <+> CpsId.toDoc matchee
                     <> nest 4 (newline <> (punctuate newline (Vector.map clauseToDoc clauses)))
+
+            fun foldDeps f acc =
+                fn Goto {callee = _, tArgs = _, vArgs} => Vector.foldl f acc vArgs
+                 | Jump {callee, tArgs = _, vArgs} => Vector.foldl f (f (callee, acc)) vArgs
+                 | Match (matchee, _) => f (matchee, acc)
         end
 
         type t =
@@ -414,6 +422,8 @@ end = struct
             , stmts : Expr.t Map.t
             , conts : Cont.t LabelMap.t
             , main : Label.t }
+
+        fun defSite ({stmts, ...} : t) def = Map.lookup stmts def
 
         fun byParent ({stmts, ...}: t) =
             let fun step ((def, {parent, oper}), acc) =

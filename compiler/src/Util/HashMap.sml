@@ -4,6 +4,7 @@ signature HASH_MAP = sig
 
     val empty : 'v t
     val insert : 'v t -> key * 'v -> 'v t
+    val update : 'v t -> key -> ('v option -> 'v) -> 'v t
     val find : 'v t -> key -> 'v option
     val lookup : 'v t -> key -> 'v
     val length : 'v t -> int
@@ -48,51 +49,53 @@ end) :> HASH_MAP where type key = Key.hash_key = struct
 
     val empty = {root = Bitmapped {bitmap = 0w0, nodes = #[]}, len = 0}
 
-    fun insert {root, len} (kv as (k, _)) = trieInsert len root 0w0 (hashVal k) kv
+    fun update {root, len} k f = trieUpdate len root 0w0 (hashVal k) k f
 
-    and trieInsert len trie shift hash (kv as (k, _)) =
+    and trieUpdate len trie shift hash k f =
         case trie
         of Bitmapped {bitmap, nodes} =>
             let val bit = bitpos hash shift
                 val index = bitindex bitmap bit
             in  if isset bitmap bit
                 then let val node = Vector.sub (nodes, index)
-                         val {root = node, len} = trieInsert len node (shift + bits) hash kv
+                         val {root = node, len} = trieUpdate len node (shift + bits) hash k f
                      in { root = Bitmapped {bitmap, nodes = Vector.update (nodes, index, node)}
                         , len }
                      end
                 else { root = Bitmapped { bitmap = orb (bitmap, bit)
-                                        , nodes = Vector.pushAt (nodes, index, Leaf kv) }
+                                        , nodes = Vector.pushAt (nodes, index, Leaf (k, f NONE)) }
                      , len = Int.+ (len, 1) }
             end
 
          | Collision {hash = hash', kvs} =>
             if hash = hash'
             then case Vector.findi (fn (i, (k', _)) => eq (k', k)) kvs
-                 of SOME (i, _) =>
-                     { root = Collision {hash = hash', kvs = Vector.update (kvs, i, kv)}
+                 of SOME (i, (_, v)) =>
+                     { root = Collision {hash = hash', kvs = Vector.update (kvs, i, (k, f (SOME v)))}
                      , len }
                   | NONE =>
-                     { root = Collision {hash = hash', kvs = Vector.append (kvs, kv)}
+                     { root = Collision {hash = hash', kvs = Vector.append (kvs, (k, f NONE))}
                      , len = Int.+ (len, 1) }
             else let val node = Bitmapped { bitmap = bitpos hash' shift
                                           , nodes = #[trie] }
-                 in trieInsert len node shift hash kv
+                 in trieUpdate len node shift hash k f
                  end
 
-         | Leaf (kv' as (k', _)) =>
+         | Leaf (kv' as (k', v)) =>
             if eq (k, k')
-            then {root = Leaf kv, len}
+            then {root = Leaf (k, f (SOME v)), len}
             else let val hash' = hashVal k'
                      val node = 
                          if hash = hash'
-                         then Collision {hash, kvs = #[kv', kv]}
+                         then Collision {hash, kvs = #[kv', (k, f NONE)]}
                          else let val node = Bitmapped {bitmap = 0w0, nodes = #[]}
-                                  val node = #root (trieInsert len node shift hash' kv')
-                              in #root (trieInsert len node shift hash kv)
+                                  val node = #root (trieUpdate len node shift hash' k' (Fn.constantly v))
+                              in #root (trieUpdate len node shift hash k f)
                               end
                  in {root = node, len = Int.+ (len, 1)}
                  end
+
+    fun insert kvs (k, v) = update kvs k (Fn.constantly v)
 
     fun find {root, len = _} k = trieFind root 0w0 (hashVal k) k
 
