@@ -1,12 +1,21 @@
 structure DefUses :> sig
     structure DefMap : HASH_MAP where type key = CpsId.t
-    structure LabelMap : HASH_MAP where type key = Label.t
+    structure LabelMap : HASH_MAP
+        where type key = Label.t
+        where type 'v t = 'v Cps.Program.LabelMap.t
 
-    datatype use_site
-        = Expr of CpsId.t
-        | Transfer of Label.t
+    structure UseSite : sig
+        datatype t
+            = Expr of CpsId.t
+            | Transfer of Label.t
+            | Export
 
-    val analyze : Cps.Program.t -> use_site DefMap.t * use_site LabelMap.t
+        val compare : t * t -> order
+    end
+
+    structure UseSiteSet : ORD_SET where type item = UseSite.t
+
+    val analyze : Cps.Program.t -> UseSiteSet.set DefMap.t * UseSiteSet.set LabelMap.t
 end = struct
     structure DefMap = Cps.Program.Map
     structure LabelMap = Cps.Program.LabelMap
@@ -16,15 +25,38 @@ end = struct
 
     val op|> = Fn.|>
 
-    datatype use_site
-        = Expr of CpsId.t
-        | Transfer of Label.t
+    structure UseSite = struct
+        datatype t
+            = Expr of CpsId.t
+            | Transfer of Label.t
+            | Export
+
+        type ord_key = t
+
+        val compare =
+            fn (Expr def, Expr def') => CpsId.compare (def, def')
+             | (Expr _, Transfer _) => LESS
+             | (Transfer _, Expr _) => GREATER
+             | (Transfer label, Transfer label') => Label.compare (label, label')
+    end
+
+    datatype use_site = datatype UseSite.t
+
+    structure UseSiteSet = BinarySetFn(UseSite)
 
     fun useDef (defUses, labelUses) def use =
-        (DefMap.insert defUses (def, use), labelUses)
+        ( DefMap.update defUses def (fn
+              | SOME uses => UseSiteSet.add (uses, use)
+              | NONE => UseSiteSet.singleton use
+          )
+        , labelUses )
 
     fun useLabel (defUses, labelUses) label use =
-        (defUses, LabelMap.insert labelUses (label, use))
+        ( defUses
+        , LabelMap.update labelUses label (fn
+              | SOME uses => UseSiteSet.add (uses, use)
+              | NONE => UseSiteSet.singleton use
+          ) )
 
     fun analyzeStmt ((use, {parent = _, oper}), defUses) =
         case oper
@@ -67,8 +99,8 @@ end = struct
     fun analyzeConts conts defUses =
         LabelMap.fold analyzeCont defUses conts
 
-    fun analyze {typeFns = _, stmts, conts, main = _} =
-        (DefMap.empty, LabelMap.empty)
+    fun analyze {typeFns = _, stmts, conts, main} =
+        (DefMap.empty, LabelMap.insert LabelMap.empty (main, UseSiteSet.singleton Export))
         |> analyzeStmts stmts
         |> analyzeConts conts
 end

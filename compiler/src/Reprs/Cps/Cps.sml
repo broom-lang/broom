@@ -25,6 +25,8 @@ signature CPS_TYPE = sig
     
     datatype t
         = FnT of {tDomain : param vector, vDomain : t vector}
+        | AnyClosure of {tDomain : param vector, vDomain : t vector}
+        | Closure of {tDomain : param vector, vDomain : t vector, clovers : t vector}
         | AppT of {callee : t, args : t vector1}
         | Record of t
         | Results of t vector
@@ -39,6 +41,7 @@ signature CPS_TYPE = sig
     val fromF : FixedFAst.Type.concr -> t
     val eq : t * t -> bool
     val substitute : t FType.Id.SortedMap.map -> t -> t
+    val mapChildren : (t -> t) -> t -> t
 
     structure Coercion : sig
         datatype co = Refl of t
@@ -62,6 +65,9 @@ signature CPS_EXPR = sig
         | Where of {base : def, field : Name.t * def}
         | Without of {base : def, field : Name.t}
         | Field of def * Name.t
+        | ClosureNew of Label.t * def vector
+        | ClosureFn of def
+        | Clover of def * int
         | Cast of def * Type.Coercion.co
         | Type of Type.t
         | Label of Label.t
@@ -75,6 +81,7 @@ signature CPS_EXPR = sig
     val primopType : Primop.t
         -> {tParams : Type.param vector, vParams : Type.t vector, codomain : Type.t vector}
     val foldDeps : (CpsId.t * 'a -> 'a) -> 'a -> oper -> 'a
+    val mapDefs : (CpsId.t -> CpsId.t) -> oper -> oper
 end
 
 signature CPS_CONT = sig
@@ -120,6 +127,7 @@ signature CPS_PROGRAM = sig
         , main : Label.t }
 
     val defSite : t -> CpsId.t -> Expr.t
+    val labelCont : t -> Label.t -> Cont.t
     val byParent : t -> CpsId.SortedSet.set Expr.ParentMap.t
 
     val toDoc : t -> PPrint.t
@@ -129,6 +137,7 @@ signature CPS_PROGRAM = sig
 
         val new : FType.def vector -> builder
         val insertCont : builder -> Label.t * Cont.t -> unit
+        val insertExpr : builder -> Expr.def * Expr.t -> unit
         val express : builder -> Expr.t -> Expr.def
         val build : builder -> Label.t -> t
     end
@@ -170,6 +179,8 @@ end = struct
         
         datatype t
             = FnT of {tDomain : param vector, vDomain : t vector}
+            | AnyClosure of {tDomain : param vector, vDomain : t vector}
+            | Closure of {tDomain : param vector, vDomain : t vector, clovers : t vector}
             | AppT of {callee : t, args : t vector1}
             | Record of t
             | Results of t vector
@@ -188,6 +199,15 @@ end = struct
                 text "fn"
                 <+> argsDoc FType.defToDoc tDomain
                 <+> parens (punctuate (comma <> space) (Vector.map toDoc vDomain))
+             | AnyClosure {tDomain, vDomain} =>
+                text "cl"
+                <+> argsDoc FType.defToDoc tDomain
+                <+> parens (punctuate (comma <> space) (Vector.map toDoc vDomain))
+             | Closure {tDomain, vDomain, clovers} =>
+                text "cl"
+                <+> argsDoc FType.defToDoc tDomain
+                <+> parens (punctuate (comma <> space) (Vector.map toDoc vDomain))
+                <+> braces (punctuate (comma <> space) (Vector.map toDoc clovers))
              | AppT {callee, args} =>
                 parens (toDoc callee <+> punctuate space (Vector.map toDoc (Vector1.toVector args)))
              | Record row => braces (toDoc row)
@@ -236,6 +256,8 @@ end = struct
         fun mapChildren f t =
             case t
             of FnT {tDomain, vDomain} => FnT {tDomain, vDomain = Vector.map f vDomain}
+             | Closure {tDomain, vDomain, clovers} =>
+                Closure {tDomain, vDomain = Vector.map f vDomain, clovers = Vector.map f clovers}
              | AppT {callee, args} => AppT {callee = f callee, args = Vector1.map f args}
              | Record row => Record (f row)
              | Results ts => Results (Vector.map f ts)
@@ -343,6 +365,9 @@ end = struct
             | Where of {base : def, field : Name.t * def}
             | Without of {base : def, field : Name.t}
             | Field of def * Name.t
+            | ClosureNew of Label.t * def vector
+            | ClosureFn of def
+            | Clover of def * int
             | Cast of def * Type.Coercion.co
             | Type of Type.t
             | Label of Label.t
@@ -358,12 +383,23 @@ end = struct
              | Where {base, field = (_, fielde)} => f (fielde, f (base, acc))
              | Without {base, field = _} => f (base, acc)
              | Field (expr, _) => f (expr, acc)
+             | ClosureNew (_, clovers) => Vector.foldl f acc clovers
+             | ClosureFn expr => f (expr, acc)
+             | Clover (expr, _) => f (expr, acc)
              | Cast (expr, _) => f (expr, acc)
              | EmptyRecord => acc
              | Type _ => acc
              | Label _ => acc
              | Param _ => acc
              | Const _ => acc
+
+        fun mapDefs f =
+            fn PrimApp {opn, tArgs, vArgs} => PrimApp {opn, tArgs, vArgs = Vector.map f vArgs}
+             | Result (expr, i) => Result (f expr, i)
+             | ClosureNew (label, clovers) => ClosureNew (label, Vector.map f clovers)
+             | ClosureFn expr => ClosureFn (f expr)
+             | Clover (expr, i) => Clover (f expr, i)
+             | t as (EmptyRecord | Type _ | Label _ | Param _ | Const _) => t
 
         val operToDoc =
             fn PrimApp {opn, tArgs, vArgs} =>
@@ -381,6 +417,11 @@ end = struct
              | Without {base, field} =>
                 CpsId.toDoc base <+> text "without" <+> Name.toDoc field
              | Field (expr, label) => CpsId.toDoc expr <+> text "." <+> Name.toDoc label
+             | ClosureNew (label, clovers) =>
+                text "cl" <+> Label.toDoc label
+                <+> braces (punctuate (comma <> space) (Vector.map CpsId.toDoc clovers))
+             | ClosureFn def => text "code" <+> CpsId.toDoc def
+             | Clover (cl, i) => text "clover" <+> CpsId.toDoc cl <+> PPrint.int i
              | Cast (expr, co) => CpsId.toDoc expr <+> text "as" <+> Type.Coercion.toDoc co
              | Type t => brackets (Type.toDoc t)
              | Label label => text "fn" <+> Label.toDoc label
@@ -424,6 +465,8 @@ end = struct
             , main : Label.t }
 
         fun defSite ({stmts, ...} : t) def = Map.lookup stmts def
+
+        fun labelCont ({conts, ...} : t) label = LabelMap.lookup conts label
 
         fun byParent ({stmts, ...}: t) =
             let fun step ((def, {parent, oper}), acc) =
@@ -487,11 +530,11 @@ end = struct
 
             fun insertCont ({conts, ...} : builder) kv = conts := LabelMap.insert (!conts) kv
 
-            fun insert {typeFns = _, stmts, conts = _} stmt = stmts := Map.insert (!stmts) stmt
+            fun insertExpr {typeFns = _, stmts, conts = _} stmt = stmts := Map.insert (!stmts) stmt
 
             fun express builder expr =
                 let val def = CpsId.fresh ()
-                    do insert builder (def, expr)
+                    do insertExpr builder (def, expr)
                 in def
                 end
 

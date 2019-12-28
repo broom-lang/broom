@@ -4,6 +4,7 @@ structure CpsTypechecker :> sig
     datatype error
         = InequalKinds of Kind.t * Kind.t
         | Inequal of Cps.Type.t * Cps.Type.t
+        | UnGoable of Label.t * Cps.Type.t
         | UnCallable of CpsId.t * Cps.Type.t
         | NonThunk of Label.t * Cps.Type.t
         | NonResults of CpsId.t * Cps.Type.t
@@ -14,6 +15,7 @@ structure CpsTypechecker :> sig
         | Argc of int * int
         | ArgcT of int * int
 
+    val defType : Cps.Program.t -> CpsId.t -> Cps.Type.t
     val checkProgram : Cps.Program.t -> (error, unit) Either.t
 end = struct
     structure Type = Cps.Type
@@ -33,6 +35,7 @@ end = struct
     datatype error
         = InequalKinds of Kind.t * Kind.t
         | Inequal of Cps.Type.t * Cps.Type.t
+        | UnGoable of Label.t * Cps.Type.t
         | UnCallable of CpsId.t * Cps.Type.t
         | NonThunk of Label.t * Cps.Type.t
         | NonResults of CpsId.t * Cps.Type.t
@@ -123,7 +126,23 @@ end = struct
            | targetTyp => raise TypeError (NonThunk (target, targetTyp)) )
 
     and checkTransfer (program : Program.t) =
-        fn Jump {callee, tArgs, vArgs} =>
+        fn Goto {callee, tArgs, vArgs} =>
+            (case labelType program callee
+             of FnT {tDomain, vDomain} =>
+                let do if Vector.length tArgs = Vector.length tDomain
+                       then Vector.zip (Vector.map #kind tDomain, tArgs)
+                            |> Vector.app (checkKind program)
+                       else raise TypeError (ArgcT (Vector.length tDomain, Vector.length tArgs))
+                    val mapping = Vector.zip (Vector.map #var tDomain, tArgs)
+                                  |> FType.Id.SortedMap.fromVector
+                    val vDomain = Vector.map (Type.substitute mapping) vDomain
+                in if Vector.length vArgs = Vector.length vDomain
+                   then Vector.zip (vDomain, vArgs)
+                        |> Vector.app (checkDef program)
+                   else raise TypeError (Argc (Vector.length vDomain, Vector.length vArgs))
+                end
+              | t => raise TypeError (UnGoable (callee, t)))
+         | Jump {callee, tArgs, vArgs} =>
             (case defType program callee
              of FnT {tDomain, vDomain} =>
                 let do if Vector.length tArgs = Vector.length tDomain
@@ -143,6 +162,11 @@ end = struct
             let val matcheeTyp = defType program matchee
             in Vector.app (checkClause program matcheeTyp) clauses
             end
+
+    and labelType (program : Program.t) label =
+        case LabelMap.find (#conts program) label
+        of SOME {name = _, tParams, vParams, body = _} => FnT {tDomain = tParams, vDomain = vParams}
+         | NONE => raise TypeError (UnboundLabel label)
 
     and checkCont (program : Program.t) label =
         case LabelMap.find (#conts program) label

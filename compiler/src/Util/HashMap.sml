@@ -10,6 +10,8 @@ signature HASH_MAP = sig
     val length : 'v t -> int
     val fold : ((key * 'v) * 'a -> 'a) -> 'a -> 'v t -> 'a
     val map : ('v -> 'a) -> 'v t -> 'a t
+    val appi : (key * 'v -> unit) -> 'v t -> unit
+    val eq : ('v * 'v -> bool) -> 'v t * 'v t -> bool
 
     val toString : ('v -> string) -> 'v t -> string
     val inspect : ('v -> string) -> 'v t -> string
@@ -138,6 +140,24 @@ end) :> HASH_MAP where type key = Key.hash_key = struct
          | Collision {hash, kvs} =>
             Collision {hash, kvs = Vector.map (Pair.second f) kvs}
          | Leaf (k, v) => Leaf (k, f v)
+
+    fun appi f {root, len = _} = appiTrie f root
+
+    and appiTrie f =
+        fn Bitmapped {bitmap = _, nodes} => Vector.app (appiTrie f) nodes
+         | Collision {hash = _, kvs} => Vector.app f kvs
+         | Leaf kv => f kv
+
+    exception Abort
+
+    fun eq eqVals (kvs, kvs') =
+        (length kvs = length kvs'
+         andalso fold (fn ((k, v), _) =>
+                           case find kvs' k
+                           of SOME v' => if eqVals (v, v') then true else raise Abort
+                            | NONE => raise Abort)
+                      true kvs)
+        handle Abort => false
 
     fun toString valToString {root, len = _} = "{" ^ trieToString valToString root ^ "}"
 
