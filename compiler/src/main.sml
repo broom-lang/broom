@@ -87,6 +87,12 @@ end = struct
                                         else ()
                                      val program = ClosureConvert.convert program
                                      val _ = log (PPrint.pretty 80 (Cps.Program.toDoc program) ^ "\n")
+                                     do log "===\n\n"
+                                     do if lint
+                                        then case CpsTypechecker.checkProgram program
+                                             of Right () => ()
+                                              | Left err => raise Fail (PPrint.pretty 80 (CpsTypechecker.errorToDoc err))
+                                        else ()
                                  in ()
                                  end )
                             | Left errors =>

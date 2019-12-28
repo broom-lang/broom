@@ -8,12 +8,16 @@ structure CpsTypechecker :> sig
         | UnCallable of CpsId.t * Cps.Type.t
         | NonThunk of Label.t * Cps.Type.t
         | NonResults of CpsId.t * Cps.Type.t
+        | NonClosure of CpsId.t * Cps.Type.t
         | Unbound of CpsId.t
         | UnboundLabel of Label.t
         | OutboundsParam of Label.t * int
         | OutboundsResult of CpsId.t * Cps.Type.t * int
+        | OutboundsClover of CpsId.t * int
         | Argc of int * int
         | ArgcT of int * int
+
+    val errorToDoc : error -> PPrint.t
 
     val defType : Cps.Program.t -> CpsId.t -> Cps.Type.t
     val checkProgram : Cps.Program.t -> (error, unit) Either.t
@@ -31,6 +35,8 @@ end = struct
     datatype pat = datatype Transfer.pat
 
     val op|> = Fn.|>
+    val text = PPrint.text
+    val op<+> = PPrint.<+>
 
     datatype error
         = InequalKinds of Kind.t * Kind.t
@@ -39,18 +45,39 @@ end = struct
         | UnCallable of CpsId.t * Cps.Type.t
         | NonThunk of Label.t * Cps.Type.t
         | NonResults of CpsId.t * Cps.Type.t
+        | NonClosure of CpsId.t * Cps.Type.t
         | Unbound of CpsId.t
         | UnboundLabel of Label.t
         | OutboundsParam of Label.t * int
         | OutboundsResult of CpsId.t * Cps.Type.t * int
+        | OutboundsClover of CpsId.t * int
         | Argc of int * int
         | ArgcT of int * int
+
+    val errorToDoc =
+        fn Inequal (t, t') => Type.toDoc t <+> text "!=" <+> Type.toDoc t'
+         | UnGoable (label, t) =>
+            text "Ungoable:" <+> Label.toDoc label <+> text ":" <+> Type.toDoc t
+         | UnCallable (def, t) =>
+            text "Uncallable:" <+> CpsId.toDoc def <+> text ":" <+> Type.toDoc t
+         | NonClosure (def, t) =>
+            text "Non-closure:" <+> CpsId.toDoc def <+> text ":" <+> Type.toDoc t
+         | Unbound def => text "Unbound def" <+> CpsId.toDoc def
+         | UnboundLabel label => text "Unbound label" <+> Label.toDoc label
+         | OutboundsParam (label, i) => text "Out of bounds param" <+> Label.toDoc label <+> PPrint.int i
+         | OutboundsResult (def, t, i) => text "Out of bounds result" <+> CpsId.toDoc def <+> PPrint.int i
+         | OutboundsClover (def, i) => text "Out of bounds clover" <+> CpsId.toDoc def <+> PPrint.int i
+         | Argc (expected, actual) =>
+            text "Expected" <+> PPrint.int expected <+> text "arguments,"
+            <+> text "got" <+> PPrint.int actual
+         | ArgcT (expected, actual) =>
+            text "Expected" <+> PPrint.int expected <+> text "type arguments,"
+            <+> text "got" <+> PPrint.int actual
 
     exception TypeError of error
 
     fun kindOf program =
-        fn FnT _ => Kind.TypeK
-         | Prim _ => Kind.TypeK
+        fn FnT _ | Closure _ | AnyClosure _ | Prim _ => Kind.TypeK
 
     fun checkKind program (kind, t) =
         let val tkind = kindOf program t
@@ -86,6 +113,24 @@ end = struct
                  else raise TypeError (OutboundsResult (def, t, i))
               | t => raise TypeError (NonResults (def, t)))
          | EmptyRecord => Record EmptyRow
+         | ClosureNew (label, clovers) =>
+            (case checkCont program label
+             of FnT {tDomain, vDomain} => (* HACK?: Avoid need for subtyping by AnyClosure instead of Closure: *)
+                 AnyClosure { tDomain
+                            , vDomain = VectorSlice.vector (VectorSlice.slice (vDomain, 0, SOME (Vector.length vDomain - 1))) }
+              | _ => raise Fail "unreachable")
+         | ClosureFn def =>
+            (case defType program def
+             of Closure {tDomain, vDomain, clovers = _} | AnyClosure {tDomain, vDomain} =>
+                 FnT {tDomain, vDomain = Vector.append (vDomain, Singleton def)}
+              | t => raise TypeError (NonClosure (def, t)))
+         | Clover (def, i) =>
+            (case defType program def
+             of Closure {clovers, ...} =>
+                 if i < Vector.length clovers
+                 then Vector.sub (clovers, i)
+                 else raise TypeError (OutboundsClover (def, i))
+              | t => raise TypeError (NonClosure (def, t)))
          | Label label => checkCont program label
          | Param (label, i) =>
             (case LabelMap.find (#conts program) label
@@ -102,11 +147,17 @@ end = struct
          | NONE => raise TypeError (Unbound def)
 
     and checkDef program (t, def) =
-        let val deft = defType program def
-        in  if Type.eq (deft, t)
+        case t
+        of Singleton def' => 
+            if def = def'
             then ()
-            else raise TypeError (Inequal (deft, t))
-        end
+            else raise TypeError (Inequal (defType program def, t))
+         | _ =>
+            let val deft = defType program def
+            in  if Type.eq (deft, t)
+                then ()
+                else raise TypeError (Inequal (deft, t))
+            end
 
     and patternTyp (ConstP (Const.Int _)) = SOME (Prim PrimType.Int)
       | patternTyp AnyP = NONE

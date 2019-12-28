@@ -183,6 +183,12 @@ end = struct
                                      in Builder.insertExpr builder (def, {parent, oper})
                                      end
                                   | Lift _ | Conditioned | Noop => raise Fail "unreachable")
+                             | PrimApp {opn, tArgs, vArgs} =>
+                                let val oper = PrimApp { opn
+                                                       , tArgs = Vector.map convertType tArgs
+                                                       , vArgs = Vector.map (convertDef program env) vArgs }
+                                in Builder.insertExpr builder (def, {oper, parent})
+                                end
                              | _ =>
                                 let val oper = Expr.mapDefs (convertDef program env) oper
                                 in Builder.insertExpr builder (def, {oper, parent})
@@ -280,7 +286,7 @@ end = struct
                                       |> Vector.map convertType
                         val closureParam =
                             Builder.express builder { parent = SOME label
-                                                    , oper = Param (label, Vector.length vParams) }
+                                                    , oper = Param (label, Vector.length vParams - 1) }
                         val env =
                             Vector.foldli (fn (i, free, env) =>
                                                let val expr = { parent = SOME label

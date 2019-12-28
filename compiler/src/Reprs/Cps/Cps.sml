@@ -32,6 +32,7 @@ signature CPS_TYPE = sig
         | Results of t vector
         | EmptyRow
         | StackT
+        | Singleton of CpsId.t
         | Type of t
         | TParam of param
         | Prim of Prim.t
@@ -186,6 +187,7 @@ end = struct
             | Results of t vector
             | EmptyRow
             | StackT
+            | Singleton of CpsId.t
             | Type of t
             | TParam of param
             | Prim of Prim.t
@@ -214,6 +216,7 @@ end = struct
              | Results ts => parens (punctuate (comma <> space) (Vector.map toDoc ts))
              | EmptyRow => PPrint.empty
              | StackT => text "__stack"
+             | Singleton def => text "val" <+> CpsId.toDoc def
              | Type t => brackets (text "=" <+> toDoc t)
              | TParam {var, ...} => text ("g__" ^ FType.Id.toString var) (* HACK: g__ *)
              | Prim p => Prim.toDoc p
@@ -236,7 +239,8 @@ end = struct
              | FType.Prim p => Prim p
 
         val rec eq =
-            fn (FnT {tDomain, vDomain}, FnT {tDomain = tDomain', vDomain = vDomain'}) =>
+            fn (FnT {tDomain, vDomain}, FnT {tDomain = tDomain', vDomain = vDomain'})
+             | (AnyClosure {tDomain, vDomain}, AnyClosure {tDomain = tDomain', vDomain = vDomain'}) =>
                 (case (tDomain, tDomain')
                  of (#[], #[]) =>
                      Vector.zip (vDomain, vDomain')
@@ -258,11 +262,13 @@ end = struct
             of FnT {tDomain, vDomain} => FnT {tDomain, vDomain = Vector.map f vDomain}
              | Closure {tDomain, vDomain, clovers} =>
                 Closure {tDomain, vDomain = Vector.map f vDomain, clovers = Vector.map f clovers}
+             | AnyClosure {tDomain, vDomain} =>
+                AnyClosure {tDomain, vDomain = Vector.map f vDomain}
              | AppT {callee, args} => AppT {callee = f callee, args = Vector1.map f args}
              | Record row => Record (f row)
              | Results ts => Results (Vector.map f ts)
              | Type t => Type (f t)
-             | TParam _ | EmptyRow | StackT | Prim _ => t
+             | TParam _ | EmptyRow | StackT | Singleton _ | Prim _ => t
 
         fun substitute mapping =
             fn t as FnT {tDomain, vDomain} =>
