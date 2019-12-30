@@ -77,6 +77,9 @@ local
            src/Passes/DefUses.sml
            src/Passes/ClosureConvert.sml
 
+           src/Reprs/Isa/IsaFn.sml
+           src/Reprs/Isa/X64Isa.sml
+
            src/Parser/parser.sml
        end
     end
