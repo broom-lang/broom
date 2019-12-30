@@ -24,12 +24,11 @@ signature INSTRUCTIONS = sig
     structure Transfer : ISA_TRANSFER
 end
 
-functor IsaFn (Args : sig
-    structure Register : REGISTER
-    structure Instrs : INSTRUCTIONS where type def = Register.t
-end) :> sig
-    type def = Args.Register.t
-    type oper = Args.Instrs.Oper.t
+signature ISA = sig
+    type def
+    type oper
+
+    structure Instrs : INSTRUCTIONS where type Oper.t = oper
 
     structure Stmt : sig
         datatype t
@@ -40,7 +39,9 @@ end) :> sig
         val toDoc : t -> PPrint.t
     end
 
-    structure Transfer : ISA_TRANSFER where type t = Args.Instrs.Transfer.t
+    type transfer
+
+    structure Transfer : ISA_TRANSFER where type t = transfer
 
     structure Cont : sig
         type t = { name : Name.t option
@@ -49,6 +50,14 @@ end) :> sig
                  , transfer : Transfer.t }
 
         val toDoc : Label.t * t -> PPrint.t
+
+        structure Builder : sig
+            type builder
+
+            val new : {name : Name.t option, argc : int} -> builder
+            val insertStmt : builder -> Stmt.t -> unit
+            val build : builder -> transfer -> t
+        end
     end
 
     structure Program : sig
@@ -60,15 +69,27 @@ end) :> sig
             type builder
 
             val new : unit -> builder
+            val insertCont : builder -> Label.t -> Cont.t -> unit
             val build : builder -> Label.t -> t
         end
     end
-end = struct
+end
+
+functor IsaFn (Args : sig
+    structure Register : REGISTER
+    structure Instrs : INSTRUCTIONS where type def = Register.t
+end) :> ISA
+    where type def = Args.Register.t
+    where type oper = Args.Instrs.Oper.t
+    where type transfer = Args.Instrs.Transfer.t
+= struct
     structure Register = Args.Register
-    structure Oper = Args.Instrs.Oper
+    structure Instrs = Args.Instrs
+    structure Oper = Instrs.Oper
 
     type def = Register.t
     type oper = Oper.t
+    type transfer = Args.Instrs.Transfer.t
 
     val text = PPrint.text
     val newline = PPrint.newline
@@ -102,8 +123,19 @@ end = struct
 
         fun toDoc (label, {name, argc, stmts, transfer}) =
             text "fun" <+> Label.toDoc label <+> PPrint.int argc <+> text "="
-            <++> nest 4 (punctuate newline (Vector.map Stmt.toDoc stmts)
-                         <++> Transfer.toDoc transfer)
+            <> nest 4 (newline <> punctuate newline (Vector.map Stmt.toDoc stmts)
+                       <++> Transfer.toDoc transfer)
+
+        structure Builder = struct
+            type builder = {name : Name.t option, argc : int, stmts : Stmt.t list ref}
+
+            fun new {name, argc} = {name, argc, stmts = ref []}
+
+            fun insertStmt ({stmts, ...} : builder) stmt = stmts := stmt :: !stmts
+
+            fun build {name, argc, stmts} transfer =
+                {name, argc, stmts = Vector.fromList (List.rev (!stmts)), transfer}
+        end
     end
 
     structure Program = struct
@@ -117,9 +149,12 @@ end = struct
             <++> newline <++> text "entry" <+> Label.toDoc main
 
         structure Builder = struct
-            type builder = Cont.t Cps.Program.LabelMap.t ref
+            type builder = Cont.t LabelMap.t ref
 
             fun new () = ref Cps.Program.LabelMap.empty
+
+            fun insertCont builder label cont =
+                builder := LabelMap.insert (!builder) (label, cont)
 
             fun build (ref conts) main = {conts, main}
         end

@@ -1,4 +1,4 @@
-functor X64Instructions (Register : REGISTER) :> sig
+functor X64InstructionsFn (Register : REGISTER) :> sig
     type def = Register.t
 
     type mem = def
@@ -66,13 +66,18 @@ end = struct
 
         val toDoc =
             fn JMP (label, args) =>
-                text "jmp" <+> text "." <> Label.toDoc label
+                text "jmp" <+> Label.toDoc label
+                <+> punctuate space (Vector.map Register.toDoc args)
+             | JMPi (def, args) =>
+                text "jmp" <+> Register.toDoc def
                 <+> punctuate space (Vector.map Register.toDoc args)
     end
 end
 
+structure X64Instructions = X64InstructionsFn(CpsId)
+
 structure X64Isa = IsaFn(struct
     structure Register = CpsId
-    structure Instrs = X64Instructions(Register)
+    structure Instrs = X64Instructions
 end)
 

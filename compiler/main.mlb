@@ -79,6 +79,8 @@ local
 
            src/Reprs/Isa/IsaFn.sml
            src/Reprs/Isa/X64Isa.sml
+           src/Passes/InstrSelectionFn.sml
+           src/Passes/X64InstrSelection.sml
 
            src/Parser/parser.sml
        end

@@ -82,6 +82,7 @@ signature CPS_EXPR = sig
     val primopType : Primop.t
         -> {tParams : Type.param vector, vParams : Type.t vector, codomain : Type.t vector}
     val foldDeps : (CpsId.t * 'a -> 'a) -> 'a -> oper -> 'a
+    val foldLabels : (Label.t * 'a -> 'a) -> 'a -> oper -> 'a
     val mapDefs : (CpsId.t -> CpsId.t) -> oper -> oper
 end
 
@@ -103,6 +104,7 @@ signature CPS_CONT = sig
         val toDoc : t -> PPrint.t
 
         val foldDeps : (def * 'a -> 'a) -> 'a -> t -> 'a
+        val foldLabels : (Label.t * 'a -> 'a) -> 'a -> t -> 'a
     end
 
     type t =
@@ -331,6 +333,13 @@ end = struct
                 fn Goto {callee = _, tArgs = _, vArgs} => Vector.foldl f acc vArgs
                  | Jump {callee, tArgs = _, vArgs} => Vector.foldl f (f (callee, acc)) vArgs
                  | Match (matchee, _) => f (matchee, acc)
+
+            fun foldLabels f acc =
+                fn Goto {callee, ...} => f (callee, acc)
+                 | Jump _ => acc
+                 | Match (_, clauses) =>
+                    Vector.foldl (fn ({pattern = _, target}, acc) => f (target, acc))
+                                 acc clauses
         end
 
         type t =
@@ -406,6 +415,10 @@ end = struct
              | ClosureFn expr => ClosureFn (f expr)
              | Clover (expr, i) => Clover (f expr, i)
              | t as (EmptyRecord | Type _ | Label _ | Param _ | Const _) => t
+
+        fun foldLabels f acc =
+            fn ClosureNew (label, _) | Label label | Param (label, _) => f (label, acc)
+             | PrimApp _ | Result _ | ClosureFn _ | Clover _ | EmptyRecord | Type _ | Const _ => acc
 
         val operToDoc =
             fn PrimApp {opn, tArgs, vArgs} =>

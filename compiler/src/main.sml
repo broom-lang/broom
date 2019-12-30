@@ -93,6 +93,9 @@ end = struct
                                              of Right () => ()
                                               | Left err => raise Fail (PPrint.pretty 80 (CpsTypechecker.errorToDoc err))
                                         else ()
+                                    val program = X64InstrSelection.selectInstructions program
+                                    do log (PPrint.pretty 80 (X64Isa.Program.toDoc program))
+                                    do log "===\n\n"
                                  in ()
                                  end )
                             | Left errors =>
