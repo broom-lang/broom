@@ -82,6 +82,8 @@ local
            src/Passes/InstrSelectionFn.sml
            src/Passes/X64InstrSelection.sml
 
+           src/Passes/ScheduleParams.sml
+
            src/Parser/parser.sml
        end
     end

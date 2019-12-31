@@ -96,6 +96,9 @@ end = struct
                                     val program = X64InstrSelection.selectInstructions program
                                     do log (PPrint.pretty 80 (X64Isa.Program.toDoc program))
                                     do log "===\n\n"
+                                    val program = X64ScheduleParams.schedule program
+                                    do log (PPrint.pretty 80 (X64Isa.Program.toDoc program))
+                                    do log "===\n\n"
                                  in ()
                                  end )
                             | Left errors =>
