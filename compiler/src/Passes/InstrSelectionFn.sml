@@ -2,9 +2,8 @@ functor InstrSelectionFn (Args : sig
     structure Isa : ISA
 
     structure Implement : sig
-        val expr : Isa.Cont.Builder.builder -> CpsId.t -> Cps.Expr.oper -> unit
-        val transfer : Isa.Program.Builder.builder -> Isa.Cont.Builder.builder
-            -> Cps.Cont.Transfer.t -> Isa.Transfer.t
+        val expr : Isa.Program.Builder.builder -> Label.t -> CpsId.t -> Cps.Expr.oper -> unit
+        val transfer : Isa.Program.Builder.builder -> Cps.Cont.Transfer.t -> Isa.Transfer.t
     end
 end) :> sig
     val selectInstructions : Cps.Program.t -> Args.Isa.Program.t
@@ -17,38 +16,34 @@ end = struct
 
     fun selectInstructions (program as {typeFns = _, stmts = _, conts, main}) =
         let val builder = Builder.new ()
+            val visitedDefs = CpsId.HashSetMut.mkEmpty 0
             val visitedLabels = Label.HashSetMut.mkEmpty 0
 
-            fun selectExpr contBuilder visitedDefs def =
+            fun selectExpr def =
                 fn {parent = SOME parent, oper} =>
                     ( Cps.Expr.foldLabels (fn (label, ()) => selectLabel label)
                                           () oper
-                    ; Cps.Expr.foldDeps (fn (def, ()) =>
-                                             selectDef contBuilder visitedDefs def)
+                    ; Cps.Expr.foldDeps (fn (def, ()) => selectDef def)
                                         () oper
-                    ; Implement.expr contBuilder def oper )
+                    ; Implement.expr builder parent def oper )
                  | {parent = NONE, oper = _} => raise Fail "unreachable"
 
-            and selectDef contBuilder visitedDefs def =
+            and selectDef def =
                 if not (CpsId.HashSetMut.member (visitedDefs, def))
                 then ( CpsId.HashSetMut.add (visitedDefs, def)
-                     ; selectExpr contBuilder visitedDefs def (Cps.Program.defSite program def) )
+                     ; selectExpr def (Cps.Program.defSite program def) )
                 else ()
 
-            and selectTransfer contBuilder visitedDefs transfer =
+            and selectTransfer transfer =
                 ( Cps.Cont.Transfer.foldLabels (fn (label, ()) => selectLabel label)
                                                () transfer
-                ; Cps.Cont.Transfer.foldDeps (fn (def, ()) =>
-                                                  selectDef contBuilder visitedDefs def)
+                ; Cps.Cont.Transfer.foldDeps (fn (def, ()) => selectDef def)
                                              () transfer
-                ; Implement.transfer builder contBuilder transfer )
+                ; Implement.transfer builder transfer )
 
             and selectCont (label, {name, tParams = _, vParams, body}) =
-                let val contBuilder = Cont.Builder.new {name, argc = Vector.length vParams}
-                    val visitedDefs = CpsId.HashSetMut.mkEmpty 0
-                    val body = selectTransfer contBuilder visitedDefs body
-                in Builder.insertCont builder label (Cont.Builder.build contBuilder body)
-                end
+                ( Builder.createCont builder label {name, argc = Vector.length vParams}
+                ; Builder.setTransfer builder label (selectTransfer body) )
 
             and selectLabel label =
                 if not (Label.HashSetMut.member (visitedLabels, label))

@@ -56,7 +56,8 @@ signature ISA = sig
 
             val new : {name : Name.t option, argc : int} -> builder
             val insertStmt : builder -> Stmt.t -> unit
-            val build : builder -> transfer -> t
+            val setTransfer : builder -> Transfer.t -> unit
+            val build : builder -> t
         end
     end
 
@@ -69,7 +70,9 @@ signature ISA = sig
             type builder
 
             val new : unit -> builder
-            val insertCont : builder -> Label.t -> Cont.t -> unit
+            val createCont : builder -> Label.t -> {name : Name.t option, argc : int} -> unit
+            val insertStmt : builder -> Label.t -> Stmt.t -> unit
+            val setTransfer : builder -> Label.t -> Transfer.t -> unit
             val build : builder -> Label.t -> t
         end
     end
@@ -127,14 +130,20 @@ end) :> ISA
                        <++> Transfer.toDoc transfer)
 
         structure Builder = struct
-            type builder = {name : Name.t option, argc : int, stmts : Stmt.t list ref}
+            type builder = { name : Name.t option, argc : int
+                           , stmts : Stmt.t list ref
+                           , transfer : Transfer.t option ref }
 
-            fun new {name, argc} = {name, argc, stmts = ref []}
+            fun new {name, argc} = {name, argc, stmts = ref [], transfer = ref NONE}
 
             fun insertStmt ({stmts, ...} : builder) stmt = stmts := stmt :: !stmts
 
-            fun build {name, argc, stmts} transfer =
-                {name, argc, stmts = Vector.fromList (List.rev (!stmts)), transfer}
+            fun setTransfer ({transfer, ...} : builder) v = transfer := SOME v
+
+            fun build {name, argc, stmts, transfer} =
+                { name, argc
+                , stmts = Vector.fromList (List.rev (!stmts))
+                , transfer = valOf (!transfer) }
         end
     end
 
@@ -149,14 +158,21 @@ end) :> ISA
             <++> newline <++> text "entry" <+> Label.toDoc main
 
         structure Builder = struct
-            type builder = Cont.t LabelMap.t ref
+            type builder = Cont.Builder.builder LabelMap.t ref
 
             fun new () = ref Cps.Program.LabelMap.empty
 
-            fun insertCont builder label cont =
-                builder := LabelMap.insert (!builder) (label, cont)
+            fun createCont builder label creation =
+                builder := LabelMap.insert (!builder) (label, Cont.Builder.new creation)
 
-            fun build (ref conts) main = {conts, main}
+            fun insertStmt (ref conts) label stmt =
+                Cont.Builder.insertStmt (LabelMap.lookup conts label) stmt
+
+            fun setTransfer (ref conts) label transfer =
+                Cont.Builder.setTransfer (LabelMap.lookup conts label) transfer
+
+            fun build (ref conts) main =
+                {conts = LabelMap.map Cont.Builder.build conts, main}
         end
     end
 end
