@@ -1,6 +1,10 @@
 structure Vector = struct
     open Vector
 
+    val fromArray = Array.vector
+
+    fun toArray vs = Array.tabulate (length vs, fn i => sub (vs, i))
+
     fun uncons xs =
         if length xs > 0
         then SOME (sub (xs, 0), VectorSlice.slice (xs, 1, NONE))
@@ -71,6 +75,12 @@ structure Vector = struct
                 else ()
         in loop 0
          ; done ()
+        end
+
+    fun sort compare vs =
+        let val arr = toArray vs
+        in ArrayQSort.sort compare arr
+         ; fromArray arr
         end
 
     fun inspect inspectEl vs =
