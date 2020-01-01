@@ -16,6 +16,8 @@ local
                src/Util/Option.sml
                src/Util/Either.sml
                src/Util/List.sml
+               src/Util/ArraySlice.sml
+               src/Util/Array.sml
                src/Util/Vector.sml
                src/Util/VectorSlice.sml
                src/Util/Vector1.sml

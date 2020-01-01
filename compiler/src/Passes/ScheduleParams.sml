@@ -5,14 +5,13 @@ end = struct
     structure LabelMap = Cps.Program.LabelMap (* HACK *)
 
     val compareStmts =
-        (* NOTE: `Param` labels are always equal at this point: *)
+        (* NOTE: `Param` labels are always equal: *)
         fn (Stmt.Param (_, _, i), Stmt.Param (_, _, i')) => Int.compare (i, i')
          | (Stmt.Param _, _) => LESS
          | (_, Stmt.Param _) => GREATER
-         | (_, _) => LESS
+         | _ => EQUAL (* leverage sort stability *)
 
-    (* FIXME: Need a stable sort: *)
-    fun scheduleStmts stmts = Vector.sort compareStmts stmts
+    val scheduleStmts = Vector.stableSort compareStmts
 
     fun scheduleCont {name, argc, stmts, transfer} =
         {name, argc, stmts = scheduleStmts stmts, transfer}

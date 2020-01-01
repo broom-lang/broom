@@ -77,9 +77,9 @@ structure Vector = struct
          ; done ()
         end
 
-    fun sort compare vs =
+    fun stableSort cmp vs =
         let val arr = toArray vs
-        in ArrayQSort.sort compare arr
+        in Array.stableSort cmp arr
          ; fromArray arr
         end
 
