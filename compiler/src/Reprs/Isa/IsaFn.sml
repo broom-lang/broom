@@ -5,30 +5,41 @@ signature REGISTER = sig
 end
 
 signature ISA_OPER = sig
+    type def
     type t
 
     val toDoc : t -> PPrint.t
+    val foldDefs : (def * 'a -> 'a) -> 'a -> t -> 'a
+    val appLabels : (Label.t -> unit) -> t -> unit
 end
 
 signature ISA_TRANSFER = sig
+    type def
     type t
 
     val toDoc : t -> PPrint.t
+    val foldDefs : (def * 'a -> 'a) -> 'a -> t -> 'a
+    val foldLabels : (Label.t * 'a -> 'a) -> 'a -> t -> 'a
+    val appLabels : (Label.t -> unit) -> t -> unit
 end
 
 signature INSTRUCTIONS = sig
     type def
 
-    structure Oper : ISA_OPER
+    structure Oper : ISA_OPER where type def = def
 
-    structure Transfer : ISA_TRANSFER
+    structure Transfer : ISA_TRANSFER where type def = def
 end
 
 signature ISA = sig
     type def
     type oper
+    type transfer
 
-    structure Instrs : INSTRUCTIONS where type Oper.t = oper
+    structure Instrs : INSTRUCTIONS
+        where type def = def
+        where type Oper.t = oper
+        where type Transfer.t = transfer
 
     structure Stmt : sig
         datatype t
@@ -38,8 +49,6 @@ signature ISA = sig
 
         val toDoc : t -> PPrint.t
     end
-
-    type transfer
 
     structure Transfer : ISA_TRANSFER where type t = transfer
 
