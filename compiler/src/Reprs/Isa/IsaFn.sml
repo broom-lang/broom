@@ -2,6 +2,7 @@ signature REGISTER = sig
     type t
 
     val toDoc : t -> PPrint.t
+    val eq : t * t -> bool
 end
 
 signature ISA_OPER = sig

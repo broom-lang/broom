@@ -71,7 +71,6 @@ local
            src/Passes/WellFounded.sml
            src/Passes/PatternMatching.sml
 
-           src/Reprs/Cps/Id.sml
            src/Reprs/Cps/Cps.sml
            src/Reprs/Cps/Convert.sml
            src/Reprs/Cps/Typechecker.sml
@@ -89,10 +88,12 @@ local
 
            src/Passes/IsaLabelUsesFn.sml
            src/Passes/LastUsesFn.sml
-           src/Passes/RegisterEnvFn.sml
            src/Reprs/Abi/CallingConventionFn.sml
            src/Reprs/Abi/ABI.sml
            src/Platform/X64SysVAbi.sml
+           src/Passes/RegisterEnvFn.sml
+           src/Passes/Registerizer.sml
+           src/Platform/X64SysVRegisterizer.sml
 
            src/Passes/RegisterAllocationFn.sml
            src/Platform/X64SysVRegisterAllocation.sml

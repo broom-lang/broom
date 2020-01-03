@@ -24,6 +24,8 @@ structure X64Register = struct
 
     val toDoc = PPrint.text o toString
 
+    val eq = op=
+
     val rax = 0
     val rdx = 1
     val rcx = 2

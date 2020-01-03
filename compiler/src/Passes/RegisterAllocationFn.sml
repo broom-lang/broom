@@ -1,20 +1,18 @@
-functor RegisterAllocationFn (Args : sig
-    structure Abi : ABI
-end) :> sig
-    val allocate : Args.Abi.Isa.Program.t -> Args.Abi.RegIsa.Program.t
+functor RegisterAllocationFn (Registerizer : REGISTERIZER) :> sig
+    val allocate : Registerizer.Abi.Isa.Program.t -> Registerizer.Abi.RegIsa.Program.t
 end = struct
     structure LabelMap = Cps.Program.LabelMap
-    structure Abi = Args.Abi
+    structure Abi = Registerizer.Abi
     structure Isa = Abi.Isa
     structure Register = Isa.Register
     structure Transfer = Isa.Transfer
-    structure Env = Abi.Env
     structure Builder = Abi.RegIsa.Program.Builder
     structure LabelUses = IsaLabelUsesFn(Isa)
     structure LastUses = LastUsesFn(struct
         structure Isa = Isa
         structure LabelUses = LabelUses
     end)
+    structure Env = Registerizer.Env
 
     fun aPrioriCallingConvention useCounts (label, cont) =
         let val {exports, escapes, calls} = LabelMap.lookup useCounts label
@@ -39,10 +37,10 @@ end = struct
             val builder = Builder.new ()
 
             fun allocateStmt label (i, stmt, env) =
-                Abi.stmt lastUses callingConventions builder label env i stmt
+                Registerizer.stmt lastUses callingConventions builder label env i stmt
 
             fun allocateTransfer label env transfer =
-                let val env = Abi.transfer lastUses callingConventions builder label env transfer
+                let val env = Registerizer.transfer lastUses callingConventions builder label env transfer
                 in Transfer.appLabels (fn label =>
                                            let val cont = LabelMap.lookup conts label
                                            in allocateEBB label env cont

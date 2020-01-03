@@ -3,6 +3,7 @@ signature ID = sig
 
     val fresh: unit -> t
     val hash: t -> word
+    val eq : t * t -> bool
     val compare: t * t -> order
     val toString: t -> string
     val toDoc : t -> PPrint.t
@@ -29,6 +30,8 @@ functor Id(UnitStruct: sig end) :> ID = struct
     end
 
     val hash = Fn.identity
+
+    val eq = op=
     
     val compare = Word.compare
 

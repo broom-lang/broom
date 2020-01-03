@@ -5,6 +5,8 @@ structure Vector = struct
 
     fun toArray vs = Array.tabulate (length vs, fn i => sub (vs, i))
 
+    fun toList vs = List.tabulate (length vs, fn i => sub (vs, i))
+
     fun uncons xs =
         if length xs > 0
         then SOME (sub (xs, 0), VectorSlice.slice (xs, 1, NONE))
