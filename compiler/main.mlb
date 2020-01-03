@@ -80,16 +80,22 @@ local
            src/Passes/ClosureConvert.sml
 
            src/Reprs/Isa/IsaFn.sml
-           src/Reprs/Isa/X64Register.sml
-           src/Reprs/Isa/X64Isa.sml
+           src/Platform/X64Register.sml
+           src/Platform/X64Isa.sml
            src/Passes/InstrSelectionFn.sml
-           src/Passes/X64InstrSelection.sml
+           src/Platform/X64InstrSelection.sml
 
            src/Passes/ScheduleParams.sml
 
            src/Passes/IsaLabelUsesFn.sml
+           src/Passes/LastUsesFn.sml
+           src/Passes/RegisterEnvFn.sml
+           src/Reprs/Abi/CallingConventionFn.sml
+           src/Reprs/Abi/ABI.sml
+           src/Platform/X64SysVAbi.sml
+
            src/Passes/RegisterAllocationFn.sml
-           src/Passes/X64RegisterAllocation.sml
+           src/Platform/X64SysVRegisterAllocation.sml
 
            src/Parser/parser.sml
        end

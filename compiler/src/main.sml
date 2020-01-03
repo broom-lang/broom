@@ -99,7 +99,7 @@ end = struct
                                     val program = X64ScheduleParams.schedule program
                                     do log (PPrint.pretty 80 (X64Isa.Program.toDoc program))
                                     do log "===\n\n"
-                                    val program = X64RegisterAllocation.allocate program
+                                    val program = X64SysVRegisterAllocation.allocate program
                                     do log (PPrint.pretty 80 (X64RegIsa.Program.toDoc program))
                                  in ()
                                  end )

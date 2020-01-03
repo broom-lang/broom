@@ -1,9 +1,21 @@
-functor IsaLabelUsesFn (Isa : ISA) :> sig
-    val useCounts : Isa.Program.t -> {exports : int, escapes : int, calls : int} Cps.Program.LabelMap.t
-end = struct
+signature LABEL_USES = sig
+    structure Isa : ISA
+
+    type t = {exports : int, escapes : int, calls : int} Cps.Program.LabelMap.t
+
+    val useCounts : Isa.Program.t -> t
+end
+
+functor IsaLabelUsesFn (Isa : ISA) :> LABEL_USES
+    where type Isa.Stmt.t = Isa.Stmt.t
+    where type Isa.Transfer.t = Isa.Transfer.t
+= struct
+    structure Isa = Isa
     structure LabelMap = Cps.Program.LabelMap
 
     datatype stmt = datatype Isa.Stmt.t
+
+    type t = {exports : int, escapes : int, calls : int} Cps.Program.LabelMap.t
 
     fun useCounts {conts, main} =
         let val counts = ref LabelMap.empty

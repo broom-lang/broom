@@ -36,6 +36,8 @@ signature ISA = sig
     type oper
     type transfer
 
+    structure Register : REGISTER where type t = def
+
     structure Instrs : INSTRUCTIONS
         where type def = def
         where type Oper.t = oper

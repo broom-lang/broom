@@ -1,104 +1,70 @@
 functor RegisterAllocationFn (Args : sig
-    structure Isa : ISA where type def = CpsId.t
-    structure RegIsa : ISA
+    structure Abi : ABI
 end) :> sig
-    val allocate : Args.Isa.Program.t -> Args.RegIsa.Program.t
+    val allocate : Args.Abi.Isa.Program.t -> Args.Abi.RegIsa.Program.t
 end = struct
-    structure Isa = Args.Isa
     structure LabelMap = Cps.Program.LabelMap
-    structure Builder = Args.RegIsa.Program.Builder
-    structure LabelUses = IsaLabelUsesFn(Args.Isa)
+    structure Abi = Args.Abi
+    structure Isa = Abi.Isa
+    structure Register = Isa.Register
+    structure Transfer = Isa.Transfer
+    structure Env = Abi.Env
+    structure Builder = Abi.RegIsa.Program.Builder
+    structure LabelUses = IsaLabelUsesFn(Isa)
+    structure LastUses = LastUsesFn(struct
+        structure Isa = Isa
+        structure LabelUses = LabelUses
+    end)
 
-    structure LastUses = struct
-        type luses = CpsId.SortedSet.set
+    fun aPrioriCallingConvention useCounts (label, cont) =
+        let val {exports, escapes, calls} = LabelMap.lookup useCounts label
+        in  if exports > 0
+            then SOME Abi.exporteeCallingConvention
+            else if escapes > 0
+                 then SOME Abi.escapeeCallingConvention
+                 else NONE
+        end
 
-        type cont_luses = {stmts : luses vector, transfer : luses}
-
-        type program_luses = cont_luses LabelMap.t
-
-        fun initialContLuses {name = _, argc = _, stmts, transfer = _} =
-            { stmts = Vector.tabulate ( Vector.length stmts
-                                      , Fn.constantly CpsId.SortedSet.empty )
-            , transfer = CpsId.SortedSet.empty }
-
-        fun analyze (program as {conts, main = _}) useCounts =
-            let val luses = ref (LabelMap.map initialContLuses conts)
-
-                fun transferLuse label def =
-                    luses := LabelMap.update (!luses) label (fn
-                        | SOME {stmts, transfer} =>
-                           {stmts, transfer = CpsId.SortedSet.add (transfer, def)}
-                        | NONE => raise Fail "unreachable"
-                    )
-
-                fun stmtLuse label i def =
-                    luses := LabelMap.update (!luses) label (fn
-                        | SOME {stmts, transfer} =>
-                           { stmts = Vector.update (stmts, i, CpsId.SortedSet.add (Vector.sub (stmts, i), def))
-                           , transfer }
-                        | NONE => raise Fail "unreachable"
-                    )
-
-                fun analyzeDef luse (def, succsFrees) =
-                    if CpsId.SortedSet.member (succsFrees, def)
-                    then succsFrees
-                    else ( luse def
-                         ; CpsId.SortedSet.add (succsFrees, def) )
-
-                fun analyzeExpr label i =
-                    Isa.Instrs.Oper.foldDefs (analyzeDef (stmtLuse label i))
-
-                fun analyzeStmt label (i, stmt, succsFrees) =
-                    case stmt
-                    of Isa.Stmt.Def (def, expr) =>
-                        let val succsFrees = analyzeExpr label i succsFrees expr
-                        in analyzeDef (stmtLuse label i) (def, succsFrees)
-                        end
-                     | Isa.Stmt.Eff expr => analyzeExpr label i succsFrees expr
-                     | Isa.Stmt.Param (def, _, _) =>
-                        analyzeDef (stmtLuse label i) (def, succsFrees)
-
-                fun analyzeSucc label =
-                    let val {calls, ...} = LabelMap.lookup useCounts label
-                    in  if calls = 1
-                        then analyzeEBB label (LabelMap.lookup conts label)
-                        else CpsId.SortedSet.empty
-                    end
-
-                and analyzeTransfer label transfer =
-                    let val succsFrees =
-                            Isa.Instrs.Transfer.foldLabels (fn (label, succsFrees) =>
-                                                                let val succFrees = analyzeSucc label
-                                                                in CpsId.SortedSet.union (succsFrees, succFrees)
-                                                                end)
-                                                           CpsId.SortedSet.empty transfer
-                    in Isa.Instrs.Transfer.foldDefs (analyzeDef (transferLuse label)) succsFrees transfer
-                    end
-
-                and analyzeEBB label {name = _, argc = _, stmts, transfer} =
-                    let val transferFrees = analyzeTransfer label transfer
-                    in Vector.foldri (analyzeStmt label) transferFrees stmts
-                    end
-
-                fun analyzeCont (label, cont) =
-                    let val {exports, escapes, calls} = LabelMap.lookup useCounts label
-                    in  if exports > 0 orelse escapes > 0 orelse calls > 1
-                        then ignore (analyzeEBB label cont)
-                        else ()
-                    end
-                
-                do LabelMap.appi analyzeCont conts
-            in !luses
-            end
-    end
-
-    fun allocate program =
+    fun allocate (program as {conts, main}) =
         let val useCounts = LabelUses.useCounts program
             val lastUses = LastUses.analyze program useCounts
             
             val callingConventions = Label.HashTable.mkTable (0, Subscript)
+            do LabelMap.appi (fn kv as (label, _) =>
+                                  case aPrioriCallingConvention useCounts kv
+                                  of SOME cconv =>
+                                      Label.HashTable.insert callingConventions (label, cconv)
+                                   | NONE => ())
+                             conts
             val builder = Builder.new ()
-        in raise Fail "unimplemented"
+
+            fun allocateStmt label (i, stmt, env) =
+                Abi.stmt lastUses callingConventions builder label env i stmt
+
+            fun allocateTransfer label env transfer =
+                let val env = Abi.transfer lastUses callingConventions builder label env transfer
+                in Transfer.appLabels (fn label =>
+                                           let val cont = LabelMap.lookup conts label
+                                           in allocateEBB label env cont
+                                           end)
+                                      transfer
+                end
+
+            and allocateEBB label env {name, argc, stmts, transfer} =
+                let do Builder.createCont builder label {name, argc}
+                    val env = Vector.foldli (allocateStmt label) env stmts
+                in allocateTransfer label env transfer
+                end
+
+            fun allocateCont (label, cont) =
+                let val {exports, escapes, calls} = LabelMap.lookup useCounts label
+                in  if exports > 0 orelse escapes > 0 orelse calls > 1
+                    then allocateEBB label Env.empty cont
+                    else ()
+                end
+
+            do LabelMap.appi allocateCont conts
+        in Builder.build builder main
         end
 end
 

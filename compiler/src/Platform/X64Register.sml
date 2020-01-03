@@ -1,4 +1,4 @@
-structure X64Register :> REGISTER = struct
+structure X64Register = struct
     (* Using DWARF register number mapping. *)
 
     type t = int
@@ -23,5 +23,23 @@ structure X64Register :> REGISTER = struct
          | 16 => "%rip"
 
     val toDoc = PPrint.text o toString
+
+    val rax = 0
+    val rdx = 1
+    val rcx = 2
+    val rbx = 3
+    val rsi = 4
+    val rdi = 5
+    val rbp = 6
+    val rsp = 7
+    val r8 = 8
+    val r9 = 9
+    val r10 = 10
+    val r11 = 11
+    val r12 = 12
+    val r13 = 13
+    val r14 = 14
+    val r15 = 15
+    val rip = 16
 end
 
