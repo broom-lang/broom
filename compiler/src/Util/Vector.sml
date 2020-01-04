@@ -41,6 +41,12 @@ structure Vector = struct
         in loop (i + 1)
         end
 
+    fun rev xs =
+        let val len = length xs
+            val lastIndex = len - 1
+        in tabulate (len, fn i => sub (xs, lastIndex - i))
+        end
+
     fun splitWith pred xs =
         let fun loop i =
                 if i < Vector.length xs andalso pred (Vector.sub (xs, i))

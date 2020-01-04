@@ -27,42 +27,50 @@ end = struct
         let val useCounts = LabelUses.useCounts program
             val lastUses = LastUses.analyze program useCounts
             
-            val callingConventions = Label.HashTable.mkTable (0, Subscript)
+            val cconvs = Label.HashTable.mkTable (0, Subscript)
             do LabelMap.appi (fn kv as (label, _) =>
                                   case aPrioriCallingConvention useCounts kv
                                   of SOME cconv =>
-                                      Label.HashTable.insert callingConventions (label, cconv)
+                                      Label.HashTable.insert cconvs (label, cconv)
                                    | NONE => ())
                              conts
             val builder = Builder.new ()
+            
+            fun allocateStmt label (stmt, env) =
+                Registerizer.stmt cconvs builder label env stmt
 
-            fun allocateStmt label (i, stmt, env) =
-                Registerizer.stmt lastUses callingConventions builder label env i stmt
+            fun allocateSucc (label, env) =
+                allocateEBB label env (LabelMap.lookup conts label)
 
-            fun allocateTransfer label env transfer =
-                let val env = Registerizer.transfer lastUses callingConventions builder label env transfer
-                in Transfer.appLabels (fn label =>
-                                           let val cont = LabelMap.lookup conts label
-                                           in allocateEBB label env cont
-                                           end)
-                                      transfer
+            and allocateTransfer label transfer =
+                let val env =
+                        getOpt ( Transfer.foldLabels (SOME o allocateSucc) NONE transfer
+                               , Env.empty )
+                in Registerizer.transfer cconvs builder label env transfer
                 end
 
-            and allocateEBB label env {name, argc, stmts, transfer} =
+            and allocateEBB label entryEnv {name, argc, stmts, transfer} =
                 let do Builder.createCont builder label {name, argc}
-                    val env = Vector.foldli (allocateStmt label) env stmts
-                in allocateTransfer label env transfer
+                    val env = allocateTransfer label transfer
+                    (* TODO: Shuffling to match `entryEnv` or calling convention *)
+                    do Label.HashTable.insert cconvs (label, #[]) (* FIXME *)
+                in Vector.foldr (allocateStmt label) env stmts
                 end
 
             fun allocateCont (label, cont) =
                 let val {exports, escapes, calls} = LabelMap.lookup useCounts label
                 in  if exports > 0 orelse escapes > 0 orelse calls > 1
-                    then allocateEBB label Env.empty cont
+                    then ignore (allocateEBB label NONE cont)
                     else ()
                 end
 
             do LabelMap.appi allocateCont conts
-        in Builder.build builder main
+            val {conts, main} = Builder.build builder main
+            
+            (* HACK: Stmts were pushed to builder in reverse, so need to..: *)
+            fun reverseStmts {name, argc, stmts, transfer} =
+                {name, argc, stmts = Vector.rev stmts, transfer}
+        in {conts = LabelMap.map reverseStmts conts, main}
         end
 end
 

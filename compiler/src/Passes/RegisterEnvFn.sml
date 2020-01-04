@@ -4,9 +4,10 @@ signature REGISTER_ENV = sig
     type t
 
     val empty : t
+    val find : t -> CpsId.t -> Abi.RegIsa.Register.t option
     val lookupReg : t -> CpsId.t -> Abi.RegIsa.Register.t
-    val insertReg : t -> CpsId.t -> Abi.RegIsa.Register.t -> t
-    val allocateReg : t -> CpsId.t -> (t * Abi.RegIsa.Register.t) option
+    val allocateFixed : t -> CpsId.t -> Abi.RegIsa.Register.t -> t
+    val allocate : t -> CpsId.t -> t * Abi.RegIsa.Register.t
 end
 
 functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
@@ -24,16 +25,18 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
         , registers = Cps.Program.Map.empty
         , stack = Cps.Program.Map.empty }
 
+    fun find ({registers, ...} : t) id = Cps.Program.Map.find registers id
+
     fun lookupReg ({registers, ...} : t) id = Cps.Program.Map.lookup registers id
 
-    fun insertReg {registers, stack, freeRegs} id reg =
+    fun allocateFixed {registers, stack, freeRegs} id reg =
         { freeRegs = List.filter (fn reg' => not (Register.eq (reg', reg))) freeRegs
         , registers = Cps.Program.Map.insert registers (id, reg)
         , stack }
 
-    fun allocateReg (env as {freeRegs, ...} : t) id =
+    fun allocate (env as {freeRegs, ...} : t) id =
         case freeRegs
-        of reg :: freeRegs => SOME (insertReg env id reg, reg)
+        of reg :: freeRegs => (allocateFixed env id reg, reg)
          | [] => raise Fail "unimplemented: out of freeRegs"
 end
 

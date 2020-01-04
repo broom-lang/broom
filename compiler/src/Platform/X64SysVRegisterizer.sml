@@ -11,37 +11,35 @@ structure X64SysVRegisterizer = struct
     datatype oper = datatype X64RegInstructions.Oper.t
     datatype transfer = datatype X64RegInstructions.Transfer.t
 
-    fun stmt lastUses cconvs builder label env i =
-        fn Isa.Stmt.Param (dest, pLabel, i) =>
-            let val reg = Vector.sub (Label.HashTable.lookup cconvs pLabel, i)
-            in Env.insertReg env dest reg (* OK since `reg` must be free at `Param`:s *)
+    val op|> = Fn.|>
+
+    fun stmt cconvs builder label env =
+        fn Isa.Stmt.Param (dest, pLabel, i) => env (* FIXME *)
+         | Isa.Stmt.Def (target, expr) =>
+            let val (env, target) =
+                    case Env.find env target
+                    of SOME target => (env, target)
+                     | NONE => Env.allocate env target
+            in  case expr
+                of X64Instructions.Oper.LOAD src =>
+                    let val (env, src) = Env.allocate env src
+                    in Builder.insertStmt builder label (Stmt.Def (target, LOAD src))
+                     ; env
+                    end
+                 | X64Instructions.Oper.LOADc n =>
+                    ( Builder.insertStmt builder label (Stmt.Def (target, LOADc n))
+                    ; env )
+                 | X64Instructions.Oper.LOADl lLabel =>
+                    ( Builder.insertStmt builder label (Stmt.Def (target, LOADl lLabel))
+                    ; env )
+
+                 | _ => env (* FIXME *)
             end
-         | Isa.Stmt.Def (dest, expr) =>
-            (case expr
-             of X64Instructions.Oper.LOAD src =>
-                 let val src = Env.lookupReg env src
-                               handle Subscript => Reg.rax (* FIXME *)
-                 in  case Env.allocateReg env dest
-                      of SOME (env, dest) =>
-                          ( Builder.insertStmt builder label (Stmt.Def (dest, LOAD src))
-                          ; env )
-                 end
-              | X64Instructions.Oper.LOADc n =>
-                 (case Env.allocateReg env dest
-                  of SOME (env, dest) =>
-                      ( Builder.insertStmt builder label (Stmt.Def (dest, LOADc n))
-                      ; env ))
-              | X64Instructions.Oper.LOADl lLabel =>
-                 (case Env.allocateReg env dest
-                  of SOME (env, dest) =>
-                      ( Builder.insertStmt builder label (Stmt.Def (dest, LOADl lLabel))
-                      ; env ))
-              | _ => env) (* FIXME *)
          | Isa.Stmt.Eff expr =>
             (case expr
              of X64Instructions.Oper.STORE (target, src) =>
-                 let val target = Env.lookupReg env target handle Subscript => Reg.rax (* FIXME *)
-                     val src = Env.lookupReg env src handle Subscript => Reg.rax (* FIXME *)
+                 let val (env, target) = Env.allocate env target
+                     val (env, src) = Env.allocate env src
                  in Builder.insertStmt builder label (Stmt.Eff (STORE (target, src)))
                   ; env
                  end
@@ -49,14 +47,25 @@ structure X64SysVRegisterizer = struct
          | _ => env (* FIXME *)
 
     (* FIXME: Arg shuffling etc: *)
-    fun transfer lastUses cconvs builder label env =
-        fn X64Instructions.Transfer.JMP (target, args) =>
-            ( Builder.setTransfer builder label (JMP (target, #[]))
-            ; env )
-         | X64Instructions.Transfer.JMPi (target, args) =>
-            let val target = Env.lookupReg env target
-                             handle Subscript => Reg.rax (* FIXME *)
-            in Builder.setTransfer builder label (JMPi (target, #[]))
+    fun transfer cconvs builder label env =
+        fn X64Instructions.Transfer.JMP (dest, args) =>
+            (case Label.HashTable.find cconvs dest
+             of SOME paramRegs =>
+                  let val env = Vector.zip (args, paramRegs)
+                              |> Vector.foldl (fn ((arg, reg), env) =>
+                                                   Env.allocateFixed env arg reg)
+                                              env
+                  in Builder.setTransfer builder label (JMP (dest, #[]))
+                   ; env
+                  end)
+         | X64Instructions.Transfer.JMPi (dest, args) =>
+            let val paramRegs = Abi.escapeeCallingConvention
+                val env = Vector.zip (args, paramRegs)
+                        |> Vector.foldl (fn ((arg, reg), env) =>
+                                             Env.allocateFixed env arg reg)
+                                        env
+                val (env, dest) = Env.allocate env dest
+            in Builder.setTransfer builder label (JMPi (dest, #[]))
              ; env
             end
 end
