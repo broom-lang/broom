@@ -29,17 +29,59 @@
       this point.
     - Then just emit the unconditional branch without any arguments (and with
       the allocated indirection register).
-* Regular instructions
+* Regular 'statement' instructions
+    1. If a target def has no register, allocate a register for it, moving
+       and loading other defs if necessary
+    2. If a target def has a stack slot, emit a store to it
+    2. Free the registers of target defs
+    3. Look up / allocate registers for source operands, moving and loading
+       other defs if necessary
+    4. Emit the instruction itself
 * CISC complications
     - Fixed registers (e.g. mul on accumulator register)
     - Two-operand code
+    - Taking advantage of memory operands
 * Multiple results (e.g. from mul, div)
 * Foreign calls
+    - non-reentrant
+        1. Emit restoration code for defs in caller-save registers. Start with
+           moves from free callee-save registers. If that is not enough, use
+           loads from the stack.
+        2. Free the registers of the target defs (return values)
+        3. For an indirect call, allocate a register for the indirection,
+           emitting a load if something else needs to be spilled
+        4. Popping stack arguments
+        4. Emit the call instruction
+        5. Argument shuffling and stack-pushing
+    - reentrant
 * Foreign callbacks
     - Callee-save registers
+    - Returns
 * Conditional branches and merging register environments there
+* Continuation parameters
+    - If the continuation has no register assignment for the parameters, set
+      its parameter assignment to the current one. If there are unused
+      parameters (not found in register environment) leave those unassigned,
+      to be filled in later at calls (at this point all known continuations
+      will have at least one call).
 * Stack spills not due to foreign calls
 * Parameter spills (i.e. known function has too many parameters to fit in
   registers)
 * Safepoints
+
+## Allocating a Register
+
+This is the case where any (general-purpose) register will do. This happens
+when a def is encountered for the first time in the backward traversal, as an
+instruction operand including indirect call destinations (call arguments are
+always subject to either constraints or some convention) or as an unused target
+def. Any moves and loads mentioned here are emitted before (executed after) the
+instruction itself.
+
+1. Use a free register, preferring callee-save ones
+2. Otherwise see if some defs have copies in multiple registers. Choose one of
+   the registers so occupied with some heuristic and evict it by emitting a
+   move to it from some other (heuristic) register of that def.
+3. Otherwise choose another def by some heuristic and spill it by emitting a
+   load to it from a free stack slot.
 
