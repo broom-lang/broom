@@ -69,7 +69,7 @@ end = struct
                                                         , fn {parent, stack, expr = arg} =>
                                                               let val ret = contValue parent cont
                                                               in Jump { callee, tArgs = #[]
-                                                                      , vArgs = #[stack, ret, arg] }
+                                                                      , vArgs = #[stack, arg, ret] }
                                                               end)
                                      in convertExpr parent stack cont env arg
                                      end)
@@ -189,15 +189,15 @@ end = struct
                 let val label = Label.fresh ()
                     val stackTyp = StackT
                     val stack = Builder.express builder {parent = SOME label, oper = Param (label, 0)}
+                    val domain = convertType domain
+                    val param = Builder.express builder {parent = SOME label, oper = Param (label, 1)}
                     val codomain = convertType (FFTerm.typeOf body)
                     val contTyp = FnT {tDomain = #[], vDomain = #[StackT, codomain]}
-                    val cont = TrivK (Builder.express builder {parent = SOME label, oper = Param (label, 1)})
-                    val domain = convertType domain
-                    val param = Builder.express builder {parent = SOME label, oper = Param (label, 2)}
+                    val cont = TrivK (Builder.express builder {parent = SOME label, oper = Param (label, 2)})
 
                     val env = Env.insert (env, paramId, param)
                     val f = { name = NONE (* TODO: SOME when possible *)
-                            , tParams = #[], vParams = #[stackTyp, contTyp, domain]
+                            , tParams = #[], vParams = #[stackTyp, domain, contTyp]
                             , body = convertExpr (SOME label) stack cont env body }
                     do Builder.insertCont builder (label, f)
                 in label
