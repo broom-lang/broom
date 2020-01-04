@@ -29,14 +29,28 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
 
     fun lookupReg ({registers, ...} : t) id = Cps.Program.Map.lookup registers id
 
-    fun allocateFixed {registers, stack, freeRegs} id reg =
-        { freeRegs = List.filter (fn reg' => not (Register.eq (reg', reg))) freeRegs
-        , registers = Cps.Program.Map.insert registers (id, reg)
-        , stack }
+    fun pick freeRegs reg =
+        let val rec extract =
+                fn freeReg :: freeRegs =>
+                    if Register.eq (freeReg, reg)
+                    then SOME freeRegs
+                    else Option.map (fn freeRegs => freeReg :: freeRegs)
+                                    (extract freeRegs)
+                 | [] => NONE
+        in extract freeRegs
+        end
 
-    fun allocate (env as {freeRegs, ...} : t) id =
+    fun allocateFixed {registers, stack, freeRegs} id reg =
+        case pick freeRegs reg
+        of SOME freeRegs =>
+            {freeRegs, registers = Cps.Program.Map.insert registers (id, reg), stack}
+         | NONE => raise Fail "unimplemented"
+
+    fun allocate {freeRegs, registers, stack} id =
         case freeRegs
-        of reg :: freeRegs => (allocateFixed env id reg, reg)
+        of reg :: freeRegs =>
+            ( {freeRegs, registers = Cps.Program.Map.insert registers (id, reg), stack}
+            , reg )
          | [] => raise Fail "unimplemented: out of freeRegs"
 end
 
