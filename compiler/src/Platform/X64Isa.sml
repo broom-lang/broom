@@ -48,6 +48,7 @@ end = struct
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
     val parens = PPrint.parens
+    val brackets = PPrint.brackets
     val punctuate = PPrint.punctuate
 
     type mem = def
@@ -81,11 +82,11 @@ end = struct
              | LOAD _ | LOADc _ | STORE _ | ADD _ | SUB _ | IMUL _ | IDIV _ | CALL _ | CALLd _ | CALLi _ => ()
 
         val toDoc =
-            fn LOAD mem => text "mov" <+> parens (Register.toDoc mem)
+            fn LOAD mem => text "mov" <+> brackets (Register.toDoc mem)
              | LOADc n => text "mov" <+> text (Word32.toString n)
              | LOADl label => text "lea" <+> Label.toDoc label
              | STORE (target, src) =>
-                text "mov" <+> parens (Register.toDoc target) <+> Register.toDoc src
+                text "mov" <+> brackets (Register.toDoc target) <+> Register.toDoc src
              | CALLd (callee, args) =>
                 text "call" <+> text (callee ^ "@PLT")
                 <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))
