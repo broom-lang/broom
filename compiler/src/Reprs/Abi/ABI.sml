@@ -9,5 +9,6 @@ signature ABI = sig
     val generalRegs : RegIsa.Register.t vector
     val exporteeCallingConvention : CallingConvention.internal
     val escapeeCallingConvention : CallingConvention.internal
+    val foreignCallingConvention : CallingConvention.foreign
 end
 

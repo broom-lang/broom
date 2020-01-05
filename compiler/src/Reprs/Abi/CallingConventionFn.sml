@@ -8,6 +8,9 @@ signature CALLING_CONVENTION = sig
         , retVal : Register.t vector
         , callerSaves : Register.t vector
         , calleeSaves : Register.t vector }
+
+    val isCallerSave : foreign -> Register.t -> bool
+    val isCalleeSave : foreign -> Register.t -> bool
 end
 
 functor CallingConventionFn (Register : REGISTER) :> CALLING_CONVENTION
@@ -22,5 +25,13 @@ functor CallingConventionFn (Register : REGISTER) :> CALLING_CONVENTION
         , retVal : Register.t vector
         , callerSaves : Register.t vector
         , calleeSaves : Register.t vector }
+
+    fun isCallerSave (cconv : foreign) reg =
+        Vector.exists (fn reg' => Register.eq (reg', reg))
+                      (#callerSaves cconv)
+
+    fun isCalleeSave (cconv : foreign) reg =
+        Vector.exists (fn reg' => Register.eq (reg', reg))
+                      (#calleeSaves cconv)
 end
 

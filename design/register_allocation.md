@@ -69,6 +69,10 @@
   registers)
 * Safepoints
 
+## Arguments
+
+## Results
+
 ## Allocating a Register
 
 This is the case where any (general-purpose) register will do. This happens

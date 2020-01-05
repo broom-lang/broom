@@ -10,6 +10,8 @@ signature ISA_OPER = sig
     type def
     type t
 
+    val move : def -> t
+
     val toDoc : t -> PPrint.t
     val foldDefs : (def * 'a -> 'a) -> 'a -> t -> 'a
     val appLabels : (Label.t -> unit) -> t -> unit

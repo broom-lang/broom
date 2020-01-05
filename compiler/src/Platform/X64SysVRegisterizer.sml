@@ -13,13 +13,34 @@ structure X64SysVRegisterizer = struct
     val op|> = Fn.|>
 
     fun stmt cconvs builder label env =
-        fn Isa.Stmt.Param (dest, pLabel, i) => env (* FIXME *)
+        fn Isa.Stmt.Param (target, pLabel, i) => (* FIXME: *)
+            (case Env.find env target
+             of SOME _ =>
+                 let val paramRegs = #args Abi.foreignCallingConvention
+                 in Env.freeIn env builder label target (Vector.sub (paramRegs, i))
+                 end
+              | NONE => env)
+
+         | Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) => (* FIXME: *)
+            let val targetReg = Reg.rax
+                val env = Env.freeIn env builder label target targetReg
+                val target = targetReg
+                val env = Env.evacuateCallerSaves env builder label
+                val paramRegs = #args Abi.foreignCallingConvention
+                val env = Vector.zip (args, paramRegs)
+                        |> Vector.foldl (fn ((arg, reg), env) =>
+                                             Env.allocateFixed env arg reg)
+                                        env
+            in Builder.insertStmt builder label (Stmt.Def (target, CALLd (dest, #[])))
+             ; env
+            end
+
          | Isa.Stmt.Def (target, expr) =>
             let val (env, targetReg) =
                     case Env.find env target
                     of SOME target => (env, target)
                      | NONE => Env.findOrAllocate env target
-                val env = Env.free env target targetReg
+                val env = Env.free env target
                 val target = targetReg
             in  case expr
                 of X64Instructions.Oper.LOAD src =>
@@ -33,7 +54,6 @@ structure X64SysVRegisterizer = struct
                  | X64Instructions.Oper.LOADl lLabel =>
                     ( Builder.insertStmt builder label (Stmt.Def (target, LOADl lLabel))
                     ; env )
-
                  | _ => env (* FIXME *)
             end
          | Isa.Stmt.Eff expr =>

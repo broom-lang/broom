@@ -7,7 +7,8 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
         type def = def
         
         datatype t
-            = LOAD of mem          (* MOV r64 m64 *)
+            = MOV of def
+            | LOAD of mem          (* MOV r64 m64 *)
             | LOADc of Word32.word (* MOV r64 imm64 *)
             | LOADl of Label.t     (* LEA the label *)
             | STORE of mem * def   (* MOV m64 r64 *)
@@ -18,6 +19,8 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
             | CALL of string * def vector (* relative/absolute (foreign) CALL *)
             | CALLd of string * def vector (* dynamically linked (foreign) CALL *)
             | CALLi of def * def vector    (* indirect (foreign) CALL *)
+
+        val move : def -> t
 
         val toDoc : t -> PPrint.t
         val foldDefs : (def * 'a -> 'a) -> 'a -> t -> 'a
@@ -57,7 +60,8 @@ end = struct
         type def = def
 
         datatype t
-            = LOAD of mem          (* MOV r64 m64 *)
+            = MOV of def
+            | LOAD of mem          (* MOV r64 m64 *)
             | LOADc of Word32.word (* MOV r64 imm64 *)
             | LOADl of Label.t     (* LEA the label *)
             | STORE of mem * def   (* MOV m64 r64 *)
@@ -68,6 +72,8 @@ end = struct
             | CALL of string * def vector (* relative/absolute (foreign) CALL *)
             | CALLd of string * def vector (* dynamically linked (foreign) CALL *)
             | CALLi of def * def vector    (* indirect (foreign) CALL *)
+
+        val move = MOV
 
         fun foldDefs f acc =
             fn LOAD def => f (def, acc)
@@ -82,7 +88,8 @@ end = struct
              | LOAD _ | LOADc _ | STORE _ | ADD _ | SUB _ | IMUL _ | IDIV _ | CALL _ | CALLd _ | CALLi _ => ()
 
         val toDoc =
-            fn LOAD mem => text "mov" <+> brackets (Register.toDoc mem)
+            fn MOV src => text "mov" <+> Register.toDoc src
+             | LOAD mem => text "mov" <+> brackets (Register.toDoc mem)
              | LOADc n => text "mov" <+> text (Word32.toString n)
              | LOADl label => text "lea" <+> Label.toDoc label
              | STORE (target, src) =>
