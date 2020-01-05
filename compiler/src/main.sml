@@ -104,7 +104,7 @@ end = struct
                                     do log "===\n\n"
                                     val program = X64Linearize.linearize program
                                     do log (PPrint.pretty 80 (X64SeqIsa.Program.toDoc program))
-                                 in ()
+                                 in GasX64SysVAbiEmit.emit TextIO.stdOut program
                                  end )
                             | Left errors =>
                                Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc sourcemap)

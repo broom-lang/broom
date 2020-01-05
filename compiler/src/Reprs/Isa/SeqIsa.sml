@@ -17,6 +17,8 @@ signature SEQ_ISA = sig
 end
 
 functor SeqIsaFn (RegIsa : ISA) :> SEQ_ISA
+    where type RegIsa.def = RegIsa.def
+    where type RegIsa.oper = RegIsa.oper
     where type RegIsa.Stmt.t = RegIsa.Stmt.t
     where type RegIsa.Transfer.t = RegIsa.Transfer.t
 = struct

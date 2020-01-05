@@ -11,6 +11,7 @@ end = struct
     structure LabelMap = Cps.Program.LabelMap
     structure Builder = SeqIsa.Program.Builder
 
+    (* FIXME: Prevent infinite looping on recursive programs: *)
     fun linearize (program as {conts, main}) =
         let val labelUses = Args.LabelUses.useCounts program
             val builder = Builder.new ()

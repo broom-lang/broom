@@ -104,6 +104,8 @@ local
            src/Platform/X64SeqIsa.sml
            src/Platform/X64Linearize.sml
 
+           src/Platform/GasX64SysVAbiEmit.sml
+
            src/Parser/parser.sml
        end
     end
