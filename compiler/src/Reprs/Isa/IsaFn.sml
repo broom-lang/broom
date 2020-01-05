@@ -1,6 +1,7 @@
 signature REGISTER = sig
     type t
 
+    val toString : t -> string
     val toDoc : t -> PPrint.t
     val eq : t * t -> bool
 end
