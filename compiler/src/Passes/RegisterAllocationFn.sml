@@ -40,11 +40,15 @@ end = struct
                 Registerizer.stmt cconvs builder label env stmt
 
             fun allocateSucc (label, env) =
-                allocateEBB label env (LabelMap.lookup conts label)
+                let val {calls, ...} = LabelMap.lookup useCounts label
+                in  if calls = 1
+                    then SOME (allocateEBB label env (LabelMap.lookup conts label))
+                    else env
+                end
 
             and allocateTransfer label transfer =
                 let val env =
-                        getOpt ( Transfer.foldLabels (SOME o allocateSucc) NONE transfer
+                        getOpt ( Transfer.foldLabels allocateSucc NONE transfer
                                , Env.empty )
                 in Registerizer.transfer cconvs builder label env transfer
                 end

@@ -101,6 +101,9 @@ end = struct
                                     do log "===\n\n"
                                     val program = X64SysVRegisterAllocation.allocate program
                                     do log (PPrint.pretty 80 (X64RegIsa.Program.toDoc program))
+                                    do log "===\n\n"
+                                    val program = X64Linearize.linearize program
+                                    do log (PPrint.pretty 80 (X64SeqIsa.Program.toDoc program))
                                  in ()
                                  end )
                             | Left errors =>

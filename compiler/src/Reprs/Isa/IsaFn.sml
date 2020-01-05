@@ -54,6 +54,7 @@ signature ISA = sig
             | Param of def * Label.t * int
 
         val toDoc : t -> PPrint.t
+        val appLabels : (Label.t -> unit) -> t -> unit
     end
 
     structure Transfer : ISA_TRANSFER where type t = transfer
@@ -129,6 +130,10 @@ end) :> ISA
              | Param (reg, label, i) =>
                 Register.toDoc reg <+> text "="
                 <+> text "param" <+> Label.toDoc label <+> PPrint.int i
+
+        fun appLabels f =
+            fn Def (_, oper) | Eff oper => Oper.appLabels f oper
+             | Param _ => () (* desired behaviour, but somewhat inconsistent *)
     end
 
     structure Transfer = Args.Instrs.Transfer

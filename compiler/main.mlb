@@ -98,6 +98,12 @@ local
            src/Passes/RegisterAllocationFn.sml
            src/Platform/X64SysVRegisterAllocation.sml
 
+           src/Reprs/Isa/SeqIsa.sml
+           src/Passes/Linearize.sml
+           src/Platform/X64RegIsaLabelUses.sml
+           src/Platform/X64SeqIsa.sml
+           src/Platform/X64Linearize.sml
+
            src/Parser/parser.sml
        end
     end

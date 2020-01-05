@@ -85,7 +85,7 @@ end = struct
 
         fun appLabels f =
             fn LOADl label => f label
-             | LOAD _ | LOADc _ | STORE _ | ADD _ | SUB _ | IMUL _ | IDIV _ | CALL _ | CALLd _ | CALLi _ => ()
+             | MOV _ | LOAD _ | LOADc _ | STORE _ | ADD _ | SUB _ | IMUL _ | IDIV _ | CALL _ | CALLd _ | CALLi _ => ()
 
         val toDoc =
             fn MOV src => text "mov" <+> Register.toDoc src
