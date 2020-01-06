@@ -35,8 +35,9 @@ functor SeqIsaFn (RegIsa : ISA) :> SEQ_ISA
         type t = (Label.t * RegIsa.Cont.t) vector
 
         fun toDoc kvs =
-            Vector.foldl (fn (kv, acc) => acc <++> newline <> Cont.toDoc kv)
-                         PPrint.empty kvs
+            text "main:"
+            <> Vector.foldl (fn (kv, acc) => acc <++> newline <> Cont.toDoc kv)
+                            PPrint.empty kvs
 
         structure Builder = struct
             type builder = (Label.t * RegIsa.Cont.t) list ref

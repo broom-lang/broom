@@ -94,16 +94,17 @@ end = struct
                                               | Left err => raise Fail (PPrint.pretty 80 (CpsTypechecker.errorToDoc err))
                                         else ()
                                     val program = X64InstrSelection.selectInstructions program
-                                    do log (PPrint.pretty 80 (X64Isa.Program.toDoc program))
+                                    do log (PPrint.pretty 80 (X64Isa.Program.toDoc program) ^ "\n")
                                     do log "===\n\n"
                                     val program = X64ScheduleParams.schedule program
-                                    do log (PPrint.pretty 80 (X64Isa.Program.toDoc program))
+                                    do log (PPrint.pretty 80 (X64Isa.Program.toDoc program) ^ "\n")
                                     do log "===\n\n"
                                     val program = X64SysVRegisterAllocation.allocate program
-                                    do log (PPrint.pretty 80 (X64RegIsa.Program.toDoc program))
+                                    do log (PPrint.pretty 80 (X64RegIsa.Program.toDoc program) ^ "\n")
                                     do log "===\n\n"
                                     val program = X64Linearize.linearize program
-                                    do log (PPrint.pretty 80 (X64SeqIsa.Program.toDoc program))
+                                    do log (PPrint.pretty 80 (X64SeqIsa.Program.toDoc program) ^ "\n")
+                                    do log "===\n\n"
                                  in GasX64SysVAbiEmit.emit TextIO.stdOut program
                                  end )
                             | Left errors =>
