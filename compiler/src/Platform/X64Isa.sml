@@ -1,7 +1,10 @@
 functor X64InstructionsFn (Register : REGISTER) :> sig
     type def = Register.t
 
-    type mem = def
+    type mem =
+        { base : def option
+        , index : (Word.word * def) option
+        , disp : int }
 
     structure Oper : sig
         type def = def
@@ -46,6 +49,7 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
 end = struct
     type def = Register.t
 
+    val op|> = Fn.|>
     val text = PPrint.text
     val space = PPrint.space
     val comma = PPrint.comma
@@ -55,7 +59,53 @@ end = struct
     val brackets = PPrint.brackets
     val punctuate = PPrint.punctuate
 
-    type mem = def
+    type mem =
+        { base : def option
+        , index : (Word.word * def) option
+        , disp : int }
+
+    fun memToDoc {base, index, disp} =
+        (case base (* case base :D not the same as base case ;) *)
+         of SOME base =>
+             (case index
+              of SOME (scale, index) =>
+                  Register.toDoc base <+> text "+"
+                  <+> (if scale = 0w1
+                       then PPrint.empty
+                       else PPrint.word scale <> text "*")
+                  <> Register.toDoc index
+                  <> (if disp = 0
+                      then PPrint.empty
+                      else space <> text "+" <+> PPrint.int disp)
+               | NONE => 
+                  Register.toDoc base
+                  <> (if disp = 0
+                      then PPrint.empty
+                      else space <> text "+" <+> PPrint.int disp))
+          | NONE =>
+             (case index
+              of SOME (scale, index) =>
+                  (if scale = 0w1
+                   then PPrint.empty
+                   else PPrint.word scale <> text "*")
+                  <> Register.toDoc index
+                  <> (if disp = 0
+                      then PPrint.empty
+                      else space <> text "+" <+> PPrint.int disp)
+               | NONE =>
+                  if disp = 0
+                  then raise Fail "unreachable"
+                  else PPrint.int disp))
+        |> brackets
+
+    fun foldMemDefs f acc ({base, index, ...} : mem) =
+        let val acc = case base
+                      of SOME base => f (base, acc)
+                       | NONE => acc
+        in  case index
+            of SOME (_, index) => f (index, acc)
+             | NONE => acc
+        end
 
     structure Oper = struct
         type def = def
@@ -77,8 +127,9 @@ end = struct
         val move = MOV
 
         fun foldDefs f acc =
-            fn LOAD def => f (def, acc)
-             | STORE (def, def') | ADD (def, def') | SUB (def, def') | IMUL (def, def') | IDIV (def, def') =>
+            fn LOAD mem => foldMemDefs f acc mem
+             | STORE (mem, def) => f (def, foldMemDefs f acc mem)
+             | ADD (def, def') | SUB (def, def') | IMUL (def, def') | IDIV (def, def') =>
                 f (def', f (def, acc))
              | LOADc _ | LOADl _ => acc
              | CALL (_, defs) | CALLd (_, defs) => Vector.foldl f acc defs
@@ -90,11 +141,11 @@ end = struct
 
         val toDoc =
             fn MOV src => text "mov" <+> Register.toDoc src
-             | LOAD mem => text "mov" <+> brackets (Register.toDoc mem)
+             | LOAD mem => text "mov" <+> memToDoc mem
              | LOADc n => text "mov" <+> text (Word32.toString n)
              | LOADl label => text "lea" <+> Label.toDoc label
              | STORE (target, src) =>
-                text "mov" <+> brackets (Register.toDoc target) <+> Register.toDoc src
+                text "mov" <+> memToDoc target <+> Register.toDoc src
              | CALLd (callee, args) =>
                 text "call" <+> text (callee ^ "@PLT")
                 <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))

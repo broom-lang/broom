@@ -10,6 +10,19 @@ end = struct
 
     fun convertReg reg = "%" ^ Register.toString reg
 
+    fun convertMem {base, index, disp} =
+        (if disp = 0
+         then ""
+         else Int.toString disp)
+        ^ (case (base, index)
+           of (SOME base, SOME (scale, index)) =>
+               "(" ^ convertReg base ^ ", " ^ convertReg index ^ ", " ^ Word.toString scale ^ ")"
+            | (SOME base, NONE) => "(" ^ convertReg base ^ ")"
+            | (NONE, SOME (0w1, index)) => "(" ^ convertReg index ^ ")"
+            | (NONE, SOME (scale, index)) =>
+               "(" ^ convertReg index ^ ", " ^ Word.toString scale ^ ")"
+            | (NONE, NONE) => "")
+
     fun emit outstream =
         let fun line s = TextIO.output (outstream, s ^ "\n")
 
@@ -17,13 +30,13 @@ end = struct
                 fn (SOME target, Oper.MOV src) =>
                     line ("\tmovq\t" ^ convertReg src ^ ", " ^ convertReg target)
                  | (SOME target, Oper.LOAD src) =>
-                    line ("\tmovq\t(" ^ convertReg src ^ "), " ^ convertReg target)
+                    line ("\tmovq\t" ^ convertMem src ^ ", " ^ convertReg target)
                  | (SOME target, Oper.LOADc n) => (* FIXME?: Word printing, ugh: *)
                     line ("\tmovq\t$" ^ Int.toString (Word32.toInt n) ^ ", " ^ convertReg target)
                  | (SOME target, Oper.LOADl label) =>
                     line ("\tleaq\t" ^ convertLabel label ^ "(%rip), " ^ convertReg target)
                  | (NONE, Oper.STORE (dest, src)) =>
-                    line ("\tmovq\t" ^ convertReg src ^ ", (" ^ convertReg dest ^ ")")
+                    line ("\tmovq\t" ^ convertReg src ^ ", " ^ convertMem dest)
                  | (SOME _, Oper.CALLd (sym, _)) =>
                     line ("\tcall\t" ^ sym ^ "@PLT")
 

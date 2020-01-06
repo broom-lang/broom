@@ -16,10 +16,15 @@ structure X64InstrSelection = InstrSelectionFn(struct
                 in expr builder parent size (Const (Const.Int 8))
                  ; Builder.insertStmt builder parent (Def (def, CALLd ("malloc", #[size])))
                  ; Builder.insertStmt builder parent (Def (ldef, LOADl label))
-                 ; Builder.insertStmt builder parent (Eff (STORE (def, ldef)))
+                 ; Builder.insertStmt builder parent (Eff (STORE ( { base = SOME def
+                                                                   , index = NONE
+                                                                   , disp = 0 }
+                                                                 , ldef )))
                 end
              | ClosureFn closure =>
-                Builder.insertStmt builder parent (Def (def, LOAD closure))
+                Builder.insertStmt builder parent (Def (def, LOAD { base = SOME closure
+                                                                  , index = NONE
+                                                                  , disp = 0 }))
              | EmptyRecord =>
                 Builder.insertStmt builder parent (Def (def, LOADc 0w0))
              | Cps.Expr.Param (label, i) =>

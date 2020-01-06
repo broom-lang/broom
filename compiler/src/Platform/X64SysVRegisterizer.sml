@@ -12,6 +12,24 @@ structure X64SysVRegisterizer = struct
 
     val op|> = Fn.|>
 
+    fun allocateMem env {base, index, disp} =
+        let val (env, base) =
+                case base
+                of SOME base =>
+                    let val (env, base) = Env.findOrAllocate env base
+                    in (env, SOME base)
+                    end
+                 | NONE => (env, NONE)
+            val (env, index) =
+                case index
+                of SOME (scale, index) =>
+                    let val (env, index) = Env.findOrAllocate env index
+                    in (env, SOME (scale, index))
+                    end
+                 | NONE => (env, NONE)
+        in (env, {base, index, disp})
+        end
+
     fun stmt cconvs builder label env =
         fn Isa.Stmt.Param (target, pLabel, i) => (* FIXME: *)
             (case Env.find env target
@@ -44,7 +62,7 @@ structure X64SysVRegisterizer = struct
                 val target = targetReg
             in  case expr
                 of X64Instructions.Oper.LOAD src =>
-                    let val (env, src) = Env.findOrAllocate env src
+                    let val (env, src) = allocateMem env src
                     in Builder.insertStmt builder label (Stmt.Def (target, LOAD src))
                      ; env
                     end
@@ -59,7 +77,7 @@ structure X64SysVRegisterizer = struct
          | Isa.Stmt.Eff expr =>
             (case expr
              of X64Instructions.Oper.STORE (target, src) =>
-                 let val (env, target) = Env.findOrAllocate env target
+                 let val (env, target) = allocateMem env target
                      val (env, src) = Env.findOrAllocate env src
                  in Builder.insertStmt builder label (Stmt.Eff (STORE (target, src)))
                   ; env
