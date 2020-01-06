@@ -89,3 +89,45 @@ instruction itself.
 3. Otherwise choose another def by some heuristic and spill it by emitting a
    load to it from a free stack slot.
 
+## Stack Slots
+
+Native stack slots are used as spill targets. A stack slot is the size of a
+register (4/8 bytes). The stack slots are addressed with offsets from the stack
+pointer (e.g. `movq %rax, (%rsp)` to store rax to first slot or
+`movq 8(%rsp), %rdi` to restore rdi from second slot).
+
+Broom code uses its own stack (of heap-allocated continuations).  However when
+Broom is first called from native code (as always happens because `main` is not
+`_start`), it sets up a single native stack frame:
+
+1. Push the frame pointer (e.g. `pushq %rbp`)
+2. Set the frame pointer to equal the stack pointer (e.g. `movq %rsp, %rbp`)
+3. Subtract `8 * (n (+ 1))` from the stack pointer
+
+`n` is the maximum number of spill slots needed at any one time. Since we use
+whole-program compilation this is easy to compute during register allocation
+and patch into FFI callbacks afterwards. This gives a stack frame of n (+ 1)
+slots (plus one for fp). On x64 SysV ABI we might have to add a useless extra
+slot (the (+ 1)) if n is not even to align the stack to 16 bytes for FFI calls.
+
+And of course when returning to native code we need to
+
+1. Set the stack pointer to equal the frame pointer (e.g. `movq %rbp, %rsp`)
+2. Pop the frame pointer (e.g. `popq %rbp`)
+3. Return (e.g. `ret`)
+
+(On x64 `leave` can also be used to achieve both 1. and 2.)
+
+We can support a `-fno-frame-pointer` optimization option later.
+
+To support separate compilation the stack frame max size computation could be
+moved to link time or we might need to have a dynamically sized stack frame.
+
+Link time optimization is not realistically going to happen and would not
+support dynamic linking in any case (if it did, at that point you might as well
+go for a full JIT...).
+
+Fiddling with the stack pointer dynamically would add some implementation
+complexity and runtime overhead even to calls firmly inside broom code to track
+and keep the stack pointer consistent at EBB entry points.
+
