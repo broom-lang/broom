@@ -48,6 +48,7 @@ end = struct
             val emitTransfer =
                 fn Transfer.JMP (dest, _) => line ("\tjmp\t" ^ convertLabel dest)
                  | Transfer.JMPi (dest, _) => line ("\tjmp\t*" ^ convertReg dest)
+                 | Transfer.RET _ => line "\tret\t"
 
             fun emitCont (label, {name, argc = _, stmts, transfer}) =
                 ( line (convertLabel label ^ ":")

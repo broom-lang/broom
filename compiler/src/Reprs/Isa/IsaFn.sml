@@ -11,6 +11,7 @@ signature ISA_OPER = sig
     type t
 
     val move : def -> t
+    val stackLoad : def -> int -> t (* HACK: need to pass stack pointer *)
 
     val toDoc : t -> PPrint.t
     val foldDefs : (def * 'a -> 'a) -> 'a -> t -> 'a

@@ -47,7 +47,7 @@ structure X64SysVRegisterizer = struct
                 val paramRegs = #args Abi.foreignCallingConvention
                 val env = Vector.zip (args, paramRegs)
                         |> Vector.foldl (fn ((arg, reg), env) =>
-                                             Env.allocateFixed env arg reg)
+                                             Env.allocateFixed env builder label arg reg)
                                         env
             in Builder.insertStmt builder label (Stmt.Def (target, CALLd (dest, #[])))
              ; env
@@ -91,7 +91,7 @@ structure X64SysVRegisterizer = struct
              of SOME paramRegs =>
                   let val env = Vector.zip (args, paramRegs)
                               |> Vector.foldl (fn ((arg, reg), env) =>
-                                                   Env.allocateFixed env arg reg)
+                                                   Env.allocateFixed env builder label arg reg)
                                               env
                   in Builder.setTransfer builder label (JMP (dest, #[]))
                    ; env
@@ -100,10 +100,20 @@ structure X64SysVRegisterizer = struct
             let val paramRegs = Abi.escapeeCallingConvention
                 val env = Vector.zip (args, paramRegs)
                         |> Vector.foldl (fn ((arg, reg), env) =>
-                                             Env.allocateFixed env arg reg)
+                                             Env.allocateFixed env builder label arg reg)
                                         env
                 val (env, dest) = Env.findOrAllocate env dest
             in Builder.setTransfer builder label (JMPi (dest, #[]))
+             ; env
+            end
+         | X64Instructions.Transfer.RET args =>
+            let val paramRegs = Vector.concat [ #retVal Abi.foreignCallingConvention
+                                              , #calleeSaves Abi.foreignCallingConvention ]
+                val env = Vector.zip (args, paramRegs)
+                        |> Vector.foldl (fn ((arg, reg), env) =>
+                                             Env.allocateFixed env builder label arg reg)
+                                        env
+            in Builder.setTransfer builder label (RET #[])
              ; env
             end
 end

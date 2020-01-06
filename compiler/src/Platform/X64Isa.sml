@@ -26,6 +26,7 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
             | CALLi of def * def vector    (* indirect (foreign) CALL *)
 
         val move : def -> t
+        val stackLoad : def -> int -> t
 
         val toDoc : t -> PPrint.t
         val foldDefs : (def * 'a -> 'a) -> 'a -> t -> 'a
@@ -129,6 +130,9 @@ end = struct
             | CALLi of def * def vector    (* indirect (foreign) CALL *)
 
         val move = MOV
+
+        fun stackLoad sp i =
+            LOAD {base = SOME sp, index = NONE, disp = 8 * i}
 
         fun foldDefs f acc =
             fn LOAD mem => foldMemDefs f acc mem
