@@ -10,21 +10,37 @@ structure X64InstrSelection = InstrSelectionFn(struct
 
     structure Implement = struct
         fun expr builder parent def =
-            fn ClosureNew (label, #[]) =>
-                let val size = CpsId.fresh ()
+            fn ClosureNew (label, clovers) =>
+                let val sizeDef = CpsId.fresh ()
                     val ldef = CpsId.fresh ()
-                in expr builder parent size (Const (Const.Int 8))
-                 ; Builder.insertStmt builder parent (Def (def, CALLd ("malloc", #[size])))
+                    val size = X64RegInstructions.registerSize * (1 + Vector.length clovers)
+                in expr builder parent sizeDef (Const (Const.Int size))
+                 ; Builder.insertStmt builder parent (Def (def, CALLd ("malloc", #[sizeDef])))
                  ; Builder.insertStmt builder parent (Def (ldef, LOADl label))
                  ; Builder.insertStmt builder parent (Eff (STORE ( { base = SOME def
                                                                    , index = NONE
                                                                    , disp = 0 }
                                                                  , ldef )))
+                 ; Vector.appi (fn (i, clover) =>
+                                    let val disp = X64RegInstructions.registerSize * (1 + i)
+                                    in Builder.insertStmt builder parent
+                                                          (Eff (STORE ( { base = SOME def
+                                                                        , index = NONE
+                                                                        , disp }
+                                                                      , clover )))
+                                    end)
+                               clovers
                 end
              | ClosureFn closure =>
                 Builder.insertStmt builder parent (Def (def, LOAD { base = SOME closure
                                                                   , index = NONE
                                                                   , disp = 0 }))
+             | Clover (closure, i) =>
+                let val disp = X64RegInstructions.registerSize * (1 + i)
+                in Builder.insertStmt builder parent (Def (def, LOAD { base = SOME closure
+                                                                     , index = NONE
+                                                                     , disp }))
+                end
              | EmptyRecord =>
                 Builder.insertStmt builder parent (Def (def, LOADc 0w0))
              | Cps.Expr.Param (label, i) =>

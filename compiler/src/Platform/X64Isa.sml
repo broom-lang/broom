@@ -1,6 +1,8 @@
 functor X64InstructionsFn (Register : REGISTER) :> sig
     type def = Register.t
 
+    val registerSize : int
+
     type mem =
         { base : def option
         , index : (Word.word * def) option
@@ -58,6 +60,8 @@ end = struct
     val parens = PPrint.parens
     val brackets = PPrint.brackets
     val punctuate = PPrint.punctuate
+
+    val registerSize = 8
 
     type mem =
         { base : def option
@@ -142,7 +146,7 @@ end = struct
         val toDoc =
             fn MOV src => text "mov" <+> Register.toDoc src
              | LOAD mem => text "mov" <+> memToDoc mem
-             | LOADc n => text "mov" <+> text (Word32.toString n)
+             | LOADc n => text "mov" <+> text (Int.toString (Word32.toInt n)) (* HACK: toInt *)
              | LOADl label => text "lea" <+> Label.toDoc label
              | STORE (target, src) =>
                 text "mov" <+> memToDoc target <+> Register.toDoc src
