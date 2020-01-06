@@ -8,10 +8,6 @@ end = struct
     structure Transfer = Isa.Transfer
     structure Builder = Abi.RegIsa.Program.Builder
     structure LabelUses = IsaLabelUsesFn(Isa)
-    structure LastUses = LastUsesFn(struct
-        structure Isa = Isa
-        structure LabelUses = LabelUses
-    end)
     structure Env = Registerizer.Env
 
     fun aPrioriCallingConvention useCounts (label, cont) =
@@ -25,7 +21,6 @@ end = struct
 
     fun allocate (program as {conts, main}) =
         let val useCounts = LabelUses.useCounts program
-            val lastUses = LastUses.analyze program useCounts
             
             val cconvs = Label.HashTable.mkTable (0, Subscript)
             do LabelMap.appi (fn kv as (label, _) =>

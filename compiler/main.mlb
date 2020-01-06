@@ -86,7 +86,6 @@ local
            src/Passes/ScheduleParams.sml
 
            src/Passes/IsaLabelUsesFn.sml
-           src/Passes/LastUsesFn.sml
            src/Reprs/Abi/CallingConventionFn.sml
            src/Reprs/Abi/ABI.sml
            src/Platform/X64SysVAbi.sml

@@ -15,10 +15,6 @@ structure X64SysVAbi :> ABI
     structure Builder = RegIsa.Program.Builder
     structure CallingConvention = CallingConventionFn(Reg)
     structure LabelUses = IsaLabelUsesFn(Isa)
-    structure LastUses = LastUsesFn(struct
-        structure Isa = Isa
-        structure LabelUses = LabelUses
-    end)
 
     datatype oper = datatype X64RegInstructions.Oper.t
     datatype transfer = datatype X64RegInstructions.Transfer.t
