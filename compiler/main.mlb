@@ -72,7 +72,6 @@ local
            src/Passes/PatternMatching.sml
 
            src/Reprs/Cps/Cps.sml
-           src/Reprs/Cps/Convert.sml
            src/Reprs/Cps/Typechecker.sml
           
            src/Passes/DefUses.sml
@@ -94,6 +93,9 @@ local
            src/Passes/RegisterEnvFn.sml
            src/Passes/Registerizer.sml
            src/Platform/X64SysVRegisterizer.sml
+
+           src/Reprs/Cps/Convert.sml
+           src/Platform/X64SysVCpsConvert.sml
 
            src/Passes/RegisterAllocationFn.sml
            src/Platform/X64SysVRegisterAllocation.sml

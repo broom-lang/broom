@@ -95,6 +95,9 @@ end = struct
                                  useLabel defUses target (Transfer use))
                             defUses clauses
             end
+         | Return (_, args) =>
+            Vector.foldl (fn (def, defUses) => useDef defUses def (Transfer use))
+                         defUses args
 
     fun analyzeConts conts defUses =
         LabelMap.fold analyzeCont defUses conts

@@ -1,4 +1,4 @@
-structure CpsConvert :> sig
+functor CpsConvertFn (Abi : ABI) :> sig
     val cpsConvert : FixedFAst.Term.program -> Cps.Program.t
 end = struct
     structure FFType = FixedFAst.Type
@@ -187,12 +187,12 @@ end = struct
 
             and convertFn parent env (_, {id = paramId, typ = domain, var = _, pos = _}, _, body) =
                 let val label = Label.fresh ()
-                    val stackTyp = StackT
+                    val stackTyp = Type.Prim Type.Prim.StackT
                     val stack = Builder.express builder {parent = SOME label, oper = Param (label, 0)}
                     val domain = convertType domain
                     val param = Builder.express builder {parent = SOME label, oper = Param (label, 1)}
                     val codomain = convertType (FFTerm.typeOf body)
-                    val contTyp = FnT {tDomain = #[], vDomain = #[StackT, codomain]}
+                    val contTyp = FnT {tDomain = #[], vDomain = #[Type.Prim Type.Prim.StackT, codomain]}
                     val cont = TrivK (Builder.express builder {parent = SOME label, oper = Param (label, 2)})
 
                     val env = Env.insert (env, paramId, param)
@@ -203,12 +203,48 @@ end = struct
                 in label
                 end
 
+            and convertExportedFn (_, params : FFTerm.def vector, body) =
+                let val label = Label.fresh ()
+                    val parent = SOME label
+                    val calleeSaveParams =
+                        Vector.map (Fn.constantly (Prim PrimType.Int))
+                                   (#calleeSaves Abi.foreignCallingConvention)
+                    val vParams =
+                        Vector.concat [Vector.map (convertType o #typ) params, calleeSaveParams]
+                    val paramDefs =
+                        Vector.mapi (fn (i, _) =>
+                                         Builder.express builder {parent, oper = Param (label, i)})
+                                    vParams
+                    val calleeSaveArgs =
+                        VectorSlice.vector (VectorSlice.slice (paramDefs, Vector.length params, NONE))
+                    val stack =
+                        Builder.express builder { parent
+                                                , oper = PrimApp { opn = Primop.StackNew
+                                                                 , tArgs = #[], vArgs = #[] } }
+                    val retT = FFTerm.typeOf body
+                    val cont =
+                        FnK ( Anon retT
+                            , fn {parent = _, stack = _, expr} =>
+                                  Return ( Vector.prepend (convertType retT, calleeSaveParams)
+                                         , Vector.prepend (expr, calleeSaveArgs)) )
+                    
+                    val env =
+                        Vector.zip (params, paramDefs)
+                        |> Vector.foldl (fn (({id, ...}, param), env) => Env.insert (env, id, param))
+                                        Env.empty
+                    val f = { name = NONE (* TODO: SOME when possible *)
+                            , tParams = #[], vParams
+                            , body = convertExpr (SOME label) stack cont env body }
+                    do Builder.insertCont builder (label, f)
+                in label
+                end
+
             and convertTFn parent env (_, params, body) =
                 let val label = Label.fresh ()
-                    val stackTyp = StackT
+                    val stackTyp = Type.Prim Type.Prim.StackT
                     val stack = Builder.express builder {parent = SOME label, oper = Param (label, 0)}
                     val codomain = convertType (FFTerm.typeOf body)
-                    val contTyp = FnT {tDomain = #[], vDomain = #[StackT, codomain]}
+                    val contTyp = FnT {tDomain = #[], vDomain = #[Type.Prim Type.Prim.StackT, codomain]}
                     val cont = TrivK (Builder.express builder {parent = SOME label, oper = Param (label, 1)})
 
                     val f = { name = NONE (* TODO: SOME when possible *)
@@ -267,7 +303,7 @@ end = struct
                              | Anon typ => convertType typ
                         val paramUse = Builder.express builder {parent = SOME kLabel, oper = Param (kLabel, 1)}
                         val k = { name = NONE
-                                , tParams = #[], vParams = #[StackT, param]
+                                , tParams = #[], vParams = #[Type.Prim Type.Prim.StackT, param]
                                 , body = kf {parent = SOME kLabel, stack, expr = paramUse} }
                         do Builder.insertCont builder (kLabel, k)
                     in TrivlK kLabel
@@ -281,10 +317,8 @@ end = struct
                  | TrivlK kLabel => Builder.express builder {parent, oper = Label kLabel}
 
             val codePos = #1 code
-            val mainParam = { pos = codePos, id = DefId.fresh (), var = Name.fresh ()
-                            , typ = FFType.Record FFType.EmptyRow }
-            val main = (codePos, mainParam, Cst.Explicit FType.Impure, FFTerm.Let code)
-            val mainLabel = convertFn NONE Env.empty main
+            val main = (codePos, #[], FFTerm.Let code)
+            val mainLabel = convertExportedFn main
         in Builder.build builder mainLabel
         end
 end

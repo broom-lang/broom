@@ -31,7 +31,6 @@ signature CPS_TYPE = sig
         | Record of t
         | Results of t vector
         | EmptyRow
-        | StackT
         | Singleton of CpsId.t
         | Type of t
         | TParam of param
@@ -100,6 +99,7 @@ signature CPS_CONT = sig
             = Goto of {callee : Label.t, tArgs : Type.t vector, vArgs : def vector}
             | Jump of {callee : def, tArgs : Type.t vector, vArgs : def vector}
             | Match of def * {pattern : pat, target : Label.t} vector
+            | Return of Type.t vector * def vector
 
         val toDoc : t -> PPrint.t
 
@@ -188,7 +188,6 @@ end = struct
             | Record of t
             | Results of t vector
             | EmptyRow
-            | StackT
             | Singleton of CpsId.t
             | Type of t
             | TParam of param
@@ -217,7 +216,6 @@ end = struct
              | Record row => braces (toDoc row)
              | Results ts => parens (punctuate (comma <> space) (Vector.map toDoc ts))
              | EmptyRow => PPrint.empty
-             | StackT => text "__stack"
              | Singleton def => text "val" <+> CpsId.toDoc def
              | Type t => brackets (text "=" <+> toDoc t)
              | TParam {var, ...} => text ("g__" ^ FType.Id.toString var) (* HACK: g__ *)
@@ -225,12 +223,12 @@ end = struct
 
         val rec fromF =
             fn FType.ForAll (params, body) =>
-                let val contTyp = FnT {tDomain = #[], vDomain = #[StackT, fromF body]}
-                in FnT {tDomain = Vector1.toVector params, vDomain = #[StackT, contTyp]}
+                let val contTyp = FnT {tDomain = #[], vDomain = #[Prim Prim.StackT, fromF body]}
+                in FnT {tDomain = Vector1.toVector params, vDomain = #[Prim Prim.StackT, contTyp]}
                 end
              | FType.Arrow (_, {domain, codomain}) =>
-                let val contTyp = FnT {tDomain = #[], vDomain = #[StackT, fromF codomain]}
-                in FnT {tDomain = #[], vDomain = #[StackT, contTyp, fromF domain]}
+                let val contTyp = FnT {tDomain = #[], vDomain = #[Prim Prim.StackT, fromF codomain]}
+                in FnT {tDomain = #[], vDomain = #[Prim Prim.StackT, contTyp, fromF domain]}
                 end
              | FType.Record row => Record (fromF row)
              | FType.EmptyRow => EmptyRow
@@ -254,7 +252,6 @@ end = struct
                 andalso Vector1.all eq (Vector1.zip (args, args'))
              | (Record row, Record row') => eq (row, row')
              | (EmptyRow, EmptyRow) => true
-             | (StackT, StackT) => true
              | (Prim p, Prim p') => true
              | (t, t') =>
                 raise Fail ("unimplemented " ^ PPrint.pretty 80 (toDoc t <+> text "?=" <+> toDoc t'))
@@ -270,7 +267,7 @@ end = struct
              | Record row => Record (f row)
              | Results ts => Results (Vector.map f ts)
              | Type t => Type (f t)
-             | TParam _ | EmptyRow | StackT | Singleton _ | Prim _ => t
+             | TParam _ | EmptyRow | Singleton _ | Prim _ => t
 
         fun substitute mapping =
             fn t as FnT {tDomain, vDomain} =>
@@ -308,6 +305,7 @@ end = struct
                 = Goto of {callee : Label.t, tArgs : Type.t vector, vArgs : def vector}
                 | Jump of {callee : def, tArgs : Type.t vector, vArgs : def vector}
                 | Match of def * {pattern : pat, target : Label.t} vector
+                | Return of Type.t vector * def vector
 
             val patToDoc =
                 fn AnyP => text "_"
@@ -328,11 +326,16 @@ end = struct
                  | Match (matchee, clauses) =>
                     text "match" <+> CpsId.toDoc matchee
                     <> nest 4 (newline <> (punctuate newline (Vector.map clauseToDoc clauses)))
+                 | Return (domain, args) =>
+                    text "return"
+                    <+> Type.argsDoc Type.toDoc domain 
+                    <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc args))
 
             fun foldDeps f acc =
                 fn Goto {callee = _, tArgs = _, vArgs} => Vector.foldl f acc vArgs
                  | Jump {callee, tArgs = _, vArgs} => Vector.foldl f (f (callee, acc)) vArgs
                  | Match (matchee, _) => f (matchee, acc)
+                 | Return (_, args) => Vector.foldl f acc args
 
             fun foldLabels f acc =
                 fn Goto {callee, ...} => f (callee, acc)
@@ -340,6 +343,7 @@ end = struct
                  | Match (_, clauses) =>
                     Vector.foldl (fn ({pattern = _, target}, acc) => f (target, acc))
                                  acc clauses
+                 | Return _ => acc
         end
 
         type t =
@@ -455,8 +459,8 @@ end = struct
             in  if Primop.isTotal opn
                 then { tParams, vParams = Vector.map Type.fromF domain
                      , codomain = #[Type.fromF codomain] }
-                else { tParams, vParams = Vector.prepend (Type.StackT, Vector.map Type.fromF domain)
-                     , codomain = #[Type.StackT, Type.fromF codomain] }
+                else { tParams, vParams = Vector.prepend (Type.Prim Type.Prim.StackT, Vector.map Type.fromF domain)
+                     , codomain = #[Type.Prim Type.Prim.StackT, Type.fromF codomain] }
             end
     end
 

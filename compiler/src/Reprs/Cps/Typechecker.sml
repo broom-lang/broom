@@ -213,6 +213,10 @@ end = struct
             let val matcheeTyp = defType program matchee
             in Vector.app (checkClause program matcheeTyp) clauses
             end
+         | Return (domain, args) =>
+            if Vector.length args = Vector.length domain
+            then Vector.zip (domain, args) |> Vector.app (checkDef program)
+            else raise TypeError (Argc (Vector.length domain, Vector.length args))
 
     and labelType (program : Program.t) label =
         case LabelMap.find (#conts program) label

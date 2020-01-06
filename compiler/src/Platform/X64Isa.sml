@@ -36,6 +36,7 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
             = JMP of Label.t * def vector (* relative/absolute JMP *)
             | JMPi of def * def vector    (* indirect JMP through register *)
             | Jcc of pred * Label.t * Label.t
+            | RET of def vector
 
         val toDoc : t -> PPrint.t
         val foldDefs : (def * 'a -> 'a) -> 'a -> t -> 'a
@@ -108,20 +109,21 @@ end = struct
             = JMP of Label.t * def vector (* relative/absolute JMP *)
             | JMPi of def * def vector    (* indirect JMP through register *)
             | Jcc of pred * Label.t * Label.t
+            | RET of def vector
 
         fun foldDefs f acc =
-            fn JMP (_, defs) => Vector.foldl f acc defs
+            fn JMP (_, defs) | RET defs => Vector.foldl f acc defs
              | JMPi (def, defs) => Vector.foldl f (f (def, acc)) defs
              | Jcc _ => acc
 
         fun foldLabels f acc =
             fn JMP (label, _) => f (label, acc)
-             | JMPi _ => acc
+             | JMPi _ | RET _ => acc
              | Jcc (_, conseq, alt) => f (alt, f (conseq, acc))
 
         fun appLabels f =
             fn JMP (label, _) => f label
-             | JMPi _ => ()
+             | JMPi _ | RET _ => ()
              | Jcc (_, conseq, alt) => (f conseq; f alt)
 
         val toDoc =
@@ -130,6 +132,9 @@ end = struct
                 <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))
              | JMPi (def, args) =>
                 text "jmp" <+> Register.toDoc def
+                <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))
+             | RET args =>
+                text "ret"
                 <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))
     end
 end

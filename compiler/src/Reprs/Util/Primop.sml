@@ -4,6 +4,7 @@ structure Primop :> sig
         | UIntT | UAdd | USub | UMul | UDiv
         | ArrayT | ArrayNew | ArrayCount | ArrayGet | ArrayUnsafeSet
         | BoxT | BoxNew | BoxGet | BoxInit
+        | StackNew
         | Panic
 
     val fromString : string -> t option
@@ -16,6 +17,7 @@ end = struct
         | UIntT | UAdd | USub | UMul | UDiv
         | ArrayT | ArrayNew | ArrayCount | ArrayGet | ArrayUnsafeSet
         | BoxT | BoxNew | BoxGet | BoxInit
+        | StackNew
         | Panic
 
     val fromString =
@@ -38,6 +40,7 @@ end = struct
          | "__boxNew" => SOME BoxNew
          | "__boxGet" => SOME BoxGet
          | "__boxInit" => SOME BoxInit
+         | "__stackNew" => SOME StackNew
          | "__panic" => SOME Panic
          | _ => NONE
 
@@ -62,6 +65,7 @@ end = struct
              | BoxNew => "boxNew"
              | BoxGet => "boxGet"
              | BoxInit => "boxInit"
+             | StackNew => "stackNew"
              | Panic => "panic"))
 
     val isTotal =
@@ -73,6 +77,7 @@ end = struct
          | ArrayGet | ArrayUnsafeSet => false
          | BoxT | BoxNew => true
          | BoxGet | BoxInit => false
+         | StackNew => true
          | Panic => false
 end
 

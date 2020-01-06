@@ -356,6 +356,7 @@ structure FType :> FAST_TYPE = struct
                                               , UseT def ]
                                   , codomain = Record EmptyRow })
                 end
+             | StackNew => (#[], Pure, {domain = #[], codomain = Prim Prim.StackT})
              | Panic =>
                 let val def = {var = Id.fresh (), kind = Kind.TypeK}
                 in (#[def], Pure, {domain = #[], codomain = UseT def})

@@ -227,6 +227,8 @@ end = struct
                         val clauses = Vector.map (convertClause program env) clauses
                     in Match (matchee, clauses)
                     end
+                 | Return (domain, args) =>
+                    Return (domain, Vector.map (convertDef program env) args)
 
             and escapee program env label (label', clovers) =
                 ( if Label.HashSetMut.member (visitedLabels, label')
