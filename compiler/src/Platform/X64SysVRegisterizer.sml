@@ -12,18 +12,18 @@ structure X64SysVRegisterizer = struct
 
     val op|> = Fn.|>
 
-    fun allocateMem env {base, index, disp} =
+    fun allocateMem env builder label {base, index, disp} =
         let val (env, base) =
                 case base
                 of SOME base =>
-                    let val (env, base) = Env.findOrAllocate env base
+                    let val (env, base) = Env.regUse env builder label base
                     in (env, SOME base)
                     end
                  | NONE => (env, NONE)
             val (env, index) =
                 case index
                 of SOME (scale, index) =>
-                    let val (env, index) = Env.findOrAllocate env index
+                    let val (env, index) = Env.regUse env builder label index
                     in (env, SOME (scale, index))
                     end
                  | NONE => (env, NONE)
@@ -32,37 +32,28 @@ structure X64SysVRegisterizer = struct
 
     fun stmt cconvs builder label env =
         fn Isa.Stmt.Param (target, pLabel, i) => (* FIXME: *)
-            (case Env.find env target
-             of SOME _ =>
-                 let val paramRegs = #args Abi.foreignCallingConvention
-                 in Env.freeIn env builder label target (Vector.sub (paramRegs, i))
-                 end
-              | NONE => env)
+            let val paramRegs = #args Abi.foreignCallingConvention
+            in Env.fixedRegDef env builder label target (Vector.sub (paramRegs, i))
+            end
 
          | Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) => (* FIXME: *)
             let val targetReg = Reg.rax
-                val env = Env.freeIn env builder label target targetReg
-                val target = targetReg
+                val env = Env.fixedRegDef env builder label target targetReg
                 val env = Env.evacuateCallerSaves env builder label
                 val paramRegs = #args Abi.foreignCallingConvention
                 val env = Vector.zip (args, paramRegs)
                         |> Vector.foldl (fn ((arg, reg), env) =>
-                                             Env.allocateFixed env builder label arg reg)
+                                             Env.fixedRegUse env builder label arg reg)
                                         env
-            in Builder.insertStmt builder label (Stmt.Def (target, CALLd (dest, #[])))
+            in Builder.insertStmt builder label (Stmt.Def (targetReg, CALLd (dest, #[])))
              ; env
             end
 
          | Isa.Stmt.Def (target, expr) =>
-            let val (env, targetReg) =
-                    case Env.find env target
-                    of SOME target => (env, target)
-                     | NONE => Env.findOrAllocate env target
-                val env = Env.free env target
-                val target = targetReg
+            let val (env, target) = Env.regDef env builder label target
             in  case expr
                 of X64Instructions.Oper.LOAD src =>
-                    let val (env, src) = allocateMem env src
+                    let val (env, src) = allocateMem env builder label src
                     in Builder.insertStmt builder label (Stmt.Def (target, LOAD src))
                      ; env
                     end
@@ -77,8 +68,8 @@ structure X64SysVRegisterizer = struct
          | Isa.Stmt.Eff expr =>
             (case expr
              of X64Instructions.Oper.STORE (target, src) =>
-                 let val (env, target) = allocateMem env target
-                     val (env, src) = Env.findOrAllocate env src
+                 let val (env, target) = allocateMem env builder label target
+                     val (env, src) = Env.regUse env builder label src
                  in Builder.insertStmt builder label (Stmt.Eff (STORE (target, src)))
                   ; env
                  end
@@ -91,7 +82,7 @@ structure X64SysVRegisterizer = struct
              of SOME paramRegs =>
                   let val env = Vector.zip (args, paramRegs)
                               |> Vector.foldl (fn ((arg, reg), env) =>
-                                                   Env.allocateFixed env builder label arg reg)
+                                                   Env.fixedRegUse env builder label arg reg)
                                               env
                   in Builder.setTransfer builder label (JMP (dest, #[]))
                    ; env
@@ -100,9 +91,9 @@ structure X64SysVRegisterizer = struct
             let val paramRegs = Abi.escapeeCallingConvention
                 val env = Vector.zip (args, paramRegs)
                         |> Vector.foldl (fn ((arg, reg), env) =>
-                                             Env.allocateFixed env builder label arg reg)
+                                             Env.fixedRegUse env builder label arg reg)
                                         env
-                val (env, dest) = Env.findOrAllocate env dest
+                val (env, dest) = Env.regUse env builder label dest
             in Builder.setTransfer builder label (JMPi (dest, #[]))
              ; env
             end
@@ -111,7 +102,7 @@ structure X64SysVRegisterizer = struct
                                               , #calleeSaves Abi.foreignCallingConvention ]
                 val env = Vector.zip (args, paramRegs)
                         |> Vector.foldl (fn ((arg, reg), env) =>
-                                             Env.allocateFixed env builder label arg reg)
+                                             Env.fixedRegUse env builder label arg reg)
                                         env
             in Builder.setTransfer builder label (RET #[])
              ; env

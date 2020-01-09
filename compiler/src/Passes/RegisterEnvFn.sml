@@ -7,20 +7,28 @@ signature REGISTER_ENV = sig
     type t
 
     val empty : t
-    val find : t -> CpsId.t -> Register.t option
-    val lookupReg : t -> CpsId.t -> Register.t
-    val allocateFixed : t -> builder -> Label.t -> CpsId.t -> Register.t -> t
 
-    (* Get the register for the id, first allocating one if necessary: *)
-    val findOrAllocate : t -> CpsId.t -> t * Register.t
+    (* Use in some register.
+       Allocates a register for the id if it does not have any.
+       Returns the register for the definition site. *)
+    val regUse : t -> builder -> Label.t -> CpsId.t -> t * Register.t
 
-    (* Free registers and stack slots of the id, ensuring it is in the reg: *)
-    val freeIn : t -> builder -> Label.t -> CpsId.t -> Register.t -> t
+    (* Use in the given register.
+       Arranges for the id to be (also) in the given register if not already. *)
+    val fixedRegUse : t -> builder -> Label.t -> CpsId.t -> Register.t -> t
 
-    (* Free registers and stack slots of the id: *)
-    val free : t -> CpsId.t -> t
+    (* Definition in some register.
+       If the id is in multiple locations, inserts moves and loads to account for them.
+       Allocates a register for the id if it does not have any.
+       Finally frees the locations used by the id.
+       Returns the register for the use site. *)
+    val regDef : t -> builder -> Label.t -> CpsId.t -> t * Register.t
 
-    (* Move values from caller-save to callee-save registers or stack slots: *)
+    (* Use in the given register.
+       Arranges for the id to be (also) in the given register if not already. *)
+    val fixedRegDef : t -> builder -> Label.t -> CpsId.t -> Register.t -> t
+
+    (* Move id:s away from caller-save registers (except the return value registers). *)
     val evacuateCallerSaves : t -> builder -> Label.t -> t
 end
 
@@ -33,6 +41,7 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
     structure Stmt = Abi.RegIsa.Stmt
     structure Builder = Abi.RegIsa.Program.Builder
 
+    datatype either = datatype Either.t
     type builder = Builder.builder
 
     val op|> = Fn.|>
@@ -56,21 +65,6 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
         fun free {slots, len} slot = {slots = slot :: slots, len}
     end
 
-    type t = { registers : Register.t CpsId.SortedMap.map
-             , freeRegs : Register.t list
-             , stack : int CpsId.SortedMap.map
-             , freeSlots : Slots.t }
-
-    val empty =
-        { freeRegs = Vector.toList Abi.generalRegs
-        , registers = CpsId.SortedMap.empty
-        , stack = CpsId.SortedMap.empty
-        , freeSlots = Slots.empty }
-
-    fun find ({registers, ...} : t) id = CpsId.SortedMap.find (registers, id)
-
-    fun lookupReg ({registers, ...} : t) id = CpsId.SortedMap.lookup (registers, id)
-
     fun pick pred freeRegs =
         let val rec extract =
                 fn freeReg :: freeRegs =>
@@ -93,92 +87,393 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
         in extract freeRegs
         end
 
-    fun free {freeRegs, registers, stack, freeSlots} id =
-        let val (registers, freeRegs) =
-                case CpsId.SortedMap.find (registers, id)
-                of SOME reg =>
-                    (#1 (CpsId.SortedMap.remove (registers, id)), reg :: freeRegs)
-                 | NONE => (registers, freeRegs)
-            val stack =
-                case CpsId.SortedMap.find (stack, id)
-                of SOME i => raise Fail "unimplemented"
-                 | NONE => stack
-        in {freeRegs, registers, stack, freeSlots}
-        end
+    structure Registers :> sig
+        type t
 
-    fun stackAllocate {stack, freeSlots, registers, freeRegs} id =
-        let val (freeSlots, sloti) = Slots.next freeSlots
-        in ({stack, freeSlots, registers, freeRegs}, sloti)
-        end
+        (* All registers unoccupied. *)
+        val empty : t
+        (* Try to allocate a register for the id.
+           Return `NONE` if out of registers. *)
+        val allocate : t -> CpsId.t -> (t * Register.t) option
+        (* Try to allocate a register for the id satisfying the predicate.
+           Return `NONE` if out of satisfactory registers. *)
+        val allocateEnsuring : t -> (Register.t -> bool) -> CpsId.t -> (t * Register.t) option
+        (* Try to allocate the specific register for the id.
+           Return `Left otherId` if the register is occupied by otherId. *)
+        val allocateFixed : t -> CpsId.t -> Register.t -> (CpsId.t, t) Either.t
+        (* Free the register. *)
+        val free : t -> Register.t -> t
+        val lookup : t -> Register.t -> CpsId.t
+    end = struct
+        structure Map = Register.SortedMap
 
-    fun unspill (env as {stack, ...} : t) builder label id reg =
-        case CpsId.SortedMap.find (stack, id)
-        of SOME _ => env
-         | NONE =>
-            let val env = free env id
-                val (env, sloti) = stackAllocate env id
-            in Builder.insertStmt builder label (Stmt.Def (reg, Abi.RegIsa.Instrs.Oper.stackLoad Abi.sp sloti))
-             ; env
+        type t = { occupieds : CpsId.t Map.map
+                 , frees : Register.t list }
+
+        fun extract pred =
+            fn x :: xs =>
+                if pred x
+                then SOME (xs, x)
+                else Option.map (fn (xs, y) => (x :: xs, y)) (extract pred xs)
+             | [] => NONE
+
+        val empty = { occupieds = Map.empty
+                    , frees = Vector.toList Abi.generalRegs }
+
+        fun allocate {occupieds, frees} id =
+            case frees
+            of reg :: frees =>
+                SOME ({occupieds = Map.insert (occupieds, reg, id), frees}, reg)
+             | [] => NONE
+
+        fun allocateEnsuring (regs as {occupieds, frees}) pred id =
+            Option.map (fn (frees, reg) =>
+                            ({occupieds = Map.insert (occupieds, reg, id), frees}, reg))
+                       (extract pred frees)
+
+        fun allocateFixed (regs as {occupieds, frees}) id reg =
+            case Map.find (occupieds, reg)
+            of SOME currentId =>
+                if currentId = id
+                then Right regs
+                else Left currentId
+             | NONE =>
+                let val frees = valOf (pickEq frees reg)
+                in Right {occupieds = Map.insert (occupieds, reg, id), frees}
+                end
+
+        fun free (regs as {occupieds, frees}) reg =
+            if Map.inDomain (occupieds, reg)
+            then { occupieds = #1 (Map.remove (occupieds, reg))
+                 , frees = reg :: frees }
+            else regs
+
+        fun lookup {occupieds, frees} reg = Map.lookup (occupieds, reg)
+    end
+
+    structure StackSlot :> sig
+        type t
+
+        val eq : t * t -> bool
+        val compare : t * t -> order
+        val index : t -> int
+
+        structure SortedMap : ORD_MAP where type Key.ord_key = t
+
+        structure Pool : sig    
+            type item = t
+            type t
+
+            val empty : t
+            val allocate : t -> t * item
+            val free : t -> item -> t
+        end
+    end = struct
+        type t = int
+
+        val eq = op=
+
+        val compare = Int.compare
+
+        val index = Fn.identity
+
+        structure SortedMap = BinaryMapFn(struct
+            type ord_key = t
+            val compare = compare
+        end)
+
+        structure Pool = struct
+            type item = t
+
+            type t = {reusables : item list, created : int}
+
+            val empty = {reusables = [], created = 0}
+
+            fun allocate {reusables, created} =
+                case reusables
+                of x :: reusables => ({reusables, created}, x)
+                 | [] => ({reusables, created = created + 1}, created)
+
+            fun free {reusables, created} x = {reusables = x :: reusables, created}
+        end
+    end
+
+    structure StackFrame :> sig
+        type t
+
+        val empty : t
+        val lookup : t -> StackSlot.t -> CpsId.t
+        val allocate : t -> CpsId.t -> t * StackSlot.t
+        val free : t -> StackSlot.t -> t
+    end = struct
+        structure Map = StackSlot.SortedMap
+        structure Pool = StackSlot.Pool
+
+        type t = { occupieds : CpsId.t Map.map, frees : Pool.t}
+
+        val empty = {occupieds = Map.empty, frees = Pool.empty}
+
+        fun lookup ({occupieds, ...} : t) slot = Map.lookup (occupieds, slot)
+
+        fun allocate {occupieds, frees} id =
+            let val (frees, slot) = Pool.allocate frees
+            in ({occupieds = Map.insert (occupieds, slot, id), frees}, slot)
             end
 
-    fun evacuate {registers, stack, freeRegs, freeSlots} builder label reg =
-        let val id = CpsId.SortedMap.filter (fn reg' => Register.eq (reg', reg)) registers (* HACK *)
-                   |> CpsId.SortedMap.firsti |> valOf |> #1
-        in  case pick (fn reg' => not (Register.eq (reg', reg))) freeRegs
-            of SOME (freeRegs, reg') =>
-                ( Builder.insertStmt builder label (Stmt.Def (reg, Abi.RegIsa.Instrs.Oper.move reg'))
-                ; { freeRegs = reg :: freeRegs
-                  , registers = CpsId.SortedMap.insert (registers, id, reg')
-                  , stack, freeSlots } )
-             | NONE => raise Fail "unimplemented"
+        fun free (frame as {occupieds, frees}) slot =
+            if Map.inDomain (occupieds, slot)
+            then { occupieds = #1 (Map.remove (occupieds, slot))
+                 , frees = Pool.free frees slot }
+            else frame
+    end
+
+    structure Location :> sig
+        datatype t
+            = Register of Register.t
+            | StackSlot of StackSlot.t
+
+        val eq : t * t -> bool
+
+        val isReg : t -> bool
+        val isCalleeSave : t -> bool
+
+        structure SortedSet : ORD_SET where type Key.ord_key = t
+    end = struct
+        datatype t
+            = Register of Register.t
+            | StackSlot of StackSlot.t
+
+        val eq =
+            fn (Register reg, Register reg') => Register.eq (reg, reg')
+             | (Register _, StackSlot _) => false
+             | (StackSlot _, Register _) => false
+             | (StackSlot slot, StackSlot slot') => StackSlot.eq (slot, slot')
+
+        val isReg =
+            fn Register _ => true
+             | StackSlot _ => false
+
+        val isCalleeSave =
+            fn Register reg =>
+                Abi.CallingConvention.isCalleeSave Abi.foreignCallingConvention reg
+             | StackSlot _ => true
+
+        val compare =
+            fn (Register reg, Register reg') => Register.compare (reg, reg')
+             | (Register _, StackSlot _) => LESS
+             | (StackSlot _, Register _) => GREATER
+             | (StackSlot slot, StackSlot slot') => StackSlot.compare (slot, slot')
+
+        structure SortedSet = BinarySetFn(struct
+            type ord_key = t
+            val compare = compare
+        end)
+    end
+
+    datatype location = datatype Location.t
+
+    type t = { locations : Location.SortedSet.set CpsId.SortedMap.map
+             , registers : Registers.t
+             , frame : StackFrame.t }
+
+(* # Pure Env operations *)
+
+    val empty =
+        { locations = CpsId.SortedMap.empty
+        , registers = Registers.empty
+        , frame = StackFrame.empty }
+
+    fun locationsOf ({locations, ...} : t) id = CpsId.SortedMap.find (locations, id)
+
+    fun insertLocation locations id loc =
+        let val idLocs = getOpt (CpsId.SortedMap.find (locations, id), Location.SortedSet.empty)
+        in CpsId.SortedMap.insert (locations, id, Location.SortedSet.add (idLocs, loc))
         end
 
-    fun allocateFixed (env as {registers, stack, freeRegs, freeSlots}) builder label id reg =
-        case pickEq freeRegs reg
-        of SOME freeRegs =>
-            {freeRegs, registers = CpsId.SortedMap.insert (registers, id, reg), stack, freeSlots}
+    fun findReg env id =
+        locationsOf env id
+        |> Option.mapPartial (Location.SortedSet.find Location.isReg)
+        |> Option.map (fn Register reg => reg
+                        | StackSlot _ => raise Fail "unreachable")
+
+    fun inReg env id reg =
+        case locationsOf env id
+        of SOME locs => Location.SortedSet.member (locs, Register reg)
+         | NONE => false
+
+    fun allocate (env as {locations, registers, frame}) id =
+        case Registers.allocate registers id
+        of SOME (registers, reg) =>
+            let val loc = Register reg
+            in ( { locations = insertLocation locations id loc
+                 , registers, frame }
+               , loc )
+            end
          | NONE =>
-            let val env = evacuate env builder label reg
-            in allocateFixed env builder label id reg
+            let val (frame, slot) = StackFrame.allocate frame id
+                val loc = StackSlot slot
+            in ( { locations = insertLocation locations id loc
+                 , registers, frame }
+               , loc )
             end
 
-    fun findOrAllocate (env as {freeRegs, registers, stack, freeSlots}) id =
-        case CpsId.SortedMap.find (registers, id)
+    fun freeLocation (env as {locations, registers, frame}) id loc =
+        let val idLocs = Location.SortedSet.delete (valOf (locationsOf env id), loc)
+            val locations =
+                if Location.SortedSet.isEmpty idLocs
+                then #1 (CpsId.SortedMap.remove (locations, id))
+                else CpsId.SortedMap.insert (locations, id, idLocs)
+        in  case loc
+            of Register reg =>
+                {locations, registers = Registers.free registers reg, frame}
+             | StackSlot slot =>
+                {locations, registers, frame = StackFrame.free frame slot}
+        end
+
+(* # Effectful Building Blocks *)
+
+    fun evacuateTo env builder label src target =
+        if not (Location.eq (src, target))
+        then case (src, target)
+             of (srcLoc as Register src, Register target) =>
+                 let val {registers, ...} = env
+                     val srcId = Registers.lookup registers src
+                 in Builder.insertStmt builder label (Stmt.Def (src, Abi.RegIsa.Instrs.Oper.move target))
+                  ; freeLocation env srcId srcLoc
+                 end
+              | (srcLoc as Register src, StackSlot target) =>
+                 let val {registers, ...} = env
+                     val srcId = Registers.lookup registers src
+                     val oper = Abi.RegIsa.Instrs.Oper.stackLoad Abi.sp (StackSlot.index target)
+                 in Builder.insertStmt builder label (Stmt.Def (src, oper))
+                  ; freeLocation env srcId srcLoc
+                 end
+              | (srcLoc as StackSlot src, Register target) =>
+                 let val {frame, ...} = env
+                     val srcId = StackFrame.lookup frame src
+                     val oper = Abi.RegIsa.Instrs.Oper.stackStore Abi.sp (StackSlot.index src) target
+                 in Builder.insertStmt builder label (Stmt.Eff oper)
+                  ; freeLocation env srcId srcLoc
+                 end
+              | (StackSlot src, StackSlot target) =>
+                 raise Fail "unimplemented"
+        else env
+
+    fun evacuateReg env builder label id reg =
+        let val (env, loc') = allocate env id
+        in evacuateTo env builder label (Register reg) loc'
+        end
+
+    fun evacuateEnsuring env builder label pred id loc =
+        raise Fail "unimplemented"
+
+    fun freeIn env builder label id reg =
+        case locationsOf env id
+        of SOME idLocs =>
+            let val (origLoc, origReg) =
+                    case Location.SortedSet.find (fn Register reg' => Register.eq (reg', reg)
+                                                   | StackSlot _ => false)
+                                                 idLocs
+                    of SOME (origLoc as Register origReg) => (origLoc, origReg)
+                     | NONE => raise Fail "unimplemented"
+                val env =
+                    Location.SortedSet.foldl (fn (loc as Register reg, env) =>
+                                                  if Register.eq (reg, origReg)
+                                                  then env
+                                                  else evacuateTo env builder label loc origLoc
+                                               | (loc as StackSlot _, env) =>
+                                                  evacuateTo env builder label loc origLoc)
+                                             env idLocs
+            in freeLocation env id origLoc
+            end
+         | NONE => raise Fail "unreachable"
+
+    fun free env builder label id =
+        case locationsOf env id
+        of SOME idLocs =>
+            let val (origLoc, origReg) =
+                    case Location.SortedSet.find Location.isReg idLocs
+                    of SOME (origLoc as Register origReg) => (origLoc, origReg)
+                     | NONE => raise Fail "unimplemented"
+                val env =
+                    Location.SortedSet.foldl (fn (loc as Register reg, env) =>
+                                                  if Register.eq (reg, origReg)
+                                                  then env
+                                                  else evacuateTo env builder label loc origLoc
+                                               | (loc as StackSlot _, env) =>
+                                                  evacuateTo env builder label loc origLoc)
+                                             env idLocs
+            in freeLocation env id origLoc
+            end
+         | NONE => raise Fail "unreachable"
+
+(* # Public API *)
+
+    fun regUse env builder label id =
+        case findReg env id
         of SOME reg => (env, reg)
          | NONE =>
-            (case freeRegs
-             of reg :: freeRegs =>
-                 ( {freeRegs, registers = CpsId.SortedMap.insert (registers, id, reg), stack, freeSlots}
-                 , reg )
-              | [] => raise Fail "unimplemented: out of freeRegs")
-
-    fun freeIn (env as {registers, ...} : t) builder label id reg =
-        case CpsId.SortedMap.find (registers, id)
-        of SOME reg' =>
-            let val env =
-                    if not (Register.eq (reg', reg))
-                    then let val env = free env id
-                             val env = allocateFixed env builder label id reg
-                             do Builder.insertStmt builder label (Stmt.Def (reg', Abi.RegIsa.Instrs.Oper.move reg))
-                         in env
-                         end
-                    else env
-            in free env id
+            let val {locations, registers, frame} = env
+            in  case Registers.allocate registers id
+                of SOME (registers, reg) =>
+                    ( { locations = insertLocation locations id (Register reg)
+                      , registers, frame }
+                    , reg )
+                 | NONE => raise Fail "unimplemented"
             end
-         | NONE => raise Fail "unimplemented"
 
-    fun evacuateCallerSaves (env as {registers, ...} : t) builder label =
-        let fun step (id, reg, {freeRegs, registers, stack, freeSlots}) =
-                if Abi.CallingConvention.isCallerSave Abi.foreignCallingConvention reg
-                then case pick (Abi.CallingConvention.isCalleeSave Abi.foreignCallingConvention) freeRegs
-                     of SOME (freeRegs, reg') =>
-                         ( Builder.insertStmt builder label (Stmt.Def (reg, Abi.RegIsa.Instrs.Oper.move reg'))
-                         ; { freeRegs = reg :: freeRegs
-                           , registers = CpsId.SortedMap.insert (registers, id, reg')
-                           , stack, freeSlots } )
-                      | NONE => unspill env builder label id reg
-                else env
-        in CpsId.SortedMap.foldli step env registers
+    fun fixedRegUse (env as {locations, registers, frame} : t) builder label id reg =
+        case Registers.allocateFixed registers id reg
+        of Right registers =>
+            { locations = insertLocation locations id (Register reg)
+            , registers, frame }
+         | Left occupant =>
+            let val env = evacuateReg env builder label occupant reg
+            in fixedRegUse env builder label id reg
+            end
+
+    fun regDef env builder label id =
+        let val (env, reg) = regUse env builder label id
+            val env = free env builder label id
+        in (env, reg)
+        end
+
+    fun fixedRegDef env builder label id reg =
+        let val env = fixedRegUse env builder label id reg
+        in freeIn env builder label id reg
+        end
+
+    fun evacuateCallerSaves (env as {locations, ...} : t) builder label =
+        let fun step (id, idLocs, env) =
+                let val (env, idLocs, loc') =
+                        case Location.SortedSet.find Location.isCalleeSave idLocs
+                        of SOME loc' => (env, idLocs, loc')
+                         | NONE =>
+                            let val {registers, locations, frame} = env
+                                val (env, loc') =
+                                    case Registers.allocateEnsuring registers (Location.isCalleeSave o Register) id
+                                    of SOME (registers, reg) =>
+                                        let val loc' = Register reg
+                                        in ( { locations = insertLocation locations id loc'
+                                             , registers, frame }
+                                           , loc' )
+                                        end
+                                     | NONE =>
+                                        let val (frame, slot) = StackFrame.allocate frame id
+                                            val loc' = StackSlot slot
+                                        in ( { locations = insertLocation locations id loc'
+                                             , registers, frame }
+                                           , loc' )
+                                        end
+                            in (env, valOf (locationsOf env id), loc')
+                            end
+                    fun step (loc, env) =
+                        if Location.isCalleeSave loc orelse Location.eq (loc, loc')
+                        then env
+                        else evacuateTo env builder label loc loc'
+                in Location.SortedSet.foldl step env idLocs
+                end
+        in CpsId.SortedMap.foldli step env locations
         end
 end
 

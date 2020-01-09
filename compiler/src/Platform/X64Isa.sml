@@ -27,6 +27,7 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
 
         val move : def -> t
         val stackLoad : def -> int -> t
+        val stackStore : def -> int -> def -> t
 
         val toDoc : t -> PPrint.t
         val foldDefs : (def * 'a -> 'a) -> 'a -> t -> 'a
@@ -133,6 +134,9 @@ end = struct
 
         fun stackLoad sp i =
             LOAD {base = SOME sp, index = NONE, disp = 8 * i}
+
+        fun stackStore sp i def =
+            STORE ({base = SOME sp, index = NONE, disp = 8 * i}, def)
 
         fun foldDefs f acc =
             fn LOAD mem => foldMemDefs f acc mem

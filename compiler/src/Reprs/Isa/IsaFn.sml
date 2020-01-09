@@ -4,6 +4,9 @@ signature REGISTER = sig
     val toString : t -> string
     val toDoc : t -> PPrint.t
     val eq : t * t -> bool
+    val compare : t * t -> order
+
+    structure SortedMap : ORD_MAP where type Key.ord_key = t
 end
 
 signature ISA_OPER = sig
@@ -12,6 +15,7 @@ signature ISA_OPER = sig
 
     val move : def -> t
     val stackLoad : def -> int -> t (* HACK: need to pass stack pointer *)
+    val stackStore : def -> int -> def -> t (* HACK: need to pass stack pointer *)
 
     val toDoc : t -> PPrint.t
     val foldDefs : (def * 'a -> 'a) -> 'a -> t -> 'a

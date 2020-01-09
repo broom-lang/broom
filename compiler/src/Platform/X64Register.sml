@@ -26,6 +26,8 @@ structure X64Register = struct
 
     val eq = op=
 
+    val compare = Int.compare
+
     val rax = 0
     val rdx = 1
     val rcx = 2
@@ -43,5 +45,10 @@ structure X64Register = struct
     val r14 = 14
     val r15 = 15
     val rip = 16
+
+    structure SortedMap = BinaryMapFn(struct
+        type ord_key = t
+        val compare = compare
+    end)
 end
 
