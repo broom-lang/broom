@@ -46,6 +46,7 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
             | RET of def vector
 
         val toDoc : t -> PPrint.t
+        val isReturn : t -> bool
         val foldDefs : (def * 'a -> 'a) -> 'a -> t -> 'a
         val foldLabels : (Label.t * 'a -> 'a) -> 'a -> t -> 'a
         val appLabels : (Label.t -> unit) -> t -> unit
@@ -173,6 +174,10 @@ end = struct
             | JMPi of def * def vector    (* indirect JMP through register *)
             | Jcc of pred * Label.t * Label.t
             | RET of def vector
+
+        val isReturn =
+            fn RET _ => true
+             | _ => false
 
         fun foldDefs f acc =
             fn JMP (_, defs) | RET defs => Vector.foldl f acc defs
