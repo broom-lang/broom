@@ -47,7 +47,7 @@ functor IsaLabelUsesFn (Isa : ISA) :> LABEL_USES
 
             val usesInTransfer = Isa.Instrs.Transfer.appLabels call
 
-            fun usesInCont (_, {name = _, argc = _, stmts, transfer}) =
+            fun usesInCont (_, {name = _, cconv = _, argc = _, stmts, transfer}) =
                 ( Vector.app usesInStmt stmts
                 ; usesInTransfer transfer )
 

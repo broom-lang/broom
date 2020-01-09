@@ -13,8 +13,8 @@ end = struct
 
     val scheduleStmts = Vector.stableSort compareStmts
 
-    fun scheduleCont {name, argc, stmts, transfer} =
-        {name, argc, stmts = scheduleStmts stmts, transfer}
+    fun scheduleCont {name, cconv, argc, stmts, transfer} =
+        {name, cconv, argc, stmts = scheduleStmts stmts, transfer}
 
     fun schedule {conts, main} =
         {conts = LabelMap.map scheduleCont conts, main}

@@ -66,6 +66,7 @@ signature ISA = sig
 
     structure Cont : sig
         type t = { name : Name.t option
+                 , cconv : CallingConvention.t option
                  , argc : int
                  , stmts : Stmt.t vector
                  , transfer : Transfer.t }
@@ -75,7 +76,7 @@ signature ISA = sig
         structure Builder : sig
             type builder
 
-            val new : {name : Name.t option, argc : int} -> builder
+            val new : {name : Name.t option, cconv : CallingConvention.t option, argc : int} -> builder
             val insertStmt : builder -> Stmt.t -> unit
             val setTransfer : builder -> Transfer.t -> unit
             val build : builder -> t
@@ -91,7 +92,8 @@ signature ISA = sig
             type builder
 
             val new : unit -> builder
-            val createCont : builder -> Label.t -> {name : Name.t option, argc : int} -> unit
+            val createCont : builder -> Label.t
+                -> {name : Name.t option, cconv : CallingConvention.t option, argc : int} -> unit
             val insertStmt : builder -> Label.t -> Stmt.t -> unit
             val setTransfer : builder -> Label.t -> Transfer.t -> unit
             val build : builder -> Label.t -> t
@@ -116,6 +118,7 @@ end) :> ISA
     type transfer = Args.Instrs.Transfer.t
 
     val text = PPrint.text
+    val space = PPrint.space
     val newline = PPrint.newline
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
@@ -145,28 +148,33 @@ end) :> ISA
 
     structure Cont = struct
         type t = { name : Name.t option
+                 , cconv : CallingConvention.t option
                  , argc : int
                  , stmts : Stmt.t vector
                  , transfer : Transfer.t }
 
-        fun toDoc (label, {name, argc, stmts, transfer}) =
-            text "fun" <+> Label.toDoc label <+> PPrint.int argc <+> text "="
+        fun toDoc (label, {name, cconv, argc, stmts, transfer}) =
+            text "fun"
+            <> (case cconv
+                of SOME cconv => space <> CallingConvention.toDoc cconv
+                 | NONE => PPrint.empty)
+            <+> Label.toDoc label <+> PPrint.int argc <+> text "="
             <> nest 4 (newline <> punctuate newline (Vector.map Stmt.toDoc stmts)
                        <++> Transfer.toDoc transfer)
 
         structure Builder = struct
-            type builder = { name : Name.t option, argc : int
+            type builder = { name : Name.t option, cconv : CallingConvention.t option, argc : int
                            , stmts : Stmt.t list ref
                            , transfer : Transfer.t option ref }
 
-            fun new {name, argc} = {name, argc, stmts = ref [], transfer = ref NONE}
+            fun new {name, cconv, argc} = {name, cconv, argc, stmts = ref [], transfer = ref NONE}
 
             fun insertStmt ({stmts, ...} : builder) stmt = stmts := stmt :: !stmts
 
             fun setTransfer ({transfer, ...} : builder) v = transfer := SOME v
 
-            fun build {name, argc, stmts, transfer} =
-                { name, argc
+            fun build {name, cconv, argc, stmts, transfer} =
+                { name, cconv, argc
                 , stmts = Vector.fromList (List.rev (!stmts))
                 , transfer = valOf (!transfer) }
         end

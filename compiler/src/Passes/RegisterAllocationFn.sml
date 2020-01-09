@@ -48,8 +48,8 @@ end = struct
                 in Registerizer.transfer cconvs builder label env transfer
                 end
 
-            and allocateEBB label entryEnv {name, argc, stmts, transfer} =
-                let do Builder.createCont builder label {name, argc}
+            and allocateEBB label entryEnv {name, cconv, argc, stmts, transfer} =
+                let do Builder.createCont builder label {name, cconv, argc}
                     val env = allocateTransfer label transfer
                     (* TODO: Shuffling to match `entryEnv` or calling convention *)
                     do Label.HashTable.insert cconvs (label, #[]) (* FIXME *)
@@ -67,8 +67,8 @@ end = struct
             val {conts, main} = Builder.build builder main
             
             (* HACK: Stmts were pushed to builder in reverse, so need to..: *)
-            fun reverseStmts {name, argc, stmts, transfer} =
-                {name, argc, stmts = Vector.rev stmts, transfer}
+            fun reverseStmts {name, argc, cconv, stmts, transfer} =
+                {name, argc, cconv, stmts = Vector.rev stmts, transfer}
         in {conts = LabelMap.map reverseStmts conts, main}
         end
 end

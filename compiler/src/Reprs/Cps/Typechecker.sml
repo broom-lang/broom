@@ -220,12 +220,12 @@ end = struct
 
     and labelType (program : Program.t) label =
         case LabelMap.find (#conts program) label
-        of SOME {name = _, tParams, vParams, body = _} => FnT {tDomain = tParams, vDomain = vParams}
+        of SOME {name = _, cconv = _, tParams, vParams, body = _} => FnT {tDomain = tParams, vDomain = vParams}
          | NONE => raise TypeError (UnboundLabel label)
 
     and checkCont (program : Program.t) label =
         case LabelMap.find (#conts program) label
-        of SOME {name = _, tParams, vParams, body} =>
+        of SOME {name = _, cconv = _, tParams, vParams, body} =>
             ( checkTransfer program body
             ; FnT {tDomain = tParams, vDomain = vParams} )
          | NONE => raise TypeError (UnboundLabel label)

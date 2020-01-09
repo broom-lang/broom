@@ -50,7 +50,7 @@ end = struct
                  | Transfer.JMPi (dest, _) => line ("\tjmp\t*" ^ convertReg dest)
                  | Transfer.RET _ => line "\tret\t"
 
-            fun emitCont (label, {name, argc = _, stmts, transfer}) =
+            fun emitCont (label, {name, cconv = _, argc = _, stmts, transfer}) =
                 ( line (convertLabel label ^ ":")
                 ; Vector.app emitStmt stmts
                 ; emitTransfer transfer )

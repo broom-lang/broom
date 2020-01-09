@@ -197,6 +197,7 @@ end = struct
 
                     val env = Env.insert (env, paramId, param)
                     val f = { name = NONE (* TODO: SOME when possible *)
+                            , cconv = NONE
                             , tParams = #[], vParams = #[stackTyp, domain, contTyp]
                             , body = convertExpr (SOME label) stack cont env body }
                     do Builder.insertCont builder (label, f)
@@ -239,6 +240,7 @@ end = struct
                         |> Vector.foldl (fn (({id, ...}, param), env) => Env.insert (env, id, param))
                                         Env.empty
                     val f = { name = NONE (* TODO: SOME when possible *)
+                            , cconv = SOME CallingConvention.CCall
                             , tParams = #[], vParams
                             , body = convertExpr (SOME label) stack cont env body }
                     do Builder.insertCont builder (label, f)
@@ -254,6 +256,7 @@ end = struct
                     val cont = TrivK (Builder.express builder {parent = SOME label, oper = Param (label, 1)})
 
                     val f = { name = NONE (* TODO: SOME when possible *)
+                            , cconv = NONE
                             , tParams = Vector1.toVector params, vParams = #[stackTyp, contTyp]
                             , body = convertExpr (SOME label) stack cont env body }
                     do Builder.insertCont builder (label, f)
@@ -284,6 +287,7 @@ end = struct
                 let val pattern = convertPattern pattern
                     val kLabel = Label.fresh ()
                     val k = { name = NONE, tParams = #[], vParams = #[]
+                            , cconv = NONE
                             , body = convertExpr (SOME kLabel) stack cont env body }
                     do Builder.insertCont builder (kLabel, k)
                 in {pattern, target = kLabel}
@@ -308,7 +312,7 @@ end = struct
                             of Named {id, typ, ...} => convertType typ
                              | Anon typ => convertType typ
                         val paramUse = Builder.express builder {parent = SOME kLabel, oper = Param (kLabel, 1)}
-                        val k = { name = NONE
+                        val k = { name = NONE, cconv = NONE
                                 , tParams = #[], vParams = #[Type.Prim Type.Prim.StackT, param]
                                 , body = kf {parent = SOME kLabel, stack, expr = paramUse} }
                         do Builder.insertCont builder (kLabel, k)

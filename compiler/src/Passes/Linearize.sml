@@ -31,7 +31,7 @@ end = struct
             and linearizeTransfer transfer = RegIsa.Transfer.appLabels linearizeSucc transfer
 
             and linearizeEBB label =
-                let val cont as {name, argc, stmts, transfer} = LabelMap.lookup conts label
+                let val cont as {name, cconv, argc, stmts, transfer} = LabelMap.lookup conts label
                 in Builder.appendCont builder (label, cont)
                  ; Vector.app linearizeStmt stmts
                  ; linearizeTransfer transfer

@@ -109,6 +109,7 @@ signature CPS_CONT = sig
 
     type t =
         { name : Name.t option
+        , cconv : CallingConvention.t option
         , tParams : Type.param vector, vParams : Type.t vector
         , body : Transfer.t }
 
@@ -348,11 +349,15 @@ end = struct
 
         type t =
             { name : Name.t option
+            , cconv : CallingConvention.t option
             , tParams : Type.param vector, vParams : Type.t vector
             , body : Transfer.t }
 
-        fun toDoc {name, tParams, vParams, body} =
+        fun toDoc {name, cconv, tParams, vParams, body} =
             text "fn"
+            <> (case cconv
+                of SOME cconv => space <> CallingConvention.toDoc cconv
+                 | NONE => PPrint.empty)
             <> (case name
                 of SOME name => space <> Name.toDoc name
                  | NONE => PPrint.empty)
@@ -517,9 +522,13 @@ end = struct
             end
 
         fun fnToDoc (program as {stmts, conts, ...} : t) visited label exprs =
-            let val {name, tParams, vParams, body} = LabelMap.lookup conts label
-            in text "fun" <+> Label.toDoc label
-                <+> Type.argsDoc FType.defToDoc tParams
+            let val {name, cconv, tParams, vParams, body} = LabelMap.lookup conts label
+            in text "fun"
+               <> (case cconv
+                   of SOME cconv => space <> CallingConvention.toDoc cconv
+                    | NONE => PPrint.empty)
+               <+> Label.toDoc label
+               <+> Type.argsDoc FType.defToDoc tParams
                <+> parens (punctuate (comma <> space) (Vector.map Type.toDoc vParams)) <> text ":"
                <> nest 4 (newline <> exprsToDoc program visited exprs <++> Cont.Transfer.toDoc body)
             end

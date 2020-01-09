@@ -197,10 +197,10 @@ end = struct
                          end
 
             and convertClause program env (clause as {pattern = _, target}) =
-                let val {name, tParams, vParams, body} = Program.labelCont program target
+                let val {name, cconv, tParams, vParams, body} = Program.labelCont program target
                     val vParams = Vector.map convertType vParams
                     val body = convertTransfer program target env body
-                in Builder.insertCont builder (target, {name, tParams, vParams, body})
+                in Builder.insertCont builder (target, {name, cconv, tParams, vParams, body})
                  ; clause
                 end
 
@@ -234,7 +234,7 @@ end = struct
                 ( if Label.HashSetMut.member (visitedLabels, label')
                   then ()
                   else let do Label.HashSetMut.add (visitedLabels, label')
-                           val {name, tParams, vParams, body = _} = Program.labelCont program label
+                           val {name, cconv, tParams, vParams, body = _} = Program.labelCont program label
                            val closureType =
                                Type.Closure { tDomain = tParams, vDomain = vParams
                                             , clovers = Vector.map (defType program) clovers }
@@ -259,11 +259,11 @@ end = struct
                                            clovers
                            val body = Goto { callee = label, tArgs = Vector.map Type.TParam tParams
                                            , vArgs = Vector.concat [vArgs, clovers] }
-                       in Builder.insertCont builder (label', {name, tParams, vParams = vParams', body})
+                       in Builder.insertCont builder (label', {name, cconv, tParams, vParams = vParams', body})
                        end
                 ; ClosureNew (label', Vector.map (convertDef program env) clovers) )
 
-            and convertCont program (label, {name, tParams, vParams, body}) =
+            and convertCont program (label, {name, cconv, tParams, vParams, body}) =
                 case LabelMap.lookup goals label
                 of Lift frees | Split {lift = frees, close = _} =>
                     let val oldArity = Vector.length vParams
@@ -278,7 +278,7 @@ end = struct
                                                end)
                                           DefMap.empty frees
                         val body = convertTransfer program label env body
-                    in Builder.insertCont builder (label, {name, tParams, vParams, body})
+                    in Builder.insertCont builder (label, {name, cconv, tParams, vParams, body})
                     end
                  | Close frees =>
                     let val closureType =
@@ -297,13 +297,13 @@ end = struct
                                                end)
                                           DefMap.empty frees
                         val body = convertTransfer program label env body
-                    in Builder.insertCont builder (label, {name, tParams, vParams, body})
+                    in Builder.insertCont builder (label, {name, cconv, tParams, vParams, body})
                     end
                  | Conditioned => () (* Handled in `convertClause` instead. *)
                  | Noop =>
                     let val vParams = Vector.map convertType vParams
                         val body = convertTransfer program label DefMap.empty body
-                    in Builder.insertCont builder (label, {name, tParams, vParams, body})
+                    in Builder.insertCont builder (label, {name, cconv, tParams, vParams, body})
                     end
 
             and convertLabel program label =

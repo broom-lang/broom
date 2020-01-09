@@ -71,6 +71,7 @@ local
            src/Passes/WellFounded.sml
            src/Passes/PatternMatching.sml
 
+           src/Reprs/Abi/CallingConvention.sml
            src/Reprs/Cps/Cps.sml
            src/Reprs/Cps/Typechecker.sml
           

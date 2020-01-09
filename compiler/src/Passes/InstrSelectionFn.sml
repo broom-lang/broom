@@ -41,8 +41,8 @@ end = struct
                                              () transfer
                 ; Implement.transfer builder transfer )
 
-            and selectCont (label, {name, tParams = _, vParams, body}) =
-                ( Builder.createCont builder label {name, argc = Vector.length vParams}
+            and selectCont (label, {name, cconv, tParams = _, vParams, body}) =
+                ( Builder.createCont builder label {name, cconv, argc = Vector.length vParams}
                 ; Builder.setTransfer builder label (selectTransfer body) )
 
             and selectLabel label =
