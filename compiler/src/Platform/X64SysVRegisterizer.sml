@@ -32,7 +32,9 @@ structure X64SysVRegisterizer = struct
 
     fun stmt cconvs builder label env =
         fn Isa.Stmt.Param (target, pLabel, i) => (* FIXME: *)
-            let val paramRegs = #args Abi.foreignCallingConvention
+            let val paramRegs =
+                    Vector.concat [ #args Abi.foreignCallingConvention
+                                  , #calleeSaves Abi.foreignCallingConvention ]
             in Env.fixedRegDef env builder label target (Vector.sub (paramRegs, i))
             end
 

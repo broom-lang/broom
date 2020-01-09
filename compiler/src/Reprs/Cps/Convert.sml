@@ -206,17 +206,23 @@ end = struct
             and convertExportedFn (_, params : FFTerm.def vector, body) =
                 let val label = Label.fresh ()
                     val parent = SOME label
+                    val paramTypes =
+                        Vector.mapi (fn (i, _) =>
+                                         if i < Vector.length params
+                                         then convertType (#typ (Vector.sub (params, i)))
+                                         else Prim PrimType.Int)
+                                    (#args Abi.foreignCallingConvention)
                     val calleeSaveParams =
                         Vector.map (Fn.constantly (Prim PrimType.Int))
                                    (#calleeSaves Abi.foreignCallingConvention)
                     val vParams =
-                        Vector.concat [Vector.map (convertType o #typ) params, calleeSaveParams]
+                        Vector.concat [paramTypes, calleeSaveParams]
                     val paramDefs =
                         Vector.mapi (fn (i, _) =>
                                          Builder.express builder {parent, oper = Param (label, i)})
                                     vParams
                     val calleeSaveArgs =
-                        VectorSlice.vector (VectorSlice.slice (paramDefs, Vector.length params, NONE))
+                        VectorSlice.vector (VectorSlice.slice (paramDefs, Vector.length paramTypes, NONE))
                     val stack =
                         Builder.express builder { parent
                                                 , oper = PrimApp { opn = Primop.StackNew
