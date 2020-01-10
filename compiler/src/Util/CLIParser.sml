@@ -80,7 +80,7 @@ end = struct
                     of SOME Nullary => (insertFlagged f NONE; tokens)
                      | SOME Unary =>
                         (case tokens
-                         of ShortFlag _ :: _ | LongFlag _ :: _ | [] =>
+                         of (ShortFlag _ :: _ | LongFlag _ :: _ | []) =>
                              ( insertError ("Missing argument for flag " ^ f)
                              ; tokens )
                           | String s :: tokens => (insertFlagged f (SOME s); tokens))

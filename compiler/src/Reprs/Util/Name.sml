@@ -50,7 +50,7 @@ end = struct
         fun freshen name =
              let val i = next ()
              in case name
-                of String s | FreshString (s, _) => FreshString (s, i)
+                of (String s | FreshString (s, _)) => FreshString (s, i)
                  | Fresh _ => Fresh i
              end
     end

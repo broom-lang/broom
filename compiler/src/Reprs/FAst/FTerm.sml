@@ -1,6 +1,6 @@
 signature FAST_TERM = sig
     structure Type: CLOSED_FAST_TYPE
-    type ('expr, 'error) env = ('expr, 'error) Type.env
+    type ('expr, 'error) env
 
     type arrow = Type.arrow
 
@@ -265,7 +265,7 @@ functor FTerm (Type: CLOSED_FAST_TYPE) :> FAST_TERM
          | With (_, typ, _) => typ
          | Without (_, typ, _) => typ
          | Where (_, typ, _) => typ
-         | App (_, typ, _) | TApp (_, typ, _) | PrimApp (_, typ, _, _, _) => typ
+         | (App (_, typ, _) | TApp (_, typ, _) | PrimApp (_, typ, _, _, _)) => typ
          | Field (_, typ, _, _) => typ
          | Letrec (_, _, body) => typeOf body
          | Let (_, _, body) => typeOf body

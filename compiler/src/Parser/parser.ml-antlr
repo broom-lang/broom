@@ -207,10 +207,16 @@ binapp7 : l=app opapps=(OP7 r=app => (FULL_SPAN, OP7_SPAN, OP7, r))* => (binopsl
 app
     : INTRINSIC selects=select* => (
           let val args = Vector.fromList selects
-              fun step (i, param) = analyzeArg (Vector.sub (args, i)) param
-              val (args, param) = MLton.Vector.unfoldi (Vector.length args, NONE, step)
+              val param = ref NONE
+              val args =
+                  Vector.tabulate (Vector.length args, fn i =>
+                                                           let val (arg, param') =
+                                                                   analyzeArg (Vector.sub (args, i)) (!param)
+                                                           in param := param'
+                                                            ; arg
+                                                           end)
               val body = Term.PrimApp (FULL_SPAN, INTRINSIC, args)
-          in (case param
+          in (case !param
               of SOME param =>
                   Term.Fn (FULL_SPAN, Cst.Explicit (), #[{pattern = Term.Def param, body}])
                | NONE => body)

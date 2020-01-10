@@ -21,7 +21,7 @@ signature TRICTOR = sig
 end
 
 structure Trictor :> TRICTOR = struct
-    open Word32
+    open Word
     infix 5 << >>
 
     type index = int
@@ -52,7 +52,7 @@ structure Trictor :> TRICTOR = struct
         else triePush vs v
 
     and tailPush ({root, tail, len, shift}: 'a t) v =
-        { root, tail = Vector.append (tail, v)
+        { root, tail = VectorExt.append (tail, v)
         , len = len + 0w1, shift }
 
     and triePush ({root, tail, len, shift}: 'a t) v =
@@ -74,7 +74,7 @@ structure Trictor :> TRICTOR = struct
                               in pushTail len child (level - bits) tail
                               end
                          else path tail (level - bits)
-            in Branch (Vector.append (nodes, node))
+            in Branch (VectorExt.append (nodes, node))
             end
          | Leaves _ => raise Fail "unreachable"
 
@@ -151,8 +151,8 @@ structure Trictor :> TRICTOR = struct
 
     fun fromVector vec =
         let val len = Vector.length vec
-        in if Vector.length vec <= Word32.toInt width
-           then {root = Branch #[], tail = vec, len = Word32.fromInt len, shift = bits}
+        in if Vector.length vec <= Word.toInt width
+           then {root = Branch #[], tail = vec, len = Word.fromInt len, shift = bits}
            else Vector.foldl (fn (v, vs) => append vs v) (empty ()) vec
         end
 
@@ -164,12 +164,12 @@ structure Trictor :> TRICTOR = struct
                                         res ^ inspectTrie (indent ^ "    ") node)
                                    "" nodes
                  | Leaves leaves =>
-                    indent ^ "- Leaves " ^ Vector.inspect inspectEl leaves ^ "\n"
-        in "len = " ^ Word32.fmt StringCvt.DEC len ^ "\n"
-         ^ "shift = " ^ Word32.fmt StringCvt.DEC shift ^ "\n"
+                    indent ^ "- Leaves " ^ VectorExt.inspect inspectEl leaves ^ "\n"
+        in "len = " ^ Word.fmt StringCvt.DEC len ^ "\n"
+         ^ "shift = " ^ Word.fmt StringCvt.DEC shift ^ "\n"
          ^ "root =\n"
          ^ inspectTrie "    " root
-         ^ "tail = " ^ Vector.inspect inspectEl tail
+         ^ "tail = " ^ VectorExt.inspect inspectEl tail
         end
 
     fun toString elToString vs =

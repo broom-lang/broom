@@ -29,7 +29,7 @@ structure Vector1 :> sig
         val foldl : ('a * 'b -> 'b) -> 'b -> 'a slice -> 'b
     end
 end = struct
-    open Vector
+    open VectorExt
 
     fun singleton v = #[v]
 

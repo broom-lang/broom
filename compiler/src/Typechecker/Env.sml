@@ -124,7 +124,7 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
                 in insert typeFns def
                  ; def
                 end
-            val toVector = Vector.fromList o op!
+            val toVector : bindings -> odef vector = Vector.fromList o op!
         end
 
         structure Type = struct
@@ -222,26 +222,26 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
         val existentialParams =
             fn ExistsScope (_, bindings) =>
                 Vector.fromList (Bindings.Type.defs bindings)
-             | TopScope _ | FnScope _ | PatternScope _ | ForAllScope _
-             | BlockScope _ | InterfaceScope _ | Marker _ => #[]
+             | (TopScope _ | FnScope _ | PatternScope _ | ForAllScope _
+             | BlockScope _ | InterfaceScope _ | Marker _) => #[]
 
         val universalParams =
             fn ForAllScope (_, bindings) =>
                 Vector.fromList (Bindings.Type.defs bindings)
-             | TopScope _ | FnScope _ | PatternScope _ | ExistsScope _
-             | BlockScope _ | InterfaceScope _ | Marker _ => #[]
+             | (TopScope _ | FnScope _ | PatternScope _ | ExistsScope _
+             | BlockScope _ | InterfaceScope _ | Marker _) => #[]
 
         fun findType scope id =
             case scope
-            of ForAllScope (_, bindings) | ExistsScope (_, bindings) => Bindings.Type.find bindings id
-             | TopScope _ | FnScope _ | PatternScope _ | BlockScope _ | InterfaceScope _ | Marker _ => NONE
+            of (ForAllScope (_, bindings) | ExistsScope (_, bindings)) => Bindings.Type.find bindings id
+             | (TopScope _ | FnScope _ | PatternScope _ | BlockScope _ | InterfaceScope _ | Marker _) => NONE
 
         fun findExpr scope name =
             case scope
             of TopScope (_, {vals, ...}) => Bindings.Expr.find vals name
-             | FnScope (_, var, bs) | PatternScope (_, var, bs) => if var = name then SOME bs else NONE
-             | ForAllScope _ | ExistsScope _ | Marker _ => NONE
-             | BlockScope (_, bindings) | InterfaceScope (_, bindings) => Bindings.Expr.find bindings name
+             | (FnScope (_, var, bs) | PatternScope (_, var, bs)) => if var = name then SOME bs else NONE
+             | (ForAllScope _ | ExistsScope _ | Marker _) => NONE
+             | (BlockScope (_, bindings) | InterfaceScope (_, bindings)) => Bindings.Expr.find bindings name
     end
 
     type ('otyp, 'oexpr, 'error) t =

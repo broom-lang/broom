@@ -52,7 +52,7 @@ end = struct
     val implementExpr =
          exprFold (fn expr as Match (pos, t, matchee, clauses) =>
                        let val (discriminators, defaults) =
-                               Vector.splitWith discriminatingClause clauses
+                               VectorExt.splitWith discriminatingClause clauses
                            val (stmt, matchee, default) =
                                if VectorSlice.length defaults > 0
                                then case VectorSlice.sub (defaults, 0)
@@ -67,7 +67,7 @@ end = struct
                                     , { pattern = AnyP pos
                                       , body = PrimApp (pos, t, Primop.Panic, #[t], #[]) } )
                            val match = Match ( pos, t, matchee
-                                             , Vector.append (VectorSlice.vector discriminators, default) )
+                                             , VectorExt.append (VectorSlice.vector discriminators, default) )
                        in case stmt
                           of SOME stmt => Let (pos, Vector1.singleton stmt, match)
                            | NONE => match

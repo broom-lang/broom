@@ -70,13 +70,13 @@ end = struct
 
     val isTotal =
         fn IntT => true
-         | IAdd | ISub | IMul | IDiv => false
+         | (IAdd | ISub | IMul | IDiv) => false
          | UIntT => true
-         | UAdd | USub | UMul | UDiv => false
-         | ArrayT | ArrayNew | ArrayCount => true
-         | ArrayGet | ArrayUnsafeSet => false
-         | BoxT | BoxNew => true
-         | BoxGet | BoxInit => false
+         | (UAdd | USub | UMul | UDiv) => false
+         | (ArrayT | ArrayNew | ArrayCount) => true
+         | (ArrayGet | ArrayUnsafeSet) => false
+         | (BoxT | BoxNew) => true
+         | (BoxGet | BoxInit) => false
          | StackNew => true
          | Panic => false
 end

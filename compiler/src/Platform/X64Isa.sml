@@ -142,15 +142,15 @@ end = struct
         fun foldDefs f acc =
             fn LOAD mem => foldMemDefs f acc mem
              | STORE (mem, def) => f (def, foldMemDefs f acc mem)
-             | ADD (def, def') | SUB (def, def') | IMUL (def, def') | IDIV (def, def') =>
+             | (ADD (def, def') | SUB (def, def') | IMUL (def, def') | IDIV (def, def')) =>
                 f (def', f (def, acc))
-             | LOADc _ | LOADl _ => acc
-             | CALL (_, defs) | CALLd (_, defs) => Vector.foldl f acc defs
+             | (LOADc _ | LOADl _) => acc
+             | (CALL (_, defs) | CALLd (_, defs)) => Vector.foldl f acc defs
              | CALLi (def, defs) => Vector.foldl f (f (def, acc)) defs
 
         fun appLabels f =
             fn LOADl label => f label
-             | MOV _ | LOAD _ | LOADc _ | STORE _ | ADD _ | SUB _ | IMUL _ | IDIV _ | CALL _ | CALLd _ | CALLi _ => ()
+             | (MOV _ | LOAD _ | LOADc _ | STORE _ | ADD _ | SUB _ | IMUL _ | IDIV _ | CALL _ | CALLd _ | CALLi _) => ()
 
         val toDoc =
             fn MOV src => text "mov" <+> Register.toDoc src
@@ -180,18 +180,18 @@ end = struct
              | _ => false
 
         fun foldDefs f acc =
-            fn JMP (_, defs) | RET defs => Vector.foldl f acc defs
+            fn (JMP (_, defs) | RET defs) => Vector.foldl f acc defs
              | JMPi (def, defs) => Vector.foldl f (f (def, acc)) defs
              | Jcc _ => acc
 
         fun foldLabels f acc =
             fn JMP (label, _) => f (label, acc)
-             | JMPi _ | RET _ => acc
+             | (JMPi _ | RET _) => acc
              | Jcc (_, conseq, alt) => f (alt, f (conseq, acc))
 
         fun appLabels f =
             fn JMP (label, _) => f label
-             | JMPi _ | RET _ => ()
+             | (JMPi _ | RET _) => ()
              | Jcc (_, conseq, alt) => (f conseq; f alt)
 
         val toDoc =

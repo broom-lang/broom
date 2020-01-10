@@ -202,7 +202,7 @@ end = struct
       | coercion env pos (SVar (UVar uv), r as SVar (UVar uv')) =
          (case (Uv.get env uv, Uv.get env uv')
           of (Right l, Right r) => coercion env pos (l, r)
-           | (Left uv, Right t) | (Right t, Left uv) =>
+           | ((Left uv, Right t) | (Right t, Left uv)) =>
               solution env pos (uv , t)
            | (Left uv, Left uv') =>
               let val kind = Uv.kind env uv

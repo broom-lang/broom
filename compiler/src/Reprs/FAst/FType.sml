@@ -82,7 +82,7 @@ structure FType :> FAST_TYPE = struct
 
     structure Prim = PrimType
 
-    type kind = Kind.t
+    datatype kind = datatype Kind.t
 
     datatype effect = Pure | Impure
 
@@ -261,7 +261,7 @@ structure FType :> FAST_TYPE = struct
     (* OPTIMIZE: Entire subtrees where the `name` does not occur could be reused. *)
     fun concrSubstitute svarSubst mapping =
         let fun subst mapping =
-                fn t as Exists (params, _) | t as ForAll (params, _) =>
+                fn (t as Exists (params, _) | t as ForAll (params, _)) =>
                     let val mapping = Vector1.foldl (fn ({var, ...}, mapping) =>
                                                          (#1 (Id.SortedMap.remove (mapping, var)))
                                                          handle _ => mapping)
@@ -277,7 +277,7 @@ structure FType :> FAST_TYPE = struct
         end
 
     val rec smallConcr =
-        fn Exists (params, body) | ForAll (params, body) => false
+        fn (Exists (params, body) | ForAll (params, body)) => false
          | Arrow (_, {domain, codomain}) =>
             smallConcr domain andalso smallConcr codomain
          | Record t => smallConcr t
@@ -286,7 +286,7 @@ structure FType :> FAST_TYPE = struct
          | EmptyRow => true
          | Type t => smallConcr t
          | App {callee, args} => smallConcr callee andalso Vector1.all smallConcr args
-         | CallTFn _ | SVar _ | UseT _ | Prim _ => true
+         | (CallTFn _ | SVar _ | UseT _ | Prim _) => true
 
     val rec piEffect =
         fn ForAll (_, body) => piEffect body
@@ -301,10 +301,10 @@ structure FType :> FAST_TYPE = struct
     local datatype primop = datatype Primop.t
     in  val primopType =
             fn IntT => (#[], Pure, {domain = #[], codomain = Type (Prim Prim.Int)})
-             | IAdd | ISub | IMul | IDiv =>
+             | (IAdd | ISub | IMul | IDiv) =>
                 (#[], Pure, {domain = #[Prim Prim.Int, Prim Prim.Int], codomain = Prim Prim.Int})
              | UIntT => (#[], Pure, {domain = #[], codomain = Type (Prim Prim.UInt)})
-             | UAdd | USub | UMul | UDiv =>
+             | (UAdd | USub | UMul | UDiv) =>
                 (#[], Pure, {domain = #[Prim Prim.UInt, Prim Prim.UInt], codomain = Prim Prim.UInt})
              | ArrayT =>
                 let val def = {var = Id.fresh (), kind = Kind.TypeK}
@@ -428,7 +428,7 @@ signature CLOSED_FAST_TYPE = sig
     val kindDefault: kind -> concr
 
     structure Concr: sig
-        datatype t = datatype concr
+        type t = concr
 
         val toDoc: ('expr, 'error) env -> concr -> PPrint.t
         val substitute: ('expr, 'error) env -> concr Id.SortedMap.map -> concr -> concr

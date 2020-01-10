@@ -189,7 +189,7 @@ end = struct
          | PrimApp (pos, typ, opn, targs, args) =>
             let val (tparams, _, {domain, codomain}) = FType.primopType opn
                 val mapping = (tparams, targs)
-                    |> Vector.zipWith (fn ({var, ...}, arg) => (var, arg))
+                    |> VectorExt.zipWith (fn ({var, ...}, arg) => (var, arg))
                     |> FType.Id.SortedMap.fromVector
                 val domain = Vector.map (Concr.substitute Fn.undefined mapping) domain
                 val codomain = Concr.substitute Fn.undefined mapping codomain
@@ -198,7 +198,7 @@ end = struct
                    then raise Fail "argc"
                    else ()
                 do Vector.app (fn (t, arg) => checkEq pos env (t, check env arg))
-                              (Vector.zip (domain, args))
+                              (VectorExt.zip (domain, args))
             in checkEq pos env (typ, codomain)
              ; typ
             end

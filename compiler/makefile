@@ -1,4 +1,14 @@
-BROOM = broom 
+BROOM = broom
+BROOM_HEAP = broom.amd64-linux
+SMLNJ_HOME = /usr/lib/smlnj
+
+.PHONY: smlnj-dev
+smlnj-dev: $(BROOM_HEAP)
+
+$(BROOM_HEAP): main.cm src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
+               $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
+	SMLNJ_HOME=$(SMLNJ_HOME) ml-build -Cparser.succ-ml=true main.cm Main.main $(BROOM)
+
 .PHONY: dev
 dev: $(BROOM)
 
@@ -44,5 +54,5 @@ itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.brm)))
 
 .PHONY: clean
 clean:
-	rm -rf src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml $(BROOM)
+	rm -rf src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml $(BROOM) $(BROOM_HEAP)
 

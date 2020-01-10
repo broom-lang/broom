@@ -12,18 +12,18 @@ end = struct
          | (_, Stmt.Param _) => GREATER
          | _ => EQUAL (* leverage sort stability *)
 
-    val scheduleStmts = Vector.stableSort compareStmts
+    val scheduleStmts = VectorExt.stableSort compareStmts
 
 (* HACK: Inserting prologue here is not very semantic but most convenient: *)
     fun scheduleCont {name, cconv, argc, stmts, transfer} =
         let val stmts = scheduleStmts stmts
             val stmts =
                 if Option.isSome cconv
-                then Vector.prepend (Stmt.Prologue, stmts)
+                then VectorExt.prepend (Stmt.Prologue, stmts)
                 else stmts
             val stmts =
                 if Transfer.isReturn transfer
-                then Vector.append (stmts, Stmt.Epilogue)
+                then VectorExt.append (stmts, Stmt.Epilogue)
                 else stmts
         in {name, cconv, argc, stmts, transfer}
         end

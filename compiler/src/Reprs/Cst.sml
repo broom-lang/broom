@@ -327,7 +327,7 @@ structure Cst :> CST = struct
     and rowToDoc = 
         fn {base = SOME base, edits} => exprToDoc base <+> editsToDoc edits
          | {base = NONE, edits} =>
-            (case Vector.uncons edits
+            (case VectorExt.uncons edits
              of SOME (With startFields, edits) =>
                  fieldsToDoc startFields <+> editsToDoc (VectorSlice.vector edits)
               | SOME (Where _, _) => editsToDoc edits

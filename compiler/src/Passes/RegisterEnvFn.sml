@@ -33,7 +33,7 @@ signature REGISTER_ENV = sig
 end
 
 functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
-    where type Abi.RegIsa.Register.t = Abi.RegIsa.Register.t
+    where type Abi.RegIsa.def = Abi.RegIsa.def
     where type Abi.RegIsa.Program.Builder.builder = Abi.RegIsa.Program.Builder.builder
 = struct
     structure Abi = Abi
@@ -117,8 +117,8 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
                 else Option.map (fn (xs, y) => (x :: xs, y)) (extract pred xs)
              | [] => NONE
 
-        val empty = { occupieds = Map.empty
-                    , frees = Vector.toList Abi.generalRegs }
+        val empty : t = { occupieds = Map.empty
+                        , frees = VectorExt.toList Abi.generalRegs }
 
         fun allocate {occupieds, frees} id =
             case frees

@@ -1,11 +1,11 @@
 structure X64SysVAbi :> ABI
-    where type Isa.Instrs.Oper.t = X64Isa.Instrs.Oper.t
+    where type Isa.oper = X64Isa.oper
     where type Isa.Stmt.t = X64Isa.Stmt.t
-    where type Isa.Transfer.t = X64Isa.Transfer.t
-    where type RegIsa.Register.t = X64RegIsa.Register.t
-    where type RegIsa.Instrs.Oper.t = X64RegIsa.Instrs.Oper.t
+    where type Isa.transfer = X64Isa.transfer
+    where type RegIsa.def = X64RegIsa.def
+    where type RegIsa.oper = X64RegIsa.oper
     where type RegIsa.Stmt.t = X64RegIsa.Stmt.t
-    where type RegIsa.Transfer.t = X64RegIsa.Transfer.t
+    where type RegIsa.transfer = X64RegIsa.transfer
 = struct
     structure LabelMap = Cps.Program.LabelMap
     structure Isa = X64Isa

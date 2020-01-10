@@ -25,7 +25,7 @@ end) :> HASH_MAP where type key = Key.hash_key = struct
     infix 5 << >>
 
     type key = Key.hash_key
-    val hashVal = Key.hashVal
+    val hashVal = fromLargeWord o Word.toLargeWord o Key.hashVal
     val eq = Key.sameKey
 
     datatype 'v trie
@@ -43,7 +43,7 @@ end) :> HASH_MAP where type key = Key.hash_key = struct
 
     fun hashPart hash shift = andb (hash >> shift, mask)
 
-    fun bitpos hash shift = 0w1 << hashPart hash shift
+    fun bitpos hash shift = 0w1 << Word.fromLargeWord (toLargeWord (hashPart hash shift))
 
     fun bitindex bitmap bit = toInt (bitCount (andb (bitmap, bit - 0w1)))
 
@@ -60,12 +60,12 @@ end) :> HASH_MAP where type key = Key.hash_key = struct
                 val index = bitindex bitmap bit
             in  if isset bitmap bit
                 then let val node = Vector.sub (nodes, index)
-                         val {root = node, len} = trieUpdate len node (shift + bits) hash k f
+                         val {root = node, len} = trieUpdate len node (Word.+ (shift, bits)) hash k f
                      in { root = Bitmapped {bitmap, nodes = Vector.update (nodes, index, node)}
                         , len }
                      end
                 else { root = Bitmapped { bitmap = orb (bitmap, bit)
-                                        , nodes = Vector.pushAt (nodes, index, Leaf (k, f NONE)) }
+                                        , nodes = VectorExt.pushAt (nodes, index, Leaf (k, f NONE)) }
                      , len = Int.+ (len, 1) }
             end
 
@@ -76,7 +76,7 @@ end) :> HASH_MAP where type key = Key.hash_key = struct
                      { root = Collision {hash = hash', kvs = Vector.update (kvs, i, (k, f (SOME v)))}
                      , len }
                   | NONE =>
-                     { root = Collision {hash = hash', kvs = Vector.append (kvs, (k, f NONE))}
+                     { root = Collision {hash = hash', kvs = VectorExt.append (kvs, (k, f NONE))}
                      , len = Int.+ (len, 1) }
             else let val node = Bitmapped { bitmap = bitpos hash' shift
                                           , nodes = #[trie] }
@@ -108,7 +108,7 @@ end) :> HASH_MAP where type key = Key.hash_key = struct
             in if isset bitmap bit
                then let val index = bitindex bitmap bit
                         val node = Vector.sub (nodes, index)
-                    in trieFind node (shift + bits) hash k
+                    in trieFind node (Word.+ (shift, bits)) hash k
                     end
                else NONE
             end
@@ -190,7 +190,7 @@ end) :> HASH_MAP where type key = Key.hash_key = struct
                                    "" nodes
                  | Collision {hash, kvs} =>
                     indent ^ "- Collision " ^ Word32.toString hash ^ " "
-                    ^ Vector.inspect (kvToString valToString) kvs ^ "\n"
+                    ^ VectorExt.inspect (kvToString valToString) kvs ^ "\n"
                  | Leaf kv => indent ^ kvToString valToString kv ^ "\n"
         in "len = " ^ Int.toString len ^ "\n"
          ^ "root =\n" ^ inspectTrie "    " root

@@ -64,7 +64,7 @@ end = struct
                          of Left err => Env.error env (UnboundVal err)
                           | Right res => res
                        ; def )
-                    | Typed ({typ = (usageTyp, NONE), ...}, _) | Visited ({typ = usageTyp, ...}, _) =>
+                    | (Typed ({typ = (usageTyp, NONE), ...}, _) | Visited ({typ = usageTyp, ...}, _)) =>
                        (* We must have found a cycle and used `cyclicBindingType`. *)
                        ( ignore (subType env pos (#typ def, usageTyp))
                        ; FTerm.setDefTyp def usageTyp )

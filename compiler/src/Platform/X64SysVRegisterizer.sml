@@ -43,7 +43,7 @@ structure X64SysVRegisterizer = struct
                 val env = Env.fixedRegDef env builder label target targetReg
                 val env = Env.evacuateCallerSaves env builder label
                 val paramRegs = #args Abi.foreignCallingConvention
-                val env = Vector.zip (args, paramRegs)
+                val env = VectorExt.zip (args, paramRegs)
                         |> Vector.foldl (fn ((arg, reg), env) =>
                                              Env.fixedRegUse env builder label arg reg)
                                         env
@@ -82,7 +82,7 @@ structure X64SysVRegisterizer = struct
         fn X64Instructions.Transfer.JMP (dest, args) =>
             (case Label.HashTable.find cconvs dest
              of SOME paramRegs =>
-                  let val env = Vector.zip (args, paramRegs)
+                  let val env = VectorExt.zip (args, paramRegs)
                               |> Vector.foldl (fn ((arg, reg), env) =>
                                                    Env.fixedRegUse env builder label arg reg)
                                               env
@@ -91,7 +91,7 @@ structure X64SysVRegisterizer = struct
                   end)
          | X64Instructions.Transfer.JMPi (dest, args) =>
             let val paramRegs = Abi.escapeeCallingConvention
-                val env = Vector.zip (args, paramRegs)
+                val env = VectorExt.zip (args, paramRegs)
                         |> Vector.foldl (fn ((arg, reg), env) =>
                                              Env.fixedRegUse env builder label arg reg)
                                         env
@@ -102,7 +102,7 @@ structure X64SysVRegisterizer = struct
          | X64Instructions.Transfer.RET args =>
             let val paramRegs = Vector.concat [ #retVal Abi.foreignCallingConvention
                                               , #calleeSaves Abi.foreignCallingConvention ]
-                val env = Vector.zip (args, paramRegs)
+                val env = VectorExt.zip (args, paramRegs)
                         |> Vector.foldl (fn ((arg, reg), env) =>
                                              Env.fixedRegUse env builder label arg reg)
                                         env

@@ -2,7 +2,7 @@ functor LinearizeFn (Args : sig
     structure SeqIsa : SEQ_ISA
     structure LabelUses : LABEL_USES
         where type Isa.Stmt.t = SeqIsa.RegIsa.Stmt.t
-        where type Isa.Transfer.t = SeqIsa.RegIsa.Transfer.t
+        where type Isa.transfer = SeqIsa.RegIsa.transfer
 end) :> sig
     val linearize : Args.SeqIsa.RegIsa.Program.t -> Args.SeqIsa.Program.t
 end = struct

@@ -1,4 +1,4 @@
-structure ArraySlice = struct
+structure ArraySliceExt = struct
     open ArraySlice
 
     fun uncons vs =
@@ -19,7 +19,7 @@ structure ArraySlice = struct
                 case (uncons ls, uncons rs)
                 of (SOME (l, ls'), SOME (r, rs')) =>
                     (case cmp (l, r)
-                     of LESS | EQUAL => 
+                     of (LESS | EQUAL) => 
                          ( ArraySlice.update (target, i, l)
                          ; doMerge (i + 1) ls' rs )
                       | GREATER =>

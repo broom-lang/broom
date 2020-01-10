@@ -228,7 +228,7 @@ end = struct
                                       in (joinEffs (eff, argEff), arg :: revArgs)
                                       end)
                                  (appEff, [])
-                                 (Vector.zip (domain, args))
+                                 (VectorExt.zip (domain, args))
             in (eff, codomain, FTerm.PrimApp (pos, codomain, opn, targs, Vector.fromList (List.rev revArgs)))
             end
          | CTerm.Field (pos, expr, label) =>
@@ -365,7 +365,7 @@ end = struct
              of ForAll args => elaborateAsForAll env args expr
               | Arrow (expl', {domain, codomain}) =>
                  ( case (expl, expl')
-                   of (Implicit, Implicit) | (Explicit (), Explicit _) => ()
+                   of ((Implicit, Implicit) | (Explicit (), Explicit _)) => ()
                     | _ => raise Fail "Explicitness mismatch" 
                  ; let val (eff, clauses) =
                            elaborateClausesAs env domain
@@ -447,7 +447,7 @@ end = struct
                                    params
            
             val mapping = (params, paths)
-                        |> Vector.zipWith (fn ({var, ...}, path) => (var, path))
+                        |> VectorExt.zipWith (fn ({var, ...}, path) => (var, path))
                         |> Id.SortedMap.fromVector
             val implType = Concr.substitute env mapping body
         in (implType, paths)
@@ -478,7 +478,7 @@ end = struct
                                                paths
                 val (eff, expr) = elaborateExprAs env implType expr
                 val axiomStmts =
-                    Vector.zipWith (fn (FAst.Type.SVar (Path path), name) =>
+                    VectorExt.zipWith (fn (FAst.Type.SVar (Path path), name) =>
                                         let val face = Path.face path
                                             val params =
                                                 let fun kindParams params =
@@ -564,14 +564,14 @@ end = struct
 
     and membersScope env members =
         let val builder = Bindings.Expr.Builder.new ()
-            do Vector.app (fn Cst.Extend (_, CTerm.Def (pos, name), expr) | Cst.Override (_, CTerm.Def (pos, name), expr) =>
+            do Vector.app (fn (Cst.Extend (_, CTerm.Def (pos, name), expr) | Cst.Override (_, CTerm.Def (pos, name), expr)) =>
                                let val def = {pos, id = DefId.fresh (), var = name, typ = NONE}
                                in case Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
                                   of Left err => Env.error env (DuplicateBinding err)
                                    | Right res => res
                                end
-                            | Cst.Extend (_, CTerm.AnnP (_, {pat = CTerm.Def (pos, name), typ}), expr)
-                            | Cst.Override (_, CTerm.AnnP (_, {pat = CTerm.Def (pos, name), typ}), expr) =>
+                            | ( Cst.Extend (_, CTerm.AnnP (_, {pat = CTerm.Def (pos, name), typ}), expr)
+                              | (Cst.Override (_, CTerm.AnnP (_, {pat = CTerm.Def (pos, name), typ}), expr)) ) =>
                                let val def = {pos, id = DefId.fresh (), var = name, typ = SOME typ}
                                in case Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
                                   of Left err => Env.error env (DuplicateBinding err)
@@ -583,7 +583,7 @@ end = struct
         end
 
     and elaborateMember env =
-        fn Cst.Extend defn | Cst.Override defn => SOME (elaborateDefn env defn)
+        fn (Cst.Extend defn | Cst.Override defn) => SOME (elaborateDefn env defn)
          | Cst.Exclude _ => NONE
 
     (* Elaborate a statement and return the elaborated version. *)
@@ -602,13 +602,13 @@ end = struct
             val def as {typ = t, ...} = valOf (lookupValType expr name env) (* `name` is in `env` by construction *)
             val (eff, expr) =
                 case valOf (Env.findExpr env name) (* `name` is in `env` by construction *)
-                of Unvisited _ | Visiting _ => raise Fail "unreachable" (* Not possible after `lookupValType`. *)
+                of (Unvisited _ | Visiting _) => raise Fail "unreachable" (* Not possible after `lookupValType`. *)
                  | Typed ({typ = (_, ctx), ...}, SOME expr) =>
                     (case ctx
                      of SOME namedPaths => elaborateAsExistsInst env (t, namedPaths) expr
                       | NONE => elaborateExprAs env t expr)
                  | Visited (_, SOME effxpr) => effxpr
-                 | Typed (_, NONE) | Visited (_, NONE) => raise Fail "unreachable"
+                 | (Typed (_, NONE) | Visited (_, NONE)) => raise Fail "unreachable"
         in (eff, FTerm.Val (pos, def, expr))
         end
 

@@ -147,9 +147,9 @@ end) :> ISA
              | Epilogue => text "epilogue"
 
         fun appLabels f =
-            fn Def (_, oper) | Eff oper => Oper.appLabels f oper
+            fn (Def (_, oper) | Eff oper) => Oper.appLabels f oper
              | Param _ => () (* desired behaviour, but somewhat inconsistent *)
-             | Prologue | Epilogue => ()
+             | (Prologue | Epilogue) => ()
     end
 
     structure Transfer = Args.Instrs.Transfer

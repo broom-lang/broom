@@ -13,7 +13,7 @@ structure DefUses :> sig
         val compare : t * t -> order
     end
 
-    structure UseSiteSet : ORD_SET where type item = UseSite.t
+    structure UseSiteSet : ORD_SET where type Key.ord_key = UseSite.t
 
     val analyze : Cps.Program.t -> UseSiteSet.set DefMap.t * UseSiteSet.set LabelMap.t
 end = struct
@@ -63,7 +63,7 @@ end = struct
         of PrimApp {opn = _, tArgs = _, vArgs} =>
             Vector.foldl (fn (def', defUses) => useDef defUses def' (Expr use))
                          defUses vArgs
-         | Where {base, field = (_, fieldDef)} | With {base, field = (_, fieldDef)} =>
+         | (Where {base, field = (_, fieldDef)} | With {base, field = (_, fieldDef)}) =>
             let val defUses = useDef defUses base (Expr use)
             in useDef defUses fieldDef (Expr use)
             end
@@ -72,7 +72,7 @@ end = struct
          | Field (def, _) => useDef defUses def (Expr use)
          | Label label => useLabel defUses label (Expr use)
          | Cast (def, _) => useDef defUses def (Expr use)
-         | Type _ | Param _ | EmptyRecord | Const _ => defUses
+         | (Type _ | Param _ | EmptyRecord | Const _) => defUses
 
     fun analyzeStmts stmts defUses =
         DefMap.fold analyzeStmt defUses stmts

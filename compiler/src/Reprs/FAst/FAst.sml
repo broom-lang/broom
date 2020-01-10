@@ -34,7 +34,7 @@ structure FlexFAst = struct
         structure Concr = struct
             open Concr
 
-            datatype t = datatype concr
+            type t = concr
 
             val toDoc = concrToDoc
             fun toString env = Concr.toString (svarToDoc env)
@@ -95,7 +95,7 @@ structure FixedFAst = struct
         structure Concr = struct
             open Concr
 
-            datatype t = datatype concr
+            type t = concr
 
             fun toDoc env = Concr.toDoc (svarToDoc env)
             fun substitute _ = Concr.substitute (fn _ => fn _ => NONE)

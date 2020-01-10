@@ -77,7 +77,7 @@ end = struct
     exception TypeError of error
 
     fun kindOf program =
-        fn FnT _ | Closure _ | AnyClosure _ | Prim _ => Kind.TypeK
+        fn (FnT _ | Closure _ | AnyClosure _ | Prim _) => Kind.TypeK
 
     fun checkKind program (kind, t) =
         let val tkind = kindOf program t
@@ -90,15 +90,15 @@ end = struct
         fn PrimApp {opn, tArgs, vArgs} =>
             let val {tParams, vParams, codomain} = Expr.primopType opn
                 do if Vector.length tArgs = Vector.length tParams
-                   then Vector.zip (Vector.map #kind tParams, tArgs)
+                   then VectorExt.zip (Vector.map #kind tParams, tArgs)
                         |> Vector.app (checkKind program)
                    else raise TypeError (ArgcT (Vector.length tParams, Vector.length tArgs))
-                val mapping = Vector.zip (Vector.map #var tParams, tArgs)
+                val mapping = VectorExt.zip (Vector.map #var tParams, tArgs)
                               |> FType.Id.SortedMap.fromVector
                 val vParams = Vector.map (Type.substitute mapping) vParams
                 val codomain = Vector.map (Type.substitute mapping) codomain
             in if Vector.length vArgs = Vector.length vParams
-               then Vector.zip (vParams, vArgs)
+               then VectorExt.zip (vParams, vArgs)
                     |> Vector.app (checkDef program)
                else raise TypeError (Argc (Vector.length vParams, Vector.length vArgs))
              ; case codomain (* HACK *)
@@ -121,8 +121,8 @@ end = struct
               | _ => raise Fail "unreachable")
          | ClosureFn def =>
             (case defType program def
-             of Closure {tDomain, vDomain, clovers = _} | AnyClosure {tDomain, vDomain} =>
-                 FnT {tDomain, vDomain = Vector.append (vDomain, Singleton def)}
+             of (Closure {tDomain, vDomain, clovers = _} | AnyClosure {tDomain, vDomain}) =>
+                 FnT {tDomain, vDomain = VectorExt.append (vDomain, Singleton def)}
               | t => raise TypeError (NonClosure (def, t)))
          | Clover (def, i) =>
             (case defType program def
@@ -181,14 +181,14 @@ end = struct
             (case labelType program callee
              of FnT {tDomain, vDomain} =>
                 let do if Vector.length tArgs = Vector.length tDomain
-                       then Vector.zip (Vector.map #kind tDomain, tArgs)
+                       then VectorExt.zip (Vector.map #kind tDomain, tArgs)
                             |> Vector.app (checkKind program)
                        else raise TypeError (ArgcT (Vector.length tDomain, Vector.length tArgs))
-                    val mapping = Vector.zip (Vector.map #var tDomain, tArgs)
+                    val mapping = VectorExt.zip (Vector.map #var tDomain, tArgs)
                                   |> FType.Id.SortedMap.fromVector
                     val vDomain = Vector.map (Type.substitute mapping) vDomain
                 in if Vector.length vArgs = Vector.length vDomain
-                   then Vector.zip (vDomain, vArgs)
+                   then VectorExt.zip (vDomain, vArgs)
                         |> Vector.app (checkDef program)
                    else raise TypeError (Argc (Vector.length vDomain, Vector.length vArgs))
                 end
@@ -197,14 +197,14 @@ end = struct
             (case defType program callee
              of FnT {tDomain, vDomain} =>
                 let do if Vector.length tArgs = Vector.length tDomain
-                       then Vector.zip (Vector.map #kind tDomain, tArgs)
+                       then VectorExt.zip (Vector.map #kind tDomain, tArgs)
                             |> Vector.app (checkKind program)
                        else raise TypeError (ArgcT (Vector.length tDomain, Vector.length tArgs))
-                    val mapping = Vector.zip (Vector.map #var tDomain, tArgs)
+                    val mapping = VectorExt.zip (Vector.map #var tDomain, tArgs)
                                   |> FType.Id.SortedMap.fromVector
                     val vDomain = Vector.map (Type.substitute mapping) vDomain
                 in if Vector.length vArgs = Vector.length vDomain
-                   then Vector.zip (vDomain, vArgs)
+                   then VectorExt.zip (vDomain, vArgs)
                         |> Vector.app (checkDef program)
                    else raise TypeError (Argc (Vector.length vDomain, Vector.length vArgs))
                 end
@@ -215,7 +215,7 @@ end = struct
             end
          | Return (domain, args) =>
             if Vector.length args = Vector.length domain
-            then Vector.zip (domain, args) |> Vector.app (checkDef program)
+            then VectorExt.zip (domain, args) |> Vector.app (checkDef program)
             else raise TypeError (Argc (Vector.length domain, Vector.length args))
 
     and labelType (program : Program.t) label =

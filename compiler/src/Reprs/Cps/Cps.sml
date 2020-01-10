@@ -240,11 +240,11 @@ end = struct
              | FType.Prim p => Prim p
 
         val rec eq =
-            fn (FnT {tDomain, vDomain}, FnT {tDomain = tDomain', vDomain = vDomain'})
-             | (AnyClosure {tDomain, vDomain}, AnyClosure {tDomain = tDomain', vDomain = vDomain'}) =>
+            fn ( (FnT {tDomain, vDomain}, FnT {tDomain = tDomain', vDomain = vDomain'})
+               | (AnyClosure {tDomain, vDomain}, AnyClosure {tDomain = tDomain', vDomain = vDomain'}) ) =>
                 (case (tDomain, tDomain')
                  of (#[], #[]) =>
-                     Vector.zip (vDomain, vDomain')
+                     VectorExt.zip (vDomain, vDomain')
                      |> Vector.all eq
                   | _ => raise Fail "unimplemented")
              | (AppT {callee, args}, AppT {callee = callee', args = args'}) =>
@@ -268,7 +268,7 @@ end = struct
              | Record row => Record (f row)
              | Results ts => Results (Vector.map f ts)
              | Type t => Type (f t)
-             | TParam _ | EmptyRow | Singleton _ | Prim _ => t
+             | (TParam _ | EmptyRow | Singleton _ | Prim _) => t
 
         fun substitute mapping =
             fn t as FnT {tDomain, vDomain} =>
@@ -426,8 +426,8 @@ end = struct
              | t as (EmptyRecord | Type _ | Label _ | Param _ | Const _) => t
 
         fun foldLabels f acc =
-            fn ClosureNew (label, _) | Label label | Param (label, _) => f (label, acc)
-             | PrimApp _ | Result _ | ClosureFn _ | Clover _ | EmptyRecord | Type _ | Const _ => acc
+            fn (ClosureNew (label, _) | Label label | Param (label, _)) => f (label, acc)
+             | (PrimApp _ | Result _ | ClosureFn _ | Clover _ | EmptyRecord | Type _ | Const _) => acc
 
         val operToDoc =
             fn PrimApp {opn, tArgs, vArgs} =>
@@ -464,7 +464,7 @@ end = struct
             in  if Primop.isTotal opn
                 then { tParams, vParams = Vector.map Type.fromF domain
                      , codomain = #[Type.fromF codomain] }
-                else { tParams, vParams = Vector.prepend (Type.Prim Type.Prim.StackT, Vector.map Type.fromF domain)
+                else { tParams, vParams = VectorExt.prepend (Type.Prim Type.Prim.StackT, Vector.map Type.fromF domain)
                      , codomain = #[Type.Prim Type.Prim.StackT, Type.fromF codomain] }
             end
     end

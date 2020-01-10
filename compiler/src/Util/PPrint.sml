@@ -73,7 +73,7 @@ structure PPrint :> PPRINT = struct
              , minWidthWNL: int
              , run: state -> int * string }
 
-    fun isEmpty {minWidth = mwo, minWidthWNL = mw, ...} =
+    fun isEmpty ({minWidth = mwo, minWidthWNL = mw, ...} : t) =
         mwo = 0 andalso mw = inf
 
     fun mapRun f {minWidth = mwo, minWidthWNL = mw, run = run} =

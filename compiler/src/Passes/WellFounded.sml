@@ -74,7 +74,7 @@ end = struct
             text "_" <+> text "->" <+> Support.toDoc support
                 <+> typToDoc codomain
          | Record row => PPrint.braces (typToDoc row)
-         | row as RowExt _ | row as EmptyRow => rowToDoc row
+         | (row as RowExt _ | row as EmptyRow) => rowToDoc row
          | Scalar => text "scalar"
          | Unknown => text "?"
 
@@ -135,7 +135,7 @@ end = struct
             in ( RowExt {field = (label, fieldt), ext}
                , Support.union (fieldSupport, extSupport) )
             end
-         | typ as EmptyRow | typ as Scalar | typ as Unknown =>
+         | (typ as EmptyRow | typ as Scalar | typ as Unknown) =>
             (typ, Support.empty)
 
     val rec join : typ * typ -> typ * bool =
@@ -334,21 +334,21 @@ end = struct
                                Support.empty args )
 
               | checkExpr ini ctx (With (_, _, {base, field = (label, fieldExpr)})) =
-                let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
+                let val ((Record base | base as Scalar), baseSupport) = checkExpr ini ctx base
                     val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
                 in ( Record (withField base (label, fieldTyp))
                    , Support.union (baseSupport, fieldSupport) )
                 end
 
               | checkExpr ini ctx (Where (_, _, {base, field = (label, fieldExpr)})) =
-                let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
+                let val ((Record base | base as Scalar), baseSupport) = checkExpr ini ctx base
                     val (fieldTyp, fieldSupport) = checkExpr ini ctx fieldExpr
                 in ( Record (valOf (whereField base (label, fieldTyp)))
                    , Support.union (baseSupport, fieldSupport) )
                 end
 
               | checkExpr ini ctx (Without (_, _, {base, field})) =
-                let val (Record base | base as Scalar, baseSupport) = checkExpr ini ctx base
+                let val ((Record base | base as Scalar), baseSupport) = checkExpr ini ctx base
                 in (Record (valOf (withoutField base field)), baseSupport)
                 end
 
@@ -363,7 +363,7 @@ end = struct
               | checkExpr ini ctx (Use (pos, def as {id, var, ...})) =
                 let fun access ini via (def as {id, var, ...}) =
                         case IniEnv.access ini id
-                        of Delayed Initialized | Instant Initialized => (* ok unsupported: *)
+                        of (Delayed Initialized | Instant Initialized) => (* ok unsupported: *)
                             Support.empty
                          | Delayed Uninitialized => (* ok with support: *)
                             Support.singleton def
@@ -513,7 +513,7 @@ end = struct
 
               | emitExpr ini ctx (expr as Use (pos, def as {pos = defPos, id, typ, ...})) =
                 (case IniEnv.access ini id
-                 of Delayed Initialized | Instant Initialized => expr
+                 of (Delayed Initialized | Instant Initialized) => expr
                   | Delayed Uninitialized =>
                      let val boxDef = { pos = defPos, id = DefId.fresh (), var = Name.fresh ()
                                       , typ = FType.App { callee = FType.Prim PrimType.Box
@@ -537,7 +537,7 @@ end = struct
                 in IniEnv.pushBlock ini ids
                 end
 
-            and emitDefns ini stmts = Vector.flatMap (emitDefn ini) stmts
+            and emitDefns ini stmts = VectorExt.flatMap (emitDefn ini) stmts
 
             and emitDefn ini =
                 fn defn as Axiom _ => #[defn]
@@ -603,7 +603,7 @@ end = struct
                                                Val (pos, def, PrimApp (pos, boxTyp, Primop.BoxNew, #[typ], #[]))
                                                :: revBoxStmts
                                             | NONE => revBoxStmts)
-                                       | (Axiom _ | Expr _, revBoxStmts) => revBoxStmts)
+                                       | ((Axiom _ | Expr _), revBoxStmts) => revBoxStmts)
                                      [] stmts
                 in revBoxStmts |> List.rev |> Vector1.fromList
                 end

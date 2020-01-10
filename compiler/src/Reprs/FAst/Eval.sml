@@ -108,14 +108,14 @@ end = struct
 
     fun define env var value =
         case env
-        of Toplevel bindings | BlockScope (_, bindings) =>
+        of (Toplevel bindings | BlockScope (_, bindings)) =>
             NameHashTable.insert bindings (var, value)
-         | FnScope _ | PatternScope _ => raise Fail "unreachable"
+         | (FnScope _ | PatternScope _) => raise Fail "unreachable"
 
     fun lookup env var =
         case env
         of Toplevel toplevel => NameHashTable.lookup toplevel var
-         | FnScope (parent, var', value) | PatternScope (parent, var', value) =>
+         | (FnScope (parent, var', value) | PatternScope (parent, var', value)) =>
             if var = var'
             then value
             else lookup parent var
@@ -134,14 +134,14 @@ end = struct
          | App (_, _, {callee, arg}) => eval env (Callee (env, arg) :: cont) callee
          | TApp (_, _, {callee, ...}) => eval env (Forcee :: cont) callee
          | PrimApp (_, _, opn, _, args) =>
-            (case Vector.uncons args
+            (case VectorExt.uncons args
              of SOME (arg, args) => eval env (PrimArg (env, opn, args, []) :: cont) arg
               | NONE => applyPrim env cont opn #[])
          | EmptyRecord _ => continue cont Value.emptyRecord
-         | With (_, _, {base, field}) | Where (_, _, {base, field}) =>
+         | (With (_, _, {base, field}) | Where (_, _, {base, field})) =>
             eval env (Extension (env, field) :: cont) base
          | Without (_, _, {base, field}) => eval env (Exclude (env, field) :: cont) base
-         | Let (_, stmts, body) | Letrec (_, stmts, body) =>
+         | (Let (_, stmts, body) | Letrec (_, stmts, body)) =>
             let val env = enterBlock env
                 val stmt = Vector1.sub (stmts, 0)
                 val stmts = Vector1.Slice.slice (stmts, 1, NONE)
@@ -172,7 +172,7 @@ end = struct
 
     and applyPrim env cont opn args =
         case opn
-        of Primop.IAdd | Primop.ISub | Primop.IMul | Primop.IDiv =>
+        of (Primop.IAdd | Primop.ISub | Primop.IMul | Primop.IDiv) =>
             (case args
              of #[Int a, Int b] =>
                  let val n =

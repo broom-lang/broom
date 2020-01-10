@@ -104,7 +104,7 @@ end = struct
                                     val (stack, expr) =
                                         if Primop.isTotal opn
                                         then (stack, Builder.express builder {parent, oper = PrimApp {opn, tArgs, vArgs}})
-                                        else let val vArgs = Vector.prepend (stack, vArgs)
+                                        else let val vArgs = VectorExt.prepend (stack, vArgs)
                                                  val results = Builder.express builder {parent, oper = PrimApp {opn, tArgs, vArgs}}
                                              in ( Builder.express builder {parent, oper = Result (results, 0)}
                                                 , Builder.express builder {parent, oper = Result (results, 1)} )
@@ -232,11 +232,11 @@ end = struct
                     val cont =
                         FnK ( Anon retT
                             , fn {parent = _, stack = _, expr} =>
-                                  Return ( Vector.prepend (convertType retT, calleeSaveParams)
-                                         , Vector.prepend (expr, calleeSaveArgs)) )
+                                  Return ( VectorExt.prepend (convertType retT, calleeSaveParams)
+                                         , VectorExt.prepend (expr, calleeSaveArgs)) )
                     
                     val env =
-                        Vector.zip (params, paramDefs)
+                        VectorExt.zip (params, paramDefs)
                         |> Vector.foldl (fn (({id, ...}, param), env) => Env.insert (env, id, param))
                                         Env.empty
                     val f = { name = NONE (* TODO: SOME when possible *)
@@ -318,7 +318,7 @@ end = struct
                         do Builder.insertCont builder (kLabel, k)
                     in TrivlK kLabel
                     end
-                 | TrivK _ | TrivlK _ => cont
+                 | (TrivK _ | TrivlK _) => cont
 
             and contValue parent cont =
                 case trivializeCont parent cont

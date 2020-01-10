@@ -43,14 +43,14 @@ end = struct
             val args = Vector.map (fn {kind, ...} => SVar (UVar (Uv.fresh env kind)))
                                   params
             val mapping = (params, args)
-                        |> Vector.zipWith (fn ({var, kind = _}, arg) => (var, arg))
+                        |> VectorExt.zipWith (fn ({var, kind = _}, arg) => (var, arg))
                         |> FType.Id.SortedMap.fromVector
             val body = Concr.substitute env mapping body
         in f (env, args, body)
         end
 
     fun monotypeKind env pos =
-        fn t as Exists _ | t as ForAll _ => raise TypeError (NonMonotype (pos, t))
+        fn (t as Exists _ | t as ForAll _) => raise TypeError (NonMonotype (pos, t))
          | Arrow (_, {domain, codomain}) =>
             ( checkMonotypeKind env pos Kind.TypeK domain
             ; checkMonotypeKind env pos Kind.TypeK codomain

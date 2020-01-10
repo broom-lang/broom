@@ -68,7 +68,7 @@ end = struct
             
             (* HACK: Stmts were pushed to builder in reverse, so need to..: *)
             fun reverseStmts {name, argc, cconv, stmts, transfer} =
-                {name, argc, cconv, stmts = Vector.rev stmts, transfer}
+                {name, argc, cconv, stmts = VectorExt.rev stmts, transfer}
         in {conts = LabelMap.map reverseStmts conts, main}
         end
 end

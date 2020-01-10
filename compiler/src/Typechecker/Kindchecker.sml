@@ -22,7 +22,7 @@ end = struct
     structure FTerm = FlexFAst.Term
     structure Id = FType.Id
     structure Concr = FType.Concr
-    datatype concr = datatype Concr.t
+    type concr = Concr.t
     datatype sv = datatype FType.sv
     structure Uv = TypeVars.Uv
     structure Path = TypeVars.Path
@@ -207,7 +207,7 @@ end = struct
                           of Unvisited args => #typ (unvisitedBindingType (CType.pos t) env name args)
                            | Visiting _ =>
                               raise Fail ("Type cycle at " ^ Pos.spanToString (Env.sourcemap env) (CType.pos t))
-                           | Typed ({typ = (typ, _), ...}, _) | Visited ({typ, ...}, _) => typ )
+                           | (Typed ({typ = (typ, _), ...}, _) | Visited ({typ, ...}, _)) => typ )
 
                     val t = elaborate env t
                     val defs = Bindings.Type.defs absBindings
@@ -216,7 +216,7 @@ end = struct
 
             and declsScope env decls =
                 let val builder = Bindings.Expr.Builder.new ()
-                    do Vector.app (fn Cst.Extend (pos, var, t) | Cst.Override (pos, var, t) =>
+                    do Vector.app (fn (Cst.Extend (pos, var, t) | Cst.Override (pos, var, t)) =>
                                        let val def = {pos, id = DefId.fresh (), var, typ = SOME t}
                                        in case Bindings.Expr.Builder.insert builder pos var (Unvisited (def, NONE))
                                           of Left err => Env.error env (DuplicateBinding err)

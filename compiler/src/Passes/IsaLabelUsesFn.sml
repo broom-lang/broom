@@ -8,7 +8,7 @@ end
 
 functor IsaLabelUsesFn (Isa : ISA) :> LABEL_USES
     where type Isa.Stmt.t = Isa.Stmt.t
-    where type Isa.Transfer.t = Isa.Transfer.t
+    where type Isa.transfer = Isa.transfer
 = struct
     structure Isa = Isa
     structure LabelMap = Cps.Program.LabelMap
@@ -43,7 +43,7 @@ functor IsaLabelUsesFn (Isa : ISA) :> LABEL_USES
             val usesInStmt =
                 fn Def (_, expr) => usesInExpr expr
                  | Eff expr => usesInExpr expr
-                 | Param _ | Prologue | Epilogue => ()
+                 | (Param _ | Prologue | Epilogue) => ()
 
             val usesInTransfer = Isa.Instrs.Transfer.appLabels call
 
