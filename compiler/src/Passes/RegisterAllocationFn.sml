@@ -32,37 +32,46 @@ end = struct
                                    | NONE => ())
                              conts
             val builder = Builder.new ()
-            
-            fun allocateStmt label (stmt, env) =
-                Registerizer.stmt cconvs builder label env stmt
 
-            fun allocateSucc (label, env) =
+            fun allocateStmt label env hints stmt =
+                Registerizer.stmt cconvs builder label env hints stmt
+
+            fun allocateSucc hints (label, env) =
                 let val {calls, ...} = LabelMap.lookup useCounts label
                 in  if calls = 1
-                    then SOME (allocateEBB label env (LabelMap.lookup conts label))
+                    then allocateEBB label hints (LabelMap.lookup conts label)
                     else env
                 end
 
-            (* TODO: determine calling convention for succs and insert shuffling to their heads: *)
-            and allocateTransfer label transfer =
-                let val env =
-                        getOpt ( Transfer.foldLabels allocateSucc NONE transfer
-                               , Env.empty maxSlotCount )
-                in Registerizer.transfer cconvs builder label env transfer
+            (* TODO: Multiple successors calling convention negotiation: *)
+            and allocateTransfer label hints transfer =
+                let val hints' = Registerizer.transferHints hints transfer
+                    val env = Transfer.foldLabels (allocateSucc hints') (Env.empty maxSlotCount) transfer
+                in Registerizer.transfer cconvs builder label env hints transfer
                 end
 
-            and allocateEBB label entryEnv {name, cconv, argc, stmts, transfer} =
+            and allocateEBB label hints {name, cconv, argc, stmts, transfer} =
                 let do Builder.createCont builder label {name, cconv, argc}
-                    val env = allocateTransfer label transfer
-                    (* TODO: Shuffling to match `entryEnv` or calling convention *)
-                    do Label.HashTable.insert cconvs (label, #[]) (* FIXME *)
-                in Vector.foldr (allocateStmt label) env stmts
+                    fun allocateBlock hints stmts =
+                        case VectorSlice.uncons stmts
+                        of SOME (stmt, stmts) =>
+                            let val hints' = Registerizer.stmtHints hints stmt
+                                val env = allocateBlock hints' stmts
+                            in allocateStmt label env hints stmt
+                            end
+                         | NONE =>
+                            let val env = allocateTransfer label hints transfer
+                                (* TODO: Shuffling to match `entryEnv` or calling convention *)
+                                do Label.HashTable.insert cconvs (label, #[]) (* FIXME *)
+                            in env
+                            end
+                in allocateBlock hints (VectorSlice.full stmts)
                 end
 
             fun allocateCont (label, cont) =
                 let val {exports, escapes, calls} = LabelMap.lookup useCounts label
                 in  if exports > 0 orelse escapes > 0 orelse calls > 1
-                    then ignore (allocateEBB label NONE cont)
+                    then ignore (allocateEBB label Env.Hints.empty cont)
                     else ()
                 end
 

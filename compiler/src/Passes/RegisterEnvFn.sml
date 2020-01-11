@@ -1,7 +1,9 @@
 signature REGISTER_ENV = sig
     structure Abi : ABI
     structure Register : REGISTER where type t = Abi.RegIsa.Register.t
+    structure Hints : REGISTER_HINTS
 
+    type hints = Hints.t
     type builder = Abi.RegIsa.Program.Builder.builder
 
     type t
@@ -11,38 +13,44 @@ signature REGISTER_ENV = sig
     (* Use in some register.
        Allocates a register for the id if it does not have any.
        Returns the register for the definition site. *)
-    val regUse : t -> builder -> Label.t -> CpsId.t -> t * Register.t
+    val regUse : t -> hints -> builder -> Label.t -> CpsId.t -> t * Register.t
 
     (* Use in the given register.
        Arranges for the id to be (also) in the given register if not already. *)
-    val fixedRegUse : t -> builder -> Label.t -> CpsId.t -> Register.t -> t
+    val fixedRegUse : t -> hints -> builder -> Label.t -> CpsId.t -> Register.t -> t
 
     (* Definition in some register.
        If the id is in multiple locations, inserts moves and loads to account for them.
        Allocates a register for the id if it does not have any.
        Finally frees the locations used by the id.
        Returns the register for the use site. *)
-    val regDef : t -> builder -> Label.t -> CpsId.t -> t * Register.t
+    val regDef : t -> hints -> builder -> Label.t -> CpsId.t -> t * Register.t
 
     (* Use in the given register.
        Arranges for the id to be (also) in the given register if not already. *)
-    val fixedRegDef : t -> builder -> Label.t -> CpsId.t -> Register.t -> t
+    val fixedRegDef : t -> hints -> builder -> Label.t -> CpsId.t -> Register.t -> t
 
     (* Move id:s away from caller-save registers (except the return value registers). *)
     val evacuateCallerSaves : t -> builder -> Label.t -> t
 end
 
-functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
-    where type Abi.RegIsa.def = Abi.RegIsa.def
-    where type Abi.RegIsa.Program.Builder.builder = Abi.RegIsa.Program.Builder.builder
+functor RegisterEnvFn (Args : sig
+    structure Abi : ABI
+    structure Hints : REGISTER_HINTS where type Abi.RegIsa.def = Abi.RegIsa.def
+end) :> REGISTER_ENV
+    where type Abi.RegIsa.def = Args.Abi.RegIsa.def
+    where type Abi.RegIsa.Program.Builder.builder = Args.Abi.RegIsa.Program.Builder.builder
+    where type Hints.t = Args.Hints.t
 = struct
-    structure Abi = Abi
+    structure Abi = Args.Abi
+    structure Hints = Args.Hints
     structure Register = Abi.RegIsa.Register
     structure Stmt = Abi.RegIsa.Stmt
     structure Builder = Abi.RegIsa.Program.Builder
 
     datatype either = datatype Either.t
     type builder = Builder.builder
+    type hints = Hints.t
 
     val op|> = Fn.|>
 
@@ -94,7 +102,7 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
         val empty : t
         (* Try to allocate a register for the id.
            Return `NONE` if out of registers. *)
-        val allocate : t -> CpsId.t -> (t * Register.t) option
+        val allocate : t -> hints -> CpsId.t -> (t * Register.t) option
         (* Try to allocate a register for the id satisfying the predicate.
            Return `NONE` if out of satisfactory registers. *)
         val allocateEnsuring : t -> (Register.t -> bool) -> CpsId.t -> (t * Register.t) option
@@ -120,17 +128,6 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
         val empty : t = { occupieds = Map.empty
                         , frees = VectorExt.toList Abi.generalRegs }
 
-        fun allocate {occupieds, frees} id =
-            case frees
-            of reg :: frees =>
-                SOME ({occupieds = Map.insert (occupieds, reg, id), frees}, reg)
-             | [] => NONE
-
-        fun allocateEnsuring (regs as {occupieds, frees}) pred id =
-            Option.map (fn (frees, reg) =>
-                            ({occupieds = Map.insert (occupieds, reg, id), frees}, reg))
-                       (extract pred frees)
-
         fun allocateFixed (regs as {occupieds, frees}) id reg =
             case Map.find (occupieds, reg)
             of SOME currentId =>
@@ -141,6 +138,27 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
                 let val frees = valOf (pickEq frees reg)
                 in Right {occupieds = Map.insert (occupieds, reg, id), frees}
                 end
+
+        fun allocate regs hints id =
+            let val rec loop =
+                    fn hint :: hints =>
+                        (case allocateFixed regs id hint
+                         of Left _ => loop hints
+                          | Right regs => SOME (regs, hint))
+                     | [] => 
+                        let val {occupieds, frees} = regs
+                        in  case frees
+                            of reg :: frees =>
+                                SOME ({occupieds = Map.insert (occupieds, reg, id), frees}, reg)
+                             | [] => NONE
+                        end
+            in loop (Hints.find hints id)
+            end
+
+        fun allocateEnsuring (regs as {occupieds, frees}) pred id =
+            Option.map (fn (frees, reg) =>
+                            ({occupieds = Map.insert (occupieds, reg, id), frees}, reg))
+                       (extract pred frees)
 
         fun free (regs as {occupieds, frees}) reg =
             if Map.inDomain (occupieds, reg)
@@ -306,8 +324,8 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
         of SOME locs => Location.SortedSet.member (locs, Register reg)
          | NONE => false
 
-    fun allocate (env as {locations, registers, frame}) id =
-        case Registers.allocate registers id
+    fun allocate (env as {locations, registers, frame}) hints id =
+        case Registers.allocate registers hints id
         of SOME (registers, reg) =>
             let val loc = Register reg
             in ( { locations = insertLocation locations id loc
@@ -364,8 +382,8 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
                  raise Fail "unimplemented"
         else env
 
-    fun evacuateReg env builder label id reg =
-        let val (env, loc') = allocate env id
+    fun evacuateReg env hints builder label id reg =
+        let val (env, loc') = allocate env hints id
         in evacuateTo env builder label (Register reg) loc'
         end
 
@@ -414,12 +432,12 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
 
 (* # Public API *)
 
-    fun regUse env builder label id =
+    fun regUse env hints builder label id =
         case findReg env id
         of SOME reg => (env, reg)
          | NONE =>
             let val {locations, registers, frame} = env
-            in  case Registers.allocate registers id
+            in  case Registers.allocate registers hints id
                 of SOME (registers, reg) =>
                     ( { locations = insertLocation locations id (Register reg)
                       , registers, frame }
@@ -427,24 +445,24 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
                  | NONE => raise Fail "unimplemented"
             end
 
-    fun fixedRegUse (env as {locations, registers, frame} : t) builder label id reg =
+    fun fixedRegUse (env as {locations, registers, frame} : t) hints builder label id reg =
         case Registers.allocateFixed registers id reg
         of Right registers =>
             { locations = insertLocation locations id (Register reg)
             , registers, frame }
          | Left occupant =>
-            let val env = evacuateReg env builder label occupant reg
-            in fixedRegUse env builder label id reg
+            let val env = evacuateReg env hints builder label occupant reg
+            in fixedRegUse env hints builder label id reg
             end
 
-    fun regDef env builder label id =
-        let val (env, reg) = regUse env builder label id
+    fun regDef env hints builder label id =
+        let val (env, reg) = regUse env hints builder label id
             val env = free env builder label id
         in (env, reg)
         end
 
-    fun fixedRegDef env builder label id reg =
-        let val env = fixedRegUse env builder label id reg
+    fun fixedRegDef env hints builder label id reg =
+        let val env = fixedRegUse env hints builder label id reg
         in freeIn env builder label id reg
         end
 

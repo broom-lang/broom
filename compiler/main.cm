@@ -84,6 +84,7 @@ is
     src/Reprs/Abi/CallingConventionFn.sml
     src/Reprs/Abi/ABI.sml
     src/Platform/X64SysVAbi.sml
+    src/Passes/RegisterHints.sml
     src/Passes/RegisterEnvFn.sml
     src/Passes/Registerizer.sml
     src/Platform/X64SysVRegisterizer.sml

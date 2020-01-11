@@ -74,7 +74,7 @@ end = struct
                     case body
                     of Match (_, clauses) => Vector.foldl (analyzeClause program label) frees clauses
                      | _ => frees
-            in Transfer.foldDeps (useIn program label) frees body
+            in Transfer.foldlDeps (useIn program label) frees body
             end
 
         fun analyzeConts program conts frees =

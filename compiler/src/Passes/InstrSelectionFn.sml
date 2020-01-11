@@ -37,8 +37,9 @@ end = struct
             and selectTransfer transfer =
                 ( Cps.Cont.Transfer.foldLabels (fn (label, ()) => selectLabel label)
                                                () transfer
-                ; Cps.Cont.Transfer.foldDeps (fn (def, ()) => selectDef def)
-                                             () transfer
+                  (* Going right to left decreases register pressure from cont closure creation: *)
+                ; Cps.Cont.Transfer.foldrDeps (fn (def, ()) => selectDef def)
+                                              () transfer
                 ; Implement.transfer builder transfer )
 
             and selectCont (label, {name, cconv, tParams = _, vParams, body}) =

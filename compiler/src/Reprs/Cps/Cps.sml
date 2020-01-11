@@ -103,7 +103,8 @@ signature CPS_CONT = sig
 
         val toDoc : t -> PPrint.t
 
-        val foldDeps : (def * 'a -> 'a) -> 'a -> t -> 'a
+        val foldlDeps : (def * 'a -> 'a) -> 'a -> t -> 'a
+        val foldrDeps : (def * 'a -> 'a) -> 'a -> t -> 'a
         val foldLabels : (Label.t * 'a -> 'a) -> 'a -> t -> 'a
     end
 
@@ -332,11 +333,17 @@ end = struct
                     <+> Type.argsDoc Type.toDoc domain 
                     <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc args))
 
-            fun foldDeps f acc =
+            fun foldlDeps f acc =
                 fn Goto {callee = _, tArgs = _, vArgs} => Vector.foldl f acc vArgs
                  | Jump {callee, tArgs = _, vArgs} => Vector.foldl f (f (callee, acc)) vArgs
                  | Match (matchee, _) => f (matchee, acc)
                  | Return (_, args) => Vector.foldl f acc args
+
+            fun foldrDeps f acc =
+                fn Goto {callee = _, tArgs = _, vArgs} => Vector.foldr f acc vArgs
+                 | Jump {callee, tArgs = _, vArgs} => f (callee, Vector.foldr f acc vArgs)
+                 | Match (matchee, _) => f (matchee, acc)
+                 | Return (_, args) => Vector.foldr f acc args
 
             fun foldLabels f acc =
                 fn Goto {callee, ...} => f (callee, acc)
