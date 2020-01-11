@@ -93,6 +93,8 @@ is
 
     src/Passes/RegisterAllocationFn.sml
     src/Platform/X64SysVRegisterAllocation.sml
+    src/Passes/Logues.sml
+    src/Platform/X64Logues.sml
 
     src/Reprs/Isa/SeqIsa.sml
     src/Passes/Linearize.sml

@@ -1,5 +1,6 @@
 functor RegisterAllocationFn (Registerizer : REGISTERIZER) :> sig
-    val allocate : Registerizer.Abi.Isa.Program.t -> Registerizer.Abi.RegIsa.Program.t
+    val allocate : Registerizer.Abi.Isa.Program.t
+        -> {program : Registerizer.Abi.RegIsa.Program.t, maxSlotCount : int}
 end = struct
     structure LabelMap = Cps.Program.LabelMap
     structure Abi = Registerizer.Abi
@@ -21,6 +22,7 @@ end = struct
 
     fun allocate (program as {conts, main}) =
         let val useCounts = LabelUses.useCounts program
+            val maxSlotCount = ref 0
             
             val cconvs = Label.HashTable.mkTable (0, Subscript)
             do LabelMap.appi (fn kv as (label, _) =>
@@ -41,10 +43,11 @@ end = struct
                     else env
                 end
 
+            (* TODO: determine calling convention for succs and insert shuffling to their heads: *)
             and allocateTransfer label transfer =
                 let val env =
                         getOpt ( Transfer.foldLabels allocateSucc NONE transfer
-                               , Env.empty )
+                               , Env.empty maxSlotCount )
                 in Registerizer.transfer cconvs builder label env transfer
                 end
 
@@ -69,7 +72,8 @@ end = struct
             (* HACK: Stmts were pushed to builder in reverse, so need to..: *)
             fun reverseStmts {name, argc, cconv, stmts, transfer} =
                 {name, argc, cconv, stmts = VectorExt.rev stmts, transfer}
-        in {conts = LabelMap.map reverseStmts conts, main}
+        in { program = {conts = LabelMap.map reverseStmts conts, main}
+           , maxSlotCount = !maxSlotCount }
         end
 end
 

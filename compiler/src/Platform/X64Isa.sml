@@ -17,8 +17,11 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
             | LOADc of Word32.word (* MOV r64 imm64 *)
             | LOADl of Label.t     (* LEA the label *)
             | STORE of mem * def   (* MOV m64 r64 *)
+            | PUSH of def
+            | LEAVE
             | ADD of def * def
             | SUB of def * def
+            | SUBc of def * Word32.word (* HACK *)
             | IMUL of def * def
             | IDIV of def * def
             | CALL of string * def vector (* relative/absolute (foreign) CALL *)
@@ -123,8 +126,11 @@ end = struct
             | LOADc of Word32.word (* MOV r64 imm64 *)
             | LOADl of Label.t     (* LEA the label *)
             | STORE of mem * def   (* MOV m64 r64 *)
+            | PUSH of def
+            | LEAVE
             | ADD of def * def
             | SUB of def * def
+            | SUBc of def * Word32.word (* HACK *)
             | IMUL of def * def
             | IDIV of def * def
             | CALL of string * def vector (* relative/absolute (foreign) CALL *)
@@ -142,23 +148,29 @@ end = struct
         fun foldDefs f acc =
             fn LOAD mem => foldMemDefs f acc mem
              | STORE (mem, def) => f (def, foldMemDefs f acc mem)
+             | (PUSH def | SUBc (def, _)) => f (def, acc)
              | (ADD (def, def') | SUB (def, def') | IMUL (def, def') | IDIV (def, def')) =>
                 f (def', f (def, acc))
-             | (LOADc _ | LOADl _) => acc
+             | (LOADc _ | LOADl _ | LEAVE) => acc
              | (CALL (_, defs) | CALLd (_, defs)) => Vector.foldl f acc defs
              | CALLi (def, defs) => Vector.foldl f (f (def, acc)) defs
 
         fun appLabels f =
             fn LOADl label => f label
-             | (MOV _ | LOAD _ | LOADc _ | STORE _ | ADD _ | SUB _ | IMUL _ | IDIV _ | CALL _ | CALLd _ | CALLi _) => ()
+             | ( MOV _ | LOAD _ | LOADc _ | STORE _ | PUSH _ | LEAVE
+               | ADD _ | SUB _ | SUBc _ | IMUL _ | IDIV _ | CALL _ | CALLd _ | CALLi _ ) => ()
 
         val toDoc =
             fn MOV src => text "mov" <+> Register.toDoc src
              | LOAD mem => text "mov" <+> memToDoc mem
-             | LOADc n => text "mov" <+> text (Int.toString (Word32.toInt n)) (* HACK: toInt *)
+             | LOADc n => text "mov" <+> PPrint.int (Word32.toInt n) (* HACK: toInt *)
              | LOADl label => text "lea" <+> Label.toDoc label
              | STORE (target, src) =>
                 text "mov" <+> memToDoc target <+> Register.toDoc src
+             | PUSH def => text "push" <+> Register.toDoc def
+             | LEAVE => text "leave"
+             | SUBc (def, n) =>
+                text "sub" <+> Register.toDoc def <> comma <+> PPrint.int (Word32.toInt n) (* HACK: toInt *)
              | CALLd (callee, args) =>
                 text "call" <+> text (callee ^ "@PLT")
                 <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))

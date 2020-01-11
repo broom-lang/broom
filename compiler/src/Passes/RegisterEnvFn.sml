@@ -6,7 +6,7 @@ signature REGISTER_ENV = sig
 
     type t
 
-    val empty : t
+    val empty : int ref -> t
 
     (* Use in some register.
        Allocates a register for the id if it does not have any.
@@ -164,7 +164,7 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
             type item = t
             type t
 
-            val empty : t
+            val empty : int ref -> t
             val allocate : t -> t * item
             val free : t -> item -> t
         end
@@ -185,23 +185,28 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
         structure Pool = struct
             type item = t
 
-            type t = {reusables : item list, created : int}
+            type t = {reusables : item list, created : int, maxSlotCount : int ref}
 
-            val empty = {reusables = [], created = 0}
+            fun empty maxSlotCount = {reusables = [], created = 0, maxSlotCount}
 
-            fun allocate {reusables, created} =
+            fun allocate {reusables, created, maxSlotCount} =
                 case reusables
-                of x :: reusables => ({reusables, created}, x)
-                 | [] => ({reusables, created = created + 1}, created)
+                of x :: reusables => ({reusables, created, maxSlotCount}, x)
+                 | [] =>
+                    let val created' = created + 1
+                        do maxSlotCount := Int.max (!maxSlotCount, created')
+                    in ({reusables, created = created', maxSlotCount}, created)
+                    end
 
-            fun free {reusables, created} x = {reusables = x :: reusables, created}
+            fun free {reusables, created, maxSlotCount} x =
+                {reusables = x :: reusables, created, maxSlotCount}
         end
     end
 
     structure StackFrame :> sig
         type t
 
-        val empty : t
+        val empty : int ref -> t
         val lookup : t -> StackSlot.t -> CpsId.t
         val allocate : t -> CpsId.t -> t * StackSlot.t
         val free : t -> StackSlot.t -> t
@@ -211,7 +216,7 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
 
         type t = { occupieds : CpsId.t Map.map, frees : Pool.t}
 
-        val empty = {occupieds = Map.empty, frees = Pool.empty}
+        fun empty maxSlotCount = {occupieds = Map.empty, frees = Pool.empty maxSlotCount}
 
         fun lookup ({occupieds, ...} : t) slot = Map.lookup (occupieds, slot)
 
@@ -278,10 +283,10 @@ functor RegisterEnvFn (Abi : ABI) :> REGISTER_ENV
 
 (* # Pure Env operations *)
 
-    val empty =
+    fun empty maxSlotCount =
         { locations = CpsId.SortedMap.empty
         , registers = Registers.empty
-        , frame = StackFrame.empty }
+        , frame = StackFrame.empty maxSlotCount }
 
     fun locationsOf ({locations, ...} : t) id = CpsId.SortedMap.find (locations, id)
 

@@ -37,6 +37,10 @@ end = struct
                     line ("\tleaq\t" ^ convertLabel label ^ "(%rip), " ^ convertReg target)
                  | (NONE, Oper.STORE (dest, src)) =>
                     line ("\tmovq\t" ^ convertReg src ^ ", " ^ convertMem dest)
+                 | (NONE, Oper.PUSH src) => line ("\tpushq\t" ^ convertReg src)
+                 | (NONE, Oper.LEAVE) => line "\tleave"
+                 | (SOME target, Oper.SUBc (_, n)) =>
+                    line ("\tsubq\t$" ^ Int.toString (Word32.toInt n) ^ ", " ^ convertReg target)
                  | (SOME _, Oper.CALLd (sym, _)) =>
                     line ("\tcall\t" ^ sym ^ "@PLT")
 

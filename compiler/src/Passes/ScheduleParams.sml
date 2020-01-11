@@ -14,17 +14,8 @@ end = struct
 
     val scheduleStmts = VectorExt.stableSort compareStmts
 
-(* HACK: Inserting prologue here is not very semantic but most convenient: *)
     fun scheduleCont {name, cconv, argc, stmts, transfer} =
         let val stmts = scheduleStmts stmts
-            val stmts =
-                if Option.isSome cconv
-                then VectorExt.prepend (Stmt.Prologue, stmts)
-                else stmts
-            val stmts =
-                if Transfer.isReturn transfer
-                then VectorExt.append (stmts, Stmt.Epilogue)
-                else stmts
         in {name, cconv, argc, stmts, transfer}
         end
 
