@@ -10,7 +10,7 @@ Assuming 64-bit throughout.
 One of
 
 * Ptr at offset, size 8 bytes, raw pointer
-* Poly at offset, size 8 bytes, NaN-tagged
+* Poly at offset, size 8 bytes, tagged value
 * Scalar at offset, of size
 
 ## Heap Objects
@@ -33,13 +33,8 @@ polymorphic locations (e.g. through polymorphic functions or heap slots).
 
 ## Boxing Scheme
 
-64-bit NaN-boxing:
+Tagged pointers, 3-bit tags on 64-bit and 2-bit tags on 32-bit.
 
-* No-op for 64-bit floats
-* Other values are embedded into (IEEE 754-2008) quiet NaNs
-  (x 11111111111 1x...)
-    - Pointers are 1 11111111111 1111x...
-    - Scalars are 0 11111111111 1111x...
 * 64-bit integers need to be heap-allocated and then tagged as pointers. The
   heap layout is that of a struct with one 64-bit scalar field.
 
