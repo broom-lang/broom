@@ -215,19 +215,23 @@ end = struct
         end
 
     fun main (name, args) =
-        case parseArgs args
-        of Either.Right cmd =>
-            (case cmd
-             of Build args => 
-                 let val status = build args
-                 in TextIO.closeIn (#instream (#input args))
-                  ; status
-                 end
-              | Repl =>
-                 ( repl ()
-                 ; OS.Process.success ))
-         | Either.Left errors =>
-            ( List.app (fn error => print (error ^ ".\n")) errors
+        (case parseArgs args
+         of Either.Right cmd =>
+             (case cmd
+              of Build args => 
+                  let val status = build args
+                  in TextIO.closeIn (#instream (#input args))
+                   ; status
+                  end
+               | Repl =>
+                  ( repl ()
+                  ; OS.Process.success ))
+          | Either.Left errors =>
+             ( List.app (fn error => print (error ^ ".\n")) errors
+             ; OS.Process.failure ))
+        handle exn =>
+            ( print ("unhandled exception: " ^ exnMessage exn ^ "\n")
+            ; List.app (fn s => print ("\t" ^ s ^ "\n")) (SMLofNJ.exnHistory exn)
             ; OS.Process.failure )
 end
 
