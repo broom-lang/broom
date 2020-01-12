@@ -3,7 +3,7 @@ functor InstrSelectionFn (Args : sig
 
     structure Implement : sig
         val expr : Isa.Program.Builder.builder -> Label.t -> CpsId.t -> Cps.Expr.oper -> unit
-        val transfer : Isa.Program.Builder.builder -> Cps.Cont.Transfer.t -> Isa.Transfer.t
+        val transfer : Isa.Program.Builder.builder -> Label.t -> Cps.Cont.Transfer.t -> Isa.Transfer.t
     end
 end) :> sig
     val selectInstructions : Cps.Program.t -> Args.Isa.Program.t
@@ -34,17 +34,17 @@ end = struct
                      ; selectExpr def (Cps.Program.defSite program def) )
                 else ()
 
-            and selectTransfer transfer =
+            and selectTransfer transfer label =
                 ( Cps.Cont.Transfer.foldLabels (fn (label, ()) => selectLabel label)
                                                () transfer
                   (* Going right to left decreases register pressure from cont closure creation: *)
                 ; Cps.Cont.Transfer.foldrDeps (fn (def, ()) => selectDef def)
                                               () transfer
-                ; Implement.transfer builder transfer )
+                ; Implement.transfer builder label transfer )
 
             and selectCont (label, {name, cconv, tParams = _, vParams, body}) =
                 ( Builder.createCont builder label {name, cconv, argc = Vector.length vParams}
-                ; Builder.setTransfer builder label (selectTransfer body) )
+                ; Builder.setTransfer builder label (selectTransfer body label) )
 
             and selectLabel label =
                 if not (Label.HashSetMut.member (visitedLabels, label))

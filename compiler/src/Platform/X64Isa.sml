@@ -24,6 +24,7 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
             | SUBc of def * Word32.word (* HACK *)
             | IMUL of def * def
             | IDIV of def * def
+            | CMP of def * Word32.word
             | CALL of string * def vector (* relative/absolute (foreign) CALL *)
             | CALLd of string * def vector (* dynamically linked (foreign) CALL *)
             | CALLi of def * def vector    (* indirect (foreign) CALL *)
@@ -40,7 +41,7 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
     structure Transfer : sig
         type def = def
 
-        datatype pred = Eq
+        datatype pred = Neq
 
         datatype t
             = JMP of Label.t * def vector (* relative/absolute JMP *)
@@ -133,6 +134,7 @@ end = struct
             | SUBc of def * Word32.word (* HACK *)
             | IMUL of def * def
             | IDIV of def * def
+            | CMP of def * Word32.word
             | CALL of string * def vector (* relative/absolute (foreign) CALL *)
             | CALLd of string * def vector (* dynamically linked (foreign) CALL *)
             | CALLi of def * def vector    (* indirect (foreign) CALL *)
@@ -158,7 +160,7 @@ end = struct
         fun appLabels f =
             fn LOADl label => f label
              | ( MOV _ | LOAD _ | LOADc _ | STORE _ | PUSH _ | LEAVE
-               | ADD _ | SUB _ | SUBc _ | IMUL _ | IDIV _ | CALL _ | CALLd _ | CALLi _ ) => ()
+               | ADD _ | SUB _ | SUBc _ | IMUL _ | IDIV _ | CMP _ | CALL _ | CALLd _ | CALLi _ ) => ()
 
         val toDoc =
             fn MOV src => text "mov" <+> Register.toDoc src
@@ -171,6 +173,8 @@ end = struct
              | LEAVE => text "leave"
              | SUBc (def, n) =>
                 text "sub" <+> Register.toDoc def <> comma <+> PPrint.int (Word32.toInt n) (* HACK: toInt *)
+             | CMP (def, n) =>
+                text "cmp" <+> Register.toDoc def <> comma <+>  PPrint.int (Word32.toInt n) (* HACK: toInt *)
              | CALLd (callee, args) =>
                 text "call" <+> text (callee ^ "@PLT")
                 <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))
@@ -179,7 +183,7 @@ end = struct
     structure Transfer = struct
         type def = def
 
-        datatype pred = Eq
+        datatype pred = Neq
 
         datatype t
             = JMP of Label.t * def vector (* relative/absolute JMP *)
@@ -206,6 +210,9 @@ end = struct
              | (JMPi _ | RET _) => ()
              | Jcc (_, conseq, alt) => (f conseq; f alt)
 
+        val predToDoc =
+            fn Neq => text "ne"
+
         val toDoc =
             fn JMP (label, args) =>
                 text "jmp" <+> Label.toDoc label
@@ -213,6 +220,9 @@ end = struct
              | JMPi (def, args) =>
                 text "jmp" <+> Register.toDoc def
                 <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))
+             | Jcc (pred, target, target') =>
+                text "j" <> predToDoc pred
+                <+> Label.toDoc target <> comma <+> Label.toDoc target'
              | RET args =>
                 text "ret"
                 <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))

@@ -532,9 +532,9 @@ end = struct
             let val {name, cconv, tParams, vParams, body} = LabelMap.lookup conts label
             in text "fun"
                <> (case cconv
-                   of SOME cconv => space <> CallingConvention.toDoc cconv
-                    | NONE => PPrint.empty)
-               <+> Label.toDoc label
+                   of SOME cconv => space <> CallingConvention.toDoc cconv <> space
+                    | NONE => space)
+               <> Label.toDoc label
                <+> Type.argsDoc FType.defToDoc tParams
                <+> parens (punctuate (comma <> space) (Vector.map Type.toDoc vParams)) <> text ":"
                <> nest 4 (newline <> exprsToDoc program visited exprs <++> Cont.Transfer.toDoc body)

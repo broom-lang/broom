@@ -52,7 +52,7 @@ end = struct
         in  case Parser.parse input
             of Right program =>
                 let val _ = log (PPrint.pretty 80 (Cst.Term.beginToDoc program) ^ "\n")
-                    val _ = log "===\n\n"
+                    val _ = log "# Typechecking...\n\n"
                     val tenv = TypecheckingEnv.default sourcemap
                 in case Typechecker.elaborateProgram tenv program
                    of Right (program, _) =>
@@ -65,7 +65,7 @@ end = struct
                        in  case WellFounded.elaborate program
                            of Right program =>
                                ( log (PPrint.pretty 80 (FixedFAst.Term.programToDoc () program) ^ "\n")
-                               ; log "===\n\n"
+                               ; log "# CPS converting...\n\n"
                                ; if lint
                                  then case FAstTypechecker.typecheckProgram program
                                       of SOME err => raise Fail "Lint failed"
@@ -79,7 +79,7 @@ end = struct
                                         else ()
                                      val program = X64SysVCpsConvert.cpsConvert program
                                      val _ = log (PPrint.pretty 80 (Cps.Program.toDoc program) ^ "\n")
-                                     do log "===\n\n"
+                                     do log "# Closure converting...\n\n"
                                      do if lint
                                         then case CpsTypechecker.checkProgram program
                                              of Right () => ()
@@ -87,7 +87,7 @@ end = struct
                                         else ()
                                      val program = ClosureConvert.convert program
                                      val _ = log (PPrint.pretty 80 (Cps.Program.toDoc program) ^ "\n")
-                                     do log "===\n\n"
+                                     do log "# Selecting instructions...\n\n"
                                      do if lint
                                         then case CpsTypechecker.checkProgram program
                                              of Right () => ()
@@ -95,19 +95,19 @@ end = struct
                                         else ()
                                     val program = X64InstrSelection.selectInstructions program
                                     do log (PPrint.pretty 80 (X64Isa.Program.toDoc program) ^ "\n")
-                                    do log "===\n\n"
+                                    do log "# Hoisting parameters...\n\n"
                                     val program = X64ScheduleParams.schedule program
                                     do log (PPrint.pretty 80 (X64Isa.Program.toDoc program) ^ "\n")
-                                    do log "===\n\n"
+                                    do log "# Allocating registers...\n\n"
                                     val allocated as {program, ...} = X64SysVRegisterAllocation.allocate program
                                     do log (PPrint.pretty 80 (X64RegIsa.Program.toDoc program) ^ "\n")
-                                    do log "===\n\n"
+                                    do log "# Inserting logues...\n\n"
                                     val program = X64Logues.insert allocated
                                     do log (PPrint.pretty 80 (X64RegIsa.Program.toDoc program) ^ "\n")
-                                    do log "===\n\n"
+                                    do log "# Linearizing...\n\n"
                                     val program = X64Linearize.linearize program
                                     do log (PPrint.pretty 80 (X64SeqIsa.Program.toDoc program) ^ "\n")
-                                    do log "===\n\n"
+                                    do log "# Emitting assembly...\n\n"
                                  in GasX64SysVAbiEmit.emit TextIO.stdOut program
                                   ; OS.Process.success
                                  end )

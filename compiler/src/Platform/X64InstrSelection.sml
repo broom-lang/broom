@@ -3,6 +3,7 @@ structure X64InstrSelection = InstrSelectionFn(struct
     structure Builder = Isa.Program.Builder
 
     datatype oper = datatype Cps.Expr.oper
+    datatype pat = datatype Cps.Cont.Transfer.pat
     datatype transfer = datatype Cps.Cont.Transfer.t
     datatype instr = datatype X64Instructions.Oper.t
     datatype stmt = datatype Isa.Stmt.t
@@ -53,10 +54,14 @@ structure X64InstrSelection = InstrSelectionFn(struct
                 Builder.insertStmt builder parent (Def (def, LOADc (Word32.fromInt n)))
              | _ => () (* FIXME *)
 
-        fun transfer builder =
+        fun transfer builder label =
             fn Goto {callee, tArgs = _, vArgs} => JMP (callee, vArgs)
              | Jump {callee, tArgs = _, vArgs} => JMPi (callee, vArgs)
-             | Match (matchee, #[{pattern = Any, target}]) => JMP (target, #[])
+             | Match (matchee, #[{pattern = AnyP, target}]) => JMP (target, #[])
+             | Match (matchee, #[ {pattern = ConstP (Const.Int n), target}
+                                , {pattern = AnyP, target = target'} ]) => (* FIXME: n might not fit in 32 bits: *)
+                ( Builder.insertStmt builder label (Eff (CMP (matchee, Word32.fromInt n)))
+                ; Jcc (X64Instructions.Transfer.Neq, target, target') )
              | Return (_, args) => RET args
     end
 end)
