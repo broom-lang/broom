@@ -1,11 +1,15 @@
-# Memory Layouts
+**************
+Memory Layouts
+**************
 
 Most of this is implementation-dependent and can also be affected by
 compiler optimizations.
 
 Assuming 64-bit throughout.
 
-## Heap Object Slot Types
+======================
+Heap Object Slot Types
+======================
 
 One of
 
@@ -13,7 +17,9 @@ One of
 * Poly at offset, size 8 bytes, tagged value
 * Scalar at offset, of size
 
-## Heap Objects
+============
+Heap Objects
+============
 
 * Structs
 * Variants
@@ -23,26 +29,37 @@ One of
 * Polymorphic variants are two words; one Ptr for tag symbol and one Poly for
   value
 
-## Heap Object Headers
+===================
+Heap Object Headers
+===================
 
-## Scalars in Registers
+====================
+Scalars in Registers
+====================
 
 Scalar values in registers are in native unboxed format if their type is
 statically monomorphic. Scalar values need to be (un)boxed when passed to/from
 polymorphic locations (e.g. through polymorphic functions or heap slots).
 
-## Boxing Scheme
+=============
+Boxing Scheme
+=============
 
 Tagged pointers, 3-bit tags on 64-bit and 2-bit tags on 32-bit.
 
 * 64-bit integers need to be heap-allocated and then tagged as pointers. The
   heap layout is that of a struct with one 64-bit scalar field.
 
-## Finding Pointers
+================
+Finding Pointers
+================
 
-### Roots
+-----
+Roots
+-----
 
 * A (failed) safepoint
+
     1. saves all definitely non-pointer (i.e. monomorphic scalar) registers on
        the stack (or in callee-save registers).
     2. saves all potentially pointer (i.e. the remaining) registers on the stack
@@ -52,19 +69,25 @@ Tagged pointers, 3-bit tags on 64-bit and 2-bit tags on 32-bit.
     4. garbage collection proceeds
     5. safepoint restores registers and restarts the allocation
 
-### Scanning
+--------
+Scanning
+--------
 
 * If the slot is definitely a pointer, check that it is non-null
   (i.e. initialized by the mutator), mark ref (and overwrite slot if moving GC).
 * If the slot is not necessarily a pointer, check that the MSB is 1, convert
   into a canonical pointer, mark ref, re-tag (and overwrite slot if moving GC).
 
-## Allocation
+==========
+Allocation
+==========
 
 * Freshly allocated memory is zeroed.
 * Allocator stores layout header and returns pointer to start of actual object.
 
-## Type Descriptors
+================
+Type Descriptors
+================
 
 Every heap object header is a type descriptor (mark bytes are stored in a side
 table). The tag of tagged scalars is an index into a global compiler-generated

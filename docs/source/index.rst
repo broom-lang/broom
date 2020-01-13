@@ -11,6 +11,7 @@ Welcome to Broom's documentation!
    :caption: Contents:
 
    introduction
+   design/index
 
 
 Indices and tables

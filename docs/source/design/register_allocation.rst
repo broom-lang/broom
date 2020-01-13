@@ -1,4 +1,6 @@
-# Register Allocation
+*******************
+Register Allocation
+*******************
 
 * Register allocation works on Extended Basic Blocks. An EBB is a tree of
   continuations where only the root is exported, escapes into a closure or is
@@ -12,12 +14,15 @@
   Scheme compiler Twobit.
 * So we always start at a transfer. Furthermore the transfer must be a direct
   or indirect unconditional branch because
+
     1. Critical edges are not allowed so conditional branches can never be EBB
        leaves.
     2. FFI calls cannot have TCO since that would elide our one and only native
        stack frame. So they are never at tail position.
+
 * The leaf transfer will have a number of arguments and possibly use a register
   as an indirect call target as well.
+
     - For a direct call, get the target parameter registers and assign them to
       the arguments. If the target did not have parameter registers assigned,
       assign them first in some conventional way somewhat like closures or the
@@ -29,7 +34,9 @@
       this point.
     - Then just emit the unconditional branch without any arguments (and with
       the allocated indirection register).
+
 * Regular 'statement' instructions
+
     1. If a target def has no register, allocate a register for it, moving
        and loading other defs if necessary
     2. If a target def has a stack slot, emit a store to it
@@ -37,12 +44,16 @@
     3. Look up / allocate registers for source operands, moving and loading
        other defs if necessary
     4. Emit the instruction itself
+
 * CISC complications
+
     - Fixed registers (e.g. mul on accumulator register)
     - Two-operand code
     - Taking advantage of memory operands
+
 * Multiple results (e.g. from mul, div)
 * Foreign calls
+
     - non-reentrant
         1. Emit restoration code for defs in caller-save registers. Start with
            moves from free callee-save registers. If that is not enough, use
@@ -54,26 +65,37 @@
         4. Emit the call instruction
         5. Argument shuffling and stack-pushing
     - reentrant
+
 * Foreign callbacks
+
     - Callee-save registers
     - Returns
+
 * Conditional branches and merging register environments there
 * Continuation parameters
+
     - If the continuation has no register assignment for the parameters, set
       its parameter assignment to the current one. If there are unused
       parameters (not found in register environment) leave those unassigned,
       to be filled in later at calls (at this point all known continuations
       will have at least one call).
+
 * Stack spills not due to foreign calls
 * Parameter spills (i.e. known function has too many parameters to fit in
   registers)
 * Safepoints
 
-## Arguments
+=========
+Arguments
+=========
 
-## Results
+=======
+Results
+=======
 
-## Allocating a Register
+=====================
+Allocating a Register
+=====================
 
 This is the case where any (general-purpose) register will do. This happens
 when a def is encountered for the first time in the backward traversal, as an
@@ -89,22 +111,24 @@ instruction itself.
 3. Otherwise choose another def by some heuristic and spill it by emitting a
    load to it from a free stack slot.
 
-## Stack Slots
+===========
+Stack Slots
+===========
 
 Native stack slots are used as spill targets. A stack slot is the size of a
 register (4/8 bytes). The stack slots are addressed with offsets from the stack
-pointer (e.g. `movq %rax, (%rsp)` to store rax to first slot or
-`movq 8(%rsp), %rdi` to restore rdi from second slot).
+pointer (e.g. ``movq %rax, (%rsp)`` to store rax to first slot or
+``movq 8(%rsp), %rdi`` to restore rdi from second slot).
 
 Broom code uses its own stack (of heap-allocated continuations).  However when
-Broom is first called from native code (as always happens because `main` is not
-`_start`), it sets up a single native stack frame:
+Broom is first called from native code (as always happens because ``main`` is not
+``_start``), it sets up a single native stack frame:
 
-1. Push the frame pointer (e.g. `pushq %rbp`)
-2. Set the frame pointer to equal the stack pointer (e.g. `movq %rsp, %rbp`)
-3. Subtract `8 * (n (+ 1))` from the stack pointer
+1. Push the frame pointer (e.g. ``pushq %rbp``)
+2. Set the frame pointer to equal the stack pointer (e.g. ``movq %rsp, %rbp``)
+3. Subtract ``8 * (n (+ 1))`` from the stack pointer
 
-`n` is the maximum number of spill slots needed at any one time. Since we use
+``n`` is the maximum number of spill slots needed at any one time. Since we use
 whole-program compilation this is easy to compute during register allocation
 and patch into FFI callbacks afterwards. This gives a stack frame of n (+ 1)
 slots (plus one for fp). On x64 SysV ABI we might have to add a useless extra
@@ -112,13 +136,13 @@ slot (the (+ 1)) if n is not even to align the stack to 16 bytes for FFI calls.
 
 And of course when returning to native code we need to
 
-1. Set the stack pointer to equal the frame pointer (e.g. `movq %rbp, %rsp`)
-2. Pop the frame pointer (e.g. `popq %rbp`)
-3. Return (e.g. `ret`)
+1. Set the stack pointer to equal the frame pointer (e.g. ``movq %rbp, %rsp``)
+2. Pop the frame pointer (e.g. ``popq %rbp``)
+3. Return (e.g. ``ret``)
 
-(On x64 `leave` can also be used to achieve both 1. and 2.)
+(On x64 ``leave`` can also be used to achieve both 1. and 2.)
 
-We can support a `-fno-frame-pointer` optimization option later.
+We can support a ``-fno-frame-pointer`` optimization option later.
 
 To support separate compilation the stack frame max size computation could be
 moved to link time or we might need to have a dynamically sized stack frame.
