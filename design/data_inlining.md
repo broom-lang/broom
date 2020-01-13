@@ -11,13 +11,13 @@ and loading from them. (Compiler-generated) constructor functions store into
 uninitialized fields and immutable fields are updated by copying the aggregate
 and then storing, so more complex semantics consist of those three operations.
 
-# Loads and Stores
+## Loads and Stores
 
 The offset and size can be looked up from the type info in the target header.
 For stores the size could also be found in the field value header but the
 offset has to be looked up from the target anyway.
 
-# Allocation
+## Allocation
 
 This is the tricky case. The aggregate value does not exist yet, so we can't
 get the type descriptor from its header; on the contrary, we must create it and
@@ -36,4 +36,22 @@ initialized later as it needs to be backpatched for recursion cycles. Here we
 could just use the unoptimized version with a separate backpatching box (which
 we always use in the MVP) if the type descriptor cannot be statically
 determined.
+
+## Mutable Fields
+
+Mutable fields of variant type are tricky because the variants often have
+different sizes so we cannot just size the field for the initial value.
+
+## Mutable Values
+
+Values with mutable fields cannot be inlined because they have to have a single
+address for mutation to be shared between aliases simply.
+
+## Cycles
+
+Recursive datatypes with no indirection would have infinite size. We need to
+prevent that by forcing pointers at recursion points. For polymorphic data this
+has to be done at runtime.
+
+Polymorphic recursion?
 
