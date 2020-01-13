@@ -38,7 +38,7 @@ Tagged pointers, 3-bit tags on 64-bit and 2-bit tags on 32-bit.
 * 64-bit integers need to be heap-allocated and then tagged as pointers. The
   heap layout is that of a struct with one 64-bit scalar field.
 
-## Finding pointers
+## Finding Pointers
 
 ### Roots
 
@@ -63,4 +63,14 @@ Tagged pointers, 3-bit tags on 64-bit and 2-bit tags on 32-bit.
 
 * Freshly allocated memory is zeroed.
 * Allocator stores layout header and returns pointer to start of actual object.
+
+## Type Descriptors
+
+Every heap object header is a type descriptor (mark bytes are stored in a side
+table). The tag of tagged scalars is an index into a global compiler-generated
+table of type descriptors.
+
+A type descriptor has the size and the alignment of the type followed by an
+inline array of pairs of field offsets and type descriptors. Scalars, arrays
+and the type descriptor descriptor fixpoint are different...
 
