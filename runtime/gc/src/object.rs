@@ -108,13 +108,12 @@ impl Object {
 // ---
 
 // TODO: Sneak bit in for `is_oref`
-// TODO: Repeated fields in e.g. Array
 /// Object layout / runtime type
 #[repr(C)]
 struct FieldLayout {
-    offset: usize,
+    offset: usize, // this always gets cast to isize, so an extra (mutator-slowing?) bit here
     size: usize,
-    layout: ORef<Layout> // tag this with oref and repeated bits?
+    layout: ORef<Layout> // tag this pointer with oref bit? Or use VRef tag number here for small scalars?
 }
 
 impl FieldLayout {
@@ -132,12 +131,12 @@ impl FieldLayout {
     }
 }
 
-// Maybe we sneak the arrayness info in here?
 #[repr(C)]
 struct Layout {
     base: Object, // Layouts are also Objects. Or maybe we just put them in "perm gen" instead?
     size: usize,
-    align: usize,
+    align: u16,
+    is_array: bool, // We have at least 15 more bits for expansion here
     field_count: usize
 }
 
