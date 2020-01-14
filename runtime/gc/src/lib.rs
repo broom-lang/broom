@@ -7,6 +7,7 @@ use std::slice;
 
 mod util;
 mod zone;
+mod object;
 
 use util::{IntrSlice, IntrSliceMut};
 
