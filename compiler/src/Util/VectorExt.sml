@@ -67,6 +67,12 @@ structure VectorExt = struct
         in tabulate (len, fn i => f (sub (xs, i), sub (ys, i), sub (zs, i)))
         end
 
+    fun sort cmp vs =
+        let val arr = toArray vs
+        in ArrayExt.sort cmp arr
+         ; fromArray arr
+        end
+
     fun stableSort cmp vs =
         let val arr = toArray vs
         in ArrayExt.stableSort cmp arr

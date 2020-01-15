@@ -32,6 +32,13 @@ signature REGISTER_ENV = sig
 
     (* Move id:s away from caller-save registers (except the return value registers). *)
     val evacuateCallerSaves : t -> builder -> Label.t -> t
+
+    (* Emit moves, loads and stores that change env to env'. *)
+    val conform : t -> hints -> builder -> Label.t -> t -> unit
+
+    val incCounts : Hints.counts -> t -> Hints.counts
+
+    val fromCounts : int ref -> Hints.counts -> t
 end
 
 functor RegisterEnvFn (Args : sig
@@ -44,34 +51,17 @@ end) :> REGISTER_ENV
 = struct
     structure Abi = Args.Abi
     structure Hints = Args.Hints
+    structure Location = Hints.Location
     structure Register = Abi.RegIsa.Register
     structure Stmt = Abi.RegIsa.Stmt
     structure Builder = Abi.RegIsa.Program.Builder
 
     datatype either = datatype Either.t
+    datatype location = datatype Location.t
     type builder = Builder.builder
     type hints = Hints.t
 
     val op|> = Fn.|>
-
-    structure Slots :> sig
-        type t
-
-        val empty : t
-        val next : t -> t * int
-        val free : t -> int -> t
-    end = struct
-        type t = {slots : int list, len : int}
-
-        val empty = {slots = [], len = 0}
-
-        fun next {slots, len} =
-            case slots
-            of slot :: slots => ({slots, len}, slot)
-             | [] => ({slots, len = len + 1}, len)
-
-        fun free {slots, len} slot = {slots = slot :: slots, len}
-    end
 
     fun pick pred freeRegs =
         let val rec extract =
@@ -141,10 +131,11 @@ end) :> REGISTER_ENV
 
         fun allocate regs hints id =
             let val rec loop =
-                    fn hint :: hints =>
+                    fn Register hint :: hints =>
                         (case allocateFixed regs id hint
                          of Left _ => loop hints
                           | Right regs => SOME (regs, hint))
+                     | StackSlot _ :: hints => loop hints
                      | [] => 
                         let val {occupieds, frees} = regs
                         in  case frees
@@ -167,58 +158,6 @@ end) :> REGISTER_ENV
             else regs
 
         fun lookup {occupieds, frees} reg = Map.lookup (occupieds, reg)
-    end
-
-    structure StackSlot :> sig
-        type t
-
-        val eq : t * t -> bool
-        val compare : t * t -> order
-        val index : t -> int
-
-        structure SortedMap : ORD_MAP where type Key.ord_key = t
-
-        structure Pool : sig    
-            type item = t
-            type t
-
-            val empty : int ref -> t
-            val allocate : t -> t * item
-            val free : t -> item -> t
-        end
-    end = struct
-        type t = int
-
-        val eq = op=
-
-        val compare = Int.compare
-
-        val index = Fn.identity
-
-        structure SortedMap = BinaryMapFn(struct
-            type ord_key = t
-            val compare = compare
-        end)
-
-        structure Pool = struct
-            type item = t
-
-            type t = {reusables : item list, created : int, maxSlotCount : int ref}
-
-            fun empty maxSlotCount = {reusables = [], created = 0, maxSlotCount}
-
-            fun allocate {reusables, created, maxSlotCount} =
-                case reusables
-                of x :: reusables => ({reusables, created, maxSlotCount}, x)
-                 | [] =>
-                    let val created' = created + 1
-                        do maxSlotCount := Int.max (!maxSlotCount, created')
-                    in ({reusables, created = created', maxSlotCount}, created)
-                    end
-
-            fun free {reusables, created, maxSlotCount} x =
-                {reusables = x :: reusables, created, maxSlotCount}
-        end
     end
 
     structure StackFrame :> sig
@@ -248,49 +187,6 @@ end) :> REGISTER_ENV
             then { occupieds = #1 (Map.remove (occupieds, slot))
                  , frees = Pool.free frees slot }
             else frame
-    end
-
-    structure Location :> sig
-        datatype t
-            = Register of Register.t
-            | StackSlot of StackSlot.t
-
-        val eq : t * t -> bool
-
-        val isReg : t -> bool
-        val isCalleeSave : t -> bool
-
-        structure SortedSet : ORD_SET where type Key.ord_key = t
-    end = struct
-        datatype t
-            = Register of Register.t
-            | StackSlot of StackSlot.t
-
-        val eq =
-            fn (Register reg, Register reg') => Register.eq (reg, reg')
-             | (Register _, StackSlot _) => false
-             | (StackSlot _, Register _) => false
-             | (StackSlot slot, StackSlot slot') => StackSlot.eq (slot, slot')
-
-        val isReg =
-            fn Register _ => true
-             | StackSlot _ => false
-
-        val isCalleeSave =
-            fn Register reg =>
-                Abi.CallingConvention.isCalleeSave Abi.foreignCallingConvention reg
-             | StackSlot _ => true
-
-        val compare =
-            fn (Register reg, Register reg') => Register.compare (reg, reg')
-             | (Register _, StackSlot _) => LESS
-             | (StackSlot _, Register _) => GREATER
-             | (StackSlot slot, StackSlot slot') => StackSlot.compare (slot, slot')
-
-        structure SortedSet = BinarySetFn(struct
-            type ord_key = t
-            val compare = compare
-        end)
     end
 
     datatype location = datatype Location.t
@@ -497,6 +393,38 @@ end) :> REGISTER_ENV
                 in Location.SortedSet.foldl step env idLocs
                 end
         in CpsId.SortedMap.foldli step env locations
+        end
+
+    fun conform (env as {locations, ...} : t) hints builder label ({locations = locations', ...} : t) =
+        let fun step (id, _, env) =
+                let val locs' = CpsId.SortedMap.lookup (locations', id)
+                    val loc' = if Location.SortedSet.numItems locs' <> 1
+                               then raise Fail "unimplemented"
+                               else Location.SortedSet.minItem locs'
+                in  case loc'
+                    of Register reg => fixedRegDef env hints builder label id reg
+                     | StackSlot slot => raise Fail "unimplemented"
+                end
+        in ignore (CpsId.SortedMap.foldli step env locations)
+        end
+
+    fun incCounts counts ({locations, ...} : t) =
+        let fun incIdCounts (id, idLocs) =
+                let val idCounts =
+                        getOpt (CpsId.SortedMap.find (counts, id), Location.SortedMap.empty)
+                    fun step (loc, idCounts) =
+                        let val count = getOpt (Location.SortedMap.find (idCounts, loc), 0)
+                        in Location.SortedMap.insert (idCounts, loc, count + 1)
+                        end
+                in Location.SortedSet.foldl step idCounts idLocs
+                end
+        in CpsId.SortedMap.mapi incIdCounts locations
+        end
+
+    fun fromCounts maxSlotCount counts =
+        let val hints = Hints.fromCounts counts
+        in CpsId.SortedMap.foldli (fn (id, _, env) => #1 (allocate env hints id))
+               (empty maxSlotCount) counts
         end
 end
 

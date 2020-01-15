@@ -38,6 +38,8 @@ end = struct
                  | (NONE, Oper.STORE (dest, src)) =>
                     line ("\tmovq\t" ^ convertReg src ^ ", " ^ convertMem dest)
                  | (NONE, Oper.PUSH src) => line ("\tpushq\t" ^ convertReg src)
+                 | (NONE, Oper.CMP (v, c)) =>
+                    line ("\tcmp\t$" ^ Int.toString (Word32.toInt c) ^ ", " ^ convertReg v)
                  | (NONE, Oper.LEAVE) => line "\tleave"
                  | (SOME target, Oper.SUBc (_, n)) =>
                     line ("\tsubq\t$" ^ Int.toString (Word32.toInt n) ^ ", " ^ convertReg target)
@@ -52,6 +54,7 @@ end = struct
             val emitTransfer =
                 fn Transfer.JMP (dest, _) => line ("\tjmp\t" ^ convertLabel dest)
                  | Transfer.JMPi (dest, _) => line ("\tjmp\t*" ^ convertReg dest)
+                 | Transfer.Jcc (Neq, _, dest') => line ("\tjne\t" ^ convertLabel dest')
                  | Transfer.RET _ => line "\tret\t"
 
             fun emitCont (label, {name, cconv = _, argc = _, stmts, transfer}) =

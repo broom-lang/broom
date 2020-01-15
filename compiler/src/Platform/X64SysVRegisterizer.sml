@@ -3,7 +3,11 @@ structure X64SysVRegisterizer = struct
     structure Isa = Abi.Isa
     structure RegIsa = Abi.RegIsa
     structure Reg = X64Register
-    structure Hints = RegisterHintsFn(Abi)
+    structure Location = X64SysVLocation
+    structure Hints = RegisterHintsFn(struct
+        structure Abi = Abi
+        structure Location = Location
+    end)
     structure Env = RegisterEnvFn(struct
         structure Abi = Abi
         structure Hints = Hints
@@ -13,6 +17,7 @@ structure X64SysVRegisterizer = struct
 
     datatype oper = datatype X64RegInstructions.Oper.t
     datatype transfer = datatype X64RegInstructions.Transfer.t
+    datatype location = datatype Location.t
 
     val op|> = Fn.|>
 
@@ -21,11 +26,11 @@ structure X64SysVRegisterizer = struct
             let val paramRegs =
                     Vector.concat [ #args Abi.foreignCallingConvention
                                   , #calleeSaves Abi.foreignCallingConvention ]
-            in Hints.hint hints target (Vector.sub (paramRegs, i))
+            in Hints.hint hints target (Register (Vector.sub (paramRegs, i)))
             end
          | Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) =>
             let val hints = Hints.forgetCallerSaves hints
-            in Hints.hint hints target Reg.rax
+            in Hints.hint hints target (Register Reg.rax)
             end
          | _ => hints (* TODO *)
 
@@ -95,6 +100,11 @@ structure X64SysVRegisterizer = struct
                  in Builder.insertStmt builder label (Stmt.Eff (STORE (target, src)))
                   ; env
                  end
+              | X64Instructions.Oper.CMP (v, c) =>
+                 let val (env, v) = Env.regUse env hints builder label v
+                 in Builder.insertStmt builder label (Stmt.Eff (CMP (v, c)))
+                  ; env
+                 end
               | _ => env) (* FIXME *)
          | _ => env (* FIXME *)
 
@@ -119,6 +129,9 @@ structure X64SysVRegisterizer = struct
             in Builder.setTransfer builder label (JMPi (dest, #[]))
              ; env
             end
+         | X64Instructions.Transfer.Jcc (X64Instructions.Transfer.Neq, dest, dest') =>
+             ( Builder.setTransfer builder label (Jcc (X64RegInstructions.Transfer.Neq, dest, dest'))
+             ; env )
          | X64Instructions.Transfer.RET args =>
             let val paramRegs = Vector.concat [ #retVal Abi.foreignCallingConvention
                                               , #calleeSaves Abi.foreignCallingConvention ]

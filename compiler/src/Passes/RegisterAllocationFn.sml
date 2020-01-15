@@ -36,17 +36,33 @@ end = struct
             fun allocateStmt label env hints stmt =
                 Registerizer.stmt cconvs builder label env hints stmt
 
-            fun allocateSucc hints (label, env) =
+            fun allocateSucc predHints (label, (counts, revEnvs)) =
                 let val {calls, ...} = LabelMap.lookup useCounts label
                 in  if calls = 1
-                    then allocateEBB label hints (LabelMap.lookup conts label)
-                    else env
+                    then let val hints = Env.Hints.merge predHints (Env.Hints.fromCounts counts)
+                             val env = allocateEBB label hints (LabelMap.lookup conts label)
+                         in ( Env.incCounts counts env
+                            , env :: revEnvs )
+                         end
+                    else (counts, revEnvs)
                 end
 
-            (* TODO: Multiple successors calling convention negotiation: *)
+            and finalizeSucc env' hints (label, env :: envs) =
+                let val {calls, ...} = LabelMap.lookup useCounts label
+                in  ( if calls = 1
+                      then Env.conform env hints builder label env'
+                      else ()
+                    ; envs )
+                end
+
             and allocateTransfer label hints transfer =
                 let val hints' = Registerizer.transferHints hints transfer
-                    val env = Transfer.foldLabels (allocateSucc hints') (Env.empty maxSlotCount) transfer
+                    val (counts, revEnvs) =
+                        Transfer.foldLabels (allocateSucc hints')
+                            (Env.Hints.emptyCounts, []) transfer
+                    val env = Env.fromCounts maxSlotCount counts
+                    val envs = List.rev revEnvs
+                    val _ = Transfer.foldLabels (finalizeSucc env hints') envs transfer
                 in Registerizer.transfer cconvs builder label env hints transfer
                 end
 
@@ -61,7 +77,6 @@ end = struct
                             end
                          | NONE =>
                             let val env = allocateTransfer label hints transfer
-                                (* TODO: Shuffling to match `entryEnv` or calling convention *)
                                 do Label.HashTable.insert cconvs (label, #[]) (* FIXME *)
                             in env
                             end
