@@ -107,17 +107,16 @@ impl Object {
 
 // ---
 
-// TODO: Sneak bit in for `is_oref`
 /// Object layout / runtime type
 #[repr(C)]
 struct FieldLayout {
-    offset: usize, // this always gets cast to isize, so an extra (mutator-slowing?) bit here
+    offset: usize,
     size: usize,
-    layout: ORef<Layout> // tag this pointer with oref bit? Or use VRef tag number here for small scalars?
+    layout: ORef<Layout>
 }
 
 impl FieldLayout {
-    fn is_oref(&self) -> bool { unimplemented!() }
+    fn is_oref(&self) -> bool { unimplemented!() } // Can compare .layout to some constant?
 
     fn scan(&self, obj: *mut u8, mem: &mut MemoryManager) {
         if self.is_oref() {
@@ -128,6 +127,7 @@ impl FieldLayout {
                 }
             }
         }
+        // FIXME: Scan inside inlined fields
     }
 }
 
