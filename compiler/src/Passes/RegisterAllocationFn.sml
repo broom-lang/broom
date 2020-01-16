@@ -50,10 +50,11 @@ end = struct
             and finalizeSucc env' hints (label, envs) =
                 let val {calls, ...} = LabelMap.lookup useCounts label
                 in  if calls = 1
-                    then let val env :: envs = envs
-                         in Env.conform env hints builder label env'
-                          ; envs
-                         end
+                    then case envs
+                         of env :: envs =>
+                             ( Env.conform env hints builder label env'
+                             ; envs )
+                          | [] => raise Fail "unreachable"
                     else envs
                 end
 

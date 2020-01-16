@@ -21,6 +21,7 @@ structure X64Register = struct
          | 14 => "r14"
          | 15 => "r15"
          | 16 => "rip"
+         | _ => raise Fail "unreachable"
 
     val toDoc = PPrint.text o toString
 

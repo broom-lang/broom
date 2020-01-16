@@ -108,7 +108,7 @@ end = struct
         | Conditioned
         | Noop
 
-    fun goalTransition program label labelFrees (use, goal) =
+    fun goalTransition program labelFrees (use, goal) =
         case goal
         of SOME (Lift lift) =>
             (case use
@@ -116,7 +116,7 @@ end = struct
               | Transfer use =>
                  (case #body (Program.labelCont program use)
                   of Goto _ => goal
-                   | Jump _ => raise Fail "unreachable"
+                   | (Jump _ | Return _) => raise Fail "unreachable"
                    | Match _ => raise Fail "unreachable: critical edge")
               | Export => raise Fail "unreachable")
          | SOME (Close clovers) =>
@@ -125,7 +125,7 @@ end = struct
               | Transfer use =>
                  (case #body (Program.labelCont program use)
                   of Goto _ => SOME (Split {lift = labelFrees, close = (Label.fresh (), clovers)})
-                   | Jump _ => raise Fail "unreachable"
+                   | (Jump _ | Return _) => raise Fail "unreachable"
                    | Match _ => raise Fail "unreachable: critical edge")
               | Export => raise Fail "unreachable")
          | SOME (Split _) => goal
@@ -136,14 +136,14 @@ end = struct
               | Transfer use =>
                  (case #body (Program.labelCont program use)
                   of Goto _ => SOME (Lift labelFrees)
-                   | Jump _ => raise Fail "unreachable"
+                   | (Jump _ | Return _) => raise Fail "unreachable"
                    | Match _ => SOME Noop)
               | Export => SOME Noop)
 
     fun computeGoal program freeDefs ((label, uses), goals) =
         let val labelFrees = LabelMap.lookup freeDefs label
             val labelFrees = Vector.fromList (FreeSet.toList labelFrees)
-            val goal = DefUses.UseSiteSet.foldl (goalTransition program label labelFrees) NONE uses
+            val goal = DefUses.UseSiteSet.foldl (goalTransition program labelFrees) NONE uses
         in LabelMap.insert goals (label, valOf goal)
         end
 
@@ -157,7 +157,7 @@ end = struct
         of Type.FnT {tDomain, vDomain} => Type.AnyClosure {tDomain, vDomain}
          | t => t
 
-    fun convert (program as {typeFns, stmts = _, conts, main}) =
+    fun convert (program as {typeFns, stmts = _, conts = _, main}) =
         let val (_, labelUses) = DefUses.analyze program
             val freeDefs = FreeDefs.analyze program
             val goals = computeGoals program labelUses freeDefs
@@ -173,7 +173,7 @@ end = struct
                     if CpsId.HashSetMut.member (visitedDefs, def)
                     then def
                     else let do CpsId.HashSetMut.add (visitedDefs, def)
-                             val expr as {oper, parent} = Program.defSite program def
+                             val {oper, parent} = Program.defSite program def
                          in case oper
                             of Label label =>
                                 (case LabelMap.lookup goals label

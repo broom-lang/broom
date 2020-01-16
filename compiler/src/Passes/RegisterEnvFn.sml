@@ -294,6 +294,7 @@ end) :> REGISTER_ENV
                                                    | StackSlot _ => false)
                                                  idLocs
                     of SOME (origLoc as Register origReg) => (origLoc, origReg)
+                     | SOME (StackSlot _) => raise Fail "unreachable"
                      | NONE => raise Fail "unimplemented"
                 val env =
                     Location.SortedSet.foldl (fn (loc as Register reg, env) =>
@@ -313,6 +314,7 @@ end) :> REGISTER_ENV
             let val (origLoc, origReg) =
                     case Location.SortedSet.find Location.isReg idLocs
                     of SOME (origLoc as Register origReg) => (origLoc, origReg)
+                     | SOME (StackSlot _) => raise Fail "unreachable"
                      | NONE => raise Fail "unimplemented"
                 val env =
                     Location.SortedSet.foldl (fn (loc as Register reg, env) =>

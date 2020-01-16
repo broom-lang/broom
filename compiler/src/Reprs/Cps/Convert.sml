@@ -27,7 +27,6 @@ end = struct
         | TrivlK of Label.t
 
     structure Env = FType.Id.SortedMap (* TODO: HashMap *)
-    type env = def Env.map
 
     val convertType = Cps.Type.fromF
 
@@ -39,11 +38,11 @@ end = struct
             
             fun convertExpr parent stack cont env : FFTerm.expr -> transfer =
                 fn FFTerm.Fn f =>
-                    Builder.express builder {parent, oper = Label (convertFn parent env f)}
+                    Builder.express builder {parent, oper = Label (convertFn env f)}
                     |> continue parent stack cont
 
                  | FFTerm.TFn f =>
-                    Builder.express builder {parent, oper = Label (convertTFn parent env f)}
+                    Builder.express builder {parent, oper = Label (convertTFn env f)}
                     |> continue parent stack cont
 
                  | FFTerm.Let (_, stmts, body) =>
@@ -52,10 +51,10 @@ end = struct
                  | FFTerm.Letrec _ => raise Fail "unreachable"
 
                  | FFTerm.Match (_, _, matchee, clauses) =>
-                    let val join = trivializeCont parent cont
-                        val clauses = Vector.map (convertClause parent stack join env) clauses
+                    let val join = trivializeCont cont
+                        val clauses = Vector.map (convertClause stack join env) clauses
                         val split = FnK ( Anon (FFTerm.typeOf matchee)
-                                        , fn {parent, stack, expr} => Match (expr, clauses) )
+                                        , fn {parent = _, stack = _, expr} => Match (expr, clauses) )
                     in convertExpr parent stack split env matchee
                     end
 
@@ -185,7 +184,7 @@ end = struct
                     Builder.express builder {parent, oper = Const c}
                     |> continue parent stack cont
 
-            and convertFn parent env (_, {id = paramId, typ = domain, var = _, pos = _}, _, body) =
+            and convertFn env (_, {id = paramId, typ = domain, var = _, pos = _}, _, body) =
                 let val label = Label.fresh ()
                     val stackTyp = Type.Prim Type.Prim.StackT
                     val stack = Builder.express builder {parent = SOME label, oper = Param (label, 0)}
@@ -247,7 +246,7 @@ end = struct
                 in label
                 end
 
-            and convertTFn parent env (_, params, body) =
+            and convertTFn env (_, params, body) =
                 let val label = Label.fresh ()
                     val stackTyp = Type.Prim Type.Prim.StackT
                     val stack = Builder.express builder {parent = SOME label, oper = Param (label, 0)}
@@ -283,7 +282,7 @@ end = struct
                          end)
                  | NONE => convertExpr parent stack cont env body
 
-            and convertClause parent stack cont env {pattern, body} =
+            and convertClause stack cont env {pattern, body} =
                 let val pattern = convertPattern pattern
                     val kLabel = Label.fresh ()
                     val k = { name = NONE, tParams = #[], vParams = #[]
@@ -302,14 +301,14 @@ end = struct
                  | TrivK k => Jump {callee = k, tArgs = #[], vArgs = #[stack, expr]}
                  | TrivlK k => Goto {callee = k, tArgs = #[], vArgs = #[stack, expr]}
 
-            and trivializeCont parent cont =
+            and trivializeCont cont =
                 case cont
                 of FnK (paramHint, kf) =>
                     let val kLabel = Label.fresh ()
                         val stack = Builder.express builder {parent = SOME kLabel, oper = Param (kLabel, 0)}
                         val param =
                             case paramHint
-                            of Named {id, typ, ...} => convertType typ
+                            of Named {typ, ...} => convertType typ
                              | Anon typ => convertType typ
                         val paramUse = Builder.express builder {parent = SOME kLabel, oper = Param (kLabel, 1)}
                         val k = { name = NONE, cconv = NONE
@@ -321,7 +320,7 @@ end = struct
                  | (TrivK _ | TrivlK _) => cont
 
             and contValue parent cont =
-                case trivializeCont parent cont
+                case trivializeCont cont
                 of FnK _ => raise Fail "unreachable"
                  | TrivK kDef => kDef
                  | TrivlK kLabel => Builder.express builder {parent, oper = Label kLabel}

@@ -13,11 +13,9 @@ end = struct
     datatype typ = datatype FType.concr
     structure FType = FlexFAst.Type
     structure Concr = FType.Concr
-    structure FTerm = FlexFAst.Term
     datatype sv = datatype FType.sv
     structure Env = TypecheckingEnv
     structure Scope = Env.Scope
-    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
     structure Uv = TypeVars.Uv
     structure Path = TypeVars.Path
     open TypeError

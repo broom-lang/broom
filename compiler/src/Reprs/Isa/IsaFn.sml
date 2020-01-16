@@ -58,8 +58,6 @@ signature ISA = sig
             = Def of def * oper
             | Eff of oper
             | Param of def * Label.t * int
-            | Prologue
-            | Epilogue
 
         val toDoc : t -> PPrint.t
         val appLabels : (Label.t -> unit) -> t -> unit
@@ -134,8 +132,6 @@ end) :> ISA
             = Def of def * oper
             | Eff of oper
             | Param of def * Label.t * int
-            | Prologue
-            | Epilogue
 
         val toDoc =
             fn Def (reg, oper) => Register.toDoc reg <+> text "=" <+> Oper.toDoc oper
@@ -143,13 +139,10 @@ end) :> ISA
              | Param (reg, label, i) =>
                 Register.toDoc reg <+> text "="
                 <+> text "param" <+> Label.toDoc label <+> PPrint.int i
-             | Prologue => text "prologue"
-             | Epilogue => text "epilogue"
 
         fun appLabels f =
             fn (Def (_, oper) | Eff oper) => Oper.appLabels f oper
              | Param _ => () (* desired behaviour, but somewhat inconsistent *)
-             | (Prologue | Epilogue) => ()
     end
 
     structure Transfer = Args.Instrs.Transfer

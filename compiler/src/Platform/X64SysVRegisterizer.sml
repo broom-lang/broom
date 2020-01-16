@@ -105,7 +105,6 @@ structure X64SysVRegisterizer = struct
                   ; env
                  end
               | _ => env) (* FIXME *)
-         | _ => env (* FIXME *)
 
     fun transfer cconvs builder label env hints =
         fn X64Instructions.Transfer.JMP (dest, args) =>
