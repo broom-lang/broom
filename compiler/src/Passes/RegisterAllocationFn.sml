@@ -47,16 +47,18 @@ end = struct
                     else (counts, revEnvs)
                 end
 
-            and finalizeSucc env' hints (label, env :: envs) =
+            and finalizeSucc env' hints (label, envs) =
                 let val {calls, ...} = LabelMap.lookup useCounts label
-                in  ( if calls = 1
-                      then Env.conform env hints builder label env'
-                      else ()
-                    ; envs )
+                in  if calls = 1
+                    then let val env :: envs = envs
+                         in Env.conform env hints builder label env'
+                          ; envs
+                         end
+                    else envs
                 end
 
             and allocateTransfer label hints transfer =
-                let val hints' = Registerizer.transferHints hints transfer
+                let val hints' = Registerizer.transferHints cconvs label hints transfer
                     val (counts, revEnvs) =
                         Transfer.foldLabels (allocateSucc hints')
                             (Env.Hints.emptyCounts, []) transfer
@@ -71,16 +73,20 @@ end = struct
                     fun allocateBlock hints stmts =
                         case VectorSlice.uncons stmts
                         of SOME (stmt, stmts) =>
-                            let val hints' = Registerizer.stmtHints hints stmt
+                            let val hints' = Registerizer.stmtHints cconvs label hints stmt
                                 val env = allocateBlock hints' stmts
                             in allocateStmt label env hints stmt
                             end
-                         | NONE =>
-                            let val env = allocateTransfer label hints transfer
-                                do Label.HashTable.insert cconvs (label, #[]) (* FIXME *)
-                            in env
-                            end
-                in allocateBlock hints (VectorSlice.full stmts)
+                         | NONE => allocateTransfer label hints transfer
+                    val env = allocateBlock hints (VectorSlice.full stmts)
+                in if not (#calls (LabelMap.lookup useCounts label) = 1
+                           orelse (Label.HashTable.inDomain cconvs label))
+                   then let val (env, cconv) =
+                                raise Fail ("unimplemented: conventionalize " ^ Label.toString label ^ " env\n")
+                        in Label.HashTable.insert cconvs (label, cconv)
+                         ; env
+                        end
+                   else env
                 end
 
             fun allocateCont (label, cont) =

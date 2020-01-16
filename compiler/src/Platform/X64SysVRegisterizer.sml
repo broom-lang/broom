@@ -21,20 +21,19 @@ structure X64SysVRegisterizer = struct
 
     val op|> = Fn.|>
 
-    fun stmtHints hints =
+    fun stmtHints cconvs label hints =
         fn Isa.Stmt.Param (target, pLabel, i) =>
-            let val paramRegs =
-                    Vector.concat [ #args Abi.foreignCallingConvention
-                                  , #calleeSaves Abi.foreignCallingConvention ]
-            in Hints.hint hints target (Register (Vector.sub (paramRegs, i)))
-            end
+            (case Label.HashTable.find cconvs label
+             of SOME paramRegs =>
+                 Hints.hint hints target (Register (Vector.sub (paramRegs, i)))
+              | NONE => hints)
          | Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) =>
             let val hints = Hints.forgetCallerSaves hints
             in Hints.hint hints target (Register Reg.rax)
             end
          | _ => hints (* TODO *)
 
-    fun transferHints hints =
+    fun transferHints cconvs label hints =
         fn _ => hints (* TODO *)
 
     fun allocateMem env hints builder label {base, index, disp} =
@@ -110,15 +109,21 @@ structure X64SysVRegisterizer = struct
 
     fun transfer cconvs builder label env hints =
         fn X64Instructions.Transfer.JMP (dest, args) =>
-            (case Label.HashTable.find cconvs dest
-             of SOME paramRegs =>
-                  let val env = VectorExt.zip (args, paramRegs)
-                              |> Vector.foldl (fn ((arg, reg), env) =>
-                                                   Env.fixedRegUse env hints builder label arg reg)
-                                              env
-                  in Builder.setTransfer builder label (JMP (dest, #[]))
-                   ; env
-                  end)
+            let val paramRegs =
+                    case Label.HashTable.find cconvs dest
+                    of SOME paramRegs => paramRegs
+                     | NONE =>
+                        let val paramRegs = Abi.escapeeCallingConvention
+                        in Label.HashTable.insert cconvs (dest, paramRegs)
+                         ; paramRegs
+                        end
+                val env = VectorExt.zip (args, paramRegs)
+                        |> Vector.foldl (fn ((arg, reg), env) =>
+                                             Env.fixedRegUse env hints builder label arg reg)
+                                        env
+            in Builder.setTransfer builder label (JMP (dest, #[]))
+             ; env
+            end
          | X64Instructions.Transfer.JMPi (dest, args) =>
             let val paramRegs = Abi.escapeeCallingConvention
                 val env = VectorExt.zip (args, paramRegs)

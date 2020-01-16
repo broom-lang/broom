@@ -11,11 +11,11 @@ end = struct
     structure LabelMap = Cps.Program.LabelMap
     structure Builder = SeqIsa.Program.Builder
 
-    (* FIXME: Prevent infinite looping on recursive programs: *)
     fun linearize (program as {conts, main}) =
         let val labelUses = Args.LabelUses.useCounts program
             val builder = Builder.new ()
             val worklist = Queue.mkQueue ()
+            val visited = Label.HashSetMut.mkEmpty 0
 
             fun schedule label = Queue.enqueue (worklist, label)
 
@@ -31,11 +31,14 @@ end = struct
             and linearizeTransfer transfer = RegIsa.Transfer.appLabels linearizeSucc transfer
 
             and linearizeEBB label =
-                let val cont as {name, cconv, argc, stmts, transfer} = LabelMap.lookup conts label
-                in Builder.appendCont builder (label, cont)
-                 ; Vector.app linearizeStmt stmts
-                 ; linearizeTransfer transfer
-                end
+                if not (Label.HashSetMut.member (visited, label))
+                then let do Label.HashSetMut.add (visited, label)
+                         val cont as {name, cconv, argc, stmts, transfer} = LabelMap.lookup conts label
+                     in Builder.appendCont builder (label, cont)
+                      ; Vector.app linearizeStmt stmts
+                      ; linearizeTransfer transfer
+                     end
+                else ()
 
             fun processLabels () =
                 case Queue.next worklist

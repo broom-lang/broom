@@ -36,7 +36,7 @@ structure X64SysVAbi :> ABI
 
     val exporteeCallingConvention =
         Vector.concat [ #args foreignCallingConvention
-                      , #[Reg.rbx, Reg.r12, Reg.r13, Reg.r14, Reg.r15] ]
+                      , #calleeSaves foreignCallingConvention ]
 
     val escapeeCallingConvention = #args foreignCallingConvention
 

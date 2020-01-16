@@ -73,6 +73,13 @@ end = struct
                 val frees =
                     case body
                     of Match (_, clauses) => Vector.foldl (analyzeClause program label) frees clauses
+                     | Goto {callee, tArgs = _, vArgs = _} =>
+                        let val calleeFrees = getOpt (LabelMap.find frees callee, FreeSet.empty)
+                        in LabelMap.update frees label (fn
+                               | SOME labelFrees => FreeSet.union (labelFrees, calleeFrees)
+                               | NONE => calleeFrees
+                           )
+                        end
                      | _ => frees
             in Transfer.foldlDeps (useIn program label) frees body
             end
