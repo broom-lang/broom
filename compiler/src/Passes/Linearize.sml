@@ -33,7 +33,7 @@ end = struct
             and linearizeEBB label =
                 if not (Label.HashSetMut.member (visited, label))
                 then let do Label.HashSetMut.add (visited, label)
-                         val cont as {name, cconv, argc, stmts, transfer} = LabelMap.lookup conts label
+                         val cont as {stmts, transfer, ...} = LabelMap.lookup conts label
                      in Builder.appendCont builder (label, cont)
                       ; Vector.app linearizeStmt stmts
                       ; linearizeTransfer transfer

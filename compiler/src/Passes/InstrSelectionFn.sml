@@ -8,13 +8,12 @@ functor InstrSelectionFn (Args : sig
 end) :> sig
     val selectInstructions : Cps.Program.t -> Args.Isa.Program.t
 end = struct
-    structure Cont = Args.Isa.Cont
     structure Builder = Args.Isa.Program.Builder
     structure Implement = Args.Implement
 
     datatype cps_transfer = datatype Cps.Cont.Transfer.t
 
-    fun selectInstructions (program as {typeFns = _, stmts = _, conts, main}) =
+    fun selectInstructions (program as {typeFns = _, stmts = _, conts = _, main}) =
         let val builder = Builder.new ()
             val visitedDefs = CpsId.HashSetMut.mkEmpty 0
             val visitedLabels = Label.HashSetMut.mkEmpty 0
