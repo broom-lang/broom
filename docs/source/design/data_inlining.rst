@@ -48,7 +48,9 @@ Mutable Fields
 ==============
 
 Mutable fields of variant type are tricky because the variants often have
-different sizes so we cannot just size the field for the initial value.
+different sizes so we cannot just size the field for the initial value. Variants
+of the same type should be forced to have the same size somehow (by preventing
+them from being inlined?).
 
 ==============
 Mutable Values
@@ -65,5 +67,10 @@ Recursive datatypes with no indirection would have infinite size. We need to
 prevent that by forcing pointers at recursion points. For polymorphic data this
 has to be done at runtime.
 
-Polymorphic recursion?
+Polymorphic recursion? You can only have a finite number of instances at runtime
+despite it?
+
+Realistically cycles could only be constructed with mutable fields, which
+prevent inlining anyway (e.g. general mutable graph nodes), or with variants
+(e.g. singly-linked lists, binary trees etc.).
 
