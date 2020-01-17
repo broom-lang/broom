@@ -23,5 +23,3 @@ end = struct
         {conts = LabelMap.map scheduleCont conts, main}
 end
 
-structure X64ScheduleParams = ScheduleParamsFn(X64Isa)
-

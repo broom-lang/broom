@@ -80,39 +80,40 @@ local
            src/Passes/ClosureConvert.sml
 
            src/Reprs/Isa/IsaFn.sml
-           src/Platform/X64Register.sml
-           src/Platform/X64Isa.sml
            src/Passes/InstrSelectionFn.sml
-           src/Platform/X64InstrSelection.sml
 
            src/Passes/ScheduleParams.sml
 
            src/Passes/IsaLabelUsesFn.sml
            src/Reprs/Abi/CallingConventionFn.sml
            src/Reprs/Abi/ABI.sml
-           src/Platform/X64SysVAbi.sml
            src/Passes/StackSlot.sml
            src/Passes/Location.sml
-           src/Platform/X64SysVLocation.sml
            src/Passes/RegisterHints.sml
            src/Passes/RegisterEnvFn.sml
            src/Passes/Registerizer.sml
-           src/Platform/X64SysVRegisterizer.sml
 
            src/Reprs/Cps/Convert.sml
-           src/Platform/X64SysVCpsConvert.sml
 
            src/Passes/RegisterAllocationFn.sml
-           src/Platform/X64SysVRegisterAllocation.sml
            src/Passes/Logues.sml
-           src/Platform/X64Logues.sml
 
            src/Reprs/Isa/SeqIsa.sml
            src/Passes/Linearize.sml
+
+           src/Platform/X64Register.sml
+           src/Platform/X64Isa.sml
+           src/Platform/X64InstrSelection.sml
+           src/Platform/X64ScheduleParams.sml
+           src/Platform/X64SysVAbi.sml
+           src/Platform/X64SysVLocation.sml
+           src/Platform/X64SysVRegisterizer.sml
+           src/Platform/X64SysVCpsConvert.sml
+           src/Platform/X64SysVRegisterAllocation.sml
+           src/Platform/X64Logues.sml
            src/Platform/X64RegIsaLabelUses.sml
            src/Platform/X64SeqIsa.sml
            src/Platform/X64Linearize.sml
-
            src/Platform/GasX64SysVAbiEmit.sml
 
            src/Parser/parser.sml
