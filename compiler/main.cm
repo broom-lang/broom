@@ -31,68 +31,68 @@ is
     src/Reprs/Util/Name.sml
     src/Reprs/Util/DefId.sml
     src/Reprs/Util/PrimType.sml
-    src/Reprs/FAst/Kind.sml
+    src/Reprs/Util/Kind.sml
     src/Reprs/Util/Primop.sml
     src/Reprs/Util/Const.sml
-    src/Reprs/Cst.sml
+    src/Parser/Cst.sml
 
     src/Parser/parser.ml-antlr.sml
     src/Parser/lexer.ml-ulex.sml
 
-    src/Typechecker/ScopeId.sml
+    src/Checkers/ScopeId.sml
 
-    src/Reprs/FAst/FType.sml
-    src/Reprs/FAst/FTerm.sml
+    src/Checkers/FAst/FType.sml
+    src/Checkers/FAst/FTerm.sml
 
-    src/Typechecker/Env.sml
-    src/Typechecker/TypeVars.sml
+    src/Checkers/Env.sml
+    src/Checkers/TypeVars.sml
 
-    src/Reprs/FAst/FAst.sml
-    src/Typechecker/TypeError.sml
+    src/Checkers/FAst/FAst.sml
+    src/Checkers/TypeError.sml
 
-    src/Reprs/FAst/Eval.sml
+    src/Checkers/FAst/Eval.sml
 
-    src/Typechecker/TypecheckingOps.sml
-    src/Typechecker/Subtyping.sml
-    src/Typechecker/TypePattern.sml
-    src/Typechecker/Kindchecker.sml
-    src/Typechecker/CheckUse.sml
-    src/Typechecker/Typechecker.sml
-    src/Typechecker/ExitTypechecker.sml
+    src/Checkers/TypecheckingOps.sml
+    src/Checkers/Subtyping.sml
+    src/Checkers/TypePattern.sml
+    src/Checkers/Kindchecker.sml
+    src/Checkers/CheckUse.sml
+    src/Checkers/Typechecker.sml
+    src/Checkers/ExitTypechecker.sml
 
-    src/Reprs/FAst/Typechecker.sml
+    src/Checkers/FAst/Typechecker.sml
 
-    src/Passes/WellFounded.sml
-    src/Passes/PatternMatching.sml
+    src/Checkers/WellFounded.sml
+    src/Checkers/PatternMatching.sml
 
-    src/Reprs/Abi/CallingConvention.sml
-    src/Reprs/Cps/Cps.sml
-    src/Reprs/Cps/Typechecker.sml
+    src/Backend/Abi/CallingConvention.sml
+    src/Midend/Cps/Cps.sml
+    src/Midend/Cps/Typechecker.sml
   
-    src/Passes/DefUses.sml
-    src/Passes/ClosureConvert.sml
+    src/Midend/DefUses.sml
+    src/Midend/ClosureConvert.sml
 
-    src/Reprs/Isa/Isa.sml
-    src/Passes/InstrSelection.sml
+    src/Backend/Isa/Isa.sml
+    src/Backend/InstrSelection.sml
 
-    src/Passes/ScheduleParams.sml
+    src/Backend/ScheduleParams.sml
 
-    src/Passes/IsaLabelUses.sml
-    src/Reprs/Abi/CallingConventionFn.sml
-    src/Reprs/Abi/Abi.sml
-    src/Passes/StackSlot.sml
-    src/Passes/Location.sml
-    src/Passes/RegisterHints.sml
-    src/Passes/RegisterEnv.sml
-    src/Passes/Registerizer.sml
+    src/Backend/IsaLabelUses.sml
+    src/Backend/Abi/CallingConventionFn.sml
+    src/Backend/Abi/Abi.sml
+    src/Backend/StackSlot.sml
+    src/Backend/Location.sml
+    src/Backend/RegisterHints.sml
+    src/Backend/RegisterEnv.sml
+    src/Backend/Registerizer.sml
  
-    src/Reprs/Cps/Convert.sml
+    src/Midend/Cps/Convert.sml
 
-    src/Passes/RegisterAllocation.sml
-    src/Passes/Logues.sml
+    src/Backend/RegisterAllocation.sml
+    src/Backend/Logues.sml
 
-    src/Reprs/Isa/SeqIsa.sml
-    src/Passes/Linearize.sml
+    src/Backend/Isa/SeqIsa.sml
+    src/Backend/Linearize.sml
 
     src/Platform/X64Register.sml
     src/Platform/X64Isa.sml
