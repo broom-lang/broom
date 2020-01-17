@@ -3,7 +3,7 @@ functor InstrSelectionFn (Args : sig
 
     structure Implement : sig
         val expr : Isa.Program.Builder.builder -> Label.t -> CpsId.t -> Cps.Expr.oper -> unit
-        val transfer : Isa.Program.Builder.builder -> Label.t -> Cps.Cont.Transfer.t -> Isa.Transfer.t
+        val transfer : Isa.Program.Builder.builder -> Label.t -> Cps.Transfer.t -> Isa.Transfer.t
     end
 end) :> sig
     val selectInstructions : Cps.Program.t -> Args.Isa.Program.t
@@ -11,7 +11,7 @@ end = struct
     structure Builder = Args.Isa.Program.Builder
     structure Implement = Args.Implement
 
-    datatype cps_transfer = datatype Cps.Cont.Transfer.t
+    datatype cps_transfer = datatype Cps.Transfer.t
 
     fun selectInstructions (program as {typeFns = _, stmts = _, conts = _, main}) =
         let val builder = Builder.new ()
@@ -34,10 +34,10 @@ end = struct
                 else ()
 
             and selectTransfer transfer label =
-                ( Cps.Cont.Transfer.foldLabels (fn (label, ()) => selectLabel label)
+                ( Cps.Transfer.foldLabels (fn (label, ()) => selectLabel label)
                                                () transfer
                   (* Going right to left decreases register pressure from cont closure creation: *)
-                ; Cps.Cont.Transfer.foldrDeps (fn (def, ()) => selectDef def)
+                ; Cps.Transfer.foldrDeps (fn (def, ()) => selectDef def)
                                               () transfer
                 ; Implement.transfer builder label transfer )
 

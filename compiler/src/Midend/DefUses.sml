@@ -21,7 +21,7 @@ end = struct
     structure LabelMap = Cps.Program.LabelMap
 
     datatype oper = datatype Cps.Expr.oper
-    datatype transfer = datatype Cps.Cont.Transfer.t
+    datatype transfer = datatype Cps.Transfer.t
 
     val op|> = Fn.|>
 

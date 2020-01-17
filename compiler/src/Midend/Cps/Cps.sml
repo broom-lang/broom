@@ -65,28 +65,31 @@ signature CPS_EXPR = sig
     val mapDefs : (CpsId.t -> CpsId.t) -> oper -> oper
 end
 
-signature CPS_CONT = sig
+signature CPS_TRANSFER = sig
     structure Type : CPS_TYPE
 
-    structure Transfer : sig
-        type def = CpsId.t
+    type def = CpsId.t
 
-        datatype pat
-            = AnyP
-            | ConstP of Const.t
+    datatype pat
+        = AnyP
+        | ConstP of Const.t
 
-        datatype t
-            = Goto of {callee : Label.t, tArgs : Type.t vector, vArgs : def vector}
-            | Jump of {callee : def, tArgs : Type.t vector, vArgs : def vector}
-            | Match of def * {pattern : pat, target : Label.t} vector
-            | Return of Type.t vector * def vector
+    datatype t
+        = Goto of {callee : Label.t, tArgs : Type.t vector, vArgs : def vector}
+        | Jump of {callee : def, tArgs : Type.t vector, vArgs : def vector}
+        | Match of def * {pattern : pat, target : Label.t} vector
+        | Return of Type.t vector * def vector
 
-        val toDoc : t -> PPrint.t
+    val toDoc : t -> PPrint.t
 
-        val foldlDeps : (def * 'a -> 'a) -> 'a -> t -> 'a
-        val foldrDeps : (def * 'a -> 'a) -> 'a -> t -> 'a
-        val foldLabels : (Label.t * 'a -> 'a) -> 'a -> t -> 'a
-    end
+    val foldlDeps : (def * 'a -> 'a) -> 'a -> t -> 'a
+    val foldrDeps : (def * 'a -> 'a) -> 'a -> t -> 'a
+    val foldLabels : (Label.t * 'a -> 'a) -> 'a -> t -> 'a
+end
+
+signature CPS_CONT = sig
+    structure Type : CPS_TYPE
+    structure Transfer : CPS_TRANSFER
 
     type t =
         { name : Name.t option
@@ -137,7 +140,10 @@ structure Cps :> sig
     structure Expr : CPS_EXPR
         where type Type.t = Type.t
         where type Type.Coercion.co = Type.Coercion.co
-    structure Cont : CPS_CONT where type Type.t = Type.t
+    structure Transfer : CPS_TRANSFER where type Type.t = Type.t
+    structure Cont : CPS_CONT
+        where type Type.t = Type.t
+        where type Transfer.t = Transfer.t
     structure Program : CPS_PROGRAM
         where type Expr.Type.t = Type.t
         where type Expr.oper = Expr.oper
@@ -277,66 +283,69 @@ end = struct
         end
     end
 
-    structure Cont = struct
+    structure Transfer = struct
         structure Type = Type
 
-        structure Transfer = struct
-            type def = CpsId.t
+        type def = CpsId.t
 
-            datatype pat
-                = AnyP
-                | ConstP of Const.t
+        datatype pat
+            = AnyP
+            | ConstP of Const.t
 
-            datatype t
-                = Goto of {callee : Label.t, tArgs : Type.t vector, vArgs : def vector}
-                | Jump of {callee : def, tArgs : Type.t vector, vArgs : def vector}
-                | Match of def * {pattern : pat, target : Label.t} vector
-                | Return of Type.t vector * def vector
+        datatype t
+            = Goto of {callee : Label.t, tArgs : Type.t vector, vArgs : def vector}
+            | Jump of {callee : def, tArgs : Type.t vector, vArgs : def vector}
+            | Match of def * {pattern : pat, target : Label.t} vector
+            | Return of Type.t vector * def vector
 
-            val patToDoc =
-                fn AnyP => text "_"
-                 | ConstP c => Const.toDoc c
+        val patToDoc =
+            fn AnyP => text "_"
+             | ConstP c => Const.toDoc c
 
-            fun clauseToDoc {pattern, target} =
-                patToDoc pattern <+> text "->" <+> Label.toDoc target
+        fun clauseToDoc {pattern, target} =
+            patToDoc pattern <+> text "->" <+> Label.toDoc target
 
-            val toDoc =
-                fn Goto {callee, tArgs, vArgs} =>
-                    text "goto" <+> Label.toDoc callee
-                    <+> Type.argsDoc Type.toDoc tArgs
-                    <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
-                 | Jump {callee, tArgs, vArgs} =>
-                    text "jump" <+> CpsId.toDoc callee
-                    <+> Type.argsDoc Type.toDoc tArgs
-                    <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
-                 | Match (matchee, clauses) =>
-                    text "match" <+> CpsId.toDoc matchee
-                    <> nest 4 (newline <> (punctuate newline (Vector.map clauseToDoc clauses)))
-                 | Return (domain, args) =>
-                    text "return"
-                    <+> Type.argsDoc Type.toDoc domain 
-                    <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc args))
+        val toDoc =
+            fn Goto {callee, tArgs, vArgs} =>
+                text "goto" <+> Label.toDoc callee
+                <+> Type.argsDoc Type.toDoc tArgs
+                <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
+             | Jump {callee, tArgs, vArgs} =>
+                text "jump" <+> CpsId.toDoc callee
+                <+> Type.argsDoc Type.toDoc tArgs
+                <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
+             | Match (matchee, clauses) =>
+                text "match" <+> CpsId.toDoc matchee
+                <> nest 4 (newline <> (punctuate newline (Vector.map clauseToDoc clauses)))
+             | Return (domain, args) =>
+                text "return"
+                <+> Type.argsDoc Type.toDoc domain 
+                <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc args))
 
-            fun foldlDeps f acc =
-                fn Goto {callee = _, tArgs = _, vArgs} => Vector.foldl f acc vArgs
-                 | Jump {callee, tArgs = _, vArgs} => Vector.foldl f (f (callee, acc)) vArgs
-                 | Match (matchee, _) => f (matchee, acc)
-                 | Return (_, args) => Vector.foldl f acc args
+        fun foldlDeps f acc =
+            fn Goto {callee = _, tArgs = _, vArgs} => Vector.foldl f acc vArgs
+             | Jump {callee, tArgs = _, vArgs} => Vector.foldl f (f (callee, acc)) vArgs
+             | Match (matchee, _) => f (matchee, acc)
+             | Return (_, args) => Vector.foldl f acc args
 
-            fun foldrDeps f acc =
-                fn Goto {callee = _, tArgs = _, vArgs} => Vector.foldr f acc vArgs
-                 | Jump {callee, tArgs = _, vArgs} => f (callee, Vector.foldr f acc vArgs)
-                 | Match (matchee, _) => f (matchee, acc)
-                 | Return (_, args) => Vector.foldr f acc args
+        fun foldrDeps f acc =
+            fn Goto {callee = _, tArgs = _, vArgs} => Vector.foldr f acc vArgs
+             | Jump {callee, tArgs = _, vArgs} => f (callee, Vector.foldr f acc vArgs)
+             | Match (matchee, _) => f (matchee, acc)
+             | Return (_, args) => Vector.foldr f acc args
 
-            fun foldLabels f acc =
-                fn Goto {callee, ...} => f (callee, acc)
-                 | Jump _ => acc
-                 | Match (_, clauses) =>
-                    Vector.foldl (fn ({pattern = _, target}, acc) => f (target, acc))
-                                 acc clauses
-                 | Return _ => acc
-        end
+        fun foldLabels f acc =
+            fn Goto {callee, ...} => f (callee, acc)
+             | Jump _ => acc
+             | Match (_, clauses) =>
+                Vector.foldl (fn ({pattern = _, target}, acc) => f (target, acc))
+                             acc clauses
+             | Return _ => acc
+    end
+
+    structure Cont = struct
+        structure Type = Type
+        structure Transfer = Transfer
 
         type t =
             { name : Name.t option
@@ -511,7 +520,7 @@ end = struct
                <> Label.toDoc label
                <+> Type.argsDoc FType.defToDoc tParams
                <+> parens (punctuate (comma <> space) (Vector.map Type.toDoc vParams)) <> text ":"
-               <> nest 4 (newline <> exprsToDoc program visited exprs <++> Cont.Transfer.toDoc body)
+               <> nest 4 (newline <> exprsToDoc program visited exprs <++> Transfer.toDoc body)
             end
 
         fun stmtsToDoc (program as {conts, ...} : t) =

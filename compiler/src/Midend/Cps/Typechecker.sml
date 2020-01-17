@@ -24,7 +24,7 @@ structure CpsTypechecker :> sig
 end = struct
     structure Type = Cps.Type
     structure Expr = Cps.Expr
-    structure Transfer = Cps.Cont.Transfer
+    structure Transfer = Cps.Transfer
     structure Program = Cps.Program
     structure DefMap = Program.Map
     structure LabelMap = Program.LabelMap

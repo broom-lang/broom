@@ -5,6 +5,7 @@ end = struct
     structure FFTerm = FixedFAst.Term
     structure Type = Cps.Type
     structure Expr = Cps.Expr
+    structure Transfer = Cps.Transfer
     structure Cont = Cps.Cont
     structure Builder = Cps.Program.Builder
 
@@ -12,8 +13,8 @@ end = struct
     datatype co = datatype Type.Coercion.co
     type def = Expr.def
     datatype oper = datatype Expr.oper
-    datatype transfer = datatype Cont.Transfer.t
-    datatype pat = datatype Cont.Transfer.pat
+    datatype transfer = datatype Transfer.t
+    datatype pat = datatype Transfer.pat
 
     val op|> = Fn.|>
 

@@ -7,7 +7,7 @@ end = struct
     structure Builder = Program.Builder
     structure Type = Cps.Type
     structure Expr = Cps.Expr
-    structure Transfer = Cps.Cont.Transfer
+    structure Transfer = Cps.Transfer
     structure FreeSet = CpsId.SortedSet
 
     type def = CpsId.t

@@ -3,8 +3,8 @@ structure X64InstrSelection = InstrSelectionFn(struct
     structure Builder = Isa.Program.Builder
 
     datatype oper = datatype Cps.Expr.oper
-    datatype pat = datatype Cps.Cont.Transfer.pat
-    datatype transfer = datatype Cps.Cont.Transfer.t
+    datatype pat = datatype Cps.Transfer.pat
+    datatype transfer = datatype Cps.Transfer.t
     datatype instr = datatype X64Instructions.Oper.t
     datatype stmt = datatype Isa.Stmt.t
     datatype transfer = datatype X64Instructions.Transfer.t
