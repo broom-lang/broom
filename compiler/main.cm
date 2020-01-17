@@ -98,17 +98,10 @@ is
 
     src/Platform/X64Register.sml
     src/Platform/X64Isa.sml
-    src/Platform/X64SysVCpsConvert.sml
     src/Platform/X64InstrSelection.sml
-    src/Platform/X64ScheduleParams.sml
     src/Platform/X64SysVAbi.sml
-    src/Platform/X64SysVLocation.sml
-    src/Platform/X64SysVRegisterizer.sml
     src/Platform/X64SysVRegisterAllocation.sml
     src/Platform/X64InsertLogues.sml
-    src/Platform/X64RegIsaLabelUses.sml
-    src/Platform/X64SeqIsa.sml
-    src/Platform/X64Linearize.sml
     src/Platform/GasX64SysVAbiEmit.sml
 
     src/Parser/Parser.sml

@@ -1,3 +1,5 @@
+structure X64SeqIsa = SeqIsaFn(X64SysVAbi.RegIsa)
+
 structure GasX64SysVAbiEmit :> sig
     val emit : TextIO.outstream -> X64SeqIsa.Program.t -> unit
 end = struct
