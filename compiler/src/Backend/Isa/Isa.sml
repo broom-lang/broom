@@ -36,6 +36,8 @@ end
 signature INSTRUCTIONS = sig
     type def
 
+    val registerSize : int
+
     structure Oper : ISA_OPER where type def = def
 
     structure Transfer : ISA_TRANSFER where type def = def

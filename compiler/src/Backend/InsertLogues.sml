@@ -1,24 +1,25 @@
-(* TODO: Move portable parts out of here to a functor. *)
-structure X64Logues :> LOGUES
-    where type RegIsa.Stmt.t = X64RegIsa.Stmt.t
-    where type RegIsa.transfer = X64RegIsa.transfer
+signature INSERT_LOGUES = sig
+    structure RegIsa : ISA
+
+    val insert : {program : RegIsa.Program.t, maxSlotCount : int} -> RegIsa.Program.t
+end
+
+functor InsertLoguesFn (Args : sig
+    structure RegIsa : ISA
+    val prologue : Word32.word -> RegIsa.Stmt.t vector
+    val epilogue : Word32.word -> RegIsa.Stmt.t vector
+end) :> INSERT_LOGUES
+    where type RegIsa.Stmt.t = Args.RegIsa.Stmt.t
+    where type RegIsa.transfer = Args.RegIsa.Transfer.t
 = struct
-    structure RegIsa = X64RegIsa
-    structure Reg = X64Register
-    structure Stmt = RegIsa.Stmt
+    structure RegIsa = Args.RegIsa
     structure Transfer = RegIsa.Transfer
-    structure Instrs = X64RegInstructions
-    structure Oper = Instrs.Oper
+    structure Instrs = RegIsa.Instrs
 
     fun insert {program = {conts, main}, maxSlotCount} =
         let val frameSize = Word32.fromInt (maxSlotCount * Instrs.registerSize)
-
-            val prologue =
-                #[ Stmt.Eff (Oper.PUSH Reg.rbp)
-                 , Stmt.Def (Reg.rbp, Oper.MOV Reg.rsp)
-                 , Stmt.Def (Reg.rsp, Oper.SUBc (Reg.rsp, frameSize)) ]
-
-            val epilogue = #[Stmt.Eff Oper.LEAVE]
+            val prologue = Args.prologue frameSize
+            val epilogue = Args.epilogue frameSize
 
             fun insertContLogues {name, cconv, argc, stmts, transfer} =
                 let val stmts =

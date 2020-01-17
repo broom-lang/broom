@@ -102,7 +102,7 @@ end = struct
                                     val allocated as {program, ...} = X64SysVRegisterAllocation.allocate program
                                     do log (PPrint.pretty 80 (X64RegIsa.Program.toDoc program) ^ "\n")
                                     do log "# Inserting logues...\n\n"
-                                    val program = X64Logues.insert allocated
+                                    val program = X64InsertLogues.insert allocated
                                     do log (PPrint.pretty 80 (X64RegIsa.Program.toDoc program) ^ "\n")
                                     do log "# Linearizing...\n\n"
                                     val program = X64Linearize.linearize program

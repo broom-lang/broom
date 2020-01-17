@@ -91,7 +91,7 @@ is
     src/Midend/Cps/Convert.sml
 
     src/Backend/RegisterAllocation.sml
-    src/Backend/Logues.sml
+    src/Backend/InsertLogues.sml
 
     src/Backend/Isa/SeqIsa.sml
     src/Backend/Linearize.sml
@@ -105,7 +105,7 @@ is
     src/Platform/X64SysVLocation.sml
     src/Platform/X64SysVRegisterizer.sml
     src/Platform/X64SysVRegisterAllocation.sml
-    src/Platform/X64Logues.sml
+    src/Platform/X64InsertLogues.sml
     src/Platform/X64RegIsaLabelUses.sml
     src/Platform/X64SeqIsa.sml
     src/Platform/X64Linearize.sml
