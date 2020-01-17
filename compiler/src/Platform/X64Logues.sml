@@ -31,7 +31,7 @@ structure X64Logues :> LOGUES
                         else stmts
                 in {name, cconv, argc, stmts, transfer}
                 end
-        in {conts = Cps.Program.LabelMap.map insertContLogues conts, main}
+        in {conts = Label.HashMap.map insertContLogues conts, main}
         end
 end
 

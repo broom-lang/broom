@@ -85,7 +85,7 @@ signature ISA = sig
     end
 
     structure Program : sig
-        type t = {conts : Cont.t Cps.Program.LabelMap.t, main : Label.t}
+        type t = {conts : Cont.t Label.HashMap.t, main : Label.t}
 
         val toDoc : t -> PPrint.t
 
@@ -182,7 +182,7 @@ end) :> ISA
     end
 
     structure Program = struct
-        structure LabelMap = Cps.Program.LabelMap
+        structure LabelMap = Label.HashMap
 
         type t = {conts : Cont.t LabelMap.t, main : Label.t}
 
@@ -194,7 +194,7 @@ end) :> ISA
         structure Builder = struct
             type builder = Cont.Builder.builder LabelMap.t ref
 
-            fun new () = ref Cps.Program.LabelMap.empty
+            fun new () = ref LabelMap.empty
 
             fun createCont builder label creation =
                 builder := LabelMap.insert (!builder) (label, Cont.Builder.new creation)

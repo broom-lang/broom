@@ -2,7 +2,7 @@ functor RegisterAllocationFn (Registerizer : REGISTERIZER) :> sig
     val allocate : Registerizer.Abi.Isa.Program.t
         -> {program : Registerizer.Abi.RegIsa.Program.t, maxSlotCount : int}
 end = struct
-    structure LabelMap = Cps.Program.LabelMap
+    structure LabelMap = Label.HashMap
     structure Abi = Registerizer.Abi
     structure Isa = Abi.Isa
     structure Register = Isa.Register

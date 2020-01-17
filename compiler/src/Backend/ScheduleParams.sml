@@ -3,7 +3,7 @@ functor ScheduleParamsFn (Isa : ISA) :> sig
 end = struct
     structure Stmt = Isa.Stmt
     structure Transfer = Isa.Transfer
-    structure LabelMap = Cps.Program.LabelMap (* HACK *)
+    structure LabelMap = Label.HashMap
 
     val compareStmts =
         (* NOTE: `Param` labels are always equal: *)

@@ -8,7 +8,7 @@ end) :> sig
 end = struct
     structure SeqIsa = Args.SeqIsa
     structure RegIsa = SeqIsa.RegIsa
-    structure LabelMap = Cps.Program.LabelMap
+    structure LabelMap = Label.HashMap
     structure Builder = SeqIsa.Program.Builder
 
     fun linearize (program as {conts, main}) =

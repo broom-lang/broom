@@ -7,7 +7,7 @@ structure X64SysVAbi :> ABI
     where type RegIsa.Stmt.t = X64RegIsa.Stmt.t
     where type RegIsa.transfer = X64RegIsa.transfer
 = struct
-    structure LabelMap = Cps.Program.LabelMap
+    structure LabelMap = Label.SortedMap
     structure Isa = X64Isa
     structure Reg = X64Register
     structure RegIsa = X64RegIsa

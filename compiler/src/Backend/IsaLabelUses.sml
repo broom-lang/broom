@@ -1,7 +1,7 @@
 signature LABEL_USES = sig
     structure Isa : ISA
 
-    type t = {exports : int, escapes : int, calls : int} Cps.Program.LabelMap.t
+    type t = {exports : int, escapes : int, calls : int} Label.HashMap.t
 
     val useCounts : Isa.Program.t -> t
 end
@@ -11,11 +11,11 @@ functor IsaLabelUsesFn (Isa : ISA) :> LABEL_USES
     where type Isa.transfer = Isa.transfer
 = struct
     structure Isa = Isa
-    structure LabelMap = Cps.Program.LabelMap
+    structure LabelMap = Label.HashMap
 
     datatype stmt = datatype Isa.Stmt.t
 
-    type t = {exports : int, escapes : int, calls : int} Cps.Program.LabelMap.t
+    type t = {exports : int, escapes : int, calls : int} Label.HashMap.t
 
     fun useCounts {conts, main} =
         let val counts = ref LabelMap.empty
