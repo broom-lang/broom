@@ -101,8 +101,12 @@ signature CPS_PROGRAM = sig
     structure Expr : CPS_EXPR
     structure Cont : CPS_CONT
 
-    structure Map : HASH_MAP where type key = Expr.def
-    structure LabelMap : HASH_MAP where type key = Label.t
+    structure Map : HASH_MAP
+        where type key = CpsId.t
+        where type 'v t = 'v CpsId.HashMap.t
+    structure LabelMap : HASH_MAP
+        where type key = Label.t
+        where type 'v t = 'v Label.HashMap.t
 
     (* TODO: Make abstract? *)
     type t =
@@ -358,7 +362,7 @@ end = struct
 
         type def = CpsId.t
 
-        structure ParentMap = HashMap(struct
+        structure ParentMap = HashMapFn(struct
             type hash_key = Label.t option
 
             val hashVal = Option.hash Label.hash
@@ -458,20 +462,10 @@ end = struct
 
     structure Program = struct
         structure Expr = Expr
+        structure Map = CpsId.HashMap
+        structure LabelMap = Label.HashMap
         structure ParentMap = Expr.ParentMap
         structure Cont = Cont
-
-        structure Map = HashMap(struct
-            open CpsId.HashKey
-
-            val toString = CpsId.toString
-        end)
-
-        structure LabelMap = HashMap(struct
-            open Label.HashKey
-
-            val toString = Label.toString
-        end)
 
         type t =
             { typeFns : FType.def vector

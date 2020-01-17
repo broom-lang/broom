@@ -18,7 +18,7 @@ signature HASH_MAP = sig
     val inspect : ('v -> string) -> 'v t -> string
 end
 
-functor HashMap (Key : sig
+functor HashMapFn (Key : sig
     include HASH_KEY
     val toString : hash_key -> string
 end) :> HASH_MAP where type key = Key.hash_key = struct
