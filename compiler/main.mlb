@@ -79,23 +79,23 @@ local
            src/Passes/DefUses.sml
            src/Passes/ClosureConvert.sml
 
-           src/Reprs/Isa/IsaFn.sml
-           src/Passes/InstrSelectionFn.sml
+           src/Reprs/Isa/Isa.sml
+           src/Passes/InstrSelection.sml
 
            src/Passes/ScheduleParams.sml
 
-           src/Passes/IsaLabelUsesFn.sml
+           src/Passes/IsaLabelUses.sml
            src/Reprs/Abi/CallingConventionFn.sml
-           src/Reprs/Abi/ABI.sml
+           src/Reprs/Abi/Abi.sml
            src/Passes/StackSlot.sml
            src/Passes/Location.sml
            src/Passes/RegisterHints.sml
-           src/Passes/RegisterEnvFn.sml
+           src/Passes/RegisterEnv.sml
            src/Passes/Registerizer.sml
 
            src/Reprs/Cps/Convert.sml
 
-           src/Passes/RegisterAllocationFn.sml
+           src/Passes/RegisterAllocation.sml
            src/Passes/Logues.sml
 
            src/Reprs/Isa/SeqIsa.sml
@@ -116,7 +116,7 @@ local
            src/Platform/X64Linearize.sml
            src/Platform/GasX64SysVAbiEmit.sml
 
-           src/Parser/parser.sml
+           src/Parser/Parser.sml
        end
     end
 in
