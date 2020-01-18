@@ -105,8 +105,7 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
                  let val (env, v) = Env.regUse env hints builder label v
                  in Builder.insertStmt builder label (Stmt.Eff (CMP (v, c)))
                   ; env
-                 end
-              | _ => env) (* FIXME *)
+                 end)
 
     fun transfer cconvs builder label env hints =
         fn X64Instructions.Transfer.JMP (dest, args) =>

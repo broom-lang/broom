@@ -52,7 +52,6 @@ structure X64InstrSelection = InstrSelectionFn(struct
                      Builder.insertStmt builder parent (Def (def, LOADc 0w0)))
              | Const (Const.Int n) => (* FIXME: `n` might not fit into 32 bits: *)
                 Builder.insertStmt builder parent (Def (def, LOADc (Word32.fromInt n)))
-             | _ => () (* FIXME *)
 
         fun transfer builder label =
             fn Goto {callee, tArgs = _, vArgs} => JMP (callee, vArgs)
