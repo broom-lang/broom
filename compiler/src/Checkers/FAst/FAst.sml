@@ -1,4 +1,9 @@
-structure FAst = struct
+structure FAst :> sig
+    structure Type : FAST_TYPE
+    structure Term : FAST_TERM
+        where type Type.sv = Type.sv
+        where type ('expr, 'error) env = ('expr, 'error) Type.env
+end = struct
     structure Type = struct
         open FTypeBase
         structure ScopeId = ScopeId
@@ -14,6 +19,8 @@ structure FAst = struct
         and co = sv FTypeBase.co
         and uv = sv FTypeBase.concr TypeVars.uv
         and path = sv FTypeBase.concr TypeVars.path
+
+        type row = sv FTypeBase.row
 
         type ('expr, 'error) env = (concr, 'expr, 'error) TypecheckingEnv.t
 
