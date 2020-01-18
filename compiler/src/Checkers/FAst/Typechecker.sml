@@ -228,12 +228,12 @@ end = struct
          | Type (_, t) => FFType.Type t
          | Const (_, c) => Prim (Const.typeOf c)
 
-    and checkFn env (pos, {pos = _, id = _, var = param, typ = domain}, expl, body) =
+    and checkFn env (_, {pos = _, id = _, var = param, typ = domain}, expl, body) =
         let val env = Env.insert (env, param, domain)
         in Arrow (expl, {domain, codomain = check env body})
         end
 
-    and checkTFn env (pos, params, body) =
+    and checkTFn env (_, params, body) =
         let val env = Vector1.foldl (fn ({var, kind}, env) => Env.insertType (env, var, (var, kind)))
                                     env params
         in ForAll (params, check env body)
@@ -344,7 +344,7 @@ end = struct
          | Axiom _ => () (* TODO: Some checks here (see F_c paper) *)
          | Expr expr => ignore (check env expr)
 
-    fun typecheckProgram cstEnv {typeFns = _, code, sourcemap} =
+    fun typecheckProgram cstEnv {typeFns = _, code, sourcemap = _} =
         ( checkLetrec (Env.empty cstEnv) code (* TODO: Use `typeFns` *)
         ; NONE )
 end

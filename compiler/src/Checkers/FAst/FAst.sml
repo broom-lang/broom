@@ -1,6 +1,4 @@
 structure FAst = struct
-    structure ScopeId = ScopeId
-
     structure Type = struct
         open FTypeBase
         structure ScopeId = ScopeId

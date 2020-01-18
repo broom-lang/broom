@@ -24,8 +24,6 @@ end = struct
     structure Concr = FType.Concr
     type concr = Concr.t
     datatype sv = datatype FType.sv
-    structure Uv = TypeVars.Uv
-    structure Path = TypeVars.Path
     open TypeError
     structure Env = TypecheckingEnv
     structure Bindings = Env.Bindings
@@ -40,7 +38,7 @@ end = struct
 
     fun rowWhere env pos (row, field' as (label', _)) =
         let val rec override =
-                fn RowExt {base, field = field as (label, _)} =>
+                fn RowExt {base, field = (label, _)} =>
                     if label = label'
                     then let val params = Env.existentialParams env (* FIXME: only the params used in `fieldt` *)
                          in  instantiate env (params, row) (fn (env, _, row) =>

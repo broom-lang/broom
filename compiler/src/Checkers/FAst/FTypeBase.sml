@@ -70,7 +70,6 @@ structure FTypeBase :> FAST_TYPE_BASE = struct
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
     val op<|> = PPrint.<|>
-    val comma = PPrint.comma
     val space = PPrint.space
     val newline = PPrint.newline
     val parens = PPrint.parens
@@ -195,7 +194,7 @@ structure FTypeBase :> FAST_TYPE_BASE = struct
             coercionToDoc svarToDoc co <+> text "o"
                 <+> coercionToDoc svarToDoc co'
          | CompCo (co, co') =>
-            coercionToDoc svarToDoc co <+> coercionToDoc svarToDoc co
+            coercionToDoc svarToDoc co <+> coercionToDoc svarToDoc co'
          | CallTFnCo def => defToDoc def
          | ForAllCo (params, body) =>
             text "forall" <+> PPrint.punctuate1 space (Vector1.map defToDoc params)
@@ -277,7 +276,7 @@ structure FTypeBase :> FAST_TYPE_BASE = struct
         end
 
     val rec smallConcr =
-        fn (Exists (params, body) | ForAll (params, body)) => false
+        fn (Exists _ | ForAll _) => false
          | Arrow (_, {domain, codomain}) =>
             smallConcr domain andalso smallConcr codomain
          | Record t => smallConcr t
