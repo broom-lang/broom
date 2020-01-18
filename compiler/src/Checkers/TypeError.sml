@@ -1,48 +1,48 @@
 signature TYPE_ERROR = sig
-    datatype t = NonSubType of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr * t option
-               | NonUnifiable of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr * t option
-               | InequalKinds of Pos.span * FlexFAst.Type.kind * FlexFAst.Type.kind
-               | NonMonotype of Pos.span * FlexFAst.Type.concr
-               | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
-               | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
+    datatype t = NonSubType of Pos.span * FAst.Type.concr * FAst.Type.concr * t option
+               | NonUnifiable of Pos.span * FAst.Type.concr * FAst.Type.concr * t option
+               | InequalKinds of Pos.span * FAst.Type.kind * FAst.Type.kind
+               | NonMonotype of Pos.span * FAst.Type.concr
+               | UnCallable of FAst.Term.expr * FAst.Type.concr
+               | UnDottable of FAst.Term.expr * FAst.Type.concr
                | UnboundVal of Pos.span * Name.t
-               | TypeCtorArity of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.kind * int
+               | TypeCtorArity of Pos.span * FAst.Type.concr * FAst.Type.kind * int
                | OutsideScope of Pos.span * Name.t
-               | MissingField of Pos.span * FlexFAst.Type.concr * Name.t
+               | MissingField of Pos.span * FAst.Type.concr * Name.t
                | DuplicateBinding of Pos.span * Name.t
-               | Occurs of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr
+               | Occurs of Pos.span * FAst.Type.concr * FAst.Type.concr
    
     exception TypeError of t
 
-    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, t) TypecheckingEnv.t
+    type env = (FAst.Type.concr, FAst.Term.expr, t) TypecheckingEnv.t
 
     val toDoc: env -> t -> PPrint.t
 end
 
 structure TypeError :> TYPE_ERROR = struct
-    structure FAst = FlexFAst
+    structure FAst = FAst
     structure Concr = FAst.Type.Concr
     structure FTerm = FAst.Term
     val text = PPrint.text
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
 
-    datatype t = NonSubType of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr * t option
-               | NonUnifiable of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr * t option
-               | InequalKinds of Pos.span * FlexFAst.Type.kind * FlexFAst.Type.kind
-               | NonMonotype of Pos.span * FlexFAst.Type.concr
-               | UnCallable of FlexFAst.Term.expr * FlexFAst.Type.concr
-               | UnDottable of FlexFAst.Term.expr * FlexFAst.Type.concr
+    datatype t = NonSubType of Pos.span * FAst.Type.concr * FAst.Type.concr * t option
+               | NonUnifiable of Pos.span * FAst.Type.concr * FAst.Type.concr * t option
+               | InequalKinds of Pos.span * FAst.Type.kind * FAst.Type.kind
+               | NonMonotype of Pos.span * FAst.Type.concr
+               | UnCallable of FAst.Term.expr * FAst.Type.concr
+               | UnDottable of FAst.Term.expr * FAst.Type.concr
                | UnboundVal of Pos.span * Name.t
-               | TypeCtorArity of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.kind * int
+               | TypeCtorArity of Pos.span * FAst.Type.concr * FAst.Type.kind * int
                | OutsideScope of Pos.span * Name.t
-               | MissingField of Pos.span * FlexFAst.Type.concr * Name.t
+               | MissingField of Pos.span * FAst.Type.concr * Name.t
                | DuplicateBinding of Pos.span * Name.t
-               | Occurs of Pos.span * FlexFAst.Type.concr * FlexFAst.Type.concr
+               | Occurs of Pos.span * FAst.Type.concr * FAst.Type.concr
     
     exception TypeError of t
 
-    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, t) TypecheckingEnv.t
+    type env = (FAst.Type.concr, FAst.Term.expr, t) TypecheckingEnv.t
 
     fun toDoc env err =
         let val sourcemap = TypecheckingEnv.sourcemap env

@@ -1,7 +1,7 @@
 signature CPS_TYPE = sig
     structure Prim : PRIM_TYPE where type t = PrimType.t
 
-    type param = FType.def
+    type param = FTypeBase.def
     
     datatype t
         = FnT of {tDomain : param vector, vDomain : t vector}
@@ -18,9 +18,9 @@ signature CPS_TYPE = sig
 
     val toDoc : t -> PPrint.t
 
-    val fromF : FixedFAst.Type.concr -> t
+    val fromF : FAst.Type.concr -> t
     val eq : t * t -> bool
-    val substitute : t FType.Id.SortedMap.map -> t -> t
+    val substitute : t FTypeBase.Id.SortedMap.map -> t -> t
     val mapChildren : (t -> t) -> t -> t
 
     structure Coercion : sig
@@ -113,7 +113,7 @@ signature CPS_PROGRAM = sig
 
     (* TODO: Make abstract? *)
     type t =
-        { typeFns : FType.def vector
+        { typeFns : FTypeBase.def vector
         , stmts : Expr.t Map.t
         , conts : Cont.t LabelMap.t
         , main : Label.t }
@@ -127,7 +127,7 @@ signature CPS_PROGRAM = sig
     structure Builder : sig
         type builder
 
-        val new : FType.def vector -> builder
+        val new : FTypeBase.def vector -> builder
         val insertCont : builder -> Label.t * Cont.t -> unit
         val insertExpr : builder -> Expr.def * Expr.t -> unit
         val express : builder -> Expr.t -> Expr.def
@@ -170,7 +170,7 @@ end = struct
     structure Type = struct
         structure Prim = PrimType
 
-        type param = FType.def
+        type param = FTypeBase.def
         
         datatype t
             = FnT of {tDomain : param vector, vDomain : t vector}
@@ -192,15 +192,15 @@ end = struct
         val rec toDoc =
             fn FnT {tDomain, vDomain} =>
                 text "fn"
-                <+> argsDoc FType.defToDoc tDomain
+                <+> argsDoc FTypeBase.defToDoc tDomain
                 <+> parens (punctuate (comma <> space) (Vector.map toDoc vDomain))
              | AnyClosure {tDomain, vDomain} =>
                 text "cl"
-                <+> argsDoc FType.defToDoc tDomain
+                <+> argsDoc FTypeBase.defToDoc tDomain
                 <+> parens (punctuate (comma <> space) (Vector.map toDoc vDomain))
              | Closure {tDomain, vDomain, clovers} =>
                 text "cl"
-                <+> argsDoc FType.defToDoc tDomain
+                <+> argsDoc FTypeBase.defToDoc tDomain
                 <+> parens (punctuate (comma <> space) (Vector.map toDoc vDomain))
                 <+> braces (punctuate (comma <> space) (Vector.map toDoc clovers))
              | AppT {callee, args} =>
@@ -210,25 +210,25 @@ end = struct
              | EmptyRow => PPrint.empty
              | Singleton def => text "val" <+> CpsId.toDoc def
              | Type t => brackets (text "=" <+> toDoc t)
-             | TParam {var, ...} => text ("g__" ^ FType.Id.toString var) (* HACK: g__ *)
+             | TParam {var, ...} => text ("g__" ^ FTypeBase.Id.toString var) (* HACK: g__ *)
              | Prim p => Prim.toDoc p
 
         val rec fromF =
-            fn FType.ForAll (params, body) =>
+            fn FTypeBase.ForAll (params, body) =>
                 let val contTyp = FnT {tDomain = #[], vDomain = #[Prim Prim.StackT, fromF body]}
                 in FnT {tDomain = Vector1.toVector params, vDomain = #[Prim Prim.StackT, contTyp]}
                 end
-             | FType.Arrow (_, {domain, codomain}) =>
+             | FTypeBase.Arrow (_, {domain, codomain}) =>
                 let val contTyp = FnT {tDomain = #[], vDomain = #[Prim Prim.StackT, fromF codomain]}
                 in FnT {tDomain = #[], vDomain = #[Prim Prim.StackT, contTyp, fromF domain]}
                 end
-             | FType.Record row => Record (fromF row)
-             | FType.EmptyRow => EmptyRow
-             | FType.Type t => Type (fromF t)
-             | FType.App {callee, args} =>
+             | FTypeBase.Record row => Record (fromF row)
+             | FTypeBase.EmptyRow => EmptyRow
+             | FTypeBase.Type t => Type (fromF t)
+             | FTypeBase.App {callee, args} =>
                 AppT {callee = fromF callee, args = Vector1.map fromF args}
-             | FType.UseT def => TParam def
-             | FType.Prim p => Prim p
+             | FTypeBase.UseT def => TParam def
+             | FTypeBase.Prim p => Prim p
 
         val rec eq =
             fn ( (FnT {tDomain, vDomain}, FnT {tDomain = tDomain', vDomain = vDomain'})
@@ -265,12 +265,12 @@ end = struct
             fn t as FnT {tDomain, vDomain} =>
                 let val mapping =
                         Vector.foldl (fn ({var, ...}, mapping) =>
-                                          #1 (FType.Id.SortedMap.remove (mapping, var)))
+                                          #1 (FTypeBase.Id.SortedMap.remove (mapping, var)))
                                      mapping tDomain
                 in mapChildren (substitute mapping) t
                 end
              | t as TParam {var, ...} =>
-                (case FType.Id.SortedMap.find (mapping, var)
+                (case FTypeBase.Id.SortedMap.find (mapping, var)
                  of SOME t' => t'
                   | NONE => t)
              | t => mapChildren (substitute mapping) t
@@ -361,7 +361,7 @@ end = struct
             <> (case name
                 of SOME name => space <> Name.toDoc name
                  | NONE => PPrint.empty)
-            <+> Type.argsDoc FType.defToDoc tParams
+            <+> Type.argsDoc FTypeBase.defToDoc tParams
             <+> parens (punctuate (comma <> space) (Vector.map Type.toDoc vParams))
             <> nest 4 (newline <> Transfer.toDoc body)
     end
@@ -460,7 +460,7 @@ end = struct
 
         (* OPTIMIZE: *)
         fun primopType opn =
-            let val (tParams, _, {domain, codomain}) = FlexFAst.Type.primopType opn
+            let val (tParams, _, {domain, codomain}) = FAst.Type.primopType opn
             in  if Primop.isTotal opn
                 then { tParams, vParams = Vector.map Type.fromF domain
                      , codomain = #[Type.fromF codomain] }
@@ -477,7 +477,7 @@ end = struct
         structure Cont = Cont
 
         type t =
-            { typeFns : FType.def vector
+            { typeFns : FTypeBase.def vector
             , stmts : Expr.t Map.t
             , conts : Cont.t LabelMap.t
             , main : Label.t }
@@ -518,7 +518,7 @@ end = struct
                    of SOME cconv => space <> CallingConvention.toDoc cconv <> space
                     | NONE => space)
                <> Label.toDoc label
-               <+> Type.argsDoc FType.defToDoc tParams
+               <+> Type.argsDoc FTypeBase.defToDoc tParams
                <+> parens (punctuate (comma <> space) (Vector.map Type.toDoc vParams)) <> text ":"
                <> nest 4 (newline <> exprsToDoc program visited exprs <++> Transfer.toDoc body)
             end
@@ -536,7 +536,7 @@ end = struct
                              conts
             end
 
-        fun typeFnToDoc def = text "type" <+> FType.defToDoc def
+        fun typeFnToDoc def = text "type" <+> FTypeBase.defToDoc def
 
         (* MAYBE: Nest functions in output: *)
         fun toDoc (program as {typeFns, stmts = _, conts, main}) =
@@ -546,7 +546,7 @@ end = struct
 
         (* OPTIMIZE: Transient Map: *)
         structure Builder = struct
-            type builder = {typeFns : FType.def vector, stmts : Expr.t Map.t ref, conts : Cont.t LabelMap.t ref}
+            type builder = {typeFns : FTypeBase.def vector, stmts : Expr.t Map.t ref, conts : Cont.t LabelMap.t ref}
 
             fun new typeFns = {typeFns, stmts = ref Map.empty, conts = ref LabelMap.empty}
 

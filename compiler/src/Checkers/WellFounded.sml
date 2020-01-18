@@ -1,9 +1,9 @@
 structure WellFounded :> sig
     structure FAst : sig
         structure Term : FAST_TERM
-            where type expr = FixedFAst.Term.expr
-            where type stmt = FixedFAst.Term.stmt
-            where type Type.sv = FixedFAst.Type.sv
+            where type expr = FAst.Term.expr
+            where type stmt = FAst.Term.stmt
+            where type Type.sv = FAst.Type.sv
     end
 
     datatype error = ReadUninitialized of Pos.span * Name.t option * Name.t
@@ -12,7 +12,7 @@ structure WellFounded :> sig
 
     val elaborate : FAst.Term.program -> (error vector, FAst.Term.program) Either.t
 end = struct
-    structure FAst = FixedFAst
+    structure FAst = FAst
     structure FTerm = FAst.Term
     datatype expr = datatype FTerm.expr
     datatype stmt = datatype FTerm.stmt
@@ -36,13 +36,13 @@ end = struct
         type t = FTerm.def
         type ord_key = t
 
-        val toDoc : t -> PPrint.t
+        (* val toDoc : t -> PPrint.t *)
         val compare : t * t -> order
     end = struct
         type t = FTerm.def
         type ord_key = t
 
-        val toDoc = FTerm.defToDoc ()
+        (* val toDoc = FTerm.defToDoc Fn.undefined *)
 
         fun compare ({id, ...}: t, {id = id', ...}: t) =
             DefId.compare (id, id')
@@ -51,7 +51,7 @@ end = struct
     structure Support = struct
         structure Super = BinarySetFn(Def)
         open Super
-
+(*
         fun toDoc names =
             names
             |> toList
@@ -59,6 +59,7 @@ end = struct
             |> Vector.map Def.toDoc
             |> PPrint.punctuate (text "," <> space)
             |> PPrint.braces
+*)
     end
 
     datatype typ
@@ -69,6 +70,7 @@ end = struct
         | Scalar
         | Unknown
 
+(*
     val rec typToDoc =
         fn Closure (support, codomain) =>
             text "_" <+> text "->" <+> Support.toDoc support
@@ -87,6 +89,7 @@ end = struct
             end
          | EmptyRow => PPrint.empty
          | row => typToDoc row
+*)
 
     fun rewriteRow label row =
         let val rec rewrite = 
@@ -162,9 +165,7 @@ end = struct
          | (Unknown, Unknown) => (Unknown, false)
          | (Unknown, typ) => (typ, true)
          | (typ, Unknown) => (typ, false)
-         | (typ, typ') =>
-            raise Fail (PPrint.pretty 80 ( text "unreachable:"
-                                           <+> typToDoc typ <+> text "V" <+> typToDoc typ' ))
+         | (typ, typ') => raise Fail "unreachable"
 
     datatype context = Escaping | Naming
 
@@ -516,8 +517,8 @@ end = struct
                  of (Delayed Initialized | Instant Initialized) => expr
                   | Delayed Uninitialized =>
                      let val boxDef = { pos = defPos, id = DefId.fresh (), var = Name.fresh ()
-                                      , typ = FType.App { callee = FType.Prim PrimType.Box
-                                                        , args = Vector1.singleton typ } }
+                                      , typ = FTypeBase.App { callee = FTypeBase.Prim PrimType.Box
+                                                            , args = Vector1.singleton typ } }
                      in DefId.HashTable.insert boxDefs (id, (typ, boxDef))
                       ; PrimApp (pos, typ, Primop.BoxGet, #[typ], #[Use (pos, boxDef)])
                      end
@@ -547,7 +548,7 @@ end = struct
                     in case DefId.HashTable.find boxDefs id
                        of SOME (contentType, boxDef) =>
                            #[ Val (pos, def, expr)
-                            , Expr (PrimApp ( pos, FType.Record FType.EmptyRow
+                            , Expr (PrimApp ( pos, FTypeBase.Record FTypeBase.EmptyRow
                                             , Primop.BoxInit, #[contentType]
                                             , #[Use (pos, boxDef), Use (pos, def)] )) ]
                         | NONE => #[Val (pos, def, expr) ]

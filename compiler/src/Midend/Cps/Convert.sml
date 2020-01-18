@@ -1,8 +1,8 @@
 functor CpsConvertFn (Abi : ABI) :> sig
-    val cpsConvert : FixedFAst.Term.program -> Cps.Program.t
+    val cpsConvert : FAst.Term.program -> Cps.Program.t
 end = struct
-    structure FFType = FixedFAst.Type
-    structure FFTerm = FixedFAst.Term
+    structure FFType = FAst.Type
+    structure FFTerm = FAst.Term
     structure Type = Cps.Type
     structure Expr = Cps.Expr
     structure Transfer = Cps.Transfer
@@ -27,7 +27,7 @@ end = struct
         | TrivK of def
         | TrivlK of Label.t
 
-    structure Env = FType.Id.SortedMap (* TODO: HashMap *)
+    structure Env = FTypeBase.Id.SortedMap (* TODO: HashMap *)
 
     val convertType = Cps.Type.fromF
 

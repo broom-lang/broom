@@ -1,16 +1,16 @@
 structure Typechecker :> sig
-    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
+    type env = (FAst.Type.concr, FAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
     val elaborateProgram: env -> Cst.Term.begin
-        -> ( FlexFAst.Term.program * env * TypeError.t list
-           , FlexFAst.Term.program * env) Either.t
+        -> ( FAst.Term.program * env * TypeError.t list
+           , FAst.Term.program * env) Either.t
 end = struct
     val op|> = Fn.|>
     datatype either = datatype Either.t
     structure Uv = TypeVars.Uv
     structure CTerm = Cst.Term
     datatype explicitness = datatype Cst.explicitness
-    structure FAst = FlexFAst
+    structure FAst = FAst
     structure FTerm = FAst.Term
     structure FType = FAst.Type
     structure Id = FType.Id
@@ -26,7 +26,7 @@ end = struct
     structure Env = TypecheckingEnv
     structure Bindings = Env.Bindings
     structure Scope = Env.Scope
-    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
+    type env = (FAst.Type.concr, FAst.Term.expr, TypeError.t) TypecheckingEnv.t
     datatype expr_binding_state = datatype Bindings.Expr.binding_state
     structure Path = TypeVars.Path
 

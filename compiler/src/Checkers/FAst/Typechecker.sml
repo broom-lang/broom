@@ -1,7 +1,9 @@
 structure FAstTypechecker :> sig
-    val typecheckProgram: FixedFAst.Term.program -> (* FIXME: *) unit option
+    type tenv = (FAst.Term.expr, TypeError.t) FAst.Type.env
+
+    val typecheckProgram: tenv -> FAst.Term.program -> (* FIXME: *) unit option
 end = struct
-    structure FAst = FixedFAst
+    structure FAst = FAst
     structure FType = FAst.Type
     structure Id = FType.Id
     structure FFType = FAst.Type
@@ -10,10 +12,12 @@ end = struct
     structure FFTerm = FAst.Term
     val op|> = Fn.|>
 
+    type tenv = (FAst.Term.expr, TypeError.t) FAst.Type.env
+
     structure Env :> sig
         type t
 
-        val empty: Pos.sourcemap -> t
+        val empty: tenv -> t
         val insert: t * Name.t * FFType.concr -> t
         val insertType: t * Id.t * (Id.t * FFType.kind) -> t
 
@@ -22,30 +26,32 @@ end = struct
         val insertCo: t * Name.t * FFType.concr * FFType.concr -> t
         val findCo: t * Name.t -> (FFType.concr * FFType.concr) option
 
+        val cstEnv : t -> tenv
         val sourcemap : t -> Pos.sourcemap
     end = struct
         type t = { vals: FFType.concr NameSortedMap.map
                  , types: (Id.t * FFType.kind) Id.SortedMap.map
                  , coercions: (FFType.concr * FFType.concr) NameSortedMap.map
-                 , sourcemap: Pos.sourcemap }
+                 , cstEnv: tenv }
 
-        fun empty sourcemap =
+        fun empty cstEnv =
             { vals = NameSortedMap.empty, types = Id.SortedMap.empty
             , coercions = NameSortedMap.empty
-            , sourcemap }
+            , cstEnv }
 
-        fun insert ({vals, types, coercions, sourcemap}, name, t) =
-            {vals = NameSortedMap.insert (vals, name, t), types, coercions, sourcemap}
-        fun insertType ({vals, types, coercions, sourcemap}, id, entry) =
-            {vals, types = Id.SortedMap.insert (types, id, entry), coercions, sourcemap}
-        fun insertCo ({vals, types, coercions, sourcemap}, name, l, r) =
-            {vals, types, coercions = NameSortedMap.insert (coercions, name, (l, r)), sourcemap}
+        fun insert ({vals, types, coercions, cstEnv}, name, t) =
+            {vals = NameSortedMap.insert (vals, name, t), types, coercions, cstEnv}
+        fun insertType ({vals, types, coercions, cstEnv}, id, entry) =
+            {vals, types = Id.SortedMap.insert (types, id, entry), coercions, cstEnv}
+        fun insertCo ({vals, types, coercions, cstEnv}, name, l, r) =
+            {vals, types, coercions = NameSortedMap.insert (coercions, name, (l, r)), cstEnv}
 
         fun find ({vals, ...}: t, name) = NameSortedMap.find (vals, name)
         fun findType ({types, ...}: t, id) = Id.SortedMap.find (types, id)
         fun findCo ({coercions, ...}: t, name) = NameSortedMap.find (coercions, name)
 
-        val sourcemap: t -> Pos.sourcemap = #sourcemap
+        val cstEnv : t -> tenv = #cstEnv
+        val sourcemap = TypecheckingEnv.sourcemap o cstEnv
     end
 
     datatype kind = datatype Kind.t
@@ -66,14 +72,14 @@ end = struct
         in Vector1.foldl pushStmt env stmts
         end
 
-    fun rowLabelType row label =
+    fun rowLabelType env row label =
         case row
         of RowExt {base, field = (label', fieldt)} =>
             if label' = label
             then SOME fieldt
-            else rowLabelType base label
+            else rowLabelType env base label
          | EmptyRow => NONE
-         | _ => raise Fail ("Not a row type: " ^ FType.Concr.toString () row)
+         | _ => raise Fail ("Not a row type: " ^ FType.Concr.toString (Env.cstEnv env) row)
 
     fun rowWhere row (field' as (label', _)) =
         case row
@@ -107,12 +113,12 @@ end = struct
                         |> Vector1.zipWith (fn ({var, ...}, def') => (var, UseT def'))
                         |> Vector1.toVector
                         |> Id.SortedMap.fromVector
-            val body = Concr.substitute Fn.undefined mapping body
+            val body = Concr.substitute (Env.cstEnv env) mapping body
             val mapping' = (params', params'')
                          |> Vector1.zipWith (fn ({var, ...}, def') => (var, UseT def'))
                          |> Vector1.toVector
                          |> Id.SortedMap.fromVector
-            val body' = Concr.substitute Fn.undefined mapping' body'
+            val body' = Concr.substitute (Env.cstEnv env) mapping' body'
         in f env (body, body')
         end
 
@@ -150,7 +156,7 @@ end = struct
     fun checkEq currPos env ts =
         if eq env ts
         then ()
-        else raise Fail ( FFType.Concr.toString () (#1 ts) ^ " != " ^ FFType.Concr.toString () (#2 ts)
+        else raise Fail ( FFType.Concr.toString (Env.cstEnv env) (#1 ts) ^ " != " ^ FFType.Concr.toString (Env.cstEnv env) (#2 ts)
                         ^ " in " ^ Pos.spanToString (Env.sourcemap env) currPos )
 
     fun checkCo env =
@@ -161,7 +167,7 @@ end = struct
              of (ForAll (defs, l), ForAll (defs', r)) =>
                  ( Vector1.zip3With (fn ({kind, ...}, {kind = kind', ...}, arg) =>
                                          ( checkKindEq (kind, kind')
-                                         ; checkKindEq (kindOf arg, kind) ))
+                                         ; checkKindEq (kindOf Fn.undefined arg, kind) ))
                                     (defs, defs', args)
                  ; let val mapping = (defs, args)
                                    |> Vector1.zipWith (Pair.first #var)
@@ -171,8 +177,8 @@ end = struct
                                     |> Vector1.zipWith (Pair.first #var)
                                     |> Vector1.toVector
                                     |> Id.SortedMap.fromVector
-                   in ( FType.Concr.substitute (Fn.constantly false) mapping l
-                      , FType.Concr.substitute (Fn.constantly false) mapping' r )
+                   in ( FType.Concr.substitute (Env.cstEnv env) mapping l
+                      , FType.Concr.substitute (Env.cstEnv env) mapping' r )
                    end ))
          | UseCo name => (case Env.findCo (env, name)
                           of SOME co => co
@@ -191,8 +197,8 @@ end = struct
                 val mapping = (tparams, targs)
                     |> VectorExt.zipWith (fn ({var, ...}, arg) => (var, arg))
                     |> FType.Id.SortedMap.fromVector
-                val domain = Vector.map (Concr.substitute Fn.undefined mapping) domain
-                val codomain = Concr.substitute Fn.undefined mapping codomain
+                val domain = Vector.map (Concr.substitute (Env.cstEnv env) mapping) domain
+                val codomain = Concr.substitute (Env.cstEnv env) mapping codomain
                 
                 do if not (Vector.length domain = Vector.length args)
                    then raise Fail "argc"
@@ -255,7 +261,8 @@ end = struct
              ; checkEq pos env (codomain, typ)
              ; typ
             end
-         | t => raise Fail ("Uncallable: " ^ FFTerm.exprToString () callee ^ ": " ^ FFType.Concr.toString () t)
+         | t => raise Fail ("Uncallable: " ^ FFTerm.exprToString (Env.cstEnv env) callee ^ ": "
+                            ^ FFType.Concr.toString (Env.cstEnv env) t)
 
     and checkTApp env (pos, typ, {callee, args}) =
         case check env callee
@@ -263,28 +270,31 @@ end = struct
             let do if Vector1.length args = Vector1.length params then () else raise Fail "argument count"
                 val pargs = Vector1.zip (params, args)
                 
-                fun checkArg ({var = _, kind}, arg) = checkKindEq (kindOf arg, kind)
+                fun checkArg ({var = _, kind}, arg) = checkKindEq (kindOf Fn.undefined arg, kind)
                 do Vector1.app checkArg pargs
 
                 val mapping = Vector1.foldl (fn (({var, ...}, arg), mapping) =>
                                                  Id.SortedMap.insert (mapping, var, arg))
                                             Id.SortedMap.empty pargs
-                val typ' = FFType.Concr.substitute (Fn.constantly false) mapping body
+                val typ' = FFType.Concr.substitute (Env.cstEnv env) mapping body
             in checkEq pos env (typ', typ)
              ; typ
             end
-         | t => raise Fail ("Nonuniversal: " ^ FFTerm.exprToString () callee ^ ": " ^ FFType.Concr.toString () t)
+         | t => raise Fail ("Nonuniversal: " ^ FFTerm.exprToString (Env.cstEnv env) callee ^ ": "
+                            ^ FFType.Concr.toString (Env.cstEnv env) t)
 
     and checkField env (pos, typ, expr, label) =
         case check env expr
         of t as Record row =>
-            (case rowLabelType row label
+            (case rowLabelType env row label
              of SOME fieldt => 
                  ( checkEq pos env (fieldt, typ)
                  ; fieldt )
-              | NONE => raise Fail ("Record " ^ FFTerm.exprToString () expr ^ ": " ^ FFType.Concr.toString () t
+              | NONE => raise Fail ("Record " ^ FFTerm.exprToString (Env.cstEnv env) expr ^ ": "
+                                    ^ FFType.Concr.toString (Env.cstEnv env) t
                                     ^ " does not have field " ^ Name.toString label))
-         | t => raise Fail ("Not a record: " ^ FFTerm.exprToString () expr ^ ": " ^ FFType.Concr.toString () t)
+         | t => raise Fail ("Not a record: " ^ FFTerm.exprToString (Env.cstEnv env) expr ^ ": "
+                            ^ FFType.Concr.toString (Env.cstEnv env) t)
 
     and checkLetrec env (_, stmts, body) =
         let val env = pushStmts env stmts
@@ -334,8 +344,8 @@ end = struct
          | Axiom _ => () (* TODO: Some checks here (see F_c paper) *)
          | Expr expr => ignore (check env expr)
 
-    fun typecheckProgram {typeFns = _, code, sourcemap} =
-        ( checkLetrec (Env.empty sourcemap) code (* TODO: Use `typeFns` *)
+    fun typecheckProgram cstEnv {typeFns = _, code, sourcemap} =
+        ( checkLetrec (Env.empty cstEnv) code (* TODO: Use `typeFns` *)
         ; NONE )
 end
 

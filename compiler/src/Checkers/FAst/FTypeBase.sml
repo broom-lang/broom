@@ -65,7 +65,7 @@ signature FAST_TYPE = sig
     end
 end
 
-structure FType :> FAST_TYPE = struct
+structure FTypeBase :> FAST_TYPE = struct
     val text = PPrint.text
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>
@@ -401,7 +401,7 @@ structure FType :> FAST_TYPE = struct
 end
 
 signature CLOSED_FAST_TYPE = sig
-    structure Id: ID where type t = FType.Id.t
+    structure Id: ID where type t = FTypeBase.Id.t
     structure Prim: PRIM_TYPE where type t = PrimType.t
     structure ScopeId: ID
 
@@ -409,17 +409,17 @@ signature CLOSED_FAST_TYPE = sig
 
     type ('expr, 'error) env
 
-    type def = FType.def
+    type def = FTypeBase.def
 
-    datatype effect = datatype FType.effect
-    type arrow = FType.arrow
+    datatype effect = datatype FTypeBase.effect
+    type arrow = FTypeBase.arrow
 
-    datatype concr' = datatype FType.concr
-    datatype co' = datatype FType.co
+    datatype concr' = datatype FTypeBase.concr
+    datatype co' = datatype FTypeBase.co
 
     type sv
-    type concr = sv FType.concr
-    type co = sv FType.co
+    type concr = sv FTypeBase.concr
+    type co = sv FTypeBase.co
 
     val defToDoc: def -> PPrint.t
     val arrowDoc: arrow -> PPrint.t

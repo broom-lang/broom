@@ -16,7 +16,7 @@ end = struct
     datatype either = datatype Either.t
     datatype flag_arity = datatype CLIParser.flag_arity
     type input = Parser.input
-    datatype stmt = datatype FixedFAst.Term.stmt
+    datatype stmt = datatype FAst.Term.stmt
     exception TypeError = TypeError.TypeError
 
     fun lexstreamFromInStream instream n =
@@ -66,22 +66,22 @@ end = struct
                    of Right (program, _) =>
                        let val program = ExitTypechecker.programToF tenv program
                            do if lint
-                              then case FAstTypechecker.typecheckProgram program
+                              then case FAstTypechecker.typecheckProgram tenv program
                                    of SOME err => raise Fail "Lint failed"
                                    | NONE => ()
                               else ()
                        in  case WellFounded.elaborate program
                            of Right program =>
-                               ( log (PPrint.pretty 80 (FixedFAst.Term.programToDoc () program) ^ "\n")
+                               ( log (PPrint.pretty 80 (FAst.Term.programToDoc tenv program) ^ "\n")
                                ; log "# CPS converting...\n\n"
                                ; if lint
-                                 then case FAstTypechecker.typecheckProgram program
+                                 then case FAstTypechecker.typecheckProgram tenv program
                                       of SOME err => raise Fail "Lint failed"
                                        | NONE => ()
                                  else ()
                                ; let val program = PatternMatching.implement program
                                      do if lint
-                                        then case FAstTypechecker.typecheckProgram program
+                                        then case FAstTypechecker.typecheckProgram tenv program
                                              of SOME err => raise Fail "Lint failed"
                                               | NONE => ()
                                         else ()
@@ -149,12 +149,12 @@ end = struct
                          of Right program =>
                              let val program as {code = (_, stmts, _), ...} = PatternMatching.implement program
                              in Vector1.app (fn stmt as (Val (_, {var, typ, ...}, _)) =>
-                                                let val v = FAstEval.interpret venv stmt
+                                                let val v = FAstEval.interpret tenv venv stmt
                                                 in print ( Name.toString var ^ " = "
-                                                         ^ FAstEval.Value.toString v ^ " : "
-                                                         ^ FixedFAst.Type.Concr.toString () typ ^ "\n" )
+                                                         ^ FAstEval.Value.toString tenv v ^ " : "
+                                                         ^ FAst.Type.Concr.toString tenv typ ^ "\n" )
                                                 end
-                                              | stmt as (Expr _) => ignore (FAstEval.interpret venv stmt))
+                                              | stmt as (Expr _) => ignore (FAstEval.interpret tenv venv stmt))
                                            stmts
                               ; (tenv, venv)
                              end
@@ -183,7 +183,7 @@ end = struct
                      let val program = ExitTypechecker.programToF tenv program
                      in  case WellFounded.elaborate program
                          of Right program =>
-                             ( print (PPrint.pretty 80 (FixedFAst.Term.programToDoc () program))
+                             ( print (PPrint.pretty 80 (FAst.Term.programToDoc tenv program))
                              ; tenv )
                           | Left errors =>
                              ( Vector.app (printErr o PPrint.pretty 80 o WellFounded.errorToDoc sourcemap)

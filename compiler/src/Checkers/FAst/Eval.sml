@@ -1,20 +1,24 @@
 structure FAstEval :> sig
+    type tenv = (FAst.Term.expr, TypeError.t) FAst.Type.env
+
     structure Value: sig
         type t
 
-        val toString: t -> string
+        val toString: tenv -> t -> string
     end
 
     type toplevel = Value.t NameHashTable.hash_table
 
     val newToplevel: unit -> toplevel
-    val interpret: toplevel -> FixedFAst.Term.stmt -> Value.t
+    val interpret: (FAst.Term.expr, TypeError.t) FAst.Type.env -> toplevel
+        -> FAst.Term.stmt -> Value.t
 end = struct
-    structure FType = FixedFAst.Type
-    structure FTerm = FixedFAst.Term
+    structure FType = FAst.Type
+    structure FTerm = FAst.Term
     datatype expr = datatype FTerm.expr
     datatype stmt = datatype FTerm.stmt
     datatype pat = datatype FTerm.pat
+    type tenv = (FAst.Term.expr, TypeError.t) FAst.Type.env
     type clause = FTerm.clause
 
     datatype value = Closure of env * Name.t * expr
@@ -27,7 +31,7 @@ end = struct
                    | Bool of bool
                    | Uninitialized
 
-    and env = Toplevel of bindings
+    and env = Toplevel of tenv * bindings
             | FnScope of env * Name.t * value
             | BlockScope of env * bindings
             | PatternScope of env * Name.t * value
@@ -35,6 +39,11 @@ end = struct
     withtype bindings = value NameHashTable.hash_table
 
     type toplevel = bindings
+
+    val rec typingEnv =
+        fn Toplevel (tenv, _) => tenv
+         | (FnScope (parent, _, _) | BlockScope (parent, _) | PatternScope (parent, _, _)) =>
+            typingEnv parent
 
     datatype frame = Def of env * Name.t
                    | Callee of env * expr
@@ -58,31 +67,31 @@ end = struct
 
         val emptyRecord = Record (NameHashTable.mkTable (0, Subscript))
 
-        val rec toDoc =
+        fun toDoc tenv =
             fn Closure _ => text "#<fn>"
              | Thunk _ => text "#<Fn>"
              | Record fields =>
                 let val fieldDocs = fields
                                   |> NameHashTable.listItemsi
                                   |> Vector.fromList
-                                  |> Vector.map fieldToDoc
+                                  |> Vector.map (fieldToDoc tenv)
                 in PPrint.braces (PPrint.punctuate (text "," <> PPrint.space)
                                                    fieldDocs)
                 end
              | Array vs =>
                 PPrint.brackets (PPrint.punctuate (text "," <> PPrint.space)
                                                   (Array.vector vs
-                                                  |> Vector.map toDoc))
-             | Box (ref v) => text "#<box" <+> toDoc v <> text ">"
+                                                  |> Vector.map (toDoc tenv)))
+             | Box (ref v) => text "#<box" <+> toDoc tenv v <> text ">"
              | TypeWitness t =>
-                PPrint.brackets (text "=" <+> FType.Concr.toDoc () t)
+                PPrint.brackets (text "=" <+> FType.Concr.toDoc tenv t)
              | Int n => text (Int.toString n)
              | Bool true => text "True"
              | Bool false => text "False"
              | Uninitialized => text "#<uninitialized>"
-        and fieldToDoc = fn (label, v) => Name.toDoc label <+> text "=" <+> toDoc v
+        and fieldToDoc tenv (label, v) = Name.toDoc label <+> text "=" <+> toDoc tenv v
 
-        val toString = PPrint.pretty 80 o toDoc
+        fun toString tenv = PPrint.pretty 80 o toDoc tenv
     end
 
     fun initField fields label value = NameHashTable.insert fields (label, value)
@@ -108,13 +117,13 @@ end = struct
 
     fun define env var value =
         case env
-        of (Toplevel bindings | BlockScope (_, bindings)) =>
+        of (Toplevel (_, bindings) | BlockScope (_, bindings)) =>
             NameHashTable.insert bindings (var, value)
          | (FnScope _ | PatternScope _) => raise Fail "unreachable"
 
     fun lookup env var =
         case env
-        of Toplevel toplevel => NameHashTable.lookup toplevel var
+        of Toplevel (_, toplevel) => NameHashTable.lookup toplevel var
          | (FnScope (parent, var', value) | PatternScope (parent, var', value)) =>
             if var = var'
             then value
@@ -240,7 +249,7 @@ end = struct
                              else match env cont clauses value)
             in matchClause clause
             end
-         | NONE => raise Fail ("Missing case for " ^ Value.toString value)
+         | NONE => raise Fail ("Missing case for " ^ Value.toString (typingEnv env) value)
 
     and continue cont value =
         case cont
@@ -285,6 +294,6 @@ end = struct
 
     fun newToplevel () = NameHashTable.mkTable (0, Subscript)
 
-    fun interpret toplevel = exec (Toplevel toplevel) []
+    fun interpret tenv toplevel = exec (Toplevel (tenv, toplevel)) []
 end
 

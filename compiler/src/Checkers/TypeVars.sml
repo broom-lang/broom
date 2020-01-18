@@ -1,5 +1,5 @@
 structure TypeVars :> sig
-    type kind = FType.kind
+    type kind = FTypeBase.kind
     type ('otyp, 'oexpr, 'error) env = ('otyp, 'oexpr, 'error) TypecheckingEnv.t
 
     exception SetPrivate of Name.t
@@ -31,7 +31,7 @@ structure TypeVars :> sig
     end
 end = struct
     structure Env = TypecheckingEnv
-    type kind = FType.kind
+    type kind = FTypeBase.kind
     type ('otyp, 'oexpr, 'error) env = ('otyp, 'oexpr, 'error) Env.t
 
     val rec kindCodomain =

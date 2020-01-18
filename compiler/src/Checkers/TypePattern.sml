@@ -1,16 +1,16 @@
 structure TypePattern = struct
-    structure Id = FType.Id
-    structure Concr = FlexFAst.Type.Concr
-    structure FTerm = FlexFAst.Term
+    structure Id = FTypeBase.Id
+    structure Concr = FAst.Type.Concr
+    structure FTerm = FAst.Term
     structure Env = TypecheckingEnv
     structure Uv = TypeVars.Uv
 
     datatype kind = datatype Kind.t
-    datatype effect = datatype FType.effect
+    datatype effect = datatype FTypeBase.effect
     datatype arrow = datatype Cst.explicitness
-    datatype concr' = datatype FType.concr
-    type concr = FlexFAst.Type.concr
-    datatype sv = datatype FlexFAst.Type.sv
+    datatype concr' = datatype FTypeBase.concr
+    type concr = FAst.Type.concr
+    datatype sv = datatype FAst.Type.sv
     datatype error = datatype TypeError.t
     datatype either = datatype Either.t
 
@@ -94,7 +94,7 @@ structure TypePattern = struct
         end
 
     and applyPolymorphic env (params, body) callee =
-        let val eff = valOf (FType.piEffect body)
+        let val eff = valOf (FTypeBase.piEffect body)
             val (args, mapping) =
                 Vector1.foldl (fn (def as {var, kind = _}, (args, mapping)) =>
                                    let val arg = resolveTypeArg env eff def

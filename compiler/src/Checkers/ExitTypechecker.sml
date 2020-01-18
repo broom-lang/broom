@@ -1,27 +1,27 @@
 structure ExitTypechecker :> sig
-    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
+    type env = (FAst.Type.concr, FAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
-    val exprToF: env -> FlexFAst.Term.expr -> FixedFAst.Term.expr
-    val stmtToF: env -> FlexFAst.Term.stmt -> FixedFAst.Term.stmt
-    val programToF: env -> FlexFAst.Term.program -> FixedFAst.Term.program
+    val exprToF: env -> FAst.Term.expr -> FAst.Term.expr
+    val stmtToF: env -> FAst.Term.stmt -> FAst.Term.stmt
+    val programToF: env -> FAst.Term.program -> FAst.Term.program
 end = struct
-    datatype sv = datatype FlexFAst.Type.sv
-    structure FFType = FixedFAst.Type
-    structure FFTerm = FixedFAst.Term
-    datatype concr = datatype FlexFAst.Type.concr'
-    datatype co = datatype FlexFAst.Type.co'
-    datatype expr = datatype FlexFAst.Term.expr
-    datatype stmt = datatype FlexFAst.Term.stmt
-    datatype pat = datatype FlexFAst.Term.pat
+    datatype sv = datatype FAst.Type.sv
+    structure FFType = FAst.Type
+    structure FFTerm = FAst.Term
+    datatype concr = datatype FAst.Type.concr'
+    datatype co = datatype FAst.Type.co'
+    datatype expr = datatype FAst.Term.expr
+    datatype stmt = datatype FAst.Term.stmt
+    datatype pat = datatype FAst.Term.pat
     datatype either = datatype Either.t
-    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
+    type env = (FAst.Type.concr, FAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
-    fun concrToF env: FlexFAst.Type.concr -> FFType.concr =
+    fun concrToF env: FAst.Type.concr -> FFType.concr =
         fn Exists (params, body) => Exists (params, concrToF env body)
          | ForAll (params, body) => ForAll (params, concrToF env body)
          | Arrow (expl, {domain, codomain}) =>
             Arrow (expl, {domain = concrToF env domain, codomain = concrToF env codomain})
-         | FType.Record row => FType.Record (concrToF env row)
+         | FTypeBase.Record row => FTypeBase.Record (concrToF env row)
          | RowExt {base, field = (label, fieldt)} =>
             RowExt {base = concrToF env base, field = (label, concrToF env fieldt)}
          | EmptyRow => EmptyRow
@@ -36,7 +36,7 @@ end = struct
                                 of Right (uv, _) => uvToF env uv
                                  | Left t => concrToF env t)
 
-    and coercionToF env: FlexFAst.Type.co -> FFType.co =
+    and coercionToF env: FAst.Type.co -> FFType.co =
         fn Refl t => Refl (concrToF env t)
          | Symm co => Symm (coercionToF env co)
          | InstCo {callee, args} =>
@@ -46,9 +46,9 @@ end = struct
     and uvToF env uv =
         case TypeVars.Uv.get env uv
         of Right t => concrToF env t
-         | Left uv => FType.kindDefault (TypeVars.Uv.kind env uv)
+         | Left uv => FTypeBase.kindDefault (TypeVars.Uv.kind env uv)
 
-    fun exprToF env: FlexFAst.Term.expr -> FFTerm.expr =
+    fun exprToF env: FAst.Term.expr -> FFTerm.expr =
         fn Fn (pos, {pos = defPos, id, var, typ}, expl, body) =>
             FFTerm.Fn (pos, {pos = defPos, id, var, typ = concrToF env typ}, expl, exprToF env body)
          | TFn (pos, param, body) => FFTerm.TFn (pos, param, exprToF env body)

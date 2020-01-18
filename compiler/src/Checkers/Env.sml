@@ -1,10 +1,10 @@
 signature TYPECHECKING_ENV = sig
     type input_type = Cst.Type.typ
     type input_expr = Cst.Term.expr
-    type type_id = FType.Id.t
-    type kind = FType.kind
-    type odef = FType.def
-    type effect = FType.effect
+    type type_id = FTypeBase.Id.t
+    type kind = FTypeBase.kind
+    type odef = FTypeBase.def
+    type effect = FTypeBase.effect
 
     type 'otyp abs_ctx = 'otyp vector 
 
@@ -102,10 +102,10 @@ end
 structure TypecheckingEnv :> TYPECHECKING_ENV = struct
     type input_type = Cst.Type.typ
     type input_expr = Cst.Term.expr
-    type type_id = FType.Id.t
-    type kind = FType.kind
-    type odef = FType.def
-    type effect = FType.effect
+    type type_id = FTypeBase.Id.t
+    type kind = FTypeBase.kind
+    type odef = FTypeBase.def
+    type effect = FTypeBase.effect
 
     type 'otyp abs_ctx = 'otyp vector 
 
@@ -120,7 +120,7 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
             fun new () = ref []
             fun insert typeFns f = typeFns := f :: !typeFns
             fun freshAbstract typeFns kind =
-                let val def = {var = FType.Id.fresh (), kind}
+                let val def = {var = FTypeBase.Id.fresh (), kind}
                 in insert typeFns def
                  ; def
                 end
@@ -128,7 +128,7 @@ structure TypecheckingEnv :> TYPECHECKING_ENV = struct
         end
 
         structure Type = struct
-            structure Id = FType.Id
+            structure Id = FTypeBase.Id
 
             type binding = kind
             type bindings = binding Id.HashTable.hash_table

@@ -1,17 +1,17 @@
 structure TypecheckingOps :> sig (* HACK: Dependency chains, grrr... *)
     structure FType : CLOSED_FAST_TYPE
-        where type sv = FlexFAst.Type.sv
-    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
+        where type sv = FAst.Type.sv
+    type env = (FAst.Type.concr, FAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
     val rowWhere : (env -> Pos.span -> FType.concr -> Name.t -> FType.concr * FType.concr -> FType.concr)
         -> env -> Pos.span -> (FType.concr * (Name.t * FType.concr)) -> FType.concr
     val rowWithout : env -> Pos.span -> (FType.concr * Name.t) -> FType.concr
     val instantiate : env -> FType.def vector * FType.concr
         -> (env * FType.concr vector * FType.concr -> 'a) -> 'a
-    val checkMonotypeKind : env -> Pos.span -> FlexFAst.Type.kind -> FlexFAst.Type.concr -> unit
+    val checkMonotypeKind : env -> Pos.span -> FAst.Type.kind -> FAst.Type.concr -> unit
 end = struct
-    datatype typ = datatype FType.concr
-    structure FType = FlexFAst.Type
+    datatype typ = datatype FTypeBase.concr
+    structure FType = FAst.Type
     structure Concr = FType.Concr
     datatype sv = datatype FType.sv
     structure Env = TypecheckingEnv

@@ -1,9 +1,9 @@
 structure CheckUse :> sig
-    structure FType : CLOSED_FAST_TYPE where type sv = FlexFAst.Type.sv
+    structure FType : CLOSED_FAST_TYPE where type sv = FAst.Type.sv
     structure FTerm : FAST_TERM
-        where type expr = FlexFAst.Term.expr
-        where type Type.sv = FlexFAst.Type.sv
-    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
+        where type expr = FAst.Term.expr
+        where type Type.sv = FAst.Type.sv
+    type env = (FAst.Type.concr, FAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
     val fix : { elaborateType : env -> Cst.Type.typ -> FType.def list * FType.Concr.t
               , reAbstract : env -> FType.Concr.t -> FType.Concr.t
@@ -14,12 +14,12 @@ structure CheckUse :> sig
               , lookupValType : Cst.Term.expr -> Name.t -> env -> FTerm.def option }
 end = struct
     structure CTerm = Cst.Term
-    datatype concr = datatype FType.concr
-    structure FType = FlexFAst.Type
-    structure FTerm = FlexFAst.Term
+    datatype concr = datatype FTypeBase.concr
+    structure FType = FAst.Type
+    structure FTerm = FAst.Term
     structure Env = TypecheckingEnv
     structure Scope = Env.Scope
-    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
+    type env = (FAst.Type.concr, FAst.Term.expr, TypeError.t) TypecheckingEnv.t
     datatype binding_state = datatype Env.Bindings.Expr.binding_state
     val subType = Subtyping.subType
     datatype either = datatype Either.t

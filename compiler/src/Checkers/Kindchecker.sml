@@ -1,9 +1,9 @@
 structure Kindchecker :> sig
-    structure FType : CLOSED_FAST_TYPE where type sv = FlexFAst.Type.sv
+    structure FType : CLOSED_FAST_TYPE where type sv = FAst.Type.sv
     type effect = FType.effect
     structure FTerm : FAST_TERM
-        where type expr = FlexFAst.Term.expr
-        where type Type.sv = FlexFAst.Type.sv
+        where type expr = FAst.Term.expr
+        where type Type.sv = FAst.Type.sv
     type env = (FType.concr, FTerm.expr, TypeError.t) TypecheckingEnv.t
     type unvisited_binding_type =
          Pos.span -> env -> Name.t -> Cst.Type.typ option TypecheckingEnv.Bindings.Expr.def * Cst.Term.expr option -> FTerm.def
@@ -16,10 +16,10 @@ end = struct
     structure CType = Cst.Type
     structure CTerm = Cst.Term
     datatype explicitness = datatype Cst.explicitness
-    datatype effect = datatype FType.effect
-    datatype concr = datatype FType.concr
-    structure FType = FlexFAst.Type
-    structure FTerm = FlexFAst.Term
+    datatype effect = datatype FTypeBase.effect
+    datatype concr = datatype FTypeBase.concr
+    structure FType = FAst.Type
+    structure FTerm = FAst.Term
     structure Id = FType.Id
     structure Concr = FType.Concr
     type concr = Concr.t

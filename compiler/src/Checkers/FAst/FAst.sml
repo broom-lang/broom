@@ -1,25 +1,25 @@
-structure FlexFAst = struct
+structure FAst = struct
     structure ScopeId = ScopeId
 
     val text = PPrint.text
     val op<> = PPrint.<>
 
     structure Type = struct
-        open FType
+        open FTypeBase
         structure ScopeId = ScopeId
 
-        datatype concr' = datatype FType.concr
-        datatype co' = datatype FType.co
+        datatype concr' = datatype FTypeBase.concr
+        datatype co' = datatype FTypeBase.co
 
         datatype sv = UVar of uv | Path of path
-        withtype concr = sv FType.concr
-        and co = sv FType.co
-        and uv = sv FType.concr TypeVars.uv
-        and path = sv FType.concr TypeVars.path
+        withtype concr = sv FTypeBase.concr
+        and co = sv FTypeBase.co
+        and uv = sv FTypeBase.concr TypeVars.uv
+        and path = sv FTypeBase.concr TypeVars.path
 
         type ('expr, 'error) env = (concr, 'expr, 'error) TypecheckingEnv.t
 
-        fun concrToDoc env = fn t => FType.Concr.toDoc (svarToDoc env) t
+        fun concrToDoc env = fn t => FTypeBase.Concr.toDoc (svarToDoc env) t
         and svarToDoc env =
             fn Path path =>
                 (case TypeVars.Path.get env path
@@ -39,7 +39,7 @@ structure FlexFAst = struct
             val toDoc = concrToDoc
             fun toString env = Concr.toString (svarToDoc env)
 
-            fun occurs env uv = FType.Concr.occurs (svarOccurs env) uv
+            fun occurs env uv = FTypeBase.Concr.occurs (svarOccurs env) uv
             and svarOccurs env uv =
                 fn Path path =>
                     (case TypeVars.Path.get env path
@@ -51,7 +51,7 @@ structure FlexFAst = struct
                 of Either.Left uv' => TypeVars.Uv.eq (uv, uv')
                  | Either.Right t => occurs env uv t
 
-            fun substitute env kv = FType.Concr.substitute (svarSubstitute env) kv
+            fun substitute env kv = FTypeBase.Concr.substitute (svarSubstitute env) kv
             and svarSubstitute env kv =
                 fn Path path =>
                     (case TypeVars.Path.get env path
@@ -67,45 +67,6 @@ structure FlexFAst = struct
         structure Co = struct
             open Co
 
-            fun toDoc env = Co.toDoc (svarToDoc env)
-        end
-    end
-
-    structure Term = FTerm(Type)
-end
-
-structure FixedFAst = struct
-    structure ScopeId = FlexFAst.ScopeId
-
-    structure Type = struct
-        open FType
-        structure ScopeId = ScopeId
-
-        datatype concr' = datatype FType.concr
-        datatype co' = datatype FType.co
-
-        type sv = Nothing.t
-        type concr = sv concr
-        type co = sv co'
-
-        type ('expr, 'error) env = unit
-
-        fun svarToDoc _ = PPrint.text o Nothing.toString
-
-        structure Concr = struct
-            open Concr
-
-            type t = concr
-
-            fun toDoc env = Concr.toDoc (svarToDoc env)
-            fun substitute _ = Concr.substitute (fn _ => fn _ => NONE)
-            val kindOf: concr -> kind = kindOf (fn _ => raise Fail "unreachable")
-            fun toString env = Concr.toString (svarToDoc env)
-        end
-
-        structure Co = struct
-            open Co
-            
             fun toDoc env = Co.toDoc (svarToDoc env)
         end
     end

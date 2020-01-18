@@ -94,7 +94,7 @@ end = struct
                         |> Vector.app (checkKind program)
                    else raise TypeError (ArgcT (Vector.length tParams, Vector.length tArgs))
                 val mapping = VectorExt.zip (Vector.map #var tParams, tArgs)
-                              |> FType.Id.SortedMap.fromVector
+                              |> FTypeBase.Id.SortedMap.fromVector
                 val vParams = Vector.map (Type.substitute mapping) vParams
                 val codomain = Vector.map (Type.substitute mapping) codomain
             in if Vector.length vArgs = Vector.length vParams
@@ -185,7 +185,7 @@ end = struct
                             |> Vector.app (checkKind program)
                        else raise TypeError (ArgcT (Vector.length tDomain, Vector.length tArgs))
                     val mapping = VectorExt.zip (Vector.map #var tDomain, tArgs)
-                                  |> FType.Id.SortedMap.fromVector
+                                  |> FTypeBase.Id.SortedMap.fromVector
                     val vDomain = Vector.map (Type.substitute mapping) vDomain
                 in if Vector.length vArgs = Vector.length vDomain
                    then VectorExt.zip (vDomain, vArgs)
@@ -201,7 +201,7 @@ end = struct
                             |> Vector.app (checkKind program)
                        else raise TypeError (ArgcT (Vector.length tDomain, Vector.length tArgs))
                     val mapping = VectorExt.zip (Vector.map #var tDomain, tArgs)
-                                  |> FType.Id.SortedMap.fromVector
+                                  |> FTypeBase.Id.SortedMap.fromVector
                     val vDomain = Vector.map (Type.substitute mapping) vDomain
                 in if Vector.length vArgs = Vector.length vDomain
                    then VectorExt.zip (vDomain, vArgs)

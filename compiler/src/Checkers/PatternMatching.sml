@@ -1,7 +1,7 @@
 structure PatternMatching :> sig
-    val implement : FixedFAst.Term.program -> FixedFAst.Term.program
+    val implement : FAst.Term.program -> FAst.Term.program
 end = struct
-    structure FTerm = FixedFAst.Term
+    structure FTerm = FAst.Term
     datatype expr = datatype FTerm.expr
     datatype stmt = datatype FTerm.stmt
     datatype pat = datatype FTerm.pat

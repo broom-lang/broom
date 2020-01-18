@@ -42,7 +42,7 @@ is
 
     src/Checkers/ScopeId.sml
 
-    src/Checkers/FAst/FType.sml
+    src/Checkers/FAst/FTypeBase.sml
     src/Checkers/FAst/FTerm.sml
 
     src/Checkers/Env.sml

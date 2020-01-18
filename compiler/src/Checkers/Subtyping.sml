@@ -1,25 +1,25 @@
 structure Subtyping :> sig
-    type effect = FlexFAst.Type.effect
-    type env = (FlexFAst.Type.concr, FlexFAst.Term.expr, TypeError.t) TypecheckingEnv.t
+    type effect = FAst.Type.effect
+    type env = (FAst.Type.concr, FAst.Term.expr, TypeError.t) TypecheckingEnv.t
 
-    type coercer = (FlexFAst.Term.expr -> FlexFAst.Term.expr) option
-    val applyCoercion: coercer -> FlexFAst.Term.expr -> FlexFAst.Term.expr
+    type coercer = (FAst.Term.expr -> FAst.Term.expr) option
+    val applyCoercion: coercer -> FAst.Term.expr -> FAst.Term.expr
 
     val joinEffs : effect * effect -> effect
-    val unify: env -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> FlexFAst.Type.co
+    val unify: env -> Pos.span -> FAst.Type.concr * FAst.Type.concr -> FAst.Type.co
 
     val subEffect: Pos.span -> effect * effect -> unit
-    val subType: env -> Pos.span -> FlexFAst.Type.concr * FlexFAst.Type.concr -> coercer
+    val subType: env -> Pos.span -> FAst.Type.concr * FAst.Type.concr -> coercer
 
-    val resolve : Pos.span -> FlexFAst.Type.concr -> FlexFAst.Term.expr
+    val resolve : Pos.span -> FAst.Type.concr -> FAst.Term.expr
 end = struct
     val op|> = Fn.|>
     datatype either = datatype Either.t
     structure Uv = TypeVars.Uv
     structure Path = TypeVars.Path
     datatype explicitness = datatype Cst.explicitness
-    datatype effect = datatype FType.effect
-    structure FAst = FlexFAst
+    datatype effect = datatype FTypeBase.effect
+    structure FAst = FAst
     structure FType = FAst.Type
     structure Id = FType.Id
     structure Concr = FType.Concr
