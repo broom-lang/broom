@@ -1,5 +1,5 @@
 structure Kindchecker :> sig
-    structure FType : CLOSED_FAST_TYPE where type sv = FAst.Type.sv
+    structure FType : FAST_TYPE where type sv = FAst.Type.sv
     type effect = FType.effect
     structure FTerm : FAST_TERM
         where type expr = FAst.Term.expr

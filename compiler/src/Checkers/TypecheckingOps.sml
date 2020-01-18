@@ -1,5 +1,5 @@
 structure TypecheckingOps :> sig (* HACK: Dependency chains, grrr... *)
-    structure FType : CLOSED_FAST_TYPE
+    structure FType : FAST_TYPE
         where type sv = FAst.Type.sv
     type env = (FAst.Type.concr, FAst.Term.expr, TypeError.t) TypecheckingEnv.t
 

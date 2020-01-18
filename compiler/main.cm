@@ -43,17 +43,18 @@ is
     src/Checkers/ScopeId.sml
 
     src/Checkers/FAst/FTypeBase.sml
-    src/Checkers/FAst/FTerm.sml
 
     src/Checkers/Env.sml
     src/Checkers/TypeVars.sml
 
+    src/Checkers/FAst/FType.sml
+    src/Checkers/FAst/FTerm.sml
     src/Checkers/FAst/FAst.sml
     src/Checkers/TypeError.sml
+    src/Checkers/TypecheckingOps.sml
 
     src/Checkers/FAst/Eval.sml
 
-    src/Checkers/TypecheckingOps.sml
     src/Checkers/Subtyping.sml
     src/Checkers/TypePattern.sml
     src/Checkers/Kindchecker.sml
