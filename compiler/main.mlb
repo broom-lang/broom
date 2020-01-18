@@ -49,16 +49,16 @@ local
 
            src/Checkers/ScopeId.sml
 
-           src/Checkers/FAst/FTypeBase.sml
+           src/Checkers/FAst/FTypeBase.sml (* F type skeleton for typing ctx and type vars *)
 
            src/Checkers/Env.sml
            src/Checkers/TypeVars.sml
 
            src/Checkers/FAst/FType.sml
            src/Checkers/FAst/FTerm.sml
-           src/Checkers/FAst/FAst.sml
-           src/Checkers/TypeError.sml
-           src/Checkers/TypecheckingOps.sml
+           src/Checkers/FAst/FAst.sml (* Inject type variables to F type and define F term *)
+           src/Checkers/TypeError.sml (* Needs full type and term definitions from FAst.sml *)
+           src/Checkers/TypecheckingOps.sml (* Stuff that also needs typing ctx and error *)
 
            src/Checkers/FAst/Eval.sml
 
@@ -67,9 +67,8 @@ local
            src/Checkers/Kindchecker.sml
            src/Checkers/CheckUse.sml
            src/Checkers/Typechecker.sml
-           src/Checkers/ExitTypechecker.sml
-
            src/Checkers/FAst/Typechecker.sml
+           src/Checkers/ExitTypechecker.sml
 
            src/Checkers/WellFounded.sml
            src/Checkers/PatternMatching.sml

@@ -60,9 +60,8 @@ is
     src/Checkers/Kindchecker.sml
     src/Checkers/CheckUse.sml
     src/Checkers/Typechecker.sml
-    src/Checkers/ExitTypechecker.sml
-
     src/Checkers/FAst/Typechecker.sml
+    src/Checkers/ExitTypechecker.sml
 
     src/Checkers/WellFounded.sml
     src/Checkers/PatternMatching.sml
