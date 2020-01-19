@@ -4,6 +4,8 @@ structure StackSlot :> sig
     val eq : t * t -> bool
     val compare : t * t -> order
     val index : t -> int
+    val toDoc : t -> PPrint.t
+    val toString : t -> string
 
     structure SortedMap : ORD_MAP where type Key.ord_key = t
 
@@ -23,6 +25,10 @@ end = struct
     val compare = Int.compare
 
     val index = Fn.identity
+
+    fun toString i = "sp[" ^ Int.toString i ^ "]"
+
+    val toDoc = PPrint.text o toString
 
     structure SortedMap = BinaryMapFn(struct
         type ord_key = t

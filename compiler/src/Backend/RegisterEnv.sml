@@ -2,6 +2,7 @@ signature REGISTER_ENV = sig
     structure Abi : ABI
     structure Register : REGISTER where type t = Abi.RegIsa.Register.t
     structure Hints : REGISTER_HINTS
+    structure Location : LOCATION where type t = Hints.Location.t
 
     type hints = Hints.t
     type builder = Abi.RegIsa.Program.Builder.builder
@@ -18,6 +19,8 @@ signature REGISTER_ENV = sig
     (* Use in the given register.
        Arranges for the id to be (also) in the given register if not already. *)
     val fixedRegUse : t -> hints -> builder -> Label.t -> CpsId.t -> Register.t -> t
+
+    val fixedUse : t -> hints -> builder -> Label.t -> CpsId.t -> Location.t -> t
 
     (* Definition in some register.
        If the id is in multiple locations, inserts moves and loads to account for them.
@@ -42,12 +45,16 @@ signature REGISTER_ENV = sig
 end
 
 functor RegisterEnvFn (Args : sig
+    structure Hints : REGISTER_HINTS
     structure Abi : ABI
-    structure Hints : REGISTER_HINTS where type Abi.RegIsa.def = Abi.RegIsa.def
+        where type RegIsa.def = Hints.Location.Register.t
+        where type RegIsa.loc = Hints.Location.t
 end) :> REGISTER_ENV
     where type Abi.RegIsa.def = Args.Abi.RegIsa.def
+    where type Abi.RegIsa.loc = Args.Abi.RegIsa.loc
     where type Abi.RegIsa.Program.Builder.builder = Args.Abi.RegIsa.Program.Builder.builder
     where type Hints.t = Args.Hints.t
+    where type Hints.Location.t = Args.Hints.Location.t
 = struct
     structure Abi = Args.Abi
     structure Hints = Args.Hints
@@ -55,6 +62,7 @@ end) :> REGISTER_ENV
     structure Register = Abi.RegIsa.Register
     structure Stmt = Abi.RegIsa.Stmt
     structure Builder = Abi.RegIsa.Program.Builder
+    structure CallingConvention = Abi.CallingConvention
 
     datatype either = datatype Either.t
     datatype location = datatype Location.t
@@ -62,6 +70,8 @@ end) :> REGISTER_ENV
     type hints = Hints.t
 
     val op|> = Fn.|>
+
+    val isCalleeSave = CallingConvention.isCalleeSave Abi.foreignCallingConvention
 
     fun pick pred freeRegs =
         let val rec extract =
@@ -353,6 +363,9 @@ end) :> REGISTER_ENV
             in fixedRegUse env hints builder label id reg
             end
 
+    fun fixedUse env hints builder label id =
+        fn Register reg => fixedRegUse env hints builder label id reg
+
     fun regDef env hints builder label id =
         let val (env, reg) = regUse env hints builder label id
             val env = free env builder label id
@@ -367,12 +380,12 @@ end) :> REGISTER_ENV
     fun evacuateCallerSaves (env as {locations, ...} : t) builder label =
         let fun step (id, idLocs, env) =
                 let val (env, idLocs, loc') =
-                        case Location.SortedSet.find Location.isCalleeSave idLocs
+                        case Location.SortedSet.find isCalleeSave idLocs
                         of SOME loc' => (env, idLocs, loc')
                          | NONE =>
                             let val {registers, locations, frame} = env
                                 val (env, loc') =
-                                    case Registers.allocateEnsuring registers (Location.isCalleeSave o Register) id
+                                    case Registers.allocateEnsuring registers (isCalleeSave o Register) id
                                     of SOME (registers, reg) =>
                                         let val loc' = Register reg
                                         in ( { locations = insertLocation locations id loc'
@@ -389,7 +402,7 @@ end) :> REGISTER_ENV
                             in (env, valOf (locationsOf env id), loc')
                             end
                     fun step (loc, env) =
-                        if Location.isCalleeSave loc orelse Location.eq (loc, loc')
+                        if isCalleeSave loc orelse Location.eq (loc, loc')
                         then env
                         else evacuateTo env builder label loc loc'
                 in Location.SortedSet.foldl step env idLocs

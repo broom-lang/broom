@@ -1,8 +1,10 @@
 structure X64SysVAbi :> ABI
+    where type Isa.loc = X64Isa.loc
     where type Isa.oper = X64Isa.oper
     where type Isa.Stmt.t = X64Isa.Stmt.t
     where type Isa.transfer = X64Isa.transfer
     where type RegIsa.def = X64RegIsa.def
+    where type RegIsa.loc = X64Location.t
     where type RegIsa.oper = X64RegIsa.oper
     where type RegIsa.Stmt.t = X64RegIsa.Stmt.t
     where type RegIsa.transfer = X64RegIsa.transfer
@@ -13,11 +15,14 @@ structure X64SysVAbi :> ABI
     structure RegIsa = X64RegIsa
     structure Stmt = X64RegIsa.Stmt
     structure Builder = RegIsa.Program.Builder
-    structure CallingConvention = CallingConventionFn(Reg)
+    structure Location = X64Location
+    structure CallingConvention = CallingConventionFn(Location)
     structure LabelUses = IsaLabelUsesFn(Isa)
 
     datatype oper = datatype X64RegInstructions.Oper.t
     datatype transfer = datatype X64RegInstructions.Transfer.t
+
+    val op|> = Fn.|>
 
     val generalRegs =
         #[ Reg.rax, Reg.rdx, Reg.rcx, Reg.rbx, Reg.rsi, Reg.rdi
@@ -37,8 +42,9 @@ structure X64SysVAbi :> ABI
     val exporteeCallingConvention =
         Vector.concat [ #args foreignCallingConvention
                       , #calleeSaves foreignCallingConvention ]
+        |> Vector.map Location.Register
 
-    val escapeeCallingConvention = #args foreignCallingConvention
+    val escapeeCallingConvention = #args foreignCallingConvention |> Vector.map Location.Register
 
     val sp = Reg.rsp
 end

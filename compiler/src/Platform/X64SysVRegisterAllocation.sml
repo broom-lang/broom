@@ -1,11 +1,9 @@
-structure X64SysVLocation = Location(X64SysVAbi)
-
 structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
     structure Abi = X64SysVAbi
     structure Isa = Abi.Isa
     structure RegIsa = Abi.RegIsa
     structure Reg = X64Register
-    structure Location = X64SysVLocation
+    structure Location = X64Location
     structure Hints = RegisterHintsFn(struct
         structure Abi = Abi
         structure Location = Location
@@ -24,12 +22,12 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
     val op|> = Fn.|>
 
     fun stmtHints cconvs label hints =
-        fn Isa.Stmt.Param (target, pLabel, i) =>
+        fn (* Isa.Stmt.Param (target, pLabel, i) =>
             (case Label.HashTable.find cconvs label
              of SOME paramRegs =>
                  Hints.hint hints target (Register (Vector.sub (paramRegs, i)))
               | NONE => hints)
-         | Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) =>
+         | *) Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) =>
             let val hints = Hints.forgetCallerSaves hints
             in Hints.hint hints target (Register Reg.rax)
             end
@@ -57,14 +55,14 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
         end
 
     fun stmt cconvs builder label env hints =
-        fn Isa.Stmt.Param (target, pLabel, i) => (* FIXME: *)
+        fn (* Isa.Stmt.Param (target, pLabel, i) => (* FIXME: Target register should not be freed: *)
             let val paramRegs =
                     Vector.concat [ #args Abi.foreignCallingConvention
                                   , #calleeSaves Abi.foreignCallingConvention ]
             in Env.fixedRegDef env hints builder label target (Vector.sub (paramRegs, i))
             end
 
-         | Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) => (* FIXME: *)
+         | *) Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) => (* FIXME: *)
             let val targetReg = Reg.rax
                 val env = Env.fixedRegDef env hints builder label target targetReg
                 val env = Env.evacuateCallerSaves env builder label
@@ -118,8 +116,8 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
                          ; paramRegs
                         end
                 val env = VectorExt.zip (args, paramRegs)
-                        |> Vector.foldl (fn ((arg, reg), env) =>
-                                             Env.fixedRegUse env hints builder label arg reg)
+                        |> Vector.foldl (fn ((arg, loc), env) =>
+                                             Env.fixedUse env hints builder label arg loc)
                                         env
             in Builder.setTransfer builder label (JMP (dest, #[]))
              ; env
@@ -127,8 +125,8 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
          | X64Instructions.Transfer.JMPi (dest, args) =>
             let val paramRegs = Abi.escapeeCallingConvention
                 val env = VectorExt.zip (args, paramRegs)
-                        |> Vector.foldl (fn ((arg, reg), env) =>
-                                             Env.fixedRegUse env hints builder label arg reg)
+                        |> Vector.foldl (fn ((arg, loc), env) =>
+                                             Env.fixedUse env hints builder label arg loc)
                                         env
                 val (env, dest) = Env.regUse env hints builder label dest
             in Builder.setTransfer builder label (JMPi (dest, #[]))

@@ -1,6 +1,8 @@
 signature REGISTER_HINTS = sig
+    structure Location : LOCATION
     structure Abi : ABI
-    structure Location : LOCATION where type Register.t = Abi.RegIsa.Register.t
+        where type RegIsa.def = Location.Register.t
+        where type RegIsa.loc = Location.t
 
     type t
     type counts = (int Location.SortedMap.map) CpsId.SortedMap.map
@@ -15,10 +17,12 @@ signature REGISTER_HINTS = sig
 end
 
 functor RegisterHintsFn (Args : sig
+    structure Location : LOCATION
     structure Abi : ABI
-    structure Location : LOCATION where type Register.t = Abi.RegIsa.Register.t
+        where type RegIsa.def = Location.Register.t
+        where type RegIsa.loc = Location.t
 end) :> REGISTER_HINTS
-    where type Abi.RegIsa.def = Args.Abi.RegIsa.def
+    where type Location.Register.t = Args.Location.Register.t
     where type Location.t = Args.Location.t
 = struct
     structure Abi = Args.Abi

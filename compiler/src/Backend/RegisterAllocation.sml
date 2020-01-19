@@ -69,8 +69,8 @@ end = struct
                 in Registerizer.transfer cconvs builder label env hints transfer
                 end
 
-            and allocateEBB label hints {name, cconv, argc, stmts, transfer} =
-                let do Builder.createCont builder label {name, cconv, argc}
+            and allocateEBB label hints {name, cconv, params, stmts, transfer} =
+                let do Builder.createCont builder label {name, cconv, argc = Vector.length params}
                     fun allocateBlock hints stmts =
                         case VectorSlice.uncons stmts
                         of SOME (stmt, stmts) =>
@@ -101,8 +101,8 @@ end = struct
             val {conts, main} = Builder.build builder main
             
             (* HACK: Stmts were pushed to builder in reverse, so need to..: *)
-            fun reverseStmts {name, argc, cconv, stmts, transfer} =
-                {name, argc, cconv, stmts = VectorExt.rev stmts, transfer}
+            fun reverseStmts {name, params, cconv, stmts, transfer} =
+                {name, params, cconv, stmts = VectorExt.rev stmts, transfer}
         in { program = {conts = LabelMap.map reverseStmts conts, main}
            , maxSlotCount = !maxSlotCount }
         end

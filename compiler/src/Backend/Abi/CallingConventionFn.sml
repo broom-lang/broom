@@ -1,7 +1,8 @@
 signature CALLING_CONVENTION = sig
-    structure Register : REGISTER
+    structure Location : LOCATION
+    structure Register : REGISTER where type t = Location.Register.t
 
-    type internal = Register.t vector
+    type internal = Location.t vector
 
     type foreign =
         { args : Register.t vector
@@ -9,16 +10,20 @@ signature CALLING_CONVENTION = sig
         , callerSaves : Register.t vector
         , calleeSaves : Register.t vector }
 
-    val isCallerSave : foreign -> Register.t -> bool
-    val isCalleeSave : foreign -> Register.t -> bool
+    val isCallerSave : foreign -> Location.t -> bool
+    val isCalleeSave : foreign -> Location.t -> bool
 end
 
-functor CallingConventionFn (Register : REGISTER) :> CALLING_CONVENTION
-    where type Register.t = Register.t
+functor CallingConventionFn (Location : LOCATION) :> CALLING_CONVENTION
+    where type Location.Register.t = Location.Register.t
+    where type Location.t = Location.t
 = struct
-    structure Register = Register
+    structure Location = Location
+    structure Register = Location.Register
 
-    type internal = Register.t vector
+    datatype loc = datatype Location.t
+
+    type internal = Location.t vector
 
     type foreign =
         { args : Register.t vector
@@ -26,12 +31,16 @@ functor CallingConventionFn (Register : REGISTER) :> CALLING_CONVENTION
         , callerSaves : Register.t vector
         , calleeSaves : Register.t vector }
 
-    fun isCallerSave (cconv : foreign) reg =
-        Vector.exists (fn reg' => Register.eq (reg', reg))
-                      (#callerSaves cconv)
+    fun isCallerSave (cconv : foreign) =
+        fn Register reg =>
+            Vector.exists (fn reg' => Register.eq (reg', reg))
+                          (#callerSaves cconv)
+         | StackSlot _ => false
 
-    fun isCalleeSave (cconv : foreign) reg =
-        Vector.exists (fn reg' => Register.eq (reg', reg))
-                      (#calleeSaves cconv)
+    fun isCalleeSave (cconv : foreign) =
+        fn Register reg =>
+            Vector.exists (fn reg' => Register.eq (reg', reg))
+                          (#calleeSaves cconv)
+         | StackSlot _ => true
 end
 

@@ -1,14 +1,3 @@
-signature REGISTER = sig
-    type t
-
-    val toString : t -> string
-    val toDoc : t -> PPrint.t
-    val eq : t * t -> bool
-    val compare : t * t -> order
-
-    structure SortedMap : ORD_MAP where type Key.ord_key = t
-end
-
 signature ISA_OPER = sig
     type def
     type t
@@ -45,10 +34,12 @@ end
 
 signature ISA = sig
     type def
+    type loc
     type oper
     type transfer
 
     structure Register : REGISTER where type t = def
+    structure Location : REGISTER where type t = loc
 
     structure Instrs : INSTRUCTIONS
         where type def = def
@@ -59,7 +50,6 @@ signature ISA = sig
         datatype t
             = Def of def * oper
             | Eff of oper
-            | Param of def * Label.t * int
 
         val toDoc : t -> PPrint.t
         val appLabels : (Label.t -> unit) -> t -> unit
@@ -70,7 +60,7 @@ signature ISA = sig
     structure Cont : sig
         type t = { name : Name.t option
                  , cconv : CallingConvention.t option
-                 , argc : int
+                 , params : loc vector
                  , stmts : Stmt.t vector
                  , transfer : Transfer.t }
 
@@ -80,6 +70,7 @@ signature ISA = sig
             type builder
 
             val new : {name : Name.t option, cconv : CallingConvention.t option, argc : int} -> builder
+            val setParam : builder -> int -> loc -> unit
             val insertStmt : builder -> Stmt.t -> unit
             val setTransfer : builder -> Transfer.t -> unit
             val build : builder -> t
@@ -97,6 +88,7 @@ signature ISA = sig
             val new : unit -> builder
             val createCont : builder -> Label.t
                 -> {name : Name.t option, cconv : CallingConvention.t option, argc : int} -> unit
+            val setParam : builder -> Label.t -> int -> loc -> unit
             val insertStmt : builder -> Label.t -> Stmt.t -> unit
             val setTransfer : builder -> Label.t -> Transfer.t -> unit
             val build : builder -> Label.t -> t
@@ -106,21 +98,27 @@ end
 
 functor IsaFn (Args : sig
     structure Register : REGISTER
+    structure Location : REGISTER
     structure Instrs : INSTRUCTIONS where type def = Register.t
 end) :> ISA
     where type def = Args.Register.t
+    where type loc = Args.Location.t
     where type oper = Args.Instrs.Oper.t
     where type transfer = Args.Instrs.Transfer.t
 = struct
     structure Register = Args.Register
+    structure Location = Args.Location
     structure Instrs = Args.Instrs
     structure Oper = Instrs.Oper
 
     type def = Register.t
+    type loc = Location.t
     type oper = Oper.t
     type transfer = Args.Instrs.Transfer.t
 
     val text = PPrint.text
+    val comma = PPrint.comma
+    val parens = PPrint.parens
     val space = PPrint.space
     val newline = PPrint.newline
     val op<> = PPrint.<>
@@ -133,18 +131,13 @@ end) :> ISA
         datatype t
             = Def of def * oper
             | Eff of oper
-            | Param of def * Label.t * int
 
         val toDoc =
             fn Def (reg, oper) => Register.toDoc reg <+> text "=" <+> Oper.toDoc oper
              | Eff oper => Oper.toDoc oper
-             | Param (reg, label, i) =>
-                Register.toDoc reg <+> text "="
-                <+> text "param" <+> Label.toDoc label <+> PPrint.int i
 
         fun appLabels f =
             fn (Def (_, oper) | Eff oper) => Oper.appLabels f oper
-             | Param _ => () (* desired behaviour, but somewhat inconsistent *)
     end
 
     structure Transfer = Args.Instrs.Transfer
@@ -152,32 +145,40 @@ end) :> ISA
     structure Cont = struct
         type t = { name : Name.t option
                  , cconv : CallingConvention.t option
-                 , argc : int
+                 , params : loc vector
                  , stmts : Stmt.t vector
                  , transfer : Transfer.t }
 
-        fun toDoc (label, {name, cconv, argc, stmts, transfer}) =
+        fun toDoc (label, {name, cconv, params, stmts, transfer}) =
             text "fun"
             <> (case cconv
                 of SOME cconv => space <> CallingConvention.toDoc cconv
                  | NONE => PPrint.empty)
-            <+> Label.toDoc label <+> PPrint.int argc <+> text "="
+            <+> Label.toDoc label
+            <+> parens (punctuate (comma <> space) (Vector.map Location.toDoc params)) <+> text "="
             <> nest 4 (newline <> punctuate newline (Vector.map Stmt.toDoc stmts)
                        <++> Transfer.toDoc transfer)
 
         structure Builder = struct
-            type builder = { name : Name.t option, cconv : CallingConvention.t option, argc : int
+            type builder = { name : Name.t option, cconv : CallingConvention.t option
+                           , params : loc option array
                            , stmts : Stmt.t list ref
                            , transfer : Transfer.t option ref }
 
-            fun new {name, cconv, argc} = {name, cconv, argc, stmts = ref [], transfer = ref NONE}
+            fun new {name, cconv, argc} =
+                { name, cconv
+                , params = Array.tabulate (argc, Fn.constantly NONE)
+                , stmts = ref [], transfer = ref NONE }
+
+            fun setParam ({params, ...} : builder) i loc = Array.update (params, i, SOME loc)
 
             fun insertStmt ({stmts, ...} : builder) stmt = stmts := stmt :: !stmts
 
             fun setTransfer ({transfer, ...} : builder) v = transfer := SOME v
 
-            fun build {name, cconv, argc, stmts, transfer} =
-                { name, cconv, argc
+            fun build {name, cconv, params, stmts, transfer} =
+                { name, cconv
+                , params = Vector.map valOf (Array.vector params)
                 , stmts = Vector.fromList (List.rev (!stmts))
                 , transfer = valOf (!transfer) }
         end
@@ -200,6 +201,9 @@ end) :> ISA
 
             fun createCont builder label creation =
                 builder := LabelMap.insert (!builder) (label, Cont.Builder.new creation)
+
+            fun setParam (ref conts) label i loc =
+                Cont.Builder.setParam (LabelMap.lookup conts label) i loc
 
             fun insertStmt (ref conts) label stmt =
                 Cont.Builder.insertStmt (LabelMap.lookup conts label) stmt

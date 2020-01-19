@@ -7,6 +7,7 @@ signature LABEL_USES = sig
 end
 
 functor IsaLabelUsesFn (Isa : ISA) :> LABEL_USES
+    where type Isa.loc = Isa.loc
     where type Isa.Stmt.t = Isa.Stmt.t
     where type Isa.transfer = Isa.transfer
 = struct
@@ -43,11 +44,10 @@ functor IsaLabelUsesFn (Isa : ISA) :> LABEL_USES
             val usesInStmt =
                 fn Def (_, expr) => usesInExpr expr
                  | Eff expr => usesInExpr expr
-                 | Param _ => ()
 
             val usesInTransfer = Isa.Instrs.Transfer.appLabels call
 
-            fun usesInCont (_, {name = _, cconv = _, argc = _, stmts, transfer}) =
+            fun usesInCont (_, {name = _, cconv = _, params = _, stmts, transfer}) =
                 ( Vector.app usesInStmt stmts
                 ; usesInTransfer transfer )
 

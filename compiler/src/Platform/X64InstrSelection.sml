@@ -44,8 +44,7 @@ structure X64InstrSelection = InstrSelectionFn(struct
                 end
              | EmptyRecord =>
                 Builder.insertStmt builder parent (Def (def, LOADc 0w0))
-             | Cps.Expr.Param (label, i) =>
-                Builder.insertStmt builder parent (Param (def, label, i))
+             | Cps.Expr.Param (label, i) => Builder.setParam builder parent i def
              | PrimApp {opn, tArgs = _, vArgs} =>
                 (case opn
                  of StackNew => (* HACK: *)

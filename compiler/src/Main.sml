@@ -1,6 +1,5 @@
 structure X64SysVCpsConvert = CpsConvertFn(X64SysVAbi)
 structure X64RegIsaLabelUses = IsaLabelUsesFn(X64SysVAbi.RegIsa)
-structure X64ScheduleParams = ScheduleParamsFn(X64SysVAbi.Isa)
 structure X64Linearize = LinearizeFn(struct
     structure LabelUses = X64RegIsaLabelUses
     structure SeqIsa = X64SeqIsa
@@ -102,9 +101,6 @@ end = struct
                                               | Left err => raise Fail (PPrint.pretty 80 (CpsTypechecker.errorToDoc err))
                                         else ()
                                     val program = X64InstrSelection.selectInstructions program
-                                    do log (PPrint.pretty 80 (X64Isa.Program.toDoc program) ^ "\n")
-                                    do log "# Hoisting parameters...\n\n"
-                                    val program = X64ScheduleParams.schedule program
                                     do log (PPrint.pretty 80 (X64Isa.Program.toDoc program) ^ "\n")
                                     do log "# Allocating registers...\n\n"
                                     val allocated as {program, ...} = X64SysVRegisterAllocation.allocate program

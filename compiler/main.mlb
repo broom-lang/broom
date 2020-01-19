@@ -79,16 +79,15 @@ local
            src/Midend/DefUses.sml
            src/Midend/ClosureConvert.sml
 
+           src/Backend/Register.sml
+           src/Backend/StackSlot.sml
+           src/Backend/Location.sml
            src/Backend/Isa/Isa.sml
            src/Backend/InstrSelection.sml
-
-           src/Backend/ScheduleParams.sml
 
            src/Backend/IsaLabelUses.sml
            src/Backend/Abi/CallingConventionFn.sml
            src/Backend/Abi/Abi.sml
-           src/Backend/StackSlot.sml
-           src/Backend/Location.sml
            src/Backend/RegisterHints.sml
            src/Backend/RegisterEnv.sml
            src/Backend/Registerizer.sml

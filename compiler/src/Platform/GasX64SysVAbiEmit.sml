@@ -51,7 +51,6 @@ end = struct
             val emitStmt =
                 fn Stmt.Def (target, expr) => emitExpr (SOME target, expr)
                  | Stmt.Eff expr => emitExpr (NONE, expr)
-                 | Stmt.Param _ => raise Fail "unreachable"
 
             val emitTransfer =
                 fn Transfer.JMP (dest, _) => line ("\tjmp\t" ^ convertLabel dest)
@@ -59,7 +58,7 @@ end = struct
                  | Transfer.Jcc (Neq, _, dest') => line ("\tjne\t" ^ convertLabel dest')
                  | Transfer.RET _ => line "\tret\t"
 
-            fun emitCont (label, {name, cconv = _, argc = _, stmts, transfer}) =
+            fun emitCont (label, {name, cconv = _, params = _, stmts, transfer}) =
                 ( line (convertLabel label ^ ":")
                 ; Vector.app emitStmt stmts
                 ; emitTransfer transfer )

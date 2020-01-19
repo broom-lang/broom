@@ -6,18 +6,20 @@ signature LOCATION = sig
         | StackSlot of StackSlot.t
 
     val eq : t * t -> bool
+    val compare : t * t -> order
+    val toDoc : t -> PPrint.t
+    val toString : t -> string
 
     val isReg : t -> bool
-    val isCalleeSave : t -> bool
 
     structure SortedSet : ORD_SET where type Key.ord_key = t
     structure SortedMap : ORD_MAP where type Key.ord_key = t
 end
 
-functor Location (Abi : ABI) :> LOCATION
-    where type Register.t = Abi.RegIsa.Register.t
+functor Location (Register : REGISTER) :> LOCATION
+    where type Register.t = Register.t
 = struct
-    structure Register = Abi.RegIsa.Register
+    structure Register = Register
 
     datatype t
         = Register of Register.t
@@ -33,16 +35,19 @@ functor Location (Abi : ABI) :> LOCATION
         fn Register _ => true
          | StackSlot _ => false
 
-    val isCalleeSave =
-        fn Register reg =>
-            Abi.CallingConvention.isCalleeSave Abi.foreignCallingConvention reg
-         | StackSlot _ => true
-
     val compare =
         fn (Register reg, Register reg') => Register.compare (reg, reg')
          | (Register _, StackSlot _) => LESS
          | (StackSlot _, Register _) => GREATER
          | (StackSlot slot, StackSlot slot') => StackSlot.compare (slot, slot')
+
+    val toDoc =
+        fn Register reg => Register.toDoc reg
+         | StackSlot slot => StackSlot.toDoc slot
+
+    val toString =
+        fn Register reg => Register.toString reg
+         | StackSlot slot => StackSlot.toString slot
 
     structure Ord = struct
         type ord_key = t

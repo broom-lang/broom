@@ -9,6 +9,7 @@ functor InsertLoguesFn (Args : sig
     val prologue : Word32.word -> RegIsa.Stmt.t vector
     val epilogue : Word32.word -> RegIsa.Stmt.t vector
 end) :> INSERT_LOGUES
+    where type RegIsa.loc = Args.RegIsa.loc
     where type RegIsa.Stmt.t = Args.RegIsa.Stmt.t
     where type RegIsa.transfer = Args.RegIsa.Transfer.t
 = struct
@@ -21,7 +22,7 @@ end) :> INSERT_LOGUES
             val prologue = Args.prologue frameSize
             val epilogue = Args.epilogue frameSize
 
-            fun insertContLogues {name, cconv, argc, stmts, transfer} =
+            fun insertContLogues {name, cconv, params, stmts, transfer} =
                 let val stmts =
                         if Option.isSome cconv
                         then Vector.concat [prologue, stmts]
@@ -30,7 +31,7 @@ end) :> INSERT_LOGUES
                         if Transfer.isReturn transfer
                         then Vector.concat [stmts, epilogue]
                         else stmts
-                in {name, cconv, argc, stmts, transfer}
+                in {name, cconv, params, stmts, transfer}
                 end
         in {conts = Label.HashMap.map insertContLogues conts, main}
         end

@@ -229,17 +229,22 @@ end = struct
     end
 end
 
+
 structure X64Instructions = X64InstructionsFn(CpsId)
 
 structure X64Isa = IsaFn(struct
     structure Register = CpsId
+    structure Location = CpsId
     structure Instrs = X64Instructions
 end)
+
+structure X64Location = Location(X64Register)
 
 structure X64RegInstructions = X64InstructionsFn(X64Register)
 
 structure X64RegIsa = IsaFn(struct
     structure Register = X64Register
+    structure Location = X64Location
     structure Instrs = X64RegInstructions
 end)
 

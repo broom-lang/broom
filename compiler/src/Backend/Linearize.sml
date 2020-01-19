@@ -1,6 +1,7 @@
 functor LinearizeFn (Args : sig
     structure SeqIsa : SEQ_ISA
     structure LabelUses : LABEL_USES
+        where type Isa.loc = SeqIsa.RegIsa.loc
         where type Isa.Stmt.t = SeqIsa.RegIsa.Stmt.t
         where type Isa.transfer = SeqIsa.RegIsa.transfer
 end) :> sig
