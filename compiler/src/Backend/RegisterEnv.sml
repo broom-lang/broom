@@ -33,6 +33,8 @@ signature REGISTER_ENV = sig
        Arranges for the id to be (also) in the given register if not already. *)
     val fixedRegDef : t -> hints -> builder -> Label.t -> CpsId.t -> Register.t -> t
 
+    val fixedDef : t -> hints -> builder -> Label.t -> CpsId.t -> Location.t -> t
+
     (* Move id:s away from caller-save registers (except the return value registers). *)
     val evacuateCallerSaves : t -> builder -> Label.t -> t
 
@@ -376,6 +378,9 @@ end) :> REGISTER_ENV
         let val env = fixedRegUse env hints builder label id reg
         in freeIn env builder label id reg
         end
+
+    fun fixedDef env hints builder label id =
+        fn Register reg => fixedRegDef env hints builder label id reg
 
     fun evacuateCallerSaves (env as {locations, ...} : t) builder label =
         let fun step (id, idLocs, env) =

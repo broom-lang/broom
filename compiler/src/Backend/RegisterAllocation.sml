@@ -7,6 +7,7 @@ end = struct
     structure Isa = Abi.Isa
     structure Register = Isa.Register
     structure Transfer = Isa.Transfer
+    structure Cont = Isa.Cont
     structure Builder = Abi.RegIsa.Program.Builder
     structure LabelUses = IsaLabelUsesFn(Isa)
     structure Env = Registerizer.Env
@@ -69,6 +70,34 @@ end = struct
                 in Registerizer.transfer cconvs builder label env hints transfer
                 end
 
+            and paramHints label ({params, ...} : Cont.t) =
+                let val targetLocs =
+                        case Label.HashTable.find cconvs label
+                        of SOME targetLocs => targetLocs
+                         | NONE => Abi.escapeeCallingConvention (* HACK *)
+                in Vector.foldl (fn ((SOME param, loc), hints) => Env.Hints.hint hints param loc
+                                  | ((NONE, _), hints) => hints)
+                                Env.Hints.empty
+                                (VectorExt.zip (params, targetLocs))
+                end
+
+            (* OPTIMIZE: Parallel move algorithm for spill-free, shorter code: *)
+            and allocateParams env hints label ({params, ...} : Cont.t) =
+                let val targetLocs =
+                        case Label.HashTable.find cconvs label
+                        of SOME targetLocs => targetLocs
+                         | NONE => Abi.escapeeCallingConvention (* HACK *)
+                in Vector.foldri (fn (i, (param, loc'), env) => (* FIXME: Target register should not be freed: *)
+                                      let val param = case param
+                                                      of SOME param => param
+                                                       | NONE => CpsId.fresh () (* HACK *)
+                                      in Builder.setParam builder label i loc'
+                                       ; Env.fixedDef env hints builder label param loc'
+                                      end)
+                                 env
+                                 (VectorExt.zip (params, targetLocs))
+                end
+
             and allocateEBB label hints {name, cconv, params, stmts, transfer} =
                 let do Builder.createCont builder label {name, cconv, argc = Vector.length params}
                     fun allocateBlock hints stmts =
@@ -80,20 +109,22 @@ end = struct
                             end
                          | NONE => allocateTransfer label hints transfer
                     val env = allocateBlock hints (VectorSlice.full stmts)
-                in if not (#calls (LabelMap.lookup useCounts label) = 1
-                           orelse (Label.HashTable.inDomain cconvs label))
-                   then let val (env, cconv) =
-                                raise Fail ("unimplemented: conventionalize " ^ Label.toString label ^ " env\n")
-                        in Label.HashTable.insert cconvs (label, cconv)
-                         ; env
-                        end
-                   else env
+                in env
                 end
 
             fun allocateCont (label, cont) =
                 let val {exports, escapes, calls} = LabelMap.lookup useCounts label
                 in  if exports > 0 orelse escapes > 0 orelse calls > 1
-                    then ignore (allocateEBB label Env.Hints.empty cont)
+                    then let val hints = paramHints label cont
+                             val env = allocateEBB label hints cont
+                             val env = allocateParams env hints label cont
+                         in  if not (Label.HashTable.inDomain cconvs label)
+                             then let val (env, cconv) =
+                                          raise Fail ("unimplemented: conventionalize " ^ Label.toString label ^ " env\n")
+                                  in Label.HashTable.insert cconvs (label, cconv)
+                                  end
+                             else ()
+                         end
                     else ()
                 end
 

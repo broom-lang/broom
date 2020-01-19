@@ -1,5 +1,7 @@
 signature ABI = sig
-    structure Isa : ISA where type def = CpsId.t
+    structure Isa : ISA
+        where type def = CpsId.t
+        where type loc = CpsId.t
     structure RegIsa : ISA
     structure CallingConvention : CALLING_CONVENTION
         where type Location.t = RegIsa.loc

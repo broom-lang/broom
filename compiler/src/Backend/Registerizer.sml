@@ -1,7 +1,8 @@
 signature REGISTERIZER = sig
-    structure Abi : ABI
     structure Env : REGISTER_ENV
-        where type Abi.RegIsa.Program.Builder.builder = Abi.RegIsa.Program.Builder.builder
+    structure Abi : ABI
+        where type RegIsa.loc = Env.Location.t
+        where type RegIsa.Program.Builder.builder = Env.Abi.RegIsa.Program.Builder.builder
 
     val stmtHints : Abi.CallingConvention.internal Label.HashTable.hash_table
         -> Label.t -> Env.Hints.t -> Abi.Isa.Stmt.t -> Env.Hints.t

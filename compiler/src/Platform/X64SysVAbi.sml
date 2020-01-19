@@ -1,5 +1,4 @@
 structure X64SysVAbi :> ABI
-    where type Isa.loc = X64Isa.loc
     where type Isa.oper = X64Isa.oper
     where type Isa.Stmt.t = X64Isa.Stmt.t
     where type Isa.transfer = X64Isa.transfer

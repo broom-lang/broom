@@ -22,12 +22,7 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
     val op|> = Fn.|>
 
     fun stmtHints cconvs label hints =
-        fn (* Isa.Stmt.Param (target, pLabel, i) =>
-            (case Label.HashTable.find cconvs label
-             of SOME paramRegs =>
-                 Hints.hint hints target (Register (Vector.sub (paramRegs, i)))
-              | NONE => hints)
-         | *) Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) =>
+        fn Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) =>
             let val hints = Hints.forgetCallerSaves hints
             in Hints.hint hints target (Register Reg.rax)
             end
@@ -55,14 +50,7 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
         end
 
     fun stmt cconvs builder label env hints =
-        fn (* Isa.Stmt.Param (target, pLabel, i) => (* FIXME: Target register should not be freed: *)
-            let val paramRegs =
-                    Vector.concat [ #args Abi.foreignCallingConvention
-                                  , #calleeSaves Abi.foreignCallingConvention ]
-            in Env.fixedRegDef env hints builder label target (Vector.sub (paramRegs, i))
-            end
-
-         | *) Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) => (* FIXME: *)
+        fn Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) => (* FIXME: *)
             let val targetReg = Reg.rax
                 val env = Env.fixedRegDef env hints builder label target targetReg
                 val env = Env.evacuateCallerSaves env builder label
