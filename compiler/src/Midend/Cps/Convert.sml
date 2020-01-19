@@ -27,7 +27,7 @@ end = struct
         | TrivK of def
         | TrivlK of Label.t
 
-    structure Env = FTypeBase.Id.SortedMap (* TODO: HashMap *)
+    structure Env = Type.Id.SortedMap (* TODO: HashMap *)
 
     val convertType = Cps.Type.fromF
 

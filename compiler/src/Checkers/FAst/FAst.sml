@@ -29,6 +29,7 @@ signature FAST_TYPE = sig
     val arrowDoc: arrow -> PPrint.t
     val svarToDoc: ('expr, 'error) env -> sv -> PPrint.t
     val rowExtBase: concr -> concr
+    val piEffect: concr -> effect option
     val kindDefault: kind -> concr
     val primopType : Primop.t -> def vector * effect * {domain: concr vector, codomain: concr}
 

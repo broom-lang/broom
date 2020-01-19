@@ -1,5 +1,5 @@
 structure TypePattern = struct
-    structure Id = FTypeBase.Id
+    structure Id = FAst.Type.Id
     structure Concr = FAst.Type.Concr
     structure FTerm = FAst.Term
     structure Env = TypecheckingEnv
@@ -94,7 +94,7 @@ structure TypePattern = struct
         end
 
     and applyPolymorphic env (params, body) callee =
-        let val eff = valOf (FTypeBase.piEffect body)
+        let val eff = valOf (FAst.Type.piEffect body)
             val (args, mapping) =
                 Vector1.foldl (fn (def as {var, kind = _}, (args, mapping)) =>
                                    let val arg = resolveTypeArg env eff def
