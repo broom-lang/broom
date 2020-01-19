@@ -60,7 +60,7 @@ signature ISA = sig
     structure Cont : sig
         type t = { name : Name.t option
                  , cconv : CallingConvention.t option
-                 , params : loc vector
+                 , params : loc option vector
                  , stmts : Stmt.t vector
                  , transfer : Transfer.t }
 
@@ -145,9 +145,13 @@ end) :> ISA
     structure Cont = struct
         type t = { name : Name.t option
                  , cconv : CallingConvention.t option
-                 , params : loc vector
+                 , params : loc option vector
                  , stmts : Stmt.t vector
                  , transfer : Transfer.t }
+
+        val paramToDoc =
+            fn SOME loc => Location.toDoc loc
+             | NONE => text "_"
 
         fun toDoc (label, {name, cconv, params, stmts, transfer}) =
             text "fun"
@@ -155,7 +159,7 @@ end) :> ISA
                 of SOME cconv => space <> CallingConvention.toDoc cconv
                  | NONE => PPrint.empty)
             <+> Label.toDoc label
-            <+> parens (punctuate (comma <> space) (Vector.map Location.toDoc params)) <+> text "="
+            <+> parens (punctuate (comma <> space) (Vector.map paramToDoc params)) <+> text "="
             <> nest 4 (newline <> punctuate newline (Vector.map Stmt.toDoc stmts)
                        <++> Transfer.toDoc transfer)
 
@@ -178,7 +182,7 @@ end) :> ISA
 
             fun build {name, cconv, params, stmts, transfer} =
                 { name, cconv
-                , params = Vector.map valOf (Array.vector params)
+                , params = Array.vector params
                 , stmts = Vector.fromList (List.rev (!stmts))
                 , transfer = valOf (!transfer) }
         end
