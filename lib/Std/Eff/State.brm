@@ -1,0 +1,34 @@
+val State : interface
+    extends @enum interface
+        type t s r
+
+        val Get : pi s => {:} -> t s s
+        val Set : pi s => s -> t s {:}
+    end
+
+    val run : pi e s a => ({:} -> ! (e with State : t s) v) -> s -> ({:} -> ! e {state : s, value : v})
+    val eval : pi e s a => ({:} -> ! (e with State : t s) v) -> s -> ({:} -> ! e v)
+    val run : pi e s a => ({:} -> ! (e with State : t s) v) -> s -> ({:} -> ! e s)
+end = module
+    extends @enum module
+        type t s r
+
+        val Get : pi s => {:} -> t s s
+        val Set : pi s => s -> t s {:}
+    end
+
+    fun run thunk state ->
+        match thunk {}
+        | value ->
+            fn state -> {state, value} end
+        | ! ('State (Get {})) k ->
+            fn state -> k state state end
+        | ! ('State (Set state)) k ->
+            fn _ -> k {} state end
+        end
+
+    fun eval thunk state = (run thunk state).value
+
+    fun exec thunk state = (run thunk state).state
+end
+

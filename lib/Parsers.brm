@@ -1,0 +1,48 @@
+val Parsers : interface
+end = module
+    val Char = @require Std.Char
+    val String = @require Std.String
+    val State = @require Std.Eff.State
+
+    val Error = @enum module
+        type t
+
+        val EndOfInput : {:} -> t
+        val Expected : {expected : Char.t, actual : Char.t} -> t
+    end
+
+    type error = Error.t
+
+    type t a = {} -> ! (State : State.t String.Slice.t, Error : error) a
+
+    val anyChar : t Char.t =
+        fn {} ->
+            match String.Slice.uncons (! ('State (State.Get {})))
+            | Some {first, rest} -> do
+                ; ! ('State (State.Set rest))
+                ; first
+            end
+            | None {} -> ! ('Error (Error.EndOfInput {}))
+            end
+        end
+
+    val char : Char.t -> t Char.t =
+        fn expected {} ->
+            match anyChar {}
+            | actual when actual == expected -> actual
+            | actual -> ! ('Error (Error.Expected {expected, actual}))
+            end
+        end
+
+    val (<|>) : t a -> t a -> t a =
+        fn parser parser' {} ->
+            match parser {}
+            | v -> v
+            | ! ('Error _) -> parser' {}
+            end
+        end
+
+    val build : t a -> String.t -> ! (Error : error) a =
+        fn parser cs -> State.eval parser (String.Slice.from cs) end
+end
+
