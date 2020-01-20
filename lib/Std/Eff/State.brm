@@ -1,5 +1,7 @@
 val State : interface
     extends effect interface
+        type t s
+
         val Get : pi s => {:} -> s
         val Set : pi s => s -> {:}
     end
@@ -9,9 +11,15 @@ val State : interface
     val run : pi e s a => ({:} -> ! (e with State : t s) v) -> s -> ({:} -> ! e s)
 end = module
     extends effect module
+        type t s
+
         val Get : pi s => {:} -> s
         val Set : pi s => s -> {:}
     end
+    # = module
+    #     val Get : pi s => {:} -> interface type response = s val request : {:} end
+    #     val Set : pi s => s -> interface type response = {:} val request : s end
+    # end ?
 
     fun run thunk state ->
         match thunk {}
