@@ -4,7 +4,7 @@ end = module
     val String = @require Std.String
     val State = @require Std.Eff.State
 
-    val Error = @enum module
+    val Error = enum
         type t
 
         val EndOfInput : {:} -> t
@@ -38,7 +38,7 @@ end = module
         fn parser parser' {} ->
             match parser {}
             | v -> v
-            | ! ('Error _) -> parser' {}
+            | effect ('Error _) _ -> parser' {}
             end
         end
 
