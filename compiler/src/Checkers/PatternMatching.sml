@@ -17,8 +17,10 @@ end = struct
          | App (pos, t, {callee, arg}) =>
             App (pos, t, {callee = f callee, arg = f arg})
          | TApp (pos, t, {callee, args}) => TApp (pos, t, {callee = f callee, args})
-         | PrimApp (pos, t, opn, targs, args) =>
-            PrimApp (pos, t, opn, targs, Vector.map f args)
+         | PrimApp (pos, t, opn, targs, args, clauses) =>
+            PrimApp ( pos, t, opn, targs, Vector.map f args
+                    , Option.map (fn ({def, body}, failure) => ({def, body = f body}, f failure))
+                                 clauses )
          | Field (pos, t, expr, label) => Field (pos, t, f expr, label)
          | Letrec (pos, stmts, body) =>
             Letrec (pos, Vector1.map (mapStmtExprs f) stmts, f body)
@@ -65,7 +67,7 @@ end = struct
                                else ( NONE
                                     , matchee
                                     , { pattern = AnyP pos
-                                      , body = PrimApp (pos, t, Primop.Panic, #[t], #[]) } )
+                                      , body = PrimApp (pos, t, Primop.Panic, #[t], #[], NONE) } )
                            val match = Match ( pos, t, matchee
                                              , VectorExt.append (VectorSlice.vector discriminators, default) )
                        in case stmt

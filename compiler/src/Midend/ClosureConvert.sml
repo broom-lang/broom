@@ -117,7 +117,7 @@ end = struct
                  (case #body (Program.labelCont program use)
                   of Goto _ => goal
                    | (Jump _ | Return _) => raise Fail "unreachable"
-                   | Match _ => raise Fail "unreachable: critical edge")
+                   | (Checked _ | Match _) => raise Fail "unreachable: critical edge")
               | Export => raise Fail "unreachable")
          | SOME (Close clovers) =>
             (case use
@@ -126,7 +126,7 @@ end = struct
                  (case #body (Program.labelCont program use)
                   of Goto _ => SOME (Split {lift = labelFrees, close = (Label.fresh (), clovers)})
                    | (Jump _ | Return _) => raise Fail "unreachable"
-                   | Match _ => raise Fail "unreachable: critical edge")
+                   | (Checked _ | Match _) => raise Fail "unreachable: critical edge")
               | Export => raise Fail "unreachable")
          | SOME (Split _) => goal
          | SOME (Noop | Conditioned) => raise Fail "unreachable"
@@ -137,7 +137,7 @@ end = struct
                  (case #body (Program.labelCont program use)
                   of Goto _ => SOME (Lift labelFrees)
                    | (Jump _ | Return _) => raise Fail "unreachable"
-                   | Match _ => SOME Noop)
+                   | (Checked _ | Match _) => SOME Noop)
               | Export => SOME Noop)
 
     fun computeGoal program freeDefs ((label, uses), goals) =
@@ -201,13 +201,16 @@ end = struct
                           ; def
                          end
 
-            and convertClause program env (clause as {pattern = _, target}) =
-                let val {name, cconv, tParams, vParams, body} = Program.labelCont program target
+            and convertSucc program env label =
+                let val {name, cconv, tParams, vParams, body} = Program.labelCont program label
                     val vParams = Vector.map convertType vParams
-                    val body = convertTransfer program target env body
-                in Builder.insertCont builder (target, {name, cconv, tParams, vParams, body})
-                 ; clause
+                    val body = convertTransfer program label env body
+                in Builder.insertCont builder (label, {name, cconv, tParams, vParams, body})
                 end
+
+            and convertClause program env (clause as {pattern = _, target}) =
+                ( convertSucc program env target
+                ; clause )
 
             and convertTransfer program label env transfer =
                 case transfer
@@ -231,6 +234,12 @@ end = struct
                     let val matchee = convertDef program env matchee
                         val clauses = Vector.map (convertClause program env) clauses
                     in Match (matchee, clauses)
+                    end
+                 | Checked {opn, tArgs, vArgs, succeed, fail} =>
+                    let val vArgs = Vector.map (convertDef program env) vArgs
+                    in convertSucc program env succeed
+                     ; convertSucc program env fail
+                     ; Checked {opn, tArgs, vArgs, succeed, fail}
                     end
                  | Return (domain, args) =>
                     Return (domain, Vector.map (convertDef program env) args)

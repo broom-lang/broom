@@ -49,8 +49,8 @@ end = struct
          | Left uv => FTypeBase.kindDefault (TypeVars.Uv.kind env uv)
 
     fun exprToF env: FAst.Term.expr -> FFTerm.expr =
-        fn Fn (pos, {pos = defPos, id, var, typ}, expl, body) =>
-            FFTerm.Fn (pos, {pos = defPos, id, var, typ = concrToF env typ}, expl, exprToF env body)
+        fn Fn (pos, def, expl, body) =>
+            FFTerm.Fn (pos, defToF env def, expl, exprToF env body)
          | TFn (pos, param, body) => FFTerm.TFn (pos, param, exprToF env body)
          | EmptyRecord pos => FFTerm.EmptyRecord pos
          | With (pos, typ, {base, field}) =>
@@ -69,8 +69,11 @@ end = struct
             FFTerm.App (pos, concrToF env typ, {callee = exprToF env callee, arg = exprToF env arg})
          | TApp (pos, typ, {callee, args}) =>
             FFTerm.TApp (pos, concrToF env typ, {callee = exprToF env callee, args = Vector1.map (concrToF env) args})
-         | PrimApp (pos, typ, opn, targs, args) =>
-            FFTerm.PrimApp (pos, concrToF env typ, opn, Vector.map (concrToF env) targs, Vector.map (exprToF env) args)
+         | PrimApp (pos, typ, opn, targs, args, clauses) =>
+            FFTerm.PrimApp ( pos, concrToF env typ, opn, Vector.map (concrToF env) targs, Vector.map (exprToF env) args
+                           , Option.map (fn ({def, body}, failure) =>
+                                             ( {def = defToF env def, body = exprToF env body}
+                                             , exprToF env failure )) clauses )
          | Field (pos, typ, expr, label) =>
             FFTerm.Field (pos, concrToF env typ, exprToF env expr, label)
          | Cast (pos, typ, expr, coercion) =>
@@ -79,6 +82,8 @@ end = struct
          | Use (pos, {pos = defPos, id, var, typ}) =>
             FFTerm.Use (pos, {pos = defPos, id, var, typ = concrToF env typ})
          | Const (pos, c) => FFTerm.Const (pos, c)
+
+    and defToF env {pos, id, var, typ} = {pos, id, var, typ = concrToF env typ}
 
     and clauseToF env = fn {pattern, body} => {pattern = patternToF env pattern, body = exprToF env body}
 

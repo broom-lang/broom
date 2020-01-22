@@ -192,21 +192,30 @@ end = struct
          | Where args => checkWhere env args
          | App app => checkApp env app
          | TApp app => checkTApp env app
-         | PrimApp (pos, typ, opn, targs, args) =>
-            let val (tparams, _, {domain, codomain}) = FType.primopType opn
+         | PrimApp (pos, typ, opn, targs, args, clauses) =>
+            let val (tparams, _, {domain, codomain = (successTyp, hasFailure)}) = FType.primopType opn
                 val mapping = (tparams, targs)
                     |> VectorExt.zipWith (fn ({var, ...}, arg) => (var, arg))
                     |> FType.Id.SortedMap.fromVector
                 val domain = Vector.map (Concr.substitute (Env.cstEnv env) mapping) domain
-                val codomain = Concr.substitute (Env.cstEnv env) mapping codomain
-                
+                val successTyp = Concr.substitute (Env.cstEnv env) mapping successTyp
                 do if not (Vector.length domain = Vector.length args)
                    then raise Fail "argc"
                    else ()
                 do Vector.app (fn (t, arg) => checkEq pos env (t, check env arg))
                               (VectorExt.zip (domain, args))
-            in checkEq pos env (typ, codomain)
-             ; typ
+            in  case clauses
+                of SOME ({def, body}, failure) =>
+                    ( if not hasFailure then raise Fail "clausec" else ()
+                    ; let val env = Env.insert (env, #var def, #typ def)
+                      in checkEq pos env (typ, check env body)
+                      end
+                    ; checkEq pos env (typ, check env failure)
+                    ; typ )
+                 | NONE => 
+                    ( if hasFailure then raise Fail "clausec" else ()
+                    ; checkEq pos env (typ, successTyp)
+                    ; typ )
             end
          | Field access => checkField env access
          | Letrec lett => checkLetrec env lett

@@ -36,6 +36,7 @@ signature CST = sig
                   * (pat, expr) member vector
         | App of Pos.span * {callee: expr, arg: expr}
         | PrimApp of Pos.span * Primop.t * expr vector
+            * ({var : Name.t, body : expr} * expr) option
         | Field of Pos.span * expr * Name.t
         | Ann of Pos.span * expr * typ
         | Type of Pos.span * typ
@@ -153,6 +154,7 @@ structure Cst :> CST = struct
                   * (pat, expr) member vector
         | App of Pos.span * {callee: expr, arg: expr}
         | PrimApp of Pos.span * Primop.t * expr vector
+            * ({var : Name.t, body : expr} * expr) option
         | Field of Pos.span * expr * Name.t
         | Ann of Pos.span * expr * typ
         | Type of Pos.span * typ
@@ -198,7 +200,7 @@ structure Cst :> CST = struct
          | Record (pos, _) => pos
          | Module (pos, _, _) => pos
          | App (pos, _) => pos
-         | PrimApp (pos, _, _) => pos
+         | PrimApp (pos, _, _, _) => pos
          | Field (pos, _, _) => pos
          | Ann (pos, _, _) => pos
          | Type (pos, _) => pos
@@ -294,8 +296,13 @@ structure Cst :> CST = struct
                     <++> text "end"
             end
          | App (_, {callee, arg}) => parens (exprToDoc callee <+> exprToDoc arg)
-         | PrimApp (_, opn, args) =>
-            parens (Primop.toDoc opn <+> punctuate space (Vector.map exprToDoc args))
+         | PrimApp (_, opn, args, clauses) =>
+            parens (Primop.toDoc opn <+> punctuate space (Vector.map exprToDoc args)
+                    <> (case clauses
+                        of SOME ({var, body}, failure) =>
+                            PPrint.nest 4 (newline <> text "|" <+> Name.toDoc var <+> text "->" <+> exprToDoc body
+                                           <++> text "|" <+> text "->" <+> exprToDoc failure)
+                         | NONE => PPrint.empty))
          | Field (_, expr, label) => parens (exprToDoc expr <> text "." <> Name.toDoc label)
          | Begin begin => beginToDoc begin
          | Do (_, stmts, body) =>

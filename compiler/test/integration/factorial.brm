@@ -1,6 +1,6 @@
 val factorial = fn
   | 0 -> 1
-  | n -> __iMul n (factorial (__iSub n 1))
+  | n -> (__iMul n (factorial (__iSub n 1)))
 end
 
 fun main _ = factorial 5

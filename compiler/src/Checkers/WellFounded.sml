@@ -326,13 +326,26 @@ end = struct
 
               | checkExpr ini ctx (TApp (_, _, {callee, args = _})) = checkExpr ini ctx callee
 
-              | checkExpr ini ctx (PrimApp (_, _, _, _, args)) =
-                ( Unknown
-                , Vector.foldl (fn (arg, support) =>
-                                    let val (_, argSupport) = checkExpr ini ctx arg
-                                    in Support.union (support, argSupport)
-                                    end)
-                               Support.empty args )
+              | checkExpr ini ctx (PrimApp (_, _, _, _, args, clauses)) =
+                let val support =
+                        Vector.foldl (fn (arg, support) =>
+                                          let val (_, argSupport) = checkExpr ini ctx arg
+                                          in Support.union (support, argSupport)
+                                          end)
+                                     Support.empty args
+                    val support =
+                        case clauses
+                        of SOME ({def = {id, ...}, body}, failure) =>
+                            let val (_, successSupport) =
+                                    let val ini = IniEnv.pushMatch ini id
+                                    in checkExpr ini ctx body
+                                    end
+                                val (_, failureSupport) = checkExpr ini ctx failure
+                            in Support.union (Support.union (support, successSupport), failureSupport)
+                            end
+                         | NONE => support
+                in (Unknown, support)
+                end
 
               | checkExpr ini ctx (With (_, _, {base, field = (label, fieldExpr)})) =
                 let val ((Record base | base as Scalar), baseSupport) = checkExpr ini ctx base
@@ -497,8 +510,15 @@ end = struct
               | emitExpr ini ctx (TApp (pos, t, {callee, args})) =
                 TApp (pos, t, {callee = emitExpr ini ctx callee, args})
 
-              | emitExpr ini ctx (PrimApp (pos, t, opn, targs, args)) =
-                PrimApp (pos, t, opn, targs, Vector.map (emitExpr ini ctx) args)
+              | emitExpr ini ctx (PrimApp (pos, t, opn, targs, args, clauses)) =
+                PrimApp ( pos, t, opn, targs, Vector.map (emitExpr ini ctx) args
+                        , Option.map (fn ({def = def as {id, ...}, body}, failure) =>
+                                          ( { def
+                                            , body = let val ini = IniEnv.pushMatch ini id
+                                                     in emitExpr ini ctx body
+                                                     end }
+                                          , emitExpr ini ctx failure ))
+                                     clauses )
 
               | emitExpr ini ctx (With (pos, t, {base, field = (label, fieldExpr)})) =
                 With (pos, t, {base = emitExpr ini ctx base, field = (label, emitExpr ini ctx fieldExpr)})
@@ -520,7 +540,7 @@ end = struct
                                       , typ = FTypeBase.App { callee = FTypeBase.Prim PrimType.Box
                                                             , args = Vector1.singleton typ } }
                      in DefId.HashTable.insert boxDefs (id, (typ, boxDef))
-                      ; PrimApp (pos, typ, Primop.BoxGet, #[typ], #[Use (pos, boxDef)])
+                      ; PrimApp (pos, typ, Primop.BoxGet, #[typ], #[Use (pos, boxDef)], NONE)
                      end
                   | Instant Uninitialized => raise Fail "unreachable")
 
@@ -550,7 +570,8 @@ end = struct
                            #[ Val (pos, def, expr)
                             , Expr (PrimApp ( pos, FTypeBase.Record FTypeBase.EmptyRow
                                             , Primop.BoxInit, #[contentType]
-                                            , #[Use (pos, boxDef), Use (pos, def)] )) ]
+                                            , #[Use (pos, boxDef), Use (pos, def)]
+                                            , NONE )) ]
                         | NONE => #[Val (pos, def, expr) ]
                     end
                  | Expr expr => #[Expr (emitExpr ini Escaping expr)]
@@ -601,7 +622,7 @@ end = struct
                         Vector.foldl (fn (Val (_, {id, ...}, _), revBoxStmts) =>
                                           (case DefId.HashTable.find boxDefs id
                                            of SOME (typ, def as {typ = boxTyp, ...}) =>
-                                               Val (pos, def, PrimApp (pos, boxTyp, Primop.BoxNew, #[typ], #[]))
+                                               Val (pos, def, PrimApp (pos, boxTyp, Primop.BoxNew, #[typ], #[], NONE))
                                                :: revBoxStmts
                                             | NONE => revBoxStmts)
                                        | ((Axiom _ | Expr _), revBoxStmts) => revBoxStmts)

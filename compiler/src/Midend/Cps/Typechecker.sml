@@ -88,7 +88,7 @@ end = struct
 
     fun operType (program : Program.t) =
         fn PrimApp {opn, tArgs, vArgs} =>
-            let val {tParams, vParams, codomain} = Expr.primopType opn
+            let val {tParams, vParams, codomain = #[codomain]} = Expr.primopType opn
                 do if Vector.length tArgs = Vector.length tParams
                    then VectorExt.zip (Vector.map #kind tParams, tArgs)
                         |> Vector.app (checkKind program)
@@ -191,6 +191,7 @@ end = struct
                    then VectorExt.zip (vDomain, vArgs)
                         |> Vector.app (checkDef program)
                    else raise TypeError (Argc (Vector.length vDomain, Vector.length vArgs))
+                 ; ignore (checkCont program callee)
                 end
               | t => raise TypeError (UnGoable (callee, t)))
          | Jump {callee, tArgs, vArgs} =>
@@ -213,6 +214,30 @@ end = struct
             let val matcheeTyp = defType program matchee
             in Vector.app (checkClause program matcheeTyp) clauses
             end
+         | Checked {opn, tArgs, vArgs, succeed, fail} =>
+            let val {tParams, vParams, codomain = #[#[successType], #[]]} = Expr.primopType opn
+                do if Vector.length tArgs = Vector.length tParams
+                   then VectorExt.zip (Vector.map #kind tParams, tArgs)
+                        |> Vector.app (checkKind program)
+                   else raise TypeError (ArgcT (Vector.length tParams, Vector.length tArgs))
+                val mapping = VectorExt.zip (Vector.map #var tParams, tArgs)
+                              |> Type.Id.SortedMap.fromVector
+                val vParams = Vector.map (Type.substitute mapping) vParams
+                val successType = Type.substitute mapping successType
+                do if Vector.length vArgs = Vector.length vParams
+                   then VectorExt.zip (vParams, vArgs)
+                        |> Vector.app (checkDef program)
+                   else raise TypeError (Argc (Vector.length vParams, Vector.length vArgs))
+            in  case checkCont program succeed
+                of FnT {tDomain = #[], vDomain = #[vDomain]} =>
+                    if not (Type.eq (vDomain, successType))
+                    then raise TypeError (Inequal (vDomain, successType))
+                    else ()
+                 | t => raise TypeError (NonThunk (succeed, t))
+             ;  case checkCont program fail
+                of FnT {tDomain = #[], vDomain = #[]} => ()
+                 | t => raise TypeError (NonThunk (fail, t))
+           end
          | Return (domain, args) =>
             if Vector.length args = Vector.length domain
             then VectorExt.zip (domain, args) |> Vector.app (checkDef program)

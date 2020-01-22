@@ -205,25 +205,7 @@ binapp6 : l=binapp7 opapps=(OP6 r=binapp7 => (FULL_SPAN, OP6_SPAN, OP6, r))* => 
 binapp7 : l=app opapps=(OP7 r=app => (FULL_SPAN, OP7_SPAN, OP7, r))* => (binopsl FULL_SPAN l opapps);
 
 app
-    : INTRINSIC selects=select* => (
-          let val args = Vector.fromList selects
-              val param = ref NONE
-              val args =
-                  Vector.tabulate (Vector.length args, fn i =>
-                                                           let val (arg, param') =
-                                                                   analyzeArg (Vector.sub (args, i)) (!param)
-                                                           in param := param'
-                                                            ; arg
-                                                           end)
-              val body = Term.PrimApp (FULL_SPAN, INTRINSIC, args)
-          in (case !param
-              of SOME param =>
-                  Term.Fn (FULL_SPAN, Cst.Explicit (), #[{pattern = Term.Def param, body}])
-               | NONE => body)
-             |> ArgExpr
-          end
-      )
-    | select selects=(select => (select_SPAN, select))* => (
+    : select selects=(select => (select_SPAN, select))* => (
         case selects
         of _ :: _ =>
             let fun step ((pos, arg), (callee, param)) =
@@ -291,6 +273,23 @@ nestable
            | RowType row => Term.Type (FULL_SPAN, Type.RecordT (FULL_SPAN, row))
       )
     | "(" "=" expr ")" => (Term.Type (FULL_SPAN, Type.Singleton (FULL_SPAN, expr)))
+    | "(" INTRINSIC selects=select* clauses=("|" succeed=(var=ID "->" body=expr => ({var, body})) "|" "->" fail=expr)? ")" => (
+          let val args = Vector.fromList selects
+              val param = ref NONE
+              val args =
+                  Vector.tabulate (Vector.length args, fn i =>
+                                                           let val (arg, param') =
+                                                                   analyzeArg (Vector.sub (args, i)) (!param)
+                                                           in param := param'
+                                                            ; arg
+                                                           end)
+              val body = Term.PrimApp (FULL_SPAN, INTRINSIC, args, clauses)
+          in  case !param
+              of SOME param =>
+                  Term.Fn (FULL_SPAN, Cst.Explicit (), #[{pattern = Term.Def param, body}])
+               | NONE => body
+          end
+      )
     | "(" expr ")"
     | atom
     ;

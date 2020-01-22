@@ -95,6 +95,12 @@ end = struct
                                  useLabel defUses target (Transfer use))
                             defUses clauses
             end
+         | Checked {opn = _, tArgs = _, vArgs, succeed, fail} =>
+            let val defUses = Vector.foldl (fn (def, defUses) => useDef defUses def (Transfer use))
+                                           defUses vArgs
+                val defUses = useLabel defUses succeed (Transfer use)
+            in useLabel defUses fail (Transfer use)
+            end
          | Return (_, args) =>
             Vector.foldl (fn (def, defUses) => useDef defUses def (Transfer use))
                          defUses args

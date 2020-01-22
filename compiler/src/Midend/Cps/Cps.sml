@@ -62,7 +62,7 @@ signature CPS_EXPR = sig
     val toDoc : t -> PPrint.t
 
     val primopType : Primop.t
-        -> {tParams : Type.param vector, vParams : Type.t vector, codomain : Type.t vector}
+        -> {tParams : Type.param vector, vParams : Type.t vector, codomain : Type.t vector vector}
     val foldDeps : (CpsId.t * 'a -> 'a) -> 'a -> oper -> 'a
     val foldLabels : (Label.t * 'a -> 'a) -> 'a -> oper -> 'a
     val mapDefs : (CpsId.t -> CpsId.t) -> oper -> oper
@@ -81,6 +81,8 @@ signature CPS_TRANSFER = sig
         = Goto of {callee : Label.t, tArgs : Type.t vector, vArgs : def vector}
         | Jump of {callee : def, tArgs : Type.t vector, vArgs : def vector}
         | Match of def * {pattern : pat, target : Label.t} vector
+        | Checked of { opn : Primop.t , tArgs : Type.t vector, vArgs : def vector
+                     , succeed : Label.t, fail : Label.t }
         | Return of Type.t vector * def vector
 
     val toDoc : t -> PPrint.t
@@ -300,6 +302,8 @@ end = struct
             = Goto of {callee : Label.t, tArgs : Type.t vector, vArgs : def vector}
             | Jump of {callee : def, tArgs : Type.t vector, vArgs : def vector}
             | Match of def * {pattern : pat, target : Label.t} vector
+            | Checked of { opn : Primop.t , tArgs : Type.t vector, vArgs : def vector
+                         , succeed : Label.t, fail : Label.t }
             | Return of Type.t vector * def vector
 
         val patToDoc =
@@ -320,7 +324,13 @@ end = struct
                 <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
              | Match (matchee, clauses) =>
                 text "match" <+> CpsId.toDoc matchee
-                <> nest 4 (newline <> (punctuate newline (Vector.map clauseToDoc clauses)))
+                <> nest 4 (newline <> punctuate newline (Vector.map clauseToDoc clauses))
+             | Checked {opn, tArgs, vArgs, succeed, fail} =>
+                text "checked" <+> Primop.toDoc opn
+                <+> Type.argsDoc Type.toDoc tArgs
+                <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc vArgs))
+                <> nest 4 (newline <> text "_" <+> text "->" <+> Label.toDoc succeed
+                           <++> text "->" <+> Label.toDoc fail)
              | Return (domain, args) =>
                 text "return"
                 <+> Type.argsDoc Type.toDoc domain 
@@ -330,12 +340,14 @@ end = struct
             fn Goto {callee = _, tArgs = _, vArgs} => Vector.foldl f acc vArgs
              | Jump {callee, tArgs = _, vArgs} => Vector.foldl f (f (callee, acc)) vArgs
              | Match (matchee, _) => f (matchee, acc)
+             | Checked {opn = _, tArgs = _, vArgs, succeed = _, fail = _} => Vector.foldl f acc vArgs
              | Return (_, args) => Vector.foldl f acc args
 
         fun foldrDeps f acc =
             fn Goto {callee = _, tArgs = _, vArgs} => Vector.foldr f acc vArgs
              | Jump {callee, tArgs = _, vArgs} => f (callee, Vector.foldr f acc vArgs)
              | Match (matchee, _) => f (matchee, acc)
+             | Checked {opn = _, tArgs = _, vArgs, succeed = _, fail = _} => Vector.foldr f acc vArgs
              | Return (_, args) => Vector.foldr f acc args
 
         fun foldLabels f acc =
@@ -344,6 +356,7 @@ end = struct
              | Match (_, clauses) =>
                 Vector.foldl (fn ({pattern = _, target}, acc) => f (target, acc))
                              acc clauses
+             | Checked {opn = _, tArgs = _, vArgs = _, succeed, fail} => f (fail, f (succeed, acc))
              | Return _ => acc
     end
 
@@ -464,12 +477,15 @@ end = struct
 
         (* OPTIMIZE: *)
         fun primopType opn =
-            let val (tParams, _, {domain, codomain}) = FAst.Type.primopType opn
-            in  if Primop.isTotal opn
+            let val (tParams, _, {domain, codomain = (successTyp, hasFailure)}) = FAst.Type.primopType opn
+            in  if hasFailure
                 then { tParams, vParams = Vector.map Type.fromF domain
-                     , codomain = #[Type.fromF codomain] }
-                else { tParams, vParams = VectorExt.prepend (Type.Prim Type.Prim.StackT, Vector.map Type.fromF domain)
-                     , codomain = #[Type.Prim Type.Prim.StackT, Type.fromF codomain] }
+                     , codomain = #[#[Type.fromF successTyp], #[]] }
+                else if Primop.isTotal opn
+                     then { tParams, vParams = Vector.map Type.fromF domain
+                          , codomain = #[#[Type.fromF successTyp]] }
+                     else { tParams, vParams = VectorExt.prepend (Type.Prim Type.Prim.StackT, Vector.map Type.fromF domain)
+                          , codomain = #[#[Type.Prim Type.Prim.StackT, Type.fromF successTyp]] }
             end
     end
 

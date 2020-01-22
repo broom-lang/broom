@@ -210,8 +210,8 @@ end = struct
             in ( joinEffs (joinEffs (calleeEff,  argEff), callEff), codomain
                , FTerm.App (pos, codomain, {callee, arg}) )
             end
-         | CTerm.PrimApp (pos, opn, args) =>
-            let val (tparams, appEff, {domain, codomain}) = FType.primopType opn
+         | CTerm.PrimApp (pos, opn, args, NONE) =>
+            let val (tparams, appEff, {domain, codomain = (codomain, false)}) = FType.primopType opn
                 val namedTargs = Vector.map (fn {var, kind} => (var, SVar (UVar (Uv.fresh env kind))))
                                             tparams
                 val targs = Vector.map #2 namedTargs
@@ -229,7 +229,13 @@ end = struct
                                       end)
                                  (appEff, [])
                                  (VectorExt.zip (domain, args))
-            in (eff, codomain, FTerm.PrimApp (pos, codomain, opn, targs, Vector.fromList (List.rev revArgs)))
+                val args = Vector.fromList (List.rev revArgs)
+            in (eff, codomain, FTerm.PrimApp (pos, codomain, opn, targs, args, NONE))
+            end
+         | CTerm.PrimApp (_, _, _, SOME _) =>
+            let val t = SVar (UVar (Uv.fresh env TypeK))
+                val (eff, expr) = elaborateExprAs env t expr
+            in (eff, t, expr)
             end
          | CTerm.Field (pos, expr, label) =>
             let val (eff, t, expr) = elaborateExpr env expr
@@ -391,6 +397,44 @@ end = struct
                         clauses
             in (joinEffs (matcheeEff, clausesEff), FTerm.Match (pos, typ, matchee, clauses))
             end
+
+         | CTerm.PrimApp (pos, opn, args, SOME (success, failure)) =>
+            let val (tparams, appEff, {domain, codomain = (successTyp, hasFailure)}) = FType.primopType opn
+                val namedTargs = Vector.map (fn {var, kind} => (var, SVar (UVar (Uv.fresh env kind))))
+                                            tparams
+                val targs = Vector.map #2 namedTargs
+                val mapping = Id.SortedMap.fromVector namedTargs
+                val domain = Vector.map (Concr.substitute env mapping) domain
+                val successTyp = Concr.substitute env mapping successTyp
+
+                do if not (Vector.length domain = Vector.length args)
+                   then raise Fail "argc"
+                   else ()
+                val (eff, revArgs) =
+                    Vector.foldl (fn ((t, arg), (eff, revArgs)) =>
+                                      let val (argEff, arg) = elaborateExprAs env t arg
+                                      in (joinEffs (eff, argEff), arg :: revArgs)
+                                      end)
+                                 (appEff, [])
+                                 (VectorExt.zip (domain, args))
+                val args = Vector.fromList (List.rev revArgs)
+
+                do if not hasFailure
+                   then raise Fail "clausec"
+                   else ()
+                val (successEff, success) =
+                    let val {var, body} = success
+                        val def = {pos, id = DefId.fresh (), var, typ = successTyp}
+                        val env = Env.pushScope env (Scope.PatternScope (Scope.Id.fresh (), var, Visited (def, NONE)))
+                        val (successEff, body) = elaborateExprAs env typ body
+                    in (successEff, {def, body})
+                    end
+                val eff = joinEffs (eff, successEff)
+                val (failureEff, failure) = elaborateExprAs env typ failure
+                val eff = joinEffs (eff, failureEff)
+            in (eff, FTerm.PrimApp (pos, typ, opn, targs, args, SOME (success, failure)))
+            end
+
          | _ =>
             (case typ
              of ForAll args => elaborateAsForAll env args expr

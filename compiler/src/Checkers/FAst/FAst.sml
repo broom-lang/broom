@@ -31,7 +31,8 @@ signature FAST_TYPE = sig
     val rowExtBase: concr -> concr
     val piEffect: concr -> effect option
     val kindDefault: kind -> concr
-    val primopType : Primop.t -> def vector * effect * {domain: concr vector, codomain: concr}
+    val primopType : Primop.t -> def vector * effect * { domain: concr vector
+                                                       , codomain: concr * bool }
 
     structure Concr: sig
         type t = concr
@@ -69,6 +70,7 @@ signature FAST_TERM = sig
         | App of Pos.span * Type.concr * {callee: expr, arg: expr}
         | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector1}
         | PrimApp of Pos.span * Type.concr * Primop.t * Type.concr vector * expr vector
+            * ({def : def, body : expr} * expr) option
         | Field of Pos.span * Type.concr * expr * Name.t
         | Letrec of Pos.span * stmt vector1 * expr
         | Let of Pos.span * stmt vector1 * expr
@@ -225,6 +227,7 @@ end = struct
             | App of Pos.span * Type.concr * {callee: expr, arg: expr}
             | TApp of Pos.span * Type.concr * {callee: expr, args: Type.concr vector1}
             | PrimApp of Pos.span * Type.concr * Primop.t * Type.concr vector * expr vector
+                * ({def : def, body : expr} * expr) option
             | Field of Pos.span * Type.concr * expr * Name.t
             | Letrec of Pos.span * stmt vector1 * expr
             | Let of Pos.span * stmt vector1 * expr
@@ -254,7 +257,7 @@ end = struct
              | Without (pos, _, _) => pos
              | Where (pos, _, _) => pos
              | App (pos, _, _) => pos
-             | PrimApp (pos, _, _, _, _) => pos
+             | PrimApp (pos, _, _, _, _, _) => pos
              | TApp (pos, _, _) => pos
              | Field (pos, _, _, _) => pos
              | Letrec (pos, _, _) => pos
@@ -314,10 +317,15 @@ end = struct
                                                 |> Vector1.map (Type.Concr.toDoc env)
                                                 |> PPrint.punctuate1 space
                                                 |> brackets))
-            | PrimApp (_, _, opn, targs, args) =>
+            | PrimApp (_, _, opn, targs, args, clauses) =>
                parens (Primop.toDoc opn
                        <+> brackets (punctuate (text "," <> space) (Vector.map (Type.Concr.toDoc env) targs))
-                       <+> punctuate space (Vector.map (exprToDoc env) args))
+                       <+> punctuate space (Vector.map (exprToDoc env) args)
+                       <> (case clauses
+                           of SOME ({def, body}, failure) =>
+                               PPrint.nest 4 (newline <> text "|" <+> defToDoc env def <+> text "->" <+> exprToDoc env body
+                                              <++> text "|" <+> text "->" <+> exprToDoc env failure)
+                            | NONE => PPrint.empty))
             | Field (_, _, expr, label) =>
                parens (exprToDoc env expr <> text "." <> Name.toDoc label)
             | Letrec (_, stmts, body) =>
@@ -328,12 +336,9 @@ end = struct
                text "let" <+> PPrint.align (stmtsToDoc env (Vector1.toVector stmts))
                <++> text "in" <+> align (exprToDoc env body)
                <++> text "end"
-            | Match (_, _, matchee, clauses) => let
-                   fun clauseToDoc {pattern, body} =
-                       patternToDoc env pattern <+> text "->" <+> exprToDoc env body
-                   in text "match" <+> exprToDoc env matchee
-                      <+> braces (newline <> PPrint.punctuate newline (Vector.map clauseToDoc clauses))
-               end
+            | Match (_, _, matchee, clauses) =>
+                text "match" <+> exprToDoc env matchee
+                    <+> braces (newline <> clausesToDoc env clauses)
             | Cast (_, _, expr, co) => exprToDoc env expr <+> text "via" <+> Type.Co.toDoc env co
             | Type (_, t) => brackets (Type.Concr.toDoc env t)
             | Use (_, {var, ...}) => Name.toDoc var 
@@ -357,6 +362,11 @@ end = struct
                                        <> space))
                 in oneLiner <|> multiLiner
                 end
+
+        and clausesToDoc env clauses = PPrint.punctuate newline (Vector.map (clauseToDoc env) clauses)
+
+        and clauseToDoc env {pattern, body} =
+            patternToDoc env pattern <+> text "->" <+> exprToDoc env body
 
         and patternToDoc env =
             fn Def (_, def) => defToDoc env def
@@ -394,7 +404,7 @@ end = struct
              | With (_, typ, _) => typ
              | Without (_, typ, _) => typ
              | Where (_, typ, _) => typ
-             | (App (_, typ, _) | TApp (_, typ, _) | PrimApp (_, typ, _, _, _)) => typ
+             | (App (_, typ, _) | TApp (_, typ, _) | PrimApp (_, typ, _, _, _, _)) => typ
              | Field (_, typ, _, _) => typ
              | Letrec (_, _, body) => typeOf body
              | Let (_, _, body) => typeOf body

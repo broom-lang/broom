@@ -87,7 +87,7 @@ end = struct
                     in convertExpr parent stack cont env callee
                     end
 
-                 | FFTerm.PrimApp (_, _, opn, tArgs, vArgs) =>
+                 | FFTerm.PrimApp (_, _, opn, tArgs, vArgs, clauses) =>
                     let val tArgs = Vector.map convertType tArgs
 
                         fun convertArgs parent stack cont env args revArgs =
@@ -101,15 +101,37 @@ end = struct
                                 end
                              | NONE =>
                                 let val vArgs = Vector.fromList (List.rev revArgs)
-                                    val (stack, expr) =
-                                        if Primop.isTotal opn
-                                        then (stack, Builder.express builder {parent, oper = PrimApp {opn, tArgs, vArgs}})
-                                        else let val vArgs = VectorExt.prepend (stack, vArgs)
-                                                 val results = Builder.express builder {parent, oper = PrimApp {opn, tArgs, vArgs}}
-                                             in ( Builder.express builder {parent, oper = Result (results, 0)}
-                                                , Builder.express builder {parent, oper = Result (results, 1)} )
-                                             end
-                                in continue parent stack cont expr
+                                in  case clauses
+                                    of SOME ({def = {id = successId, typ = successTyp, ...}, body = success}, failure) =>
+                                        let val join = trivializeCont cont
+                                            val succeed = Label.fresh ()
+                                            val succeedK =
+                                                let val successParam =
+                                                        Builder.express builder {parent = SOME succeed, oper = Param (succeed, 0)}
+                                                    val env = Env.insert (env, successId, successParam)
+                                                in { name = NONE, tParams = #[], vParams = #[convertType successTyp]
+                                                   , cconv = NONE
+                                                   , body = convertExpr (SOME succeed) stack join env success }
+                                                end
+                                            do Builder.insertCont builder (succeed, succeedK)
+                                            val fail = Label.fresh ()
+                                            val failK = { name = NONE, tParams = #[], vParams = #[]
+                                                        , cconv = NONE
+                                                        , body = convertExpr (SOME fail) stack join env failure }
+                                            do Builder.insertCont builder (fail, failK)
+                                        in Checked {opn, tArgs, vArgs, succeed, fail}
+                                        end
+                                     | NONE => 
+                                        let val (stack, expr) =
+                                            if Primop.isTotal opn
+                                            then (stack, Builder.express builder {parent, oper = PrimApp {opn, tArgs, vArgs}})
+                                            else let val vArgs = VectorExt.prepend (stack, vArgs)
+                                                     val results = Builder.express builder {parent, oper = PrimApp {opn, tArgs, vArgs}}
+                                                 in ( Builder.express builder {parent, oper = Result (results, 0)}
+                                                    , Builder.express builder {parent, oper = Result (results, 1)} )
+                                                 end
+                                        in continue parent stack cont expr
+                                        end
                                 end
                     in convertArgs parent stack cont env (VectorSlice.full vArgs) []
                     end
