@@ -226,7 +226,7 @@ end = struct
                 end
              | FAst.Type.Arrow (_, {domain, codomain}) =>
                 let val contTyp = FnT {tDomain = #[], vDomain = #[Prim Prim.StackT, fromF codomain]}
-                in FnT {tDomain = #[], vDomain = #[Prim Prim.StackT, contTyp, fromF domain]}
+                in FnT {tDomain = #[], vDomain = #[Prim Prim.StackT, fromF domain, contTyp]}
                 end
              | FAst.Type.Record row => Record (fromF row)
              | FAst.Type.EmptyRow => EmptyRow
