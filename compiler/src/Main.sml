@@ -86,20 +86,20 @@ end = struct
                                         else ()
                                      val program = X64SysVCpsConvert.cpsConvert program
                                      val _ = log (PPrint.pretty 80 (Cps.Program.toDoc program) ^ "\n")
-                                     do log "# Closure converting...\n\n"
                                      do if lint
                                         then case CpsTypechecker.checkProgram program
                                              of Right () => ()
                                               | Left err => raise Fail "CPS lint failed"
                                         else ()
+                                     do log "# Closure converting...\n\n"
                                      val program = ClosureConvert.convert program
                                      val _ = log (PPrint.pretty 80 (Cps.Program.toDoc program) ^ "\n")
-                                     do log "# Selecting instructions...\n\n"
                                      do if lint
                                         then case CpsTypechecker.checkProgram program
                                              of Right () => ()
                                               | Left err => raise Fail (PPrint.pretty 80 (CpsTypechecker.errorToDoc err))
                                         else ()
+                                    do log "# Selecting instructions...\n\n"
                                     val program = X64InstrSelection.selectInstructions program
                                     do log (PPrint.pretty 80 (X64Isa.Program.toDoc program) ^ "\n")
                                     do log "# Allocating registers...\n\n"
