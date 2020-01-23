@@ -1,3 +1,13 @@
+structure X64JumpCondition = struct
+    val text = PPrint.text
+
+    datatype t = Neq | Overflow
+
+    val toDoc =
+        fn Neq => text "ne"
+         | Overflow => text "o"
+end
+
 functor X64InstructionsFn (Register : REGISTER) :> sig
     type def = Register.t
 
@@ -41,7 +51,7 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
     structure Transfer : sig
         type def = def
 
-        datatype pred = Neq
+        datatype pred = datatype X64JumpCondition.t
 
         datatype t
             = JMP of Label.t * def vector (* relative/absolute JMP *)
@@ -171,6 +181,7 @@ end = struct
                 text "mov" <+> memToDoc target <+> Register.toDoc src
              | PUSH def => text "push" <+> Register.toDoc def
              | LEAVE => text "leave"
+             | ADD (a, b) => text "add" <+> Register.toDoc a <> comma <+> Register.toDoc b
              | SUBc (def, n) =>
                 text "sub" <+> Register.toDoc def <> comma <+> PPrint.int (Word32.toInt n) (* HACK: toInt *)
              | CMP (def, n) =>
@@ -183,7 +194,7 @@ end = struct
     structure Transfer = struct
         type def = def
 
-        datatype pred = Neq
+        datatype pred = datatype X64JumpCondition.t
 
         datatype t
             = JMP of Label.t * def vector (* relative/absolute JMP *)
@@ -210,9 +221,6 @@ end = struct
              | (JMPi _ | RET _) => ()
              | Jcc (_, conseq, alt) => (f conseq; f alt)
 
-        val predToDoc =
-            fn Neq => text "ne"
-
         val toDoc =
             fn JMP (label, args) =>
                 text "jmp" <+> Label.toDoc label
@@ -221,7 +229,7 @@ end = struct
                 text "jmp" <+> Register.toDoc def
                 <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))
              | Jcc (pred, target, target') =>
-                text "j" <> predToDoc pred
+                text "j" <> X64JumpCondition.toDoc pred
                 <+> Label.toDoc target <> comma <+> Label.toDoc target'
              | RET args =>
                 text "ret"

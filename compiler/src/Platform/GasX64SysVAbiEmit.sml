@@ -8,6 +8,8 @@ end = struct
     structure Stmt = X64SeqIsa.RegIsa.Stmt
     structure Transfer = X64RegInstructions.Transfer
 
+    datatype cond = datatype X64JumpCondition.t
+
     fun convertLabel label = ".L" ^ Label.toString label
 
     fun convertReg reg = "%" ^ Register.toString reg
@@ -43,6 +45,8 @@ end = struct
                  | (NONE, Oper.CMP (v, c)) =>
                     line ("\tcmp\t$" ^ Int.toString (Word32.toInt c) ^ ", " ^ convertReg v)
                  | (NONE, Oper.LEAVE) => line "\tleave"
+                 | (SOME _, Oper.ADD (a, b)) =>
+                    line ("\taddq\t" ^ convertReg b ^ ", " ^ convertReg a)
                  | (SOME target, Oper.SUBc (_, n)) =>
                     line ("\tsubq\t$" ^ Int.toString (Word32.toInt n) ^ ", " ^ convertReg target)
                  | (SOME _, Oper.CALLd (sym, _)) =>
@@ -56,6 +60,7 @@ end = struct
                 fn Transfer.JMP (dest, _) => line ("\tjmp\t" ^ convertLabel dest)
                  | Transfer.JMPi (dest, _) => line ("\tjmp\t*" ^ convertReg dest)
                  | Transfer.Jcc (Neq, _, dest') => line ("\tjne\t" ^ convertLabel dest')
+                 | Transfer.Jcc (Overflow, _, dest') => line ("\tjo\t" ^ convertLabel dest')
                  | Transfer.RET _ => line "\tret\t"
 
             fun emitCont (label, {name, cconv = _, params = _, stmts, transfer}) =

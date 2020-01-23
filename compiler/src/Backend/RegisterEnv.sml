@@ -429,16 +429,15 @@ end) :> REGISTER_ENV
         end
 
     fun incCounts counts ({locations, ...} : t) =
-        let fun incIdCounts (id, idLocs) =
-                let val idCounts =
-                        getOpt (CpsId.SortedMap.find (counts, id), Location.SortedMap.empty)
-                    fun step (loc, idCounts) =
+        let fun idLocsToCounts idLocs =
+                let fun step (loc, idCounts) =
                         let val count = getOpt (Location.SortedMap.find (idCounts, loc), 0)
                         in Location.SortedMap.insert (idCounts, loc, count + 1)
                         end
-                in Location.SortedSet.foldl step idCounts idLocs
+                in Location.SortedSet.foldl step Location.SortedMap.empty idLocs
                 end
-        in CpsId.SortedMap.mapi incIdCounts locations
+        in CpsId.SortedMap.unionWith (Location.SortedMap.unionWith op+)
+                                     (counts, CpsId.SortedMap.map idLocsToCounts locations)
         end
 
     fun fromCounts maxSlotCount counts =

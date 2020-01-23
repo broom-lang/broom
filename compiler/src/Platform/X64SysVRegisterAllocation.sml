@@ -77,7 +77,12 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
                  | X64Instructions.Oper.LOADl lLabel =>
                     ( Builder.insertStmt builder label (Stmt.Def (target, LOADl lLabel))
                     ; env )
-                 | _ => env (* FIXME *)
+                 | X64Instructions.Oper.ADD (a, b) =>
+                    let val env = Env.fixedRegUse env hints builder label a target
+                        val (env, b) = Env.regUse env hints builder label b
+                    in Builder.insertStmt builder label (Stmt.Def (target, ADD (target, b)))
+                     ; env
+                    end
             end
          | Isa.Stmt.Eff expr =>
             (case expr
@@ -120,8 +125,8 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
             in Builder.setTransfer builder label (JMPi (dest, #[]))
              ; env
             end
-         | X64Instructions.Transfer.Jcc (X64Instructions.Transfer.Neq, dest, dest') =>
-             ( Builder.setTransfer builder label (Jcc (X64RegInstructions.Transfer.Neq, dest, dest'))
+         | X64Instructions.Transfer.Jcc (cond, dest, dest') =>
+             ( Builder.setTransfer builder label (Jcc (cond, dest, dest'))
              ; env )
          | X64Instructions.Transfer.RET args =>
             let val paramRegs = Vector.concat [ #retVal Abi.foreignCallingConvention

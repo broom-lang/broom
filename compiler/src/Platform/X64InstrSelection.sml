@@ -60,6 +60,12 @@ structure X64InstrSelection = InstrSelectionFn(struct
                                 , {pattern = AnyP, target = target'} ]) => (* FIXME: n might not fit in 32 bits: *)
                 ( Builder.insertStmt builder label (Eff (CMP (matchee, Word32.fromInt n)))
                 ; Jcc (X64Instructions.Transfer.Neq, target, target') )
+             | Checked {opn = IAdd, tArgs = #[], vArgs = #[a, b], succeed, fail} =>
+                let val succDef = valOf (Builder.getParam builder succeed 0)
+                in Builder.setParams builder succeed (Array.fromList [])
+                 ; Builder.insertStmt builder label (Def (succDef, ADD (a, b)))
+                 ; Jcc (X64Instructions.Transfer.Overflow, succeed, fail)
+                end
              | Return (_, args) => RET args
     end
 end)

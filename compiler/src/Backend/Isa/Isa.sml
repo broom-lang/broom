@@ -71,6 +71,8 @@ signature ISA = sig
 
             val new : {name : Name.t option, cconv : CallingConvention.t option, argc : int} -> builder
             val setParam : builder -> int -> loc -> unit
+            val setParams : builder -> loc option array -> unit
+            val getParam : builder -> int -> loc option
             val insertStmt : builder -> Stmt.t -> unit
             val setTransfer : builder -> Transfer.t -> unit
             val build : builder -> t
@@ -89,6 +91,8 @@ signature ISA = sig
             val createCont : builder -> Label.t
                 -> {name : Name.t option, cconv : CallingConvention.t option, argc : int} -> unit
             val setParam : builder -> Label.t -> int -> loc -> unit
+            val setParams : builder -> Label.t -> loc option array -> unit
+            val getParam : builder -> Label.t -> int -> loc option
             val insertStmt : builder -> Label.t -> Stmt.t -> unit
             val setTransfer : builder -> Label.t -> Transfer.t -> unit
             val build : builder -> Label.t -> t
@@ -165,16 +169,20 @@ end) :> ISA
 
         structure Builder = struct
             type builder = { name : Name.t option, cconv : CallingConvention.t option
-                           , params : loc option array
+                           , params : loc option array ref
                            , stmts : Stmt.t list ref
                            , transfer : Transfer.t option ref }
 
             fun new {name, cconv, argc} =
                 { name, cconv
-                , params = Array.tabulate (argc, Fn.constantly NONE)
+                , params = ref (Array.tabulate (argc, Fn.constantly NONE))
                 , stmts = ref [], transfer = ref NONE }
 
-            fun setParam ({params, ...} : builder) i loc = Array.update (params, i, SOME loc)
+            fun setParam ({params, ...} : builder) i loc = Array.update (!params, i, SOME loc)
+
+            fun setParams ({params, ...} : builder) params' = params := params'
+
+            fun getParam ({params, ...} : builder) i = Array.sub (!params, i)
 
             fun insertStmt ({stmts, ...} : builder) stmt = stmts := stmt :: !stmts
 
@@ -182,7 +190,7 @@ end) :> ISA
 
             fun build {name, cconv, params, stmts, transfer} =
                 { name, cconv
-                , params = Array.vector params
+                , params = Array.vector (!params)
                 , stmts = Vector.fromList (List.rev (!stmts))
                 , transfer = valOf (!transfer) }
         end
@@ -208,6 +216,12 @@ end) :> ISA
 
             fun setParam (ref conts) label i loc =
                 Cont.Builder.setParam (LabelMap.lookup conts label) i loc
+
+            fun setParams (ref conts) label params' =
+                Cont.Builder.setParams (LabelMap.lookup conts label) params'
+
+            fun getParam (ref conts) label i =
+                Cont.Builder.getParam (LabelMap.lookup conts label) i
 
             fun insertStmt (ref conts) label stmt =
                 Cont.Builder.insertStmt (LabelMap.lookup conts label) stmt
