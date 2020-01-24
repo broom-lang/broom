@@ -47,6 +47,8 @@ end = struct
                  | (NONE, Oper.LEAVE) => line "\tleave"
                  | (SOME _, Oper.ADD (a, b)) =>
                     line ("\taddq\t" ^ convertReg b ^ ", " ^ convertReg a)
+                 | (SOME _, Oper.SUB (a, b)) =>
+                    line ("\tsubq\t" ^ convertReg b ^ ", " ^ convertReg a)
                  | (SOME target, Oper.SUBc (_, n)) =>
                     line ("\tsubq\t$" ^ Int.toString (Word32.toInt n) ^ ", " ^ convertReg target)
                  | (SOME _, Oper.CALLd (sym, _)) =>

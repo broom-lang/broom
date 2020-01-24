@@ -83,6 +83,12 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
                     in Builder.insertStmt builder label (Stmt.Def (target, ADD (target, b)))
                      ; env
                     end
+                 | X64Instructions.Oper.SUB (a, b) =>
+                    let val env = Env.fixedRegUse env hints builder label a target
+                        val (env, b) = Env.regUse env hints builder label b
+                    in Builder.insertStmt builder label (Stmt.Def (target, SUB (target, b)))
+                     ; env
+                    end
             end
          | Isa.Stmt.Eff expr =>
             (case expr

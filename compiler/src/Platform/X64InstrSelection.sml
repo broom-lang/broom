@@ -47,7 +47,7 @@ structure X64InstrSelection = InstrSelectionFn(struct
              | Cps.Expr.Param (label, i) => Builder.setParam builder parent i def
              | PrimApp {opn, tArgs = _, vArgs} =>
                 (case opn
-                 of StackNew => (* HACK: *)
+                 of Primop.StackNew => (* HACK: *)
                      Builder.insertStmt builder parent (Def (def, LOADc 0w0)))
              | Const (Const.Int n) => (* FIXME: `n` might not fit into 32 bits: *)
                 Builder.insertStmt builder parent (Def (def, LOADc (Word32.fromInt n)))
@@ -60,10 +60,16 @@ structure X64InstrSelection = InstrSelectionFn(struct
                                 , {pattern = AnyP, target = target'} ]) => (* FIXME: n might not fit in 32 bits: *)
                 ( Builder.insertStmt builder label (Eff (CMP (matchee, Word32.fromInt n)))
                 ; Jcc (X64Instructions.Transfer.Neq, target, target') )
-             | Checked {opn = IAdd, tArgs = #[], vArgs = #[a, b], succeed, fail} =>
+             | Checked {opn = Primop.IAdd, tArgs = #[], vArgs = #[a, b], succeed, fail} =>
                 let val succDef = valOf (Builder.getParam builder succeed 0)
                 in Builder.setParams builder succeed (Array.fromList [])
                  ; Builder.insertStmt builder label (Def (succDef, ADD (a, b)))
+                 ; Jcc (X64Instructions.Transfer.Overflow, succeed, fail)
+                end
+             | Checked {opn = Primop.ISub, tArgs = #[], vArgs = #[a, b], succeed, fail} =>
+                let val succDef = valOf (Builder.getParam builder succeed 0)
+                in Builder.setParams builder succeed (Array.fromList [])
+                 ; Builder.insertStmt builder label (Def (succDef, SUB (a, b)))
                  ; Jcc (X64Instructions.Transfer.Overflow, succeed, fail)
                 end
              | Return (_, args) => RET args

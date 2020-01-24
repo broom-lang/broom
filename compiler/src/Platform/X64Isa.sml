@@ -182,6 +182,7 @@ end = struct
              | PUSH def => text "push" <+> Register.toDoc def
              | LEAVE => text "leave"
              | ADD (a, b) => text "add" <+> Register.toDoc a <> comma <+> Register.toDoc b
+             | SUB (a, b) => text "sub" <+> Register.toDoc a <> comma <+> Register.toDoc b
              | SUBc (def, n) =>
                 text "sub" <+> Register.toDoc def <> comma <+> PPrint.int (Word32.toInt n) (* HACK: toInt *)
              | CMP (def, n) =>
