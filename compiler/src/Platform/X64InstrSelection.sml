@@ -48,7 +48,27 @@ structure X64InstrSelection = InstrSelectionFn(struct
              | PrimApp {opn, tArgs = _, vArgs} =>
                 (case opn
                  of Primop.StackNew => (* HACK: *)
-                     Builder.insertStmt builder parent (Def (def, LOADc 0w0)))
+                     Builder.insertStmt builder parent (Def (def, LOADc 0w0))
+                  | Primop.BoxNew =>
+                     let val sizeDef = CpsId.fresh ()
+                         val size = X64RegInstructions.registerSize
+                     in expr builder parent sizeDef (Const (Const.Int size))
+                      ; Builder.insertStmt builder parent (Def (def, CALLd ("malloc", #[sizeDef])))
+                     end
+                  | Primop.BoxInit =>
+                     let val #[_, dest, src] = vArgs
+                     in Builder.insertStmt builder parent (Eff (STORE ( { base = SOME dest
+                                                                        , index = NONE
+                                                                        , disp = 0 }
+                                                                      , src )))
+                     end
+                  | Primop.BoxGet =>
+                     let val #[_, box] = vArgs
+                     in Builder.insertStmt builder parent (Def (def, (LOAD { base = SOME box
+                                                                           , index = NONE
+                                                                           , disp = 0 })))
+                     end)
+             | Result _ => () (* FIXME *)
              | Const (Const.Int n) => (* FIXME: `n` might not fit into 32 bits: *)
                 Builder.insertStmt builder parent (Def (def, LOADc (Word32.fromInt n)))
 
