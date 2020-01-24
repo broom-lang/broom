@@ -51,6 +51,8 @@ end = struct
                     line ("\tsubq\t" ^ convertReg b ^ ", " ^ convertReg a)
                  | (SOME target, Oper.SUBc (_, n)) =>
                     line ("\tsubq\t$" ^ Int.toString (Word32.toInt n) ^ ", " ^ convertReg target)
+                 | (SOME _, Oper.IMUL (a, b)) =>
+                    line ("\timulq\t" ^ convertReg b ^ ", " ^ convertReg a)
                  | (SOME _, Oper.CALLd (sym, _)) =>
                     line ("\tcall\t" ^ sym ^ "@PLT")
 

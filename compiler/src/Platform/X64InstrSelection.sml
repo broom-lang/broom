@@ -72,6 +72,12 @@ structure X64InstrSelection = InstrSelectionFn(struct
                  ; Builder.insertStmt builder label (Def (succDef, SUB (a, b)))
                  ; Jcc (X64Instructions.Transfer.Overflow, succeed, fail)
                 end
+             | Checked {opn = Primop.IMul, tArgs = #[], vArgs = #[a, b], succeed, fail} =>
+                let val succDef = valOf (Builder.getParam builder succeed 0)
+                in Builder.setParams builder succeed (Array.fromList [])
+                 ; Builder.insertStmt builder label (Def (succDef, IMUL (a, b)))
+                 ; Jcc (X64Instructions.Transfer.Overflow, succeed, fail)
+                end
              | Return (_, args) => RET args
     end
 end)
