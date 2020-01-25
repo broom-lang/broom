@@ -51,7 +51,7 @@ end = struct
         fun analyzeStmts program stmts frees =
             DefMap.fold (analyzeStmt program) frees stmts
 
-        fun analyzeClause program label ({pattern = _, target}, frees) =
+        fun analyzeSucc program label (target, frees) =
             let val targetFrees = getOpt (LabelMap.find frees target, FreeSet.empty)
                 val targetFrees =
                     FreeSet.filter (fn def =>
@@ -65,6 +65,9 @@ end = struct
                )
             end
 
+        fun analyzeClause program label ({pattern = _, target}, frees) =
+            analyzeSucc program label (target, frees)
+
         fun analyzeCont program ((label, {body, ...} : Cps.Cont.t), frees) =
             let val frees = LabelMap.update frees label (fn
                         | SOME labelFrees => labelFrees
@@ -72,13 +75,17 @@ end = struct
                     )
                 val frees =
                     case body
-                    of Match (_, clauses) => Vector.foldl (analyzeClause program label) frees clauses
-                     | Goto {callee, tArgs = _, vArgs = _} =>
+                    of Goto {callee, tArgs = _, vArgs = _} =>
                         let val calleeFrees = getOpt (LabelMap.find frees callee, FreeSet.empty)
                         in LabelMap.update frees label (fn
                                | SOME labelFrees => FreeSet.union (labelFrees, calleeFrees)
                                | NONE => calleeFrees
                            )
+                        end
+                     | Match (_, clauses) => Vector.foldl (analyzeClause program label) frees clauses
+                     | Checked {opn = _, tArgs = _, vArgs = _, succeed, fail} =>
+                        let val frees = analyzeSucc program label (succeed, frees)
+                        in analyzeSucc program label (fail, frees)
                         end
                      | _ => frees
             in Transfer.foldlDeps (useIn program label) frees body
