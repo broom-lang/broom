@@ -2,7 +2,7 @@ functor InstrSelectionFn (Args : sig
     structure Isa : ISA
 
     structure Implement : sig
-        val expr : Isa.Program.Builder.builder -> Label.t -> CpsId.t -> Cps.Expr.oper -> unit
+        val expr : Isa.Program.Builder.builder -> Label.t -> CpsId.t -> Cps.Expr.oper -> CpsId.t vector
         val transfer : Isa.Program.Builder.builder -> Label.t -> Cps.Transfer.t -> Isa.Transfer.t
     end
 end) :> sig
@@ -15,31 +15,49 @@ end = struct
 
     fun selectInstructions (program as {typeFns = _, stmts = _, conts = _, main}) =
         let val builder = Builder.new ()
-            val visitedDefs = CpsId.HashSetMut.mkEmpty 0
+            val visitedDefs = CpsId.HashTable.mkTable (0, Subscript)
             val visitedLabels = Label.HashSetMut.mkEmpty 0
 
             fun selectExpr def =
-                fn {parent = SOME parent, oper} =>
-                    ( Cps.Expr.foldLabels (fn (label, ()) => selectLabel label)
-                                          () oper
-                    ; Cps.Expr.foldDeps (fn (def, ()) => selectDef def)
-                                        () oper
-                    ; Implement.expr builder parent def oper )
+                fn {parent = SOME parent, oper = Cps.Expr.Result (tuple, i)} =>
+                    let val vals =
+                            if not (CpsId.HashTable.inDomain visitedDefs tuple)
+                            then let val definiends = selectExpr tuple (Cps.Program.defSite program tuple)
+                                 in CpsId.HashTable.insert visitedDefs (tuple, definiends)
+                                  ; definiends
+                                 end
+                            else CpsId.HashTable.lookup visitedDefs tuple
+                    in #[Vector.sub (vals, i)]
+                    end
+                 | {parent = SOME parent, oper} =>
+                    let do Cps.Expr.foldLabels (fn (label, ()) => selectLabel label)
+                                               () oper
+                        val oper = Cps.Expr.mapDefs selectDef oper
+                    in Implement.expr builder parent def oper
+                    end
                  | {parent = NONE, oper = _} => raise Fail "unreachable"
 
             and selectDef def =
-                if not (CpsId.HashSetMut.member (visitedDefs, def))
-                then ( CpsId.HashSetMut.add (visitedDefs, def)
-                     ; selectExpr def (Cps.Program.defSite program def) )
-                else ()
+                ( if not (CpsId.HashTable.inDomain visitedDefs def)
+                  then let val definiends = selectExpr def (Cps.Program.defSite program def)
+                       in CpsId.HashTable.insert visitedDefs (def, definiends)
+                       end
+                  else ()
+                ; let fun aka def =
+                          case CpsId.HashTable.find visitedDefs def
+                          of SOME #[def'] => if def' = def then def' else aka def'
+                           | NONE => def
+                           | _ => raise Fail "unreachable"
+                  in aka def
+                  end )
 
             and selectTransfer transfer label =
-                ( Cps.Transfer.foldLabels (fn (label, ()) => selectLabel label)
+                let do Cps.Transfer.foldLabels (fn (label, ()) => selectLabel label)
                                                () transfer
                   (* Going right to left decreases register pressure from cont closure creation: *)
-                ; Cps.Transfer.foldrDeps (fn (def, ()) => selectDef def)
-                                              () transfer
-                ; Implement.transfer builder label transfer )
+                    val transfer = Cps.Transfer.mapDefs selectDef transfer
+                in Implement.transfer builder label transfer
+                end
 
             and selectCont (label, {name, cconv, tParams = _, vParams, body}) =
                 ( Builder.createCont builder label {name, cconv, argc = Vector.length vParams}

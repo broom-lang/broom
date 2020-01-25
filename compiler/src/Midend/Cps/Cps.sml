@@ -89,6 +89,7 @@ signature CPS_TRANSFER = sig
 
     val foldlDeps : (def * 'a -> 'a) -> 'a -> t -> 'a
     val foldrDeps : (def * 'a -> 'a) -> 'a -> t -> 'a
+    val mapDefs : (def -> def) -> t -> t
     val foldLabels : (Label.t * 'a -> 'a) -> 'a -> t -> 'a
 end
 
@@ -349,6 +350,16 @@ end = struct
              | Match (matchee, _) => f (matchee, acc)
              | Checked {opn = _, tArgs = _, vArgs, succeed = _, fail = _} => Vector.foldr f acc vArgs
              | Return (_, args) => Vector.foldr f acc args
+
+        fun mapDefs f =
+            fn Goto {callee, tArgs, vArgs} =>
+                Goto {callee, tArgs, vArgs = Vector.map f vArgs}
+             | Jump {callee, tArgs, vArgs} =>
+               Jump {callee = f callee, tArgs, vArgs = Vector.map f vArgs}
+             | Match (matchee, clauses) => Match (f matchee, clauses)
+             | Checked {opn, tArgs, vArgs, succeed, fail} =>
+                Checked {opn, tArgs, vArgs = Vector.map f vArgs, succeed, fail}
+             | Return (domain, args) => Return (domain, Vector.map f args)
 
         fun foldLabels f acc =
             fn Goto {callee, ...} => f (callee, acc)

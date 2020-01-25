@@ -31,46 +31,70 @@ structure X64InstrSelection = InstrSelectionFn(struct
                                                                       , clover )))
                                     end)
                                clovers
+                 ; #[def]
                 end
              | ClosureFn closure =>
-                Builder.insertStmt builder parent (Def (def, LOAD { base = SOME closure
-                                                                  , index = NONE
-                                                                  , disp = 0 }))
+                ( Builder.insertStmt builder parent (Def (def, LOAD { base = SOME closure
+                                                                    , index = NONE
+                                                                    , disp = 0 }))
+                ; #[def] )
              | Clover (closure, i) =>
                 let val disp = X64RegInstructions.registerSize * (1 + i)
                 in Builder.insertStmt builder parent (Def (def, LOAD { base = SOME closure
                                                                      , index = NONE
                                                                      , disp }))
+                 ; #[def]
                 end
              | EmptyRecord =>
-                Builder.insertStmt builder parent (Def (def, LOADc 0w0))
-             | Cps.Expr.Param (label, i) => Builder.setParam builder parent i def
+                ( Builder.insertStmt builder parent (Def (def, LOADc 0w0))
+                ; #[def] )
+             | Cps.Expr.Param (label, i) =>
+                ( Builder.setParam builder parent i def
+                ; #[def] )
              | PrimApp {opn, tArgs = _, vArgs} =>
                 (case opn
                  of Primop.StackNew => (* HACK: *)
-                     Builder.insertStmt builder parent (Def (def, LOADc 0w0))
+                     ( Builder.insertStmt builder parent (Def (def, LOADc 0w0))
+                     ; #[def] )
                   | Primop.BoxNew =>
                      let val sizeDef = CpsId.fresh ()
                          val size = X64RegInstructions.registerSize
                      in expr builder parent sizeDef (Const (Const.Int size))
                       ; Builder.insertStmt builder parent (Def (def, CALLd ("malloc", #[sizeDef])))
+                      ; #[def]
                      end
                   | Primop.BoxInit =>
-                     let val #[_, dest, src] = vArgs
+                     let val #[stack, dest, src] = vArgs
                      in Builder.insertStmt builder parent (Eff (STORE ( { base = SOME dest
                                                                         , index = NONE
                                                                         , disp = 0 }
                                                                       , src )))
+                      ; #[stack]
                      end
                   | Primop.BoxGet =>
-                     let val #[_, box] = vArgs
-                     in Builder.insertStmt builder parent (Def (def, (LOAD { base = SOME box
-                                                                           , index = NONE
-                                                                           , disp = 0 })))
+                     let val #[stack, box] = vArgs
+                         val v = CpsId.fresh ()
+                     in Builder.insertStmt builder parent (Def (v, (LOAD { base = SOME box
+                                                                         , index = NONE
+                                                                         , disp = 0 })))
+                      ; #[stack, v]
                      end)
-             | Result _ => () (* FIXME *)
+             | Result (vals, i) => raise Fail "unreachable"
              | Const (Const.Int n) => (* FIXME: `n` might not fit into 32 bits: *)
-                Builder.insertStmt builder parent (Def (def, LOADc (Word32.fromInt n)))
+                ( Builder.insertStmt builder parent (Def (def, LOADc (Word32.fromInt n)))
+                ; #[def] )
+
+        fun checked builder label {opn, tArgs = #[], vArgs = #[a, b], succeed, fail} =
+            let val instr =
+                    case opn
+                    of Primop.IAdd => ADD
+                     | Primop.ISub => SUB
+                     | Primop.IMul => IMUL
+                val succDef = valOf (Builder.getParam builder succeed 0)
+            in Builder.setParams builder succeed (Array.fromList [])
+             ; Builder.insertStmt builder label (Def (succDef, instr (a, b)))
+             ; Jcc (X64Instructions.Transfer.Overflow, succeed, fail)
+            end
 
         fun transfer builder label =
             fn Goto {callee, tArgs = _, vArgs} => JMP (callee, vArgs)
@@ -80,24 +104,7 @@ structure X64InstrSelection = InstrSelectionFn(struct
                                 , {pattern = AnyP, target = target'} ]) => (* FIXME: n might not fit in 32 bits: *)
                 ( Builder.insertStmt builder label (Eff (CMP (matchee, Word32.fromInt n)))
                 ; Jcc (X64Instructions.Transfer.Neq, target, target') )
-             | Checked {opn = Primop.IAdd, tArgs = #[], vArgs = #[a, b], succeed, fail} =>
-                let val succDef = valOf (Builder.getParam builder succeed 0)
-                in Builder.setParams builder succeed (Array.fromList [])
-                 ; Builder.insertStmt builder label (Def (succDef, ADD (a, b)))
-                 ; Jcc (X64Instructions.Transfer.Overflow, succeed, fail)
-                end
-             | Checked {opn = Primop.ISub, tArgs = #[], vArgs = #[a, b], succeed, fail} =>
-                let val succDef = valOf (Builder.getParam builder succeed 0)
-                in Builder.setParams builder succeed (Array.fromList [])
-                 ; Builder.insertStmt builder label (Def (succDef, SUB (a, b)))
-                 ; Jcc (X64Instructions.Transfer.Overflow, succeed, fail)
-                end
-             | Checked {opn = Primop.IMul, tArgs = #[], vArgs = #[a, b], succeed, fail} =>
-                let val succDef = valOf (Builder.getParam builder succeed 0)
-                in Builder.setParams builder succeed (Array.fromList [])
-                 ; Builder.insertStmt builder label (Def (succDef, IMUL (a, b)))
-                 ; Jcc (X64Instructions.Transfer.Overflow, succeed, fail)
-                end
+             | Checked args => checked builder label args
              | Return (_, args) => RET args
     end
 end)

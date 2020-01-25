@@ -11,6 +11,7 @@ signature HASH_MAP = sig
     val fold : ((key * 'v) * 'a -> 'a) -> 'a -> 'v t -> 'a
     val map : ('v -> 'a) -> 'v t -> 'a t
     val mapi : (key * 'v -> 'a) -> 'v t -> 'a t
+    val app : ('v -> unit) -> 'v t -> unit
     val appi : (key * 'v -> unit) -> 'v t -> unit
     val eq : ('v * 'v -> bool) -> 'v t * 'v t -> bool
 
@@ -150,6 +151,13 @@ end) :> HASH_MAP where type key = Key.hash_key = struct
          | Collision {hash, kvs} =>
             Collision {hash, kvs = Vector.map (fn kv as (k, _) => (k, f kv)) kvs}
          | Leaf (kv as (k, _)) => Leaf (k, f kv)
+
+    fun app f {root, len = _} = appTrie f root
+
+    and appTrie f =
+        fn Bitmapped {bitmap = _, nodes} => Vector.app (appTrie f) nodes
+         | Collision {hash = _, kvs} => Vector.app (fn (_, v) => f v) kvs
+         | Leaf (_, v) => f v
 
     fun appi f {root, len = _} = appiTrie f root
 
