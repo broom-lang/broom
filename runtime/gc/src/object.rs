@@ -58,7 +58,7 @@ impl ORef<Object> {
     fn mark(self, mem: &mut MemoryManager) -> Self { mem.mark(self) }
 
     fn scan(&mut self, mem: &mut MemoryManager) {
-        self.layout.scan(unsafe { mem::transmute(self.0) }, mem)
+        unsafe { self.layout.as_ref().scan(mem::transmute(self.0), mem) }
     }
 }
 
@@ -88,18 +88,18 @@ impl VRef {
 /// Heap object
 #[repr(C)]
 struct Object {
-    layout: ORef<Layout>
+    layout: NonNull<Layout>
 }
 
 impl Object {
-    fn field_layout(&self, index: usize) -> ORef<Layout> {
-        (&self.layout.fields()[index]).layout
+    fn field_layout(&self, index: usize) -> NonNull<Layout> {
+        unsafe { (&self.layout.as_ref().fields()[index]).layout }
     }
 
     fn field_data<'a>(&'a self, index: usize) -> &'a [u8] {
         unsafe {
             let ptr: *const u8 = mem::transmute(self);
-            let field_lo = &self.layout.fields()[index];
+            let field_lo = &self.layout.as_ref().fields()[index];
             slice::from_raw_parts(ptr.offset(field_lo.offset as isize), field_lo.size)
         }
     }
@@ -111,12 +111,12 @@ impl Object {
 #[repr(C)]
 struct FieldLayout {
     offset: usize,
-    size: usize,
-    layout: ORef<Layout>
+    size: usize, // TODO: Remove as redundant?
+    layout: NonNull<Layout>
 }
 
 impl FieldLayout {
-    fn is_oref(&self) -> bool { unimplemented!() } // Can compare .layout to some constant?
+    fn is_oref(&self) -> bool { unimplemented!() } // .layout has false .inlineable?
 
     fn scan(&self, obj: *mut u8, mem: &mut MemoryManager) {
         if self.is_oref() {
@@ -133,10 +133,10 @@ impl FieldLayout {
 
 #[repr(C)]
 struct Layout {
-    base: Object, // Layouts are also Objects. Or maybe we just put them in "perm gen" instead?
     size: usize,
     align: u16,
-    is_array: bool, // We have at least 15 more bits for expansion here
+    inlineable: bool,
+    is_array: bool,
     field_count: usize
 }
 
