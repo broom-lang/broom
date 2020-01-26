@@ -5,9 +5,14 @@ structure X64InsertLogues = InsertLoguesFn(struct
     structure Stmt = RegIsa.Stmt
 
     fun prologue frameSize =
-        #[ Stmt.Eff (Oper.PUSH Reg.rbp)
-         , Stmt.Def (Reg.rbp, Oper.MOV Reg.rsp)
-         , Stmt.Def (Reg.rsp, Oper.SUBc (Reg.rsp, frameSize)) ]
+        let val frameSize = (* Align stack pointer to 16 as per Sys V ABI: *)
+                if Word32.mod (frameSize, 0w16) = 0w0
+                then frameSize
+                else frameSize + 0w8
+        in  #[ Stmt.Eff (Oper.PUSH Reg.rbp)
+             , Stmt.Def (Reg.rbp, Oper.MOV Reg.rsp)
+             , Stmt.Def (Reg.rsp, Oper.SUBc (Reg.rsp, frameSize)) ]
+        end
 
     fun epilogue frameSize = #[Stmt.Eff Oper.LEAVE]
 end)
