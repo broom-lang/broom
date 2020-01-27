@@ -24,7 +24,7 @@ end = struct
         else TextIO.inputN (instream, n)
 
     datatype command
-        = Build of {debug: bool, lint: bool, input: input, output: string option}
+        = Build of {debug: bool, lint: bool, asm: bool, input: input, output: string option}
         | Repl
 
     val cmdSpecs =
@@ -32,7 +32,8 @@ end = struct
                    [ ("build", List.foldl CLIParser.FlagSpecs.insert' CLIParser.FlagSpecs.empty
                                           [ ("debug", Nullary)
                                           , ("lint", Nullary)
-                                          , ("o", Unary) ])
+                                          , ("o", Unary)
+                                          , ("S", Nullary) ])
                    , ("repl", CLIParser.FlagSpecs.empty)]
 
     val parser = CLIParser.subcommandsParser cmdSpecs
@@ -41,6 +42,7 @@ end = struct
         Either.map (fn ("build", flaggeds, positionals) =>
                         Build { debug = isSome (CLIParser.Flaggeds.find (flaggeds, "debug"))
                               , lint = isSome (CLIParser.Flaggeds.find (flaggeds, "lint"))
+                              , asm = isSome (CLIParser.Flaggeds.find (flaggeds, "S"))
                               , input = case positionals
                                         of [] => { instream = TextIO.stdIn
                                                  , sourcemap = Pos.mkSourcemap () }
@@ -58,7 +60,7 @@ end = struct
 
     fun logger debug str = if debug then TextIO.output (TextIO.stdErr, str) else ()
 
-    fun build {debug, lint, input = input as {sourcemap, instream = _}, output} =
+    fun build {debug, lint, asm, input = input as {sourcemap, instream = _}, output} =
         let val log = logger debug
         in  case Parser.parse input
             of Right program =>
@@ -116,11 +118,20 @@ end = struct
                                     val program = X64Linearize.linearize program
                                     do log (PPrint.pretty 80 (X64SeqIsa.Program.toDoc program) ^ "\n")
                                     do log "# Emitting assembly...\n\n"
-                                    val output =
-                                        case output
-                                        of SOME output => TextIO.openOut (output ^ ".s")
-                                         | NONE => TextIO.stdOut
-                                 in GasX64SysVAbiEmit.emit output program
+                                    (* FIXME: Error handling: *)
+                                 in case output
+                                    of SOME output =>
+                                        let val asmFilename = output ^ ".s"
+                                            val asmStream = TextIO.openOut asmFilename
+                                        in GasX64SysVAbiEmit.emit asmStream program
+                                         ; TextIO.closeOut asmStream
+                                         ; if asm
+                                           then ()
+                                           else ( OS.Process.system ("cc -o " ^ output ^ " " ^ asmFilename)
+                                                ; OS.FileSys.remove asmFilename )
+                                        end
+                                     | NONE => (* HACK: Handy for debugging but unconventional: *)
+                                        GasX64SysVAbiEmit.emit TextIO.stdOut program
                                   ; OS.Process.success
                                  end )
                             | Left errors =>
