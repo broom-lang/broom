@@ -51,6 +51,7 @@ impl MemoryManager {
     }
 }
 
+/// Newtype to implement `Sync` on.
 struct MutexMemoryManager(Mutex<MemoryManager>);
 
 unsafe impl Sync for MutexMemoryManager {}
@@ -207,6 +208,7 @@ impl Layout {
 
 // ---
 
+// HACK: Global variable, makes `Broom_allocate` easier to call initially:
 lazy_static! {
     static ref MANAGER: MutexMemoryManager = MutexMemoryManager::new();
 }
