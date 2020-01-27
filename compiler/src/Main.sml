@@ -52,7 +52,7 @@ end = struct
 
     fun printErr str = TextIO.output (TextIO.stdErr, str)
 
-    fun logger debug str = if debug then TextIO.output (TextIO.stdOut, str) else ()
+    fun logger debug str = if debug then TextIO.output (TextIO.stdErr, str) else ()
 
     fun build {debug, lint, input = input as {sourcemap, instream = _}} =
         let val log = logger debug
