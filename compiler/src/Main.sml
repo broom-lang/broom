@@ -24,14 +24,15 @@ end = struct
         else TextIO.inputN (instream, n)
 
     datatype command
-        = Build of {debug: bool, lint: bool, input: input}
+        = Build of {debug: bool, lint: bool, input: input, output: string option}
         | Repl
 
     val cmdSpecs =
         List.foldl CLIParser.FlagSpecs.insert' CLIParser.FlagSpecs.empty
                    [ ("build", List.foldl CLIParser.FlagSpecs.insert' CLIParser.FlagSpecs.empty
                                           [ ("debug", Nullary)
-                                          , ("lint", Nullary) ])
+                                          , ("lint", Nullary)
+                                          , ("o", Unary) ])
                    , ("repl", CLIParser.FlagSpecs.empty)]
 
     val parser = CLIParser.subcommandsParser cmdSpecs
@@ -45,7 +46,10 @@ end = struct
                                                  , sourcemap = Pos.mkSourcemap () }
                                          | [filename] => { instream = TextIO.openIn filename
                                                          , sourcemap = Pos.mkSourcemap' filename }
-                                         | _ => raise Fail "Multiple input files unimplemented" }
+                                         | _ => raise Fail "Multiple input files unimplemented"
+                              , output = case CLIParser.Flaggeds.find (flaggeds, "o")
+                                         of SOME (SOME outfilename) => SOME outfilename
+                                          | NONE => NONE }
                      | ("repl", _, _) => Repl
                      | (cmd, _, _) => raise Fail ("Unreachable code; unknown subcommand " ^ cmd))
                    (parser argv)
@@ -54,7 +58,7 @@ end = struct
 
     fun logger debug str = if debug then TextIO.output (TextIO.stdErr, str) else ()
 
-    fun build {debug, lint, input = input as {sourcemap, instream = _}} =
+    fun build {debug, lint, input = input as {sourcemap, instream = _}, output} =
         let val log = logger debug
         in  case Parser.parse input
             of Right program =>
@@ -112,7 +116,11 @@ end = struct
                                     val program = X64Linearize.linearize program
                                     do log (PPrint.pretty 80 (X64SeqIsa.Program.toDoc program) ^ "\n")
                                     do log "# Emitting assembly...\n\n"
-                                 in GasX64SysVAbiEmit.emit TextIO.stdOut program
+                                    val output =
+                                        case output
+                                        of SOME output => TextIO.openOut (output ^ ".s")
+                                         | NONE => TextIO.stdOut
+                                 in GasX64SysVAbiEmit.emit output program
                                   ; OS.Process.success
                                  end )
                             | Left errors =>
