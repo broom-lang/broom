@@ -9,4 +9,5 @@ crate-type = ["staticlib"]
 
 [dependencies]
 nix = "0.13.0"
+lazy_static = "1.4.0"
 

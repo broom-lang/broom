@@ -53,9 +53,6 @@ impl ZoneAllocator {
 
 #[cfg(unix)]
 unsafe fn os_allocate(size: usize) -> *mut () {
-    use self::ProtFlags;
-    use self::MapFlags;
-
     let inflated_size = size + Zone::SIZE;
 
     let addr = mmap(ptr::null::<()>() as *mut c_void, inflated_size,
@@ -80,3 +77,4 @@ unsafe fn os_allocate(size: usize) -> *mut () {
 unsafe fn os_deallocate(ptr: *mut (), nbytes: usize) {
     munmap(mem::transmute(ptr), nbytes).expect("munmap() failed");
 }
+

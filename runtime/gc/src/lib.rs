@@ -1,194 +1,218 @@
 extern crate nix;
+#[macro_use]
+extern crate lazy_static;
 
-use std::mem;
-use std::ops::{Deref, DerefMut};
-use std::ptr::NonNull;
-use std::slice;
-
-mod util;
 mod zone;
-mod object;
 
-use util::{IntrSlice, IntrSliceMut};
+use std::slice;
+use std::mem;
+use std::ptr::NonNull;
+use std::ops::Deref;
+use std::convert::TryFrom;
+use std::sync::{Mutex, MutexGuard, LockResult};
 
-/// Heap object (really, just the common header part).
-#[repr(C)]
-pub struct Obj {
-    /// Memory managers can use this however they please,
-    /// e.g. for mark stacks or broken hearts.
-    link: Option<ORef>,
-    /// Layout information for the object, statically allocated (or in immortal object space).
-    layout: &'static Layout
-}
+use zone::ZoneAllocator;
 
-impl Obj {
-    /// Pointer to the start of object fields (= right after header).
-    fn contents(&self) -> *const () { unsafe { (self as *const Obj).offset(1) as *const () } }
-}
+const HEAP_SIZE: usize = 1 << 20; // 1 MiB
 
-/// Object reference.
-#[derive(Clone, Copy)]
-pub struct ORef(NonNull<Obj>);
+// ---
 
-impl Deref for ORef {
-    type Target = Obj;
-
-    fn deref(&self) -> &Obj { unsafe { self.0.as_ref() } }
-}
-
-impl DerefMut for ORef {
-    fn deref_mut(&mut self) -> &mut Obj { unsafe { self.0.as_mut() } }
-}
-
-impl ORef {
-    /// Mark `self` and return the new location of the object.
-    /// Idempotent (marking an object that is already grey or black has no effect).
-    #[must_use]
-    fn mark(self, mem: &mut MemoryManager) -> Self {
-        unimplemented!();
-        self
-    }
-
-    /// Mark the referees of `self`.
-    fn scan(self, mem: &mut MemoryManager) {
-        for oref in self.layout.refs(&*self) {
-            let _ = oref.mark(mem); // Just mark and sweep ATM, so objects never move.
-        }
-    }
-}
-
-/// Runtime layout information for the GC to use.
-#[repr(C)]
-struct Layout {
-    len: usize
-}
-
-impl Layout {
-    /// Iterator over the referees of `self`.
-    fn refs<'a>(&self, obj: &'a Obj) -> impl Iterator<Item=&'a mut ORef> {
-        self.ref_slices(obj)
-            .flat_map(Into::<&mut [ORef]>::into)
-    }
-
-    /// Iterator over the `RefSlice`s of `self` in the `Obj` of `oref`.
-    fn ref_slices<'a>(&self, obj: &'a Obj) -> impl Iterator<Item=RefSlice<'a>> {
-        RefSlices {
-            ranges: unsafe { IntrSlice::from_ref(&*self.ranges()) }.as_slice().iter().cloned(),
-            fields: unsafe { mem::transmute::<_, &'a ()>(obj.contents()) }
-        }
-    }
-
-    /// Pointer to start of ref range table.
-    fn ranges(&self) -> *const usize {
-        unsafe { (self as *const Layout).offset(1) as *const usize }
-    }
-}
-
-/// A mutable slice or `IntrSlice` of `ORef`s.
-enum RefSlice<'a> {
-    Static(&'a mut [ORef]),
-    Dynamic(IntrSliceMut<'a, ORef>)
-}
-
-impl<'a> Into<&'a mut [ORef]> for RefSlice<'a> {
-    fn into(self) -> &'a mut [ORef] {
-        match self {
-            RefSlice::Static(slice) => slice,
-            RefSlice::Dynamic(islice) => islice.as_slice()
-        }
-    }
-}
-
-/// Iterator over the `RefSlice`s of an object.
-struct RefSlices<'a, I: Iterator<Item=usize>> {
-    ranges: I,
-    fields: &'a () 
-}
-
-impl<'a, I: Iterator<Item=usize>> Iterator for RefSlices<'a, I> {
-    type Item = RefSlice<'a>;
-
-    fn next(&mut self) -> Option<RefSlice<'a>> {
-        self.ranges.next()
-                   .map(|x| unsafe {
-                       let offset = x >> 3;
-                       let fields: *const ORef = self.fields as *const () as _;
-                       let ptr: *mut ORef = fields.offset(offset as _) as _;
-                       match x & 0b111 {
-                           1 => {
-                               let len = self.ranges.next().unwrap();
-                               RefSlice::Static(slice::from_raw_parts_mut(ptr, len))
-                           },
-                           2 => RefSlice::Dynamic(IntrSliceMut::from_ref(&mut *ptr)),
-                           _ => unreachable!()
-                       }
-                   })
-    }
-}
-
-/// Use `Obj`:s as a singly-linked stack.
-struct GreyStack(Option<ORef>);
-
-impl GreyStack {
-    /// The empty stack.
-    fn empty() -> Self { GreyStack(None) }
-
-    /// Push an object reference to the stack.
-    fn push(&mut self, mut oref: ORef) {
-        (&mut*oref).link = self.0;
-        self.0 = Some(oref);
-    }
-
-    /// Pop an object reference from the stack.
-    fn pop(&mut self) -> Option<ORef> {
-         let res = self.0;
-         if let Some(oref) = self.0 {
-             self.0 = oref.link;
-         }
-         res
-    }
-}
-
-/// Memory manager (allocator and GC).
-pub struct MemoryManager {
-    /// How many bytes can be allocated for `self`.
-    max_heap: usize,
-    /// Mark stack.
-    greys: GreyStack
+struct MemoryManager {
+    zones: ZoneAllocator,
+    start: *mut (),
+    end: *mut (),
+    prev: *mut () 
 }
 
 impl MemoryManager {
-    /// Create a new `MemoryManager` that can use up to `max_heap` bytes of memory.
-    pub fn new(max_heap: usize) -> Self {
-        MemoryManager { max_heap, greys: GreyStack::empty() }
+    fn new() -> Self {
+        let mut zones = ZoneAllocator::new(HEAP_SIZE);
+        let start = zones.allocate(HEAP_SIZE)
+            .expect("could not obtain initial heap")
+            .as_ptr();
+        let end = unsafe { start.offset(HEAP_SIZE as isize) };
+        Self { zones, start, end, prev: end }
     }
 
-    /// Allocate `size` bytes aligned to `align` bytes.
-    pub unsafe fn allocate(&mut self, align: usize, size: usize) -> Option<ORef> {
-        unimplemented!();
-        None
-    }
-
-    /// Collect garbage.
-    ///
-    /// # Safety
-    ///
-    /// Roots must be marked first.
-    pub unsafe fn collect(&mut self) {
-        self.mark_all();
-        self.sweep();
-    }
-
-    /// Mark all object references (until mark stack is empty).
-    fn mark_all(&mut self) {
-        while let Some(oref) = self.greys.pop() {
-            oref.scan(self);
+    fn allocate(&mut self, size: usize, align: usize) -> Option<NonNull<()>> {
+        let mut address: usize = self.prev as _;
+        address = address.checked_sub(size)?; // bump down
+        address = address & !(align - 1); // ensure alignment
+        if address < self.start as usize {
+            None // does not fit
+        } else {
+            self.prev = address as _;
+            Some(unsafe { NonNull::new_unchecked(self.prev) })
         }
     }
 
-    /// Free the memory of unmarked objects.
-    fn sweep(&mut self) {
-        unimplemented!();
+    fn mark<T>(&mut self, oref: ORef<T>) -> ORef<T> {
+        unimplemented!()
     }
+}
+
+struct MutexMemoryManager(Mutex<MemoryManager>);
+
+unsafe impl Sync for MutexMemoryManager {}
+
+impl MutexMemoryManager {
+    fn new() -> Self { MutexMemoryManager(Mutex::new(MemoryManager::new())) }
+
+    fn lock(&self) -> LockResult<MutexGuard<MemoryManager>> { self.0.lock() }
+}
+
+// ---
+
+/// Object reference
+struct ORef<T>(NonNull<T>);
+
+impl<T> Clone for ORef<T> {
+    fn clone(&self) -> Self { *self }
+}
+
+impl<T> Copy for ORef<T> {}
+
+impl<T> Deref for ORef<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { 
+            let ptr: *const ORef<Layout> = mem::transmute(self);
+            mem::transmute(ptr.offset(-1)) // ORef points to start of actual fields
+        }
+    }
+}
+
+impl<T> TryFrom<*mut T> for ORef<T> {
+    type Error = ();
+
+    fn try_from(ptr: *mut T) -> Result<Self, Self::Error> {
+        NonNull::new(ptr).map(ORef).ok_or(())
+    }
+}
+
+impl<T> TryFrom<VRef> for ORef<T> {
+    type Error = ();
+
+    fn try_from(vref: VRef) -> Result<Self, Self::Error> {
+        if vref.is_oref() {
+            Self::try_from(vref.0 as *mut T)
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl ORef<Object> {
+    fn mark(self, mem: &mut MemoryManager) -> Self { mem.mark(self) }
+
+    fn scan(&mut self, mem: &mut MemoryManager) {
+        unsafe { self.layout.as_ref().scan(mem::transmute(self.0), mem) }
+    }
+}
+
+// ---
+
+/// Tagged pointer (`ORef` or immediate scalar)
+#[derive(Clone, Copy)]
+struct VRef(usize);
+
+impl VRef {
+    const COUNT: usize = mem::size_of::<usize>();
+    const MASK: usize = Self::COUNT - 1;
+
+    fn is_oref(self) -> bool { self.0 & Self::MASK != 0 }
+
+    fn mark(self, mem: &mut MemoryManager) -> Self {
+        if let Ok(oref) = ORef::<Object>::try_from(self) {
+            VRef(oref.mark(mem).0.as_ptr() as usize)
+        } else {
+            self
+        }
+    }
+}
+
+// ---
+
+/// Heap object
+#[repr(C)]
+struct Object {
+    layout: NonNull<Layout>
+}
+
+impl Object {
+    fn field_layout(&self, index: usize) -> NonNull<Layout> {
+        unsafe { (&self.layout.as_ref().fields()[index]).layout }
+    }
+
+    fn field_data<'a>(&'a self, index: usize) -> &'a [u8] {
+        unsafe {
+            let ptr: *const u8 = mem::transmute(self);
+            let field_lo = &self.layout.as_ref().fields()[index];
+            slice::from_raw_parts(ptr.offset(field_lo.offset as isize), field_lo.size)
+        }
+    }
+}
+
+// ---
+
+/// Object layout / runtime type
+#[repr(C)]
+struct FieldLayout {
+    offset: usize,
+    size: usize, // TODO: Remove as redundant?
+    layout: NonNull<Layout>
+}
+
+impl FieldLayout {
+    fn is_oref(&self) -> bool { unimplemented!() } // .layout has false .inlineable?
+
+    fn scan(&self, obj: *mut u8, mem: &mut MemoryManager) {
+        if self.is_oref() {
+            unsafe {
+                let field_ref: &mut *mut Object = mem::transmute(obj.offset(self.offset as isize));
+                if let Some(field) = NonNull::new(*field_ref) {
+                    *mem::transmute::<&mut *mut Object, &mut ORef<Object>>(field_ref) = ORef(field).mark(mem);
+                }
+            }
+        }
+        // FIXME: Scan inside inlined fields
+    }
+}
+
+#[repr(C)]
+struct Layout {
+    size: usize,
+    align: u16,
+    inlineable: bool,
+    is_array: bool,
+    field_count: usize
+}
+
+impl Layout {
+    fn fields<'a>(&'a self) -> &'a [FieldLayout] {
+        unsafe {
+            let ptr: *const Self = mem::transmute(self);
+            let ptr = mem::transmute(ptr.offset(1));
+            slice::from_raw_parts(ptr, self.field_count)
+        }
+    }
+
+    fn scan(&self, obj: *mut u8, mem: &mut MemoryManager) {
+        for field_lo in self.fields() {
+            field_lo.scan(obj, mem);
+        }
+    }
+}
+
+// ---
+
+lazy_static! {
+    static ref MANAGER: MutexMemoryManager = MutexMemoryManager::new();
+}
+
+#[no_mangle]
+pub extern fn Broom_allocate(size: usize, align: usize) -> Option<NonNull<()>> {
+    MANAGER.lock().unwrap().allocate(size, align)
 }
 
