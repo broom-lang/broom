@@ -1,8 +1,11 @@
 [package]
-name = "broom-gc"
+name = "broom-runtime"
 version = "0.1.0"
 authors = ["Pauli Jaakkola <pauli.jaakkola@iki.fi>"]
 edition = "2018"
+
+[lib]
+crate-type = ["staticlib"]
 
 [dependencies]
 nix = "0.13.0"
