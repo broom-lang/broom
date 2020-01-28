@@ -188,6 +188,9 @@ end = struct
                 text "sub" <+> Register.toDoc def <> comma <+> PPrint.int (Word32.toInt n) (* HACK: toInt *)
              | CMP (def, n) =>
                 text "cmp" <+> Register.toDoc def <> comma <+>  PPrint.int (Word32.toInt n) (* HACK: toInt *)
+             | CALL (callee, args) =>
+                text "call" <+> text callee
+                <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))
              | CALLd (callee, args) =>
                 text "call" <+> text (callee ^ "@PLT")
                 <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))

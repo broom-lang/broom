@@ -24,7 +24,8 @@ end = struct
         else TextIO.inputN (instream, n)
 
     datatype command
-        = Build of {debug: bool, lint: bool, asm: bool, input: input, output: string option}
+        = Build of { debug: bool, lint: bool, asm: bool, input: input, output: string option
+                   , home: string }
         | Repl
 
     val cmdSpecs =
@@ -51,7 +52,9 @@ end = struct
                                          | _ => raise Fail "Multiple input files unimplemented"
                               , output = case CLIParser.Flaggeds.find (flaggeds, "o")
                                          of SOME (SOME outfilename) => SOME outfilename
-                                          | NONE => NONE }
+                                          | NONE => NONE
+                              , home = case OS.Process.getEnv "BROOM_HOME"
+                                       of SOME home => home }
                      | ("repl", _, _) => Repl
                      | (cmd, _, _) => raise Fail ("Unreachable code; unknown subcommand " ^ cmd))
                    (parser argv)
@@ -60,7 +63,7 @@ end = struct
 
     fun logger debug str = if debug then TextIO.output (TextIO.stdErr, str) else ()
 
-    fun build {debug, lint, asm, input = input as {sourcemap, instream = _}, output} =
+    fun build {debug, lint, asm, input = input as {sourcemap, instream = _}, output, home} =
         let val log = logger debug
         in  case Parser.parse input
             of Right program =>
@@ -127,7 +130,11 @@ end = struct
                                          ; TextIO.closeOut asmStream
                                          ; if asm
                                            then ()
-                                           else ( OS.Process.system ("cc -o " ^ output ^ " " ^ asmFilename)
+                                           else ( OS.Process.system ( "cc -o " ^ output ^ " "
+                                                                    ^ asmFilename ^ " "
+                                                                    ^ "-L" ^ home ^ " "
+                                                                    (* FIXME: Not portable and maybe too many: *)
+                                                                    ^ "-lbroom_runtime -lrt -lpthread -ldl" )
                                                 ; OS.FileSys.remove asmFilename )
                                         end
                                      | NONE => (* HACK: Handy for debugging but unconventional: *)

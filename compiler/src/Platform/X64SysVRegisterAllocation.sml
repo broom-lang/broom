@@ -50,7 +50,7 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
         end
 
     fun stmt cconvs builder label env hints =
-        fn Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) => (* FIXME: *)
+        fn Isa.Stmt.Def (target, expr as (X64Instructions.Oper.CALL (dest, args) | X64Instructions.Oper.CALLd (dest, args))) =>
             let val targetReg = Reg.rax
                 val env = Env.fixedRegDef env hints builder label target targetReg
                 val env = Env.evacuateCallerSaves env builder label
@@ -59,7 +59,11 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
                         |> Vector.foldl (fn ((arg, reg), env) =>
                                              Env.fixedRegUse env hints builder label arg reg)
                                         env
-            in Builder.insertStmt builder label (Stmt.Def (targetReg, CALLd (dest, #[])))
+                val oper =
+                    case expr
+                    of X64Instructions.Oper.CALL _ => CALL
+                     | X64Instructions.Oper.CALLd _ => CALLd
+            in Builder.insertStmt builder label (Stmt.Def (targetReg, oper (dest, #[])))
              ; env
             end
 

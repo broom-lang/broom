@@ -13,10 +13,13 @@ structure X64InstrSelection = InstrSelectionFn(struct
         fun expr builder parent def =
             fn ClosureNew (label, clovers) =>
                 let val sizeDef = CpsId.fresh ()
+                    val alignDef = CpsId.fresh ()
                     val ldef = CpsId.fresh ()
                     val size = X64RegInstructions.registerSize * (1 + Vector.length clovers)
+                    val align = X64RegInstructions.registerSize
                 in expr builder parent sizeDef (Const (Const.Int size))
-                 ; Builder.insertStmt builder parent (Def (def, CALLd ("malloc", #[sizeDef])))
+                 ; expr builder parent alignDef (Const (Const.Int align))
+                 ; Builder.insertStmt builder parent (Def (def, CALL ("Broom_allocate", #[sizeDef, alignDef])))
                  ; Builder.insertStmt builder parent (Def (ldef, LOADl label))
                  ; Builder.insertStmt builder parent (Eff (STORE ( { base = SOME def
                                                                    , index = NONE
@@ -58,9 +61,12 @@ structure X64InstrSelection = InstrSelectionFn(struct
                      ; #[def] )
                   | Primop.BoxNew =>
                      let val sizeDef = CpsId.fresh ()
+                         val alignDef = CpsId.fresh ()
                          val size = X64RegInstructions.registerSize
+                         val align = X64RegInstructions.registerSize
                      in expr builder parent sizeDef (Const (Const.Int size))
-                      ; Builder.insertStmt builder parent (Def (def, CALLd ("malloc", #[sizeDef])))
+                      ; expr builder parent alignDef (Const (Const.Int align))
+                      ; Builder.insertStmt builder parent (Def (def, CALL ("Broom_allocate", #[sizeDef, alignDef])))
                       ; #[def]
                      end
                   | Primop.BoxInit =>
