@@ -31,7 +31,7 @@ impl ZoneAllocator {
     pub fn new (max_heap: usize) -> Self { ZoneAllocator { max_heap, allocated: 0 } }
 
     /// Allocate a contiguous array of `Zone`s big enough to fit `nbytes` of memory.
-    pub fn allocate(&mut self, nbytes: usize) -> Option<NonNull<()>> {
+    pub fn allocate(&mut self, nbytes: usize) -> Option<NonNull<u8>> {
         // FIXME: Round nbytes up to nearest multiple of `Zone::SIZE`.
         if self.allocated + nbytes <= self.max_heap {
             unsafe {
@@ -45,14 +45,14 @@ impl ZoneAllocator {
     }
 
     /// Deallocate a contiguous array of `Zone`s that is `nbytes` long.
-    pub unsafe fn deallocate(&mut self, ptr: NonNull<()>, nbytes: usize) {
+    pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, nbytes: usize) {
         os_deallocate(ptr.as_ptr(), nbytes);
 	self.allocated -= nbytes;
     }
 }  
 
 #[cfg(unix)]
-unsafe fn os_allocate(size: usize) -> *mut () {
+unsafe fn os_allocate(size: usize) -> *mut u8 {
     let inflated_size = size + Zone::SIZE;
 
     let addr = mmap(ptr::null::<()>() as *mut c_void, inflated_size,
@@ -70,11 +70,22 @@ unsafe fn os_allocate(size: usize) -> *mut () {
         })
         .expect("munmap() failed");
 
-    addr.offset(Zone::SIZE as isize).offset(-(offset as isize)) as *mut ()
+    addr.offset(Zone::SIZE as isize).offset(-(offset as isize)) as *mut u8
 }
 
 #[cfg(unix)]
-unsafe fn os_deallocate(ptr: *mut (), nbytes: usize) {
+unsafe fn os_deallocate(ptr: *mut u8, nbytes: usize) {
     munmap(mem::transmute(ptr), nbytes).expect("munmap() failed");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_allocate() {
+        let mut zones = ZoneAllocator::new(1 << 20);
+        assert!(zones.allocate(1 << 20).is_some());
+    }
 }
 

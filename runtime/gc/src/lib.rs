@@ -19,9 +19,9 @@ const HEAP_SIZE: usize = 1 << 20; // 1 MiB
 
 struct MemoryManager {
     zones: ZoneAllocator,
-    start: *mut (),
-    end: *mut (),
-    prev: *mut () 
+    start: *mut u8,
+    end: *mut u8,
+    prev: *mut u8 
 }
 
 impl MemoryManager {
@@ -34,7 +34,7 @@ impl MemoryManager {
         Self { zones, start, end, prev: end }
     }
 
-    fn allocate(&mut self, size: usize, align: usize) -> Option<NonNull<()>> {
+    fn allocate(&mut self, size: usize, align: usize) -> Option<NonNull<u8>> {
         let mut address: usize = self.prev as _;
         address = address.checked_sub(size)?; // bump down
         address = address & !(align - 1); // ensure alignment
@@ -214,7 +214,18 @@ lazy_static! {
 }
 
 #[no_mangle]
-pub extern fn Broom_allocate(size: usize, align: usize) -> Option<NonNull<()>> {
+pub extern fn Broom_allocate(size: usize, align: usize) -> Option<NonNull<u8>> {
     MANAGER.lock().unwrap().allocate(size, align)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::mem::{size_of, align_of};
+
+    #[test]
+    fn test_allocate() {
+        assert!(Broom_allocate(size_of::<usize>(), align_of::<usize>()).is_some());
+    }
 }
 
