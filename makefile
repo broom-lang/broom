@@ -1,4 +1,5 @@
-PREFIX = /usr
+DESTDIR = /
+PREFIX = usr/local/
 BROOM = broom
 RUNTIME = libbroom_runtime.a
 
@@ -28,13 +29,13 @@ clean:
 # Install compiler and runtime to filesystem:
 .PHONY: install
 install: $(BROOM) $(RUNTIME)
-	cp $(BROOM) $(PREFIX)/bin/$(BROOM); \
-	mkdir $(PREFIX)/lib/broom; \
-        cp $(RUNTIME) $(PREFIX)/lib/broom/
+	cp $(BROOM) $(DESTDIR)$(PREFIX)bin/$(BROOM); \
+	mkdir $(DESTDIR)$(PREFIX)lib/broom; \
+        cp $(RUNTIME) $(DESTDIR)$(PREFIX)lib/broom/
 
 # Uninstall compiler and runtime from filesystem:
 .PHONY: uninstall
 uninstall:
-	rm -f $(PREFIX)/bin/$(BROOM) $(PREFIX)/lib/broom/$(RUNTIME); \
-        rmdir $(PREFIX)/lib/broom
+	rm -f $(DESTDIR)$(PREFIX)bin/$(BROOM) $(DESTDIR)$(PREFIX)lib/broom/$(RUNTIME); \
+        rmdir $(DESTDIR)$(PREFIX)lib/broom
 
