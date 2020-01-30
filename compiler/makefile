@@ -6,7 +6,7 @@ SMLNJ_HOME = /usr/lib/smlnj
 .PHONY: prod
 prod: main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
       $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
-	mlton -output $(BROOM) main.mlb
+	mlton -link-opt "-z relro -z now" -output $(BROOM) main.mlb
 
 # Development build of compiler via MLton with debug options:
 .PHONY: dev
@@ -14,7 +14,7 @@ dev: $(BROOM)
 
 $(BROOM): main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
      $(shell find src -name '*.sml' -or -name '*.fun' -or -name '*.sig')
-	mlton -const 'Exn.keepHistory true' -output $(BROOM) main.mlb
+	mlton -link-opt "-z relro -z now" -const 'Exn.keepHistory true' -output $(BROOM) main.mlb
 
 # SML/NJ heap that can be loaded with `sml @SMLload=...` (`heap2exec` did not work):
 .PHONY: smlnj-heap
@@ -41,7 +41,7 @@ check: main.mlb src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml \
 # Run unit tests:
 .PHONY: utest
 utest: $(shell find test/unit -name '*.sml' -or -name '*.mlb')
-	mlton -const 'Exn.keepHistory true' test/unit/unit.mlb && ./test/unit/unit
+	mlton -link-opt "-z relro -z now" -const 'Exn.keepHistory true' test/unit/unit.mlb && ./test/unit/unit
 
 # Run integration tests:
 .PHONY: itest
