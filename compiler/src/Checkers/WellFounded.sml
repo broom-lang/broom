@@ -18,7 +18,6 @@ end = struct
     datatype stmt = datatype FTerm.stmt
     datatype pat = datatype FTerm.pat
     val op|> = Fn.|>
-    val space = PPrint.space
     val text = PPrint.text
     val op<> = PPrint.<>
     val op<+> = PPrint.<+>

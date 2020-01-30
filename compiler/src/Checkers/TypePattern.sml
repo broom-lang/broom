@@ -9,7 +9,6 @@ structure TypePattern = struct
     datatype effect = datatype FTypeBase.effect
     datatype arrow = datatype Cst.explicitness
     datatype concr' = datatype FTypeBase.concr
-    type concr = FAst.Type.concr
     datatype sv = datatype FAst.Type.sv
     datatype error = datatype TypeError.t
     datatype either = datatype Either.t
@@ -46,8 +45,7 @@ structure TypePattern = struct
                      in doCoerce pat (expr, typ)
                      end)
 
-              | doCoerce (Callable (er, {domain = dr, codomain = cr}))
-                         (expr, Arrow (Explicit eff, {domain, codomain})) =
+              | doCoerce (Callable _) (expr, Arrow (Explicit eff, {domain, codomain})) =
                 (expr, Callable (eff, {domain, codomain}))
 
               | doCoerce (pat as HasField (label, ())) (expr, SVar (UVar uv)) =
@@ -82,7 +80,7 @@ structure TypePattern = struct
               | doCoerce _ (_, SVar (Path _)) =
                 raise Fail "unimplemented"
 
-              | doCoerce (pat as Callable _) (expr, typ) =
+              | doCoerce (Callable _) (expr, typ) =
                 ( Env.error env (UnCallable (expr, typ))
                 ; (expr, Callable (Impure, { domain = SVar (UVar (Uv.fresh env TypeK))
                                            , codomain = typ })) )

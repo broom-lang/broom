@@ -45,8 +45,6 @@ end = struct
         ; FType.RowExt {base, field = (label, sub)} )
     )
 
-    val nameFromId = Name.fromString o Id.toString
-
     fun unvisitedBindingType env =
         #unvisitedBindingType (CheckUse.fix {elaborateType, reAbstract, instantiateExistential, elaborateExpr}) env
     and lookupValType pos =
@@ -101,8 +99,8 @@ end = struct
 
          | CTerm.Do (pos, stmts, body) =>
             let val step =
-                   fn (CTerm.Val (pos, pat, expr), (revStmts, eff, env)) =>
-                       let val ((typeDefs, tbody), pattern as FTerm.Def (_, {pos, id, var, typ = _})) =
+                   fn (CTerm.Val (_, pat, expr), (revStmts, eff, env)) =>
+                       let val ((typeDefs, tbody), FTerm.Def (_, {pos, id, var, typ = _})) =
                                elaboratePattern env pat
                            val (exprEff, t, expr) = elaborateAsExists env (typeDefs, tbody) expr
                            val def = {pos, id, var, typ = t}
@@ -112,7 +110,7 @@ end = struct
                                                                   , Visited (def, SOME (exprEff, expr)) )) )
                        end
                     | (CTerm.Expr expr, (revStmts, eff, env)) =>
-                       let val (exprEff, t, expr) = elaborateExpr env expr
+                       let val (exprEff, _, expr) = elaborateExpr env expr
                        in ( FTerm.Expr expr :: revStmts
                           , joinEffs (eff, exprEff)
                           , env )
@@ -304,7 +302,7 @@ end = struct
         end
 
     and elaboratePattern env =
-        fn CTerm.AnnP (pos, {pat, typ}) =>
+        fn CTerm.AnnP (_, {pat, typ}) =>
             let val (typeDefs, t) = elaborateType env typ
                 val (pat, _) = elaboratePatternAs env t pat
             in ((Vector.fromList typeDefs, t), pat)
@@ -587,25 +585,6 @@ end = struct
         in Scope.BlockScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
         end
 
-    and stmtsScope env stmts =
-        let val builder = Bindings.Expr.Builder.new ()
-            do Vector.app (fn CTerm.Val (_, CTerm.Def (pos, name), expr) =>
-                               let val def = {pos, id = DefId.fresh (), var = name, typ = NONE}
-                               in case Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
-                                  of Left err => Env.error env (DuplicateBinding err)
-                                   | Right res => res
-                               end
-                            | CTerm.Val (_, CTerm.AnnP (_, {pat = CTerm.Def (pos, name), typ}), expr) =>
-                               let val def = {pos, id = DefId.fresh (), var = name, typ = SOME typ}
-                               in case Bindings.Expr.Builder.insert builder pos name (Unvisited (def, SOME expr))
-                                  of Left err => Env.error env (DuplicateBinding err)
-                                   | Right res => res
-                               end
-                            | CTerm.Expr _ => ())
-                          stmts
-        in Scope.BlockScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
-        end
-
     and membersScope env members =
         let val builder = Bindings.Expr.Builder.new ()
             do Vector.app (fn (Cst.Extend (_, CTerm.Def (pos, name), expr) | Cst.Override (_, CTerm.Def (pos, name), expr)) =>
@@ -625,18 +604,6 @@ end = struct
                           members
         in Scope.BlockScope (Scope.Id.fresh (), Bindings.Expr.Builder.build builder)
         end
-
-    and elaborateMember env =
-        fn (Cst.Extend defn | Cst.Override defn) => SOME (elaborateDefn env defn)
-         | Cst.Exclude _ => NONE
-
-    (* Elaborate a statement and return the elaborated version. *)
-    and elaborateStmt env: Cst.Term.stmt -> effect * FTerm.stmt =
-        fn CTerm.Val defn => elaborateDefn env defn
-         | CTerm.Expr expr =>
-            let val (eff, expr) = elaborateExprAs env (FType.Record FType.EmptyRow) expr
-            in (eff, FTerm.Expr expr)
-            end
 
     and elaborateDefn env (pos, pat, expr) =
         let val rec patName =
