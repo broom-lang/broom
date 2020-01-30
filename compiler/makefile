@@ -63,5 +63,5 @@ itests: $(addsuffix .test, $(basename $(wildcard test/integration/*.brm)))
 # Remove generated files:
 .PHONY: clean
 clean:
-	rm -rf src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml $(BROOM) $(BROOM_HEAP)
+	rm -f src/Parser/parser.ml-antlr.sml src/Parser/lexer.ml-ulex.sml $(BROOM) $(BROOM_HEAP)
 
