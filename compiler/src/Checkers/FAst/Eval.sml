@@ -53,8 +53,8 @@ end = struct
                    | BlockCont of env * stmt Vector1.Slice.slice * expr
                    | Branches of env * clause VectorSlice.slice
                    | Extension of env * (Name.t * expr)
-                   | Extend of env * value * Name.t
-                   | Exclude of env * Name.t
+                   | Extend of value * Name.t
+                   | Exclude of Name.t
                    | GetField of Name.t
 
     structure Value = struct
@@ -93,18 +93,6 @@ end = struct
 
         fun toString tenv = PPrint.pretty 80 o toDoc tenv
     end
-
-    fun initField fields label value = NameHashTable.insert fields (label, value)
-
-    fun splat fields ext =
-        case ext
-        of Record ext =>
-            NameHashTable.appi (fn (label, v) =>
-                                    if NameHashTable.inDomain fields label
-                                    then ()
-                                    else NameHashTable.insert fields (label, v))
-                               ext
-         | _ => raise Fail "unreachable"
 
     fun getField record label =
         case record
@@ -145,11 +133,11 @@ end = struct
          | PrimApp (_, _, opn, _, args, NONE) =>
             (case VectorExt.uncons args
              of SOME (arg, args) => eval env (PrimArg (env, opn, args, []) :: cont) arg
-              | NONE => applyPrim env cont opn #[])
+              | NONE => applyPrim cont opn #[])
          | EmptyRecord _ => continue cont Value.emptyRecord
          | (With (_, _, {base, field}) | Where (_, _, {base, field})) =>
             eval env (Extension (env, field) :: cont) base
-         | Without (_, _, {base, field}) => eval env (Exclude (env, field) :: cont) base
+         | Without (_, _, {base, field}) => eval env (Exclude field :: cont) base
          | (Let (_, stmts, body) | Letrec (_, stmts, body)) =>
             let val env = enterBlock env
                 val stmt = Vector1.sub (stmts, 0)
@@ -179,7 +167,7 @@ end = struct
         of Thunk (env, body) => eval env cont body
          | _ => raise Fail "unreachable"
 
-    and applyPrim env cont opn args =
+    and applyPrim cont opn args =
         case opn
         of (Primop.IAdd | Primop.ISub | Primop.IMul | Primop.IDiv) =>
             (case args
@@ -264,7 +252,7 @@ end = struct
              of SOME (argExpr, argExprs) =>
                  eval env (PrimArg (env, opn, argExprs, value :: args) :: cont) argExpr
               | NONE =>
-                 applyPrim env cont opn (Vector.fromList (List.rev (value :: args))))
+                 applyPrim cont opn (Vector.fromList (List.rev (value :: args))))
          | BlockCont (env, stmts, body) :: cont =>
             (case Vector1.Slice.uncons stmts
              of SOME (stmt, stmts) =>
@@ -272,8 +260,8 @@ end = struct
               | NONE => eval env cont body)
          | Branches (env, clauses) :: cont => match env cont clauses value
          | Extension (env, (label, fielde)) :: cont =>
-            eval env (Extend (env, value, label) :: cont) fielde
-         | Extend (env, record, label) :: cont =>
+            eval env (Extend (value, label) :: cont) fielde
+         | Extend (record, label) :: cont =>
             (case record
              of Record fields =>
                  let val fields = NameHashTable.copy fields
@@ -281,7 +269,7 @@ end = struct
                  in continue cont (Record fields)
                  end
               | _ => raise Fail "unreachable")
-         | Exclude (env, label) :: cont =>
+         | Exclude label :: cont =>
             (case value
              of Record fields =>
                  let val fields = NameHashTable.copy fields

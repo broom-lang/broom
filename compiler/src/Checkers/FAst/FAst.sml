@@ -3,7 +3,6 @@ signature FAST_TYPE = sig
         where type t = FTypeBase.Id.t
         where type 'v SortedMap.map = 'v FTypeBase.Id.SortedMap.map
     structure Prim: PRIM_TYPE where type t = PrimType.t
-    structure ScopeId: ID
 
     type kind = Kind.t
 
@@ -124,7 +123,6 @@ structure FAst :> sig
 end = struct
     structure Type = struct
         open FTypeBase
-        structure ScopeId = ScopeId
 
         val text = PPrint.text
         val op<> = PPrint.<>

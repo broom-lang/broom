@@ -292,13 +292,13 @@ end = struct
                                          , FTerm.Use (pos, def) )
                             end) )
 
-    and coercer env pos (sub as Exists existential, super) =
+    and coercer env pos (Exists existential, super) =
          skolemize env existential (fn (env, params, body) =>
              ( coercer env pos (body, super)
              ; NONE ) (* No values of existential type. *)
          )
 
-      | coercer env pos (sub, super as Exists existential) =
+      | coercer env pos (sub, Exists existential) =
          instantiate env (Pair.first Vector1.toVector existential) (fn (env, args, body) =>
              ( coercer env pos (sub, body)
              ; NONE ) (* No values of existential type. *)
@@ -592,7 +592,7 @@ end = struct
              val tmpUse = FTerm.Use (pos, tmpDef)
 
              val rec recCoercer =
-                 fn (uvRow, RowExt {base = base', field = (label, fieldt')}, uv) =>
+                 fn (RowExt {base = base', field = (label, fieldt')}, uv) =>
                      let val baseUv = Uv.freshSibling env (uv, RowK)
                          val fieldUv = Uv.freshSibling env (uv, TypeK)
                          val base = SVar (UVar baseUv)
@@ -605,7 +605,7 @@ end = struct
                      in  case doAssign env pos direction fieldUv fieldt'
                          of SOME coerceField =>
                              let val fieldExpr = coerceField (FTerm.Field (pos, fieldt, tmpUse, label))
-                                 val nextCoerce = recCoercer (row, base', baseUv)
+                                 val nextCoerce = recCoercer (base', baseUv)
                              in  SOME (fn expr =>
                                            let val expr =
                                                    FTerm.Where (pos, t', { base = expr
@@ -613,12 +613,12 @@ end = struct
                                            in applyCoercion nextCoerce expr
                                            end)
                              end
-                          | NONE => recCoercer (row, base', baseUv)
+                          | NONE => recCoercer (base', baseUv)
                      end
-                  | (_, row', baseUv) => (* FIXME: What about WildRow?!: *)
+                  | (row', baseUv) => (* FIXME: What about WildRow?!: *)
                      ( doAssign env pos direction baseUv row'
                      ; NONE )
-         in  case recCoercer (uvRow, row, rowUv)
+         in  case recCoercer (row, rowUv)
              of SOME coerce =>
                  SOME (fn expr =>
                            FTerm.Letrec ( pos
@@ -647,7 +647,7 @@ end = struct
          ( solution env pos (uv, t) (* invariance *)
          ; NONE )
 
-      | doAssign env pos _ uv (t as UseT {var, ...}) =
+      | doAssign env pos _ uv (t as UseT _) =
          ( solution env pos (uv, t) (* trivially structured *)
          ; NONE )
 

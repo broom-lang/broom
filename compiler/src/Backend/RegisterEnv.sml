@@ -75,17 +75,6 @@ end) :> REGISTER_ENV
 
     val isCalleeSave = CallingConvention.isCalleeSave Abi.foreignCallingConvention
 
-    fun pick pred freeRegs =
-        let val rec extract =
-                fn freeReg :: freeRegs =>
-                    if pred freeReg
-                    then SOME (freeRegs, freeReg)
-                    else Option.map (fn (freeRegs, reg) => (freeReg :: freeRegs, reg))
-                                    (extract freeRegs)
-                 | [] => NONE
-        in extract freeRegs
-        end
-
     fun pickEq freeRegs reg =
         let val rec extract =
                 fn freeReg :: freeRegs =>
@@ -158,7 +147,7 @@ end) :> REGISTER_ENV
             in loop (Hints.find hints id)
             end
 
-        fun allocateEnsuring (regs as {occupieds, frees}) pred id =
+        fun allocateEnsuring ({occupieds, frees}) pred id =
             Option.map (fn (frees, reg) =>
                             ({occupieds = Map.insert (occupieds, reg, id), frees}, reg))
                        (extract pred frees)
@@ -169,7 +158,7 @@ end) :> REGISTER_ENV
                  , frees = reg :: frees }
             else regs
 
-        fun lookup {occupieds, frees} reg = Map.lookup (occupieds, reg)
+        fun lookup ({occupieds, ...} : t) reg = Map.lookup (occupieds, reg)
     end
 
     structure StackFrame :> sig
@@ -227,12 +216,7 @@ end) :> REGISTER_ENV
         |> Option.map (fn Register reg => reg
                         | StackSlot _ => raise Fail "unreachable")
 
-    fun inReg env id reg =
-        case locationsOf env id
-        of SOME locs => Location.SortedSet.member (locs, Register reg)
-         | NONE => false
-
-    fun allocate (env as {locations, registers, frame}) hints id =
+    fun allocate ({locations, registers, frame}) hints id =
         case Registers.allocate registers hints id
         of SOME (registers, reg) =>
             let val loc = Register reg

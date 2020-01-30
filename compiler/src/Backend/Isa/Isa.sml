@@ -163,6 +163,9 @@ end) :> ISA
                 of SOME cconv => space <> CallingConvention.toDoc cconv
                  | NONE => PPrint.empty)
             <+> Label.toDoc label
+            <> (case name
+                of SOME name => space <> Name.toDoc name
+                 | NONE => PPrint.empty)
             <+> parens (punctuate (comma <> space) (Vector.map paramToDoc params)) <+> text "="
             <> nest 4 (newline <> punctuate newline (Vector.map Stmt.toDoc stmts)
                        <++> Transfer.toDoc transfer)

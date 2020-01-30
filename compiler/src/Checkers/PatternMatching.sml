@@ -40,7 +40,7 @@ end = struct
         { pattern = mapPatternExprs f pattern
         , body = f body }
 
-    and mapPatternExprs f =
+    and mapPatternExprs _ =
         fn pat as (Def _ | AnyP _ | ConstP _) => pat
 
     fun exprFold f expr = f (mapExprs (exprFold f) expr)
@@ -52,7 +52,7 @@ end = struct
          | Def _ => false
 
     val implementExpr =
-         exprFold (fn expr as Match (pos, t, matchee, clauses) =>
+         exprFold (fn Match (pos, t, matchee, clauses) =>
                        let val (discriminators, defaults) =
                                VectorExt.splitWith discriminatingClause clauses
                            val (stmt, matchee, default) =
@@ -75,8 +75,6 @@ end = struct
                            | NONE => match
                        end
                     | expr => expr)
-
-    val implementDefn = mapStmtExprs implementExpr
 
     fun implement {typeFns, code, sourcemap} =
         case implementExpr (Let code)

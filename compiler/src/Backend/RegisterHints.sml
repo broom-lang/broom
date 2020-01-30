@@ -26,11 +26,9 @@ end) :> REGISTER_HINTS
     where type Location.t = Args.Location.t
 = struct
     structure Abi = Args.Abi
-    structure Register = Args.Abi.RegIsa.Register
     structure Location = Args.Location
     structure Map = CpsId.SortedMap
 
-    type reg = Register.t
     datatype location = datatype Location.t
 
     val op|> = Fn.|>

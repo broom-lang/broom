@@ -5,7 +5,6 @@ end = struct
     structure LabelMap = Label.HashMap
     structure Abi = Registerizer.Abi
     structure Isa = Abi.Isa
-    structure Register = Isa.Register
     structure Transfer = Isa.Transfer
     structure Cont = Isa.Cont
     structure Builder = Abi.RegIsa.Program.Builder
@@ -13,7 +12,7 @@ end = struct
     structure Env = Registerizer.Env
 
     fun aPrioriCallingConvention useCounts (label, cont) =
-        let val {exports, escapes, calls} = LabelMap.lookup useCounts label
+        let val {exports, escapes, calls = _} = LabelMap.lookup useCounts label
         in  if exports > 0
             then SOME Abi.exporteeCallingConvention
             else if escapes > 0

@@ -29,7 +29,6 @@ functor SeqIsaFn (RegIsa : ISA) :> SEQ_ISA
     val text = PPrint.text
     val newline = PPrint.newline
     val op<> = PPrint.<>
-    val op<+> = PPrint.<+>
     val op<++> = PPrint.<++>
 
     structure Program = struct

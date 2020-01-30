@@ -19,7 +19,7 @@ end = struct
             val visitedLabels = Label.HashSetMut.mkEmpty 0
 
             fun selectExpr def =
-                fn {parent = SOME parent, oper = Cps.Expr.Result (tuple, i)} =>
+                fn {parent = SOME _, oper = Cps.Expr.Result (tuple, i)} =>
                     let val vals =
                             if not (CpsId.HashTable.inDomain visitedDefs tuple)
                             then let val definiends = selectExpr tuple (Cps.Program.defSite program tuple)
