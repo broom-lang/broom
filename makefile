@@ -29,8 +29,9 @@ clean:
 # Install compiler and runtime to filesystem:
 .PHONY: install
 install: $(BROOM) $(RUNTIME)
+	mkdir -p $(DESTDIR)$(PREFIX)bin/; \
 	cp $(BROOM) $(DESTDIR)$(PREFIX)bin/$(BROOM); \
-	mkdir $(DESTDIR)$(PREFIX)lib/broom; \
+	mkdir -p $(DESTDIR)$(PREFIX)lib/broom; \
         cp $(RUNTIME) $(DESTDIR)$(PREFIX)lib/broom/
 
 # Uninstall compiler and runtime from filesystem:
