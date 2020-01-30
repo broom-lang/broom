@@ -1,0 +1,31 @@
+# Maintainer: Pauli Jaakkola <pauli.jaakkola@iki.fi>
+pkgname=broom-git
+pkgver=r870.190b7c9
+pkgrel=1
+pkgdesc="Effective, modular functional programming language"
+arch=('x86_64')
+url="https://github.com/nilern/broom"
+license=('custom:bsd')
+depends=('gmp')
+makedepends=('git' 'smlnj' 'mlton' 'rust' 'cargo')
+options=('staticlibs')
+source=('git://github.com/nilern/broom.git')
+md5sums=('SKIP')
+
+pkgver() {
+	cd "$srcdir/broom"
+	printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+	cd "$srcdir/broom"
+	make DESTDIR="$pkgdir/" PREFIX="usr/"
+}
+
+package() {
+	cd "$srcdir/broom"
+	make DESTDIR="$pkgdir/" PREFIX="usr/" install
+        mkdir -p "$pkgdir/usr/share/licenses/$pkgname"
+        cp LICENSE "$pkgdir/usr/share/licenses/$pkgname/"
+}
+
