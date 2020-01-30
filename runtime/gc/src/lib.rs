@@ -34,6 +34,7 @@ impl MemoryManager {
         Self { zones, start, end, prev: end }
     }
 
+    // FIXME: Zeroing:
     fn allocate(&mut self, size: usize, align: usize) -> Option<NonNull<u8>> {
         let mut address: usize = self.prev as _;
         address = address.checked_sub(size)?; // bump down
@@ -150,7 +151,7 @@ impl Object {
         unsafe {
             let ptr: *const u8 = mem::transmute(self);
             let field_lo = &self.layout.as_ref().fields()[index];
-            slice::from_raw_parts(ptr.offset(field_lo.offset as isize), field_lo.size)
+            slice::from_raw_parts(ptr.offset(field_lo.offset as isize), field_lo.layout.as_ref().size)
         }
     }
 }
@@ -161,7 +162,6 @@ impl Object {
 #[repr(C)]
 struct FieldLayout {
     offset: usize,
-    size: usize, // TODO: Remove as redundant?
     layout: NonNull<Layout>
 }
 
