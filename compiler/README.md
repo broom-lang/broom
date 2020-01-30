@@ -12,14 +12,14 @@ does not come with the ml-lpt binaries so you have to install SML/NJ anyway.
 # Building
 
 ```sh
-> make smlnj-dev # or
+> make smlnj-heap # or
 > make dev # or
 > make prod
 ```
 
-Just `make` will `make smlnj-dev`. That will create an SML/NJ heap image that
-can be run with `sml @SMLload=broom.amd64-linux ...`. The other options use
-MLton to create a `broom` binary.
+Just `make` will `make prod`. `make smlnj-heap` will create an SML/NJ heap
+image that can be run with `sml @SMLload=broom.amd64-linux ...`. The other
+options use MLton to create a `broom` binary.
 
 # (Integration) Testing
 
