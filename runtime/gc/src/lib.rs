@@ -166,7 +166,7 @@ struct FieldLayout {
 }
 
 impl FieldLayout {
-    fn is_oref(&self) -> bool { unimplemented!() } // .layout has false .inlineable?
+    fn is_oref(&self) -> bool { !unsafe { self.layout.as_ref() }.inlineable }
 
     fn scan(&self, obj: *mut u8, mem: &mut MemoryManager) {
         if self.is_oref() {
