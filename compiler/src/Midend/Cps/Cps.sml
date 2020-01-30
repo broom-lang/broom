@@ -33,6 +33,20 @@ signature CPS_TYPE = sig
     end
 end
 
+signature CPS_GLOBAL = sig
+    datatype t
+        = Layout of layout
+
+    withtype layout =
+        { size : LargeWord.word option
+        , align : Word.word option
+        , inlineable : bool
+        , isArray : bool
+        , fields : {offset : LargeWord.word option, layout : Name.t option} vector }
+
+    val toDoc : t -> PPrint.t
+end
+
 signature CPS_EXPR = sig
     structure Type : CPS_TYPE
 
@@ -107,6 +121,7 @@ signature CPS_CONT = sig
 end
 
 signature CPS_PROGRAM = sig
+    structure Global : CPS_GLOBAL
     structure Expr : CPS_EXPR
     structure Cont : CPS_CONT
 
@@ -120,6 +135,7 @@ signature CPS_PROGRAM = sig
     (* TODO: Make abstract? *)
     type t =
         { typeFns : Expr.Type.param vector
+        , globals : Global.t Name.HashMap.t
         , stmts : Expr.t Map.t
         , conts : Cont.t LabelMap.t
         , main : Label.t }
@@ -134,6 +150,7 @@ signature CPS_PROGRAM = sig
         type builder
 
         val new : Expr.Type.param vector -> builder
+        val insertGlobal : builder -> Name.t * Global.t -> unit
         val insertCont : builder -> Label.t * Cont.t -> unit
         val insertExpr : builder -> Expr.def * Expr.t -> unit
         val express : builder -> Expr.t -> Expr.def
@@ -143,6 +160,7 @@ end
 
 structure Cps :> sig
     structure Type : CPS_TYPE
+    structure Global : CPS_GLOBAL
     structure Expr : CPS_EXPR
         where type Type.t = Type.t
         where type Type.Coercion.co = Type.Coercion.co
@@ -151,6 +169,7 @@ structure Cps :> sig
         where type Type.t = Type.t
         where type Transfer.t = Transfer.t
     structure Program : CPS_PROGRAM
+        where type Global.t = Global.t
         where type Expr.Type.t = Type.t
         where type Expr.oper = Expr.oper
         where type Cont.Type.t = Cont.Type.t
@@ -288,6 +307,48 @@ end = struct
             val toDoc =
                 fn Refl t => toDoc t
         end
+    end
+
+    structure Global = struct
+        datatype t
+            = Layout of layout
+
+        withtype layout =
+            { size : LargeWord.word option
+            , align : Word.word option
+            , inlineable : bool
+            , isArray : bool
+            , fields : {offset : LargeWord.word option, layout : Name.t option} vector }
+
+        fun fieldLayoutToDoc {offset, layout} =
+            braces ( text "offset" <+> text "="
+                   <+> (case offset
+                        of SOME offset => PPrint.largeWord offset
+                         | NONE => text "?") <> comma
+                   <+> text "layout" <+> text "="
+                   <+> (case layout
+                        of SOME layout => Name.toDoc layout
+                         | NONE => text "?") )
+
+        fun layoutToDoc {size, align, inlineable, isArray, fields} =
+            text "Layout"
+            <+> braces (nest 4 ( newline
+                               <> text "size" <+> text "="
+                               <+> (case size
+                                    of SOME size => PPrint.largeWord size
+                                     | NONE => text "?") <> comma
+                               <++> text "align" <+> text "="
+                               <+> (case align
+                                    of SOME align => PPrint.word align
+                                     | NONE => text "?") <> comma
+                               <++> text "inlineable" <+> text "=" <+> PPrint.bool inlineable <> comma
+                               <++> text "isArray" <+> text "=" <+> PPrint.bool isArray <> comma
+                               <++> text "fields" <+> text "="
+                               <+> brackets (nest 4 (newline <> punctuate (comma <> newline)
+                                                                          (Vector.map fieldLayoutToDoc fields))) ))
+
+        val toDoc =
+            fn Layout layout => layoutToDoc layout
     end
 
     structure Transfer = struct
@@ -501,6 +562,7 @@ end = struct
     end
 
     structure Program = struct
+        structure Global = Global
         structure Expr = Expr
         structure Map = CpsId.HashMap
         structure LabelMap = Label.HashMap
@@ -509,6 +571,7 @@ end = struct
 
         type t =
             { typeFns : Type.param vector
+            , globals : Global.t Name.HashMap.t
             , stmts : Expr.t Map.t
             , conts : Cont.t LabelMap.t
             , main : Label.t }
@@ -570,20 +633,30 @@ end = struct
         fun typeFnToDoc def = text "type" <+> FAst.Type.defToDoc def
 
         (* MAYBE: Nest functions in output: *)
-        fun toDoc (program as {typeFns, stmts = _, conts, main}) =
+        fun toDoc (program as {typeFns, globals, stmts = _, conts, main}) =
             punctuate newline (Vector.map typeFnToDoc typeFns)
+            <++> punctuate newline (Vector.map (fn (name, global) =>
+                                                    text "static" <+> Name.toDoc name <+> text "="
+                                                    <+> Global.toDoc global)
+                                               (Name.HashMap.toVector globals))
             <++> newline <> newline <> stmtsToDoc program
             <++> newline <> newline <> text "entry" <+> Label.toDoc main
 
         (* OPTIMIZE: Transient Map: *)
         structure Builder = struct
-            type builder = {typeFns : Type.param vector, stmts : Expr.t Map.t ref, conts : Cont.t LabelMap.t ref}
+            type builder = { typeFns : Type.param vector, globals : Global.t Name.HashMap.t ref
+                           , stmts : Expr.t Map.t ref, conts : Cont.t LabelMap.t ref}
 
-            fun new typeFns = {typeFns, stmts = ref Map.empty, conts = ref LabelMap.empty}
+            fun new typeFns =
+                { typeFns, globals = ref Name.HashMap.empty
+                , stmts = ref Map.empty, conts = ref LabelMap.empty}
+
+            fun insertGlobal ({globals, ...} : builder) kv =
+                globals := Name.HashMap.insert (!globals) kv
 
             fun insertCont ({conts, ...} : builder) kv = conts := LabelMap.insert (!conts) kv
 
-            fun insertExpr {typeFns = _, stmts, conts = _} stmt = stmts := Map.insert (!stmts) stmt
+            fun insertExpr ({stmts, ...} : builder) stmt = stmts := Map.insert (!stmts) stmt
 
             fun express builder expr =
                 let val def = CpsId.fresh ()
@@ -591,7 +664,8 @@ end = struct
                 in def
                 end
 
-            fun build {typeFns, stmts, conts} main = {typeFns, stmts = !stmts, conts = !conts, main}
+            fun build {typeFns, globals, stmts, conts} main =
+                {typeFns, globals = !globals, stmts = !stmts, conts = !conts, main}
         end
     end
 end

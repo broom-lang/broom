@@ -94,7 +94,7 @@ end = struct
         fun analyzeConts program conts frees =
             LabelMap.fold (analyzeCont program) frees conts
 
-        fun iterate (program as {typeFns = _, stmts, conts, main = _}) frees =
+        fun iterate (program as {typeFns = _, globals = _, stmts, conts, main = _}) frees =
             let val frees' = frees
                     |> analyzeStmts program stmts
                     |> analyzeConts program conts
@@ -164,12 +164,13 @@ end = struct
         of Type.FnT {tDomain, vDomain} => Type.AnyClosure {tDomain, vDomain}
          | t => t
 
-    fun convert (program as {typeFns, stmts = _, conts = _, main}) =
+    fun convert (program as {typeFns, globals, stmts = _, conts = _, main}) =
         let val (_, labelUses) = DefUses.analyze program
             val freeDefs = FreeDefs.analyze program
             val goals = computeGoals program labelUses freeDefs
 
             val builder = Builder.new typeFns
+            do Name.HashMap.appi (Builder.insertGlobal builder) globals
             val visitedLabels = Label.HashSetMut.mkEmpty 0
             val visitedDefs = CpsId.HashSetMut.mkEmpty 0
 

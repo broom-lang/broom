@@ -13,7 +13,7 @@ end = struct
 
     datatype cps_transfer = datatype Cps.Transfer.t
 
-    fun selectInstructions (program as {typeFns = _, stmts = _, conts = _, main}) =
+    fun selectInstructions (program as {typeFns = _, globals = _, stmts = _, conts = _, main}) =
         let val builder = Builder.new ()
             val visitedDefs = CpsId.HashTable.mkTable (0, Subscript)
             val visitedLabels = Label.HashSetMut.mkEmpty 0

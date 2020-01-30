@@ -13,6 +13,7 @@ signature HASH_MAP = sig
     val mapi : (key * 'v -> 'a) -> 'v t -> 'a t
     val app : ('v -> unit) -> 'v t -> unit
     val appi : (key * 'v -> unit) -> 'v t -> unit
+    val toVector : 'v t -> (key * 'v) vector
     val eq : ('v * 'v -> bool) -> 'v t * 'v t -> bool
 
     val toString : ('v -> string) -> 'v t -> string
@@ -165,6 +166,9 @@ end) :> HASH_MAP where type key = Key.hash_key = struct
         fn Bitmapped {bitmap = _, nodes} => Vector.app (appiTrie f) nodes
          | Collision {hash = _, kvs} => Vector.app f kvs
          | Leaf kv => f kv
+
+    (* OPTIMIZE: *)
+    fun toVector kvs = Vector.fromList (List.rev (fold op:: [] kvs))
 
     exception Abort
 

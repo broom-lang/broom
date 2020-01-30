@@ -39,8 +39,10 @@ signature PPRINT = sig
     val text : string -> t
     val int : int -> t
     val word : word -> t
+    val largeWord : LargeWord.word -> t
     val real : real -> t
     val char : char -> t
+    val bool : bool -> t
 
     (* Fancy structures: *)
     val coll: t * t * t -> t vector -> t
@@ -157,8 +159,10 @@ structure PPrint :> PPRINT = struct
 
     val int = text o Int.toString
     val word = text o Word.toString
+    val largeWord = text o LargeWord.toString
     val real = text o Real.toString
     val char = text o Char.toString
+    val bool = text o Bool.toString
 
     fun coll (start, delim, stop) docs =
         let val oneLiner = start <> punctuate (delim <> space) docs <> stop

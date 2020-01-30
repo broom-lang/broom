@@ -10,7 +10,10 @@ structure Name :> sig
     val fresh: unit -> t
     val freshen: t -> t
 
+    structure HashKey : HASH_KEY where type hash_key = t
     structure OrdKey : ORD_KEY where type ord_key = t
+
+    structure HashMap : HASH_MAP where type key = t
 end = struct
     datatype t = String of string
                | Fresh of int
@@ -55,15 +58,24 @@ end = struct
              end
     end
 
+    structure HashKey = struct
+        type hash_key = t
+        val hashVal = hash
+        val sameKey = op=
+    end
+
     structure OrdKey = struct
         type ord_key = t
         val compare = compare
     end
+
+    structure HashMap = HashMapFn(struct 
+        open HashKey
+        val toString = toString
+    end)
 end
 
-structure NameHashTable = HashTableFn(type hash_key = Name.t
-                                      val hashVal = Name.hash
-                                      val sameKey = op=)
+structure NameHashTable = HashTableFn(Name.HashKey)
 
 structure NameSortedMap = BinaryMapFn(Name.OrdKey)
 

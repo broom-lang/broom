@@ -115,7 +115,7 @@ end = struct
     fun analyzeConts conts defUses =
         LabelMap.fold analyzeCont defUses conts
 
-    fun analyze {typeFns = _, stmts, conts, main} =
+    fun analyze {typeFns = _, globals = _, stmts, conts, main} =
         (DefMap.empty, LabelMap.insert LabelMap.empty (main, UseSiteSet.singleton Export))
         |> analyzeStmts stmts
         |> analyzeConts conts
