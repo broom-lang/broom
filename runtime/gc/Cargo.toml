@@ -7,7 +7,10 @@ edition = "2018"
 [lib]
 crate-type = ["staticlib"]
 
+[profile.release]
+lto = true
+
 [dependencies]
-nix = "0.13.0"
+nix = "0.16.1"
 lazy_static = "1.4.0"
 
