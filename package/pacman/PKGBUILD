@@ -1,6 +1,6 @@
 # Maintainer: Pauli Jaakkola <pauli.jaakkola@iki.fi>
 pkgname=broom-git
-pkgver=r870.190b7c9
+pkgver=r872.8c1f513
 pkgrel=1
 pkgdesc="Effective, modular functional programming language"
 arch=('x86_64')
