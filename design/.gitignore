@@ -1,6 +1,3 @@
-parser.ml
-parser.mli
-parser.conflicts
 *.aux
 *.log
 typerules.pdf
