@@ -4,6 +4,7 @@ end = struct
     structure FFType = FAst.Type
     structure FFTerm = FAst.Term
     structure Type = Cps.Type
+    structure Global = Cps.Global
     structure Expr = Cps.Expr
     structure Transfer = Cps.Transfer
     structure Cont = Cps.Cont
@@ -36,6 +37,8 @@ end = struct
 
     fun cpsConvert {typeFns, code, sourcemap = _} =
         let val builder = Builder.new typeFns
+            do Builder.insertGlobal builder ( Name.fromString "layout_Int"
+                                            , Global.blobLayout Abi.Isa.Instrs.registerSize )
             
             fun convertExpr parent stack cont env : FFTerm.expr -> transfer =
                 fn FFTerm.Fn f =>

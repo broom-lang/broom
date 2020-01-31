@@ -45,6 +45,7 @@ signature CPS_GLOBAL = sig
         , fields : {offset : LargeWord.word option, layout : Name.t option} vector }
 
     val toDoc : t -> PPrint.t
+    val blobLayout : int -> t
 end
 
 signature CPS_EXPR = sig
@@ -345,10 +346,20 @@ end = struct
                                <++> text "isArray" <+> text "=" <+> PPrint.bool isArray <> comma
                                <++> text "fields" <+> text "="
                                <+> brackets (nest 4 (newline <> punctuate (comma <> newline)
-                                                                          (Vector.map fieldLayoutToDoc fields))) ))
+                                                                          (Vector.map fieldLayoutToDoc fields))) )
+                       <> newline)
 
         val toDoc =
             fn Layout layout => layoutToDoc layout
+
+        fun blobLayout size =
+            let val size = LargeWord.fromInt size
+            in Layout { size = SOME size
+                      , align = SOME (Word.fromLargeWord size)
+                      , inlineable = true
+                      , isArray = false
+                      , fields = #[] }
+            end
     end
 
     structure Transfer = struct
@@ -635,10 +646,11 @@ end = struct
         (* MAYBE: Nest functions in output: *)
         fun toDoc (program as {typeFns, globals, stmts = _, conts, main}) =
             punctuate newline (Vector.map typeFnToDoc typeFns)
-            <++> punctuate newline (Vector.map (fn (name, global) =>
-                                                    text "static" <+> Name.toDoc name <+> text "="
-                                                    <+> Global.toDoc global)
-                                               (Name.HashMap.toVector globals))
+            <++> newline <> newline
+            <> punctuate newline (Vector.map (fn (name, global) =>
+                                                  text "static" <+> Name.toDoc name <+> text "="
+                                                  <+> Global.toDoc global)
+                                             (Name.HashMap.toVector globals))
             <++> newline <> newline <> stmtsToDoc program
             <++> newline <> newline <> text "entry" <+> Label.toDoc main
 
