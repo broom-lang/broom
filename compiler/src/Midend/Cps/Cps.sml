@@ -34,6 +34,8 @@ signature CPS_TYPE = sig
 end
 
 signature CPS_GLOBAL = sig
+    structure Type : CPS_TYPE
+
     datatype t
         = Layout of layout
 
@@ -63,11 +65,12 @@ signature CPS_EXPR = sig
         | Where of {base : def, field : Name.t * def}
         | Without of {base : def, field : Name.t}
         | Field of def * Name.t
-        | ClosureNew of Label.t * def vector
+        | ClosureNew of def * Label.t * def vector
         | ClosureFn of def
         | Clover of def * int
         | Cast of def * Type.Coercion.co
         | Type of Type.t
+        | Global of Name.t
         | Label of Label.t
         | Param of Label.t * int
         | Const of Const.t
@@ -143,6 +146,7 @@ signature CPS_PROGRAM = sig
 
     val defSite : t -> CpsId.t -> Expr.t
     val labelCont : t -> Label.t -> Cont.t
+    val global : t -> Name.t -> Global.t
     val byParent : t -> CpsId.SortedSet.set Expr.ParentMap.t
 
     val toDoc : t -> PPrint.t
@@ -161,7 +165,7 @@ end
 
 structure Cps :> sig
     structure Type : CPS_TYPE
-    structure Global : CPS_GLOBAL
+    structure Global : CPS_GLOBAL where type Type.t = Type.t
     structure Expr : CPS_EXPR
         where type Type.t = Type.t
         where type Type.Coercion.co = Type.Coercion.co
@@ -311,6 +315,8 @@ end = struct
     end
 
     structure Global = struct
+        structure Type = Type
+
         datatype t
             = Layout of layout
 
@@ -489,11 +495,12 @@ end = struct
             | Where of {base : def, field : Name.t * def}
             | Without of {base : def, field : Name.t}
             | Field of def * Name.t
-            | ClosureNew of Label.t * def vector
+            | ClosureNew of def * Label.t * def vector
             | ClosureFn of def
             | Clover of def * int
             | Cast of def * Type.Coercion.co
             | Type of Type.t
+            | Global of Name.t
             | Label of Label.t
             | Param of Label.t * int
             | Const of Const.t
@@ -507,12 +514,13 @@ end = struct
              | Where {base, field = (_, fielde)} => f (fielde, f (base, acc))
              | Without {base, field = _} => f (base, acc)
              | Field (expr, _) => f (expr, acc)
-             | ClosureNew (_, clovers) => Vector.foldl f acc clovers
+             | ClosureNew (layout, _, clovers) => Vector.foldl f (f (layout, acc)) clovers
              | ClosureFn expr => f (expr, acc)
              | Clover (expr, _) => f (expr, acc)
              | Cast (expr, _) => f (expr, acc)
              | EmptyRecord => acc
              | Type _ => acc
+             | Global _ => acc
              | Label _ => acc
              | Param _ => acc
              | Const _ => acc
@@ -520,14 +528,14 @@ end = struct
         fun mapDefs f =
             fn PrimApp {opn, tArgs, vArgs} => PrimApp {opn, tArgs, vArgs = Vector.map f vArgs}
              | Result (expr, i) => Result (f expr, i)
-             | ClosureNew (label, clovers) => ClosureNew (label, Vector.map f clovers)
+             | ClosureNew (layout, label, clovers) => ClosureNew (f layout, label, Vector.map f clovers)
              | ClosureFn expr => ClosureFn (f expr)
              | Clover (expr, i) => Clover (f expr, i)
-             | t as (EmptyRecord | Type _ | Label _ | Param _ | Const _) => t
+             | t as (EmptyRecord | Type _ | Global _ | Label _ | Param _ | Const _) => t
 
         fun foldLabels f acc =
-            fn (ClosureNew (label, _) | Label label | Param (label, _)) => f (label, acc)
-             | (PrimApp _ | Result _ | ClosureFn _ | Clover _ | EmptyRecord | Type _ | Const _) => acc
+            fn (ClosureNew (_, label, _) | Label label | Param (label, _)) => f (label, acc)
+             | (PrimApp _ | Result _ | ClosureFn _ | Clover _ | EmptyRecord | Type _ | Global _ | Const _) => acc
 
         val operToDoc =
             fn PrimApp {opn, tArgs, vArgs} =>
@@ -545,13 +553,14 @@ end = struct
              | Without {base, field} =>
                 CpsId.toDoc base <+> text "without" <+> Name.toDoc field
              | Field (expr, label) => CpsId.toDoc expr <+> text "." <+> Name.toDoc label
-             | ClosureNew (label, clovers) =>
-                text "cl" <+> Label.toDoc label
+             | ClosureNew (layout, label, clovers) =>
+                text "cl" <+> CpsId.toDoc layout <+> Label.toDoc label
                 <+> braces (punctuate (comma <> space) (Vector.map CpsId.toDoc clovers))
              | ClosureFn def => text "code" <+> CpsId.toDoc def
              | Clover (cl, i) => text "clover" <+> CpsId.toDoc cl <+> PPrint.int i
              | Cast (expr, co) => CpsId.toDoc expr <+> text "as" <+> Type.Coercion.toDoc co
              | Type t => brackets (Type.toDoc t)
+             | Global name => text "global" <+> Name.toDoc name
              | Label label => text "fn" <+> Label.toDoc label
              | Param (label, i) => text "param" <+> Label.toDoc label <+> PPrint.int i
              | Const c => text "const" <+> Const.toDoc c
@@ -590,6 +599,8 @@ end = struct
         fun defSite ({stmts, ...} : t) def = Map.lookup stmts def
 
         fun labelCont ({conts, ...} : t) label = LabelMap.lookup conts label
+
+        fun global ({globals, ...} : t) name = Name.HashMap.lookup globals name
 
         fun byParent ({stmts, ...}: t) =
             let fun step ((def, {parent, oper}), acc) =
@@ -647,10 +658,11 @@ end = struct
         fun toDoc (program as {typeFns, globals, stmts = _, conts, main}) =
             punctuate newline (Vector.map typeFnToDoc typeFns)
             <++> newline <> newline
-            <> punctuate newline (Vector.map (fn (name, global) =>
-                                                  text "static" <+> Name.toDoc name <+> text "="
-                                                  <+> Global.toDoc global)
-                                             (Name.HashMap.toVector globals))
+            <> punctuate (newline <> newline)
+                         (Vector.map (fn (name, global) =>
+                                         text "static" <+> Name.toDoc name <+> text "="
+                                         <+> Global.toDoc global)
+                                     (Name.HashMap.toVector globals))
             <++> newline <> newline <> stmtsToDoc program
             <++> newline <> newline <> text "entry" <+> Label.toDoc main
 

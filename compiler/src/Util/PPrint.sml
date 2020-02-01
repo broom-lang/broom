@@ -158,8 +158,8 @@ structure PPrint :> PPRINT = struct
                                (Vector1.Slice.slice (docs, 1, NONE))
 
     val int = text o Int.toString
-    val word = text o Word.toString
-    val largeWord = text o LargeWord.toString
+    val word = text o Word.fmt StringCvt.DEC
+    val largeWord = text o LargeWord.fmt StringCvt.DEC
     val real = text o Real.toString
     val char = text o Char.toString
     val bool = text o Bool.toString

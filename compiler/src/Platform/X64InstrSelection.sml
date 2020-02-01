@@ -11,7 +11,7 @@ structure X64InstrSelection = InstrSelectionFn(struct
 
     structure Implement = struct
         fun expr builder parent def =
-            fn ClosureNew (label, clovers) =>
+            fn ClosureNew (layout, label, clovers) =>
                 let val sizeDef = CpsId.fresh ()
                     val alignDef = CpsId.fresh ()
                     val ldef = CpsId.fresh ()

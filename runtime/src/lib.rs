@@ -183,7 +183,7 @@ impl FieldLayout {
 
 #[repr(C)]
 struct Layout {
-    size: usize,
+    size: usize, // TODO: separate .stride
     align: u16,
     inlineable: bool,
     is_array: bool,

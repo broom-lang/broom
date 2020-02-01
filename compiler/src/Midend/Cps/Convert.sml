@@ -39,6 +39,8 @@ end = struct
         let val builder = Builder.new typeFns
             do Builder.insertGlobal builder ( Name.fromString "layout_Int"
                                             , Global.blobLayout Abi.Isa.Instrs.registerSize )
+            do Builder.insertGlobal builder ( Name.fromString "layout_FnPtr"
+                                            , Global.blobLayout Abi.Isa.Instrs.registerSize )
             
             fun convertExpr parent stack cont env : FFTerm.expr -> transfer =
                 fn FFTerm.Fn f =>

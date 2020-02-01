@@ -20,6 +20,7 @@ structure CpsTypechecker :> sig
     val errorToDoc : error -> PPrint.t
 
     val defType : Cps.Program.t -> CpsId.t -> Cps.Type.t
+    val labelType : Cps.Program.t -> Label.t -> Cps.Type.t
     val checkProgram : Cps.Program.t -> (error, unit) Either.t
 end = struct
     structure Type = Cps.Type
@@ -113,7 +114,7 @@ end = struct
                  else raise TypeError (OutboundsResult (def, t, i))
               | t => raise TypeError (NonResults (def, t)))
          | EmptyRecord => Record EmptyRow
-         | ClosureNew (label, clovers) =>
+         | ClosureNew (layout, label, clovers) => (* TODO: Check `layout`? *)
             (case checkCont program label
              of FnT {tDomain, vDomain} => (* HACK?: Avoid need for subtyping by AnyClosure instead of Closure: *)
                  AnyClosure { tDomain

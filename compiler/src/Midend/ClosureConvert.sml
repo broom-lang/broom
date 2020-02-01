@@ -6,6 +6,7 @@ end = struct
     structure LabelMap = Program.LabelMap
     structure Builder = Program.Builder
     structure Type = Cps.Type
+    structure Global = Cps.Global
     structure Expr = Cps.Expr
     structure Transfer = Cps.Transfer
     structure FreeSet = CpsId.SortedSet
@@ -17,6 +18,7 @@ end = struct
     datatype use_site = datatype DefUses.UseSite.t
 
     val defType = CpsTypechecker.defType
+    val labelType = CpsTypechecker.labelType
     val op|> = Fn.|>
 
 (* # Free Variables *)
@@ -108,30 +110,73 @@ end = struct
 
 (* # Compute Goals *)
 
+    fun align alignment offset =
+        LargeWord.andb (offset + alignment - 0w1, LargeWord.notb (alignment - 0w1))
+
+    fun typeLayoutName program =
+        fn Type.FnT _ => Name.fromString "layout_FnPtr"
+         | Type.Prim PrimType.Int => Name.fromString "layout_Int"
+
+    fun closureLayout program codeType cloverTypes =
+        let val fieldTypes = VectorExt.prepend (codeType, cloverTypes)
+            fun step (typ, {size, alignment, revFields}) =
+                let val layoutName = typeLayoutName program typ
+                in  case Program.global program layoutName
+                    of Global.Layout { size = SOME fieldSize
+                                     , align = SOME fieldAlignment
+                                     , inlineable = true
+                                     , isArray = false
+                                     , fields = _ } =>
+                        let val offset = align (Word.toLargeWord fieldAlignment) size
+                            val size = offset + fieldSize
+                            val alignment = Word.max (alignment, fieldAlignment)
+                            val field = {offset = SOME offset, layout = SOME layoutName}
+                        in {size, alignment, revFields = field :: revFields}
+                        end
+                     | Global.Layout { size = _
+                                     , align = _
+                                     , inlineable = false
+                                     , isArray = false
+                                     , fields = _ } =>
+                        raise Fail "unimplemented"
+                end
+            val {size, alignment, revFields} =
+                Vector.foldl step {size = Word.toLargeWord 0w0, alignment = 0w1, revFields = []} fieldTypes
+        in Global.Layout { size = SOME size
+                         , align = SOME alignment
+                         , inlineable = false (* OPTIMIZE: true *)
+                         , isArray = false
+                         , fields = Vector.fromList (List.rev revFields) }
+        end
+
     datatype goal
         = Lift of def vector
-        | Close of def vector
-        | Split of {lift : def vector, close : label * def vector}
+        | Close of Global.t * def vector
+        | Split of {lift : def vector, close : label * Global.t * def vector}
         | Conditioned
         | Noop
 
-    fun goalTransition program labelFrees (use, goal) =
+    fun goalTransition program label labelFrees (use, goal) =
         case goal
         of SOME (Lift lift) =>
             (case use
-             of Expr _ => SOME (Split {lift, close = (Label.fresh (), labelFrees)})
+             of Expr _ =>
+                 let val layout = closureLayout program (labelType program label)
+                                                (Vector.map (defType program) labelFrees)
+                 in SOME (Split {lift, close = (Label.fresh (), layout, labelFrees)})
+                 end
               | Transfer use =>
                  (case #body (Program.labelCont program use)
                   of Goto _ => goal
                    | (Jump _ | Return _) => raise Fail "unreachable"
                    | (Checked _ | Match _) => raise Fail "unreachable: critical edge")
               | Export => raise Fail "unreachable")
-         | SOME (Close clovers) =>
+         | SOME (Close (layout, clovers)) =>
             (case use
              of Expr _ => goal
               | Transfer use =>
                  (case #body (Program.labelCont program use)
-                  of Goto _ => SOME (Split {lift = labelFrees, close = (Label.fresh (), clovers)})
+                  of Goto _ => SOME (Split {lift = labelFrees, close = (Label.fresh (), layout, clovers)})
                    | (Jump _ | Return _) => raise Fail "unreachable"
                    | (Checked _ | Match _) => raise Fail "unreachable: critical edge")
               | Export => raise Fail "unreachable")
@@ -139,7 +184,11 @@ end = struct
          | SOME (Noop | Conditioned) => raise Fail "unreachable"
          | NONE =>
             (case use
-             of Expr _ => SOME (Close labelFrees)
+             of Expr _ =>
+                 let val layout = closureLayout program (labelType program label)
+                                                (Vector.map (defType program) labelFrees)
+                 in SOME (Close (layout, labelFrees))
+                 end
               | Transfer use =>
                  (case #body (Program.labelCont program use)
                   of Goto _ => SOME (Lift labelFrees)
@@ -150,7 +199,7 @@ end = struct
     fun computeGoal program freeDefs ((label, uses), goals) =
         let val labelFrees = LabelMap.lookup freeDefs label
             val labelFrees = Vector.fromList (FreeSet.toList labelFrees)
-            val goal = DefUses.UseSiteSet.foldl (goalTransition program labelFrees) NONE uses
+            val goal = DefUses.UseSiteSet.foldl (goalTransition program label labelFrees) NONE uses
         in LabelMap.insert goals (label, valOf goal)
         end
 
@@ -163,6 +212,8 @@ end = struct
         case Type.mapChildren convertType t
         of Type.FnT {tDomain, vDomain} => Type.AnyClosure {tDomain, vDomain}
          | t => t
+
+    fun closureLayoutName label = Name.fromString ("layout_Closure" ^ Label.toString label)
 
     fun convert (program as {typeFns, globals, stmts = _, conts = _, main}) =
         let val (_, labelUses) = DefUses.analyze program
@@ -185,14 +236,17 @@ end = struct
                          in case oper
                             of Label label =>
                                 (case LabelMap.lookup goals label
-                                 of Close frees =>
-                                     let val oper =
-                                             ClosureNew ( convertLabel program label
+                                 of Close (layout, frees) =>
+                                     let val layoutName = closureLayoutName label
+                                         do Builder.insertGlobal builder (layoutName, layout)
+                                         val oper =
+                                             ClosureNew ( Builder.express builder {parent, oper = Global layoutName}
+                                                        , convertLabel program label
                                                         , Vector.map (convertDef program env) frees )
                                      in Builder.insertExpr builder (def, {parent, oper})
                                      end
                                   | Split {lift = _, close} =>
-                                     let val oper = escapee program env (convertLabel program label) close
+                                     let val oper = escapee program env parent (convertLabel program label) close
                                      in Builder.insertExpr builder (def, {parent, oper})
                                      end
                                   | (Lift _ | Conditioned | Noop) => raise Fail "unreachable")
@@ -252,7 +306,7 @@ end = struct
                  | Return (domain, args) =>
                     Return (domain, Vector.map (convertDef program env) args)
 
-            and escapee program env label (label', clovers) =
+            and escapee program env parent label (label', layout, clovers) =
                 ( if Label.HashSetMut.member (visitedLabels, label')
                   then ()
                   else let do Label.HashSetMut.add (visitedLabels, label')
@@ -283,7 +337,12 @@ end = struct
                                            , vArgs = Vector.concat [vArgs, clovers] }
                        in Builder.insertCont builder (label', {name, cconv, tParams, vParams = vParams', body})
                        end
-                ; ClosureNew (label', Vector.map (convertDef program env) clovers) )
+                ; let val layoutName = closureLayoutName label'
+                      do Builder.insertGlobal builder (layoutName, layout)
+                  in ClosureNew ( Builder.express builder {parent, oper = Global layoutName}
+                                , label'
+                                , Vector.map (convertDef program env) clovers )
+                  end )
 
             and convertCont program (label, {name, cconv, tParams, vParams, body}) =
                 case LabelMap.lookup goals label
@@ -302,7 +361,7 @@ end = struct
                         val body = convertTransfer program label env body
                     in Builder.insertCont builder (label, {name, cconv, tParams, vParams, body})
                     end
-                 | Close frees =>
+                 | Close (layout, frees) =>
                     let val closureType =
                             Type.Closure { tDomain = tParams, vDomain = vParams
                                          , clovers = Vector.map (defType program) frees }

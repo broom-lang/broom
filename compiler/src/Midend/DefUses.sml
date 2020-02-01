@@ -70,8 +70,9 @@ end = struct
          | Without {base, field = _} => useDef defUses base (Expr use)
          | Result (def, _) => useDef defUses def (Expr use)
          | Field (def, _) => useDef defUses def (Expr use)
-         | ClosureNew (label, defs) =>
-            let val defUses = useLabel defUses label (Expr use)
+         | ClosureNew (layout, label, defs) =>
+            let val defUses = useDef defUses layout (Expr use)
+                val defUses = useLabel defUses label (Expr use)
             in Vector.foldl (fn (def, defUses) => useDef defUses def (Expr use))
                             defUses defs
             end
