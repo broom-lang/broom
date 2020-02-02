@@ -5,7 +5,7 @@ extern crate lazy_static;
 mod zone;
 
 use std::slice;
-use std::mem;
+use std::mem::{self, MaybeUninit};
 use std::ptr::NonNull;
 use std::ops::Deref;
 use std::convert::TryFrom;
@@ -39,16 +39,16 @@ impl MemoryManager {
         let mut address: usize = self.prev as _;
         address = address.checked_sub(layout.size)?; // bump down
         address = address & !(layout.align as usize - 1); // ensure alignment
-        address = address.checked_sub(mem::size_of::<*const Layout>())?; // space for layout
+        address = address.checked_sub(mem::size_of::<NonNull<Layout>>())?; // space for layout
         if address < self.start as usize {
             None // does not fit
         } else {
-            self.prev = address as _;
-            unsafe { (self.prev as *mut *const Layout).write(layout); }
-            let obj = unsafe {
-                self.prev.add(mem::size_of::<*const Layout>()) // back to start of fields
-            };
-            Some(unsafe { NonNull::new_unchecked(obj) })
+            self.prev = address as *mut u8;
+            let obj: *mut MaybeUninit<Object> = address as _;
+            unsafe {
+                obj.write(MaybeUninit::new(Object {layout: From::from(layout)}));
+                Some(NonNull::new_unchecked(obj.offset(1) as _)) // back to start of fields
+            }
         }
     }
 
@@ -219,8 +219,8 @@ lazy_static! {
 }
 
 #[no_mangle]
-pub extern fn Broom_allocate(layout: *const Layout) -> Option<NonNull<u8>> {
-    MANAGER.lock().unwrap().allocate(unsafe { mem::transmute(layout) })
+pub extern fn Broom_allocate(layout: NonNull<Layout>) -> Option<NonNull<u8>> {
+    MANAGER.lock().unwrap().allocate(unsafe { layout.as_ref() })
 }
 
 #[cfg(test)]
