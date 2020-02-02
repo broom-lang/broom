@@ -35,15 +35,20 @@ impl MemoryManager {
     }
 
     // FIXME: Zeroing:
-    fn allocate(&mut self, size: usize, align: usize) -> Option<NonNull<u8>> {
+    fn allocate(&mut self, layout: &Layout) -> Option<NonNull<u8>> {
         let mut address: usize = self.prev as _;
-        address = address.checked_sub(size)?; // bump down
-        address = address & !(align - 1); // ensure alignment
+        address = address.checked_sub(layout.size)?; // bump down
+        address = address & !(layout.align as usize - 1); // ensure alignment
+        address = address.checked_sub(mem::size_of::<*const Layout>())?; // space for layout
         if address < self.start as usize {
             None // does not fit
         } else {
             self.prev = address as _;
-            Some(unsafe { NonNull::new_unchecked(self.prev) })
+            unsafe { (self.prev as *mut *const Layout).write(layout); }
+            let obj = unsafe {
+                self.prev.add(mem::size_of::<*const Layout>()) // back to start of fields
+            };
+            Some(unsafe { NonNull::new_unchecked(obj) })
         }
     }
 
@@ -182,7 +187,7 @@ impl FieldLayout {
 }
 
 #[repr(C)]
-struct Layout {
+pub struct Layout {
     size: usize, // TODO: separate .stride
     align: u16,
     inlineable: bool,
@@ -214,8 +219,8 @@ lazy_static! {
 }
 
 #[no_mangle]
-pub extern fn Broom_allocate(size: usize, align: usize) -> Option<NonNull<u8>> {
-    MANAGER.lock().unwrap().allocate(size, align)
+pub extern fn Broom_allocate(layout: *const Layout) -> Option<NonNull<u8>> {
+    MANAGER.lock().unwrap().allocate(unsafe { mem::transmute(layout) })
 }
 
 #[cfg(test)]
