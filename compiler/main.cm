@@ -70,7 +70,6 @@ is
     src/Midend/Cps/Typechecker.sml
   
     src/Midend/DefUses.sml
-    src/Midend/ClosureConvert.sml
 
     src/Backend/Register.sml
     src/Backend/StackSlot.sml
@@ -86,6 +85,7 @@ is
     src/Backend/Registerizer.sml
  
     src/Midend/Cps/Convert.sml
+    src/Midend/ClosureConvert.sml
 
     src/Backend/RegisterAllocation.sml
     src/Backend/InsertLogues.sml

@@ -61,13 +61,8 @@ structure X64InstrSelection = InstrSelectionFn(struct
                      ( Builder.insertStmt builder parent (Def (def, LOADc 0w0))
                      ; #[def] )
                   | Primop.BoxNew =>
-                     let val sizeDef = CpsId.fresh ()
-                         val alignDef = CpsId.fresh ()
-                         val size = X64RegInstructions.registerSize
-                         val align = X64RegInstructions.registerSize
-                     in expr program builder parent sizeDef (Const (Const.Int size))
-                      ; expr program builder parent alignDef (Const (Const.Int align))
-                      ; Builder.insertStmt builder parent (Def (def, CALL ("Broom_allocate", #[sizeDef, alignDef])))
+                     let val #[layout] = vArgs
+                     in Builder.insertStmt builder parent (Def (def, CALL ("Broom_allocate", #[layout])))
                       ; #[def]
                      end
                   | Primop.BoxInit =>

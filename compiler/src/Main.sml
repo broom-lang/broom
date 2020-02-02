@@ -1,4 +1,5 @@
 structure X64SysVCpsConvert = CpsConvertFn(X64SysVAbi)
+structure X64SysVClosureConvert = ClosureConvertFn(X64SysVAbi)
 structure X64RegIsaLabelUses = IsaLabelUsesFn(X64SysVAbi.RegIsa)
 structure X64Linearize = LinearizeFn(struct
     structure LabelUses = X64RegIsaLabelUses
@@ -101,7 +102,7 @@ end = struct
                                               | Left err => raise Fail "CPS lint failed"
                                         else ()
                                      do log "# Closure converting...\n\n"
-                                     val program = ClosureConvert.convert program
+                                     val program = X64SysVClosureConvert.convert program
                                      val _ = log (PPrint.pretty 80 (Cps.Program.toDoc program) ^ "\n")
                                      do if lint
                                         then case CpsTypechecker.checkProgram program

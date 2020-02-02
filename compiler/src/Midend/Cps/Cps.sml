@@ -48,6 +48,7 @@ signature CPS_GLOBAL = sig
 
     val toDoc : t -> PPrint.t
     val blobLayout : int -> t
+    val boxLayout : int -> t
     val appDeps : (Name.t -> unit) -> t -> unit
 end
 
@@ -366,6 +367,16 @@ end = struct
                       , inlineable = true
                       , isArray = false
                       , fields = #[] }
+            end
+
+        fun boxLayout size =
+            let val size = LargeWord.fromInt size
+            in Layout { size = SOME size
+                      , align = SOME (Word.fromLargeWord size)
+                      , inlineable = false
+                      , isArray = false
+                      , fields = #[{ offset = SOME 0w0
+                                   , layout = SOME (Name.fromString "layout_ORef") }] }
             end
 
         fun appFieldLayoutDeps f {offset, layout} = Option.app f layout

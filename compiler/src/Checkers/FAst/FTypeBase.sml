@@ -342,7 +342,7 @@ structure FTypeBase :> FAST_TYPE_BASE = struct
                 end
              | BoxNew =>
                 let val def = {var = Id.fresh (), kind = Kind.TypeK}
-                in (#[def], Pure, { domain = #[]
+                in (#[def], Pure, { domain = #[Prim Prim.Layout]
                                   , codomain = (App {callee = Prim Prim.Box, args = Vector1.singleton (UseT def)}, false) })
                 end
              | BoxGet =>

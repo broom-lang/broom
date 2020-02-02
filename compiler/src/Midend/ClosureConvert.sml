@@ -1,4 +1,4 @@
-structure ClosureConvert :> sig
+functor ClosureConvertFn (Abi : ABI) :> sig
     val convert : Cps.Program.t -> Cps.Program.t
 end = struct
     structure Program = Cps.Program
@@ -114,7 +114,8 @@ end = struct
         LargeWord.andb (offset + alignment - 0w1, LargeWord.notb (alignment - 0w1))
 
     fun typeLayoutName program =
-        fn Type.FnT _ => Name.fromString "layout_FnPtr"
+        fn Type.FnT _ => Name.fromString "layout_ORef"
+         | Type.AppT {callee = Type.Prim PrimType.Box, ...} => Name.fromString "layout_Box"
          | Type.Prim PrimType.Int => Name.fromString "layout_Int"
 
     fun closureLayout program codeType cloverTypes =
@@ -138,10 +139,22 @@ end = struct
                                      , inlineable = false
                                      , isArray = false
                                      , fields = _ } =>
-                        raise Fail "unimplemented"
+                        let val fieldSize = LargeWord.fromInt Abi.Isa.Instrs.registerSize
+                            val fieldAlignment = Word.fromLargeWord fieldSize
+                            val offset = align (Word.toLargeWord fieldAlignment) size
+                            val size = offset + fieldSize
+                            val alignment = Word.max (alignment, fieldAlignment)
+                            val field = {offset = SOME offset, layout = SOME layoutName}
+                        in {size, alignment, revFields = field :: revFields}
+                        end
                 end
-            val {size, alignment, revFields} =
-                Vector.foldl step {size = Word.toLargeWord 0w0, alignment = 0w1, revFields = []} fieldTypes
+
+            val acc = (* HACK *)
+                case Program.global program (Name.fromString "layout_FnPtr")
+                of Global.Layout {size = SOME size, align = SOME alignment, ...} =>
+                    {size, alignment, revFields = [{ offset = SOME 0w0
+                                                   , layout = SOME (Name.fromString "layout_FnPtr") }]}
+            val {size, alignment, revFields} = Vector.foldl step acc fieldTypes
         in Global.Layout { size = SOME size
                          , align = SOME alignment
                          , inlineable = false (* OPTIMIZE: true *)
