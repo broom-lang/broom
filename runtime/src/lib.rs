@@ -230,7 +230,23 @@ mod tests {
 
     #[test]
     fn test_allocate() {
-        assert!(Broom_allocate(size_of::<usize>(), align_of::<usize>()).is_some());
+        let layout = Layout {
+            size: 8,
+            align: 8,
+            inlineable: true,
+            is_array: false,
+            field_count: 0
+        };
+        match Broom_allocate(From::from(&layout)) {
+            Some(ptr) => {
+                let mut ptr: *const Object = ptr.as_ptr() as _;
+                unsafe {
+                    ptr = ptr.offset(-1);
+                    assert_eq!((*ptr).layout, From::from(&layout));
+                }
+            }
+            None => assert!(false)
+        }
     }
 }
 
