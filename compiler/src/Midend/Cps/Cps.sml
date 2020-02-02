@@ -48,6 +48,7 @@ signature CPS_GLOBAL = sig
 
     val toDoc : t -> PPrint.t
     val blobLayout : int -> t
+    val appDeps : (Name.t -> unit) -> t -> unit
 end
 
 signature CPS_EXPR = sig
@@ -366,6 +367,11 @@ end = struct
                       , isArray = false
                       , fields = #[] }
             end
+
+        fun appFieldLayoutDeps f {offset, layout} = Option.app f layout
+
+        fun appDeps f =
+            fn Layout {fields, ...} => Vector.app (appFieldLayoutDeps f) fields
     end
 
     structure Transfer = struct

@@ -18,7 +18,7 @@ functor IsaLabelUsesFn (Isa : ISA) :> LABEL_USES
 
     type t = {exports : int, escapes : int, calls : int} Label.HashMap.t
 
-    fun useCounts {conts, main} =
+    fun useCounts {globals = _, conts, main} =
         let val counts = ref LabelMap.empty
 
             fun export label =

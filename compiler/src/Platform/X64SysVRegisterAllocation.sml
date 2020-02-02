@@ -31,6 +31,12 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
     fun transferHints cconvs label hints =
         fn _ => hints (* TODO *)
 
+    fun global program builder name =
+        let val v = Isa.Program.global program name
+        in Isa.Global.appDeps (global program builder) v
+         ; Builder.insertGlobal builder name v
+        end
+
     fun allocateMem env hints builder label {base, index, disp} =
         let val (env, base) =
                 case base
@@ -49,7 +55,7 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
         in (env, {base, index, disp})
         end
 
-    fun stmt cconvs builder label env hints =
+    fun stmt program cconvs builder label env hints =
         fn Isa.Stmt.Def (target, expr as (X64Instructions.Oper.CALL (dest, args) | X64Instructions.Oper.CALLd (dest, args))) =>
             let val targetReg = Reg.rax
                 val env = Env.fixedRegDef env hints builder label target targetReg
@@ -80,6 +86,10 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
                     ; env )
                  | X64Instructions.Oper.LOADl lLabel =>
                     ( Builder.insertStmt builder label (Stmt.Def (target, LOADl lLabel))
+                    ; env )
+                 | X64Instructions.Oper.LOADg name =>
+                    ( global program builder name
+                    ; Builder.insertStmt builder label (Stmt.Def (target, LOADg name))
                     ; env )
                  | X64Instructions.Oper.ADD (a, b) =>
                     let val env = Env.fixedRegUse env hints builder label a target

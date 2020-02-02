@@ -2,7 +2,8 @@ functor InstrSelectionFn (Args : sig
     structure Isa : ISA
 
     structure Implement : sig
-        val expr : Isa.Program.Builder.builder -> Label.t -> CpsId.t -> Cps.Expr.oper -> CpsId.t vector
+        val expr : Cps.Program.t -> Isa.Program.Builder.builder
+            -> Label.t -> CpsId.t -> Cps.Expr.oper -> CpsId.t vector
         val transfer : Isa.Program.Builder.builder -> Label.t -> Cps.Transfer.t -> Isa.Transfer.t
     end
 end) :> sig
@@ -33,7 +34,7 @@ end = struct
                     let do Cps.Expr.foldLabels (fn (label, ()) => selectLabel label)
                                                () oper
                         val oper = Cps.Expr.mapDefs selectDef oper
-                    in Implement.expr builder parent def oper
+                    in Implement.expr program builder parent def oper
                     end
                  | {parent = NONE, oper = _} => raise Fail "unreachable"
 

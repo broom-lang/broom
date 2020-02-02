@@ -12,9 +12,9 @@ end = struct
     structure LabelMap = Label.HashMap
     structure Builder = SeqIsa.Program.Builder
 
-    fun linearize (program as {conts, main}) =
+    fun linearize (program as {globals, conts, main}) =
         let val labelUses = Args.LabelUses.useCounts program
-            val builder = Builder.new ()
+            val builder = Builder.new globals
             val worklist = Queue.mkQueue ()
             val visited = Label.HashSetMut.mkEmpty 0
 

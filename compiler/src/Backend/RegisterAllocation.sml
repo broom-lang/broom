@@ -20,7 +20,7 @@ end = struct
                  else NONE
         end
 
-    fun allocate (program as {conts, main}) =
+    fun allocate (program as {globals, conts, main}) =
         let val useCounts = LabelUses.useCounts program
             val maxSlotCount = ref 0
             
@@ -34,7 +34,7 @@ end = struct
             val builder = Builder.new ()
 
             fun allocateStmt label env hints stmt =
-                Registerizer.stmt cconvs builder label env hints stmt
+                Registerizer.stmt program cconvs builder label env hints stmt
 
             fun allocateSucc predHints (label, (counts, revEnvs)) =
                 let val {calls, ...} = LabelMap.lookup useCounts label
@@ -128,12 +128,12 @@ end = struct
                 end
 
             do LabelMap.appi allocateCont conts
-            val {conts, main} = Builder.build builder main
+            val {globals, conts, main} = Builder.build builder main
             
             (* HACK: Stmts were pushed to builder in reverse, so need to..: *)
             fun reverseStmts {name, params, cconv, stmts, transfer} =
                 {name, params, cconv, stmts = VectorExt.rev stmts, transfer}
-        in { program = {conts = LabelMap.map reverseStmts conts, main}
+        in { program = {globals, conts = LabelMap.map reverseStmts conts, main}
            , maxSlotCount = !maxSlotCount }
         end
 end

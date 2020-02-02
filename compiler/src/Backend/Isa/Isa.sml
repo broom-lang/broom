@@ -41,6 +41,8 @@ signature ISA = sig
     structure Register : REGISTER where type t = def
     structure Location : REGISTER where type t = loc
 
+    structure Global : CPS_GLOBAL where type t = Cps.Global.t
+
     structure Instrs : INSTRUCTIONS
         where type def = def
         where type Oper.t = oper
@@ -80,14 +82,16 @@ signature ISA = sig
     end
 
     structure Program : sig
-        type t = {conts : Cont.t Label.HashMap.t, main : Label.t}
+        type t = {globals : Global.t Name.HashMap.t, conts : Cont.t Label.HashMap.t, main : Label.t}
 
         val toDoc : t -> PPrint.t
+        val global : t -> Name.t -> Global.t
 
         structure Builder : sig
             type builder
 
             val new : unit -> builder
+            val insertGlobal : builder -> Name.t -> Global.t -> unit
             val createCont : builder -> Label.t
                 -> {name : Name.t option, cconv : CallingConvention.t option, argc : int} -> unit
             val setParam : builder -> Label.t -> int -> loc -> unit
@@ -112,6 +116,7 @@ end) :> ISA
 = struct
     structure Register = Args.Register
     structure Location = Args.Location
+    structure Global = Cps.Global
     structure Instrs = Args.Instrs
     structure Oper = Instrs.Oper
 
@@ -202,38 +207,49 @@ end) :> ISA
     structure Program = struct
         structure LabelMap = Label.HashMap
 
-        type t = {conts : Cont.t LabelMap.t, main : Label.t}
+        type t = {globals : Global.t Name.HashMap.t, conts : Cont.t Label.HashMap.t, main : Label.t}
 
-        fun toDoc {conts, main} =
-            LabelMap.fold (fn (kv, acc) => acc <++> newline <> Cont.toDoc kv)
-                          PPrint.empty conts
-            <++> newline <++> text "entry" <+> Label.toDoc main
+        fun toDoc {globals, conts, main} =
+            let val doc = Name.HashMap.fold (fn ((name, global), acc) =>
+                                                 acc <++> newline
+                                                 <> text "static" <+> Name.toDoc name <+> text "="
+                                                 <+> Global.toDoc global)
+                                            PPrint.empty globals
+            in LabelMap.fold (fn (kv, acc) => acc <++> newline <> Cont.toDoc kv) doc conts
+               <++> newline <++> text "entry" <+> Label.toDoc main
+            end
+
+        fun global ({globals, ...} : t) name = Name.HashMap.lookup globals name
 
         structure Builder = struct
-            type builder = Cont.Builder.builder LabelMap.t ref
+            type builder = { globals : Global.t Name.HashMap.t ref
+                           , conts : Cont.Builder.builder LabelMap.t ref }
 
-            fun new () = ref LabelMap.empty
+            fun new () = {globals = ref Name.HashMap.empty, conts = ref LabelMap.empty}
 
-            fun createCont builder label creation =
-                builder := LabelMap.insert (!builder) (label, Cont.Builder.new creation)
+            fun insertGlobal ({globals, ...} : builder) name global =
+                globals := Name.HashMap.insert (!globals) (name, global)
 
-            fun setParam (ref conts) label i loc =
+            fun createCont ({conts, ...} : builder) label creation =
+                conts := LabelMap.insert (!conts) (label, Cont.Builder.new creation)
+
+            fun setParam ({conts = ref conts, ...} : builder) label i loc =
                 Cont.Builder.setParam (LabelMap.lookup conts label) i loc
 
-            fun setParams (ref conts) label params' =
+            fun setParams ({conts = ref conts, ...} : builder) label params' =
                 Cont.Builder.setParams (LabelMap.lookup conts label) params'
 
-            fun getParam (ref conts) label i =
+            fun getParam ({conts = ref conts, ...} : builder) label i =
                 Cont.Builder.getParam (LabelMap.lookup conts label) i
 
-            fun insertStmt (ref conts) label stmt =
+            fun insertStmt ({conts = ref conts, ...} : builder) label stmt =
                 Cont.Builder.insertStmt (LabelMap.lookup conts label) stmt
 
-            fun setTransfer (ref conts) label transfer =
+            fun setTransfer ({conts = ref conts, ...} : builder) label transfer =
                 Cont.Builder.setTransfer (LabelMap.lookup conts label) transfer
 
-            fun build (ref conts) main =
-                {conts = LabelMap.map Cont.Builder.build conts, main}
+            fun build {conts = ref conts, globals = ref globals} main =
+                {globals, conts = LabelMap.map Cont.Builder.build conts, main}
         end
     end
 end

@@ -4,6 +4,7 @@ structure GasX64SysVAbiEmit :> sig
     val emit : TextIO.outstream -> X64SeqIsa.Program.t -> unit
 end = struct
     structure Register = X64Register
+    structure Global = X64SeqIsa.RegIsa.Global
     structure Oper = X64RegInstructions.Oper
     structure Stmt = X64SeqIsa.RegIsa.Stmt
     structure Transfer = X64RegInstructions.Transfer
@@ -11,6 +12,8 @@ end = struct
     datatype cond = datatype X64JumpCondition.t
 
     fun convertLabel label = ".L" ^ Label.toString label
+
+    val convertGlobal = Name.toString
 
     fun convertReg reg = "%" ^ Register.toString reg
 
@@ -27,8 +30,29 @@ end = struct
                "(" ^ convertReg index ^ ", " ^ Word.toString scale ^ ")"
             | (NONE, NONE) => "")
 
-    fun emit outstream =
+    fun emit outstream {globals, conts} =
         let fun line s = TextIO.output (outstream, s ^ "\n")
+
+            fun emitFieldLayout {offset = SOME offset, layout = SOME layout} =
+                ( line ("\t.quad\t" ^ LargeWord.fmt StringCvt.DEC offset)
+                ; line ("\t.quad\t" ^ convertGlobal layout) )
+
+            fun emitGlobal (name, global) =
+                let val name = convertGlobal name
+                in line ("\t.globl\t" ^ name)
+                 ; line "\t.align 8"
+                 ; line ("\t.type\t" ^ name ^ ", @object")
+                 ; line (name ^ ":")
+                 ; case global
+                   of Global.Layout {size = SOME size, align = SOME align, inlineable, isArray, fields} =>
+                       ( line ("\t.quad\t" ^ LargeWord.fmt StringCvt.DEC size)
+                       ; line ("\t.quad\t" ^ Word.fmt StringCvt.DEC align)
+                       ; line ("\t.byte\t" ^ (if inlineable then "1" else "0"))
+                       ; line ("\t.byte\t" ^ (if isArray then "1" else "0"))
+                       ; line "\t.zero\t6"
+                       ; line ("\t.quad\t" ^ Int.toString (Vector.length fields))
+                       ; Vector.app emitFieldLayout fields )
+                end
 
             val emitExpr =
                 fn (SOME target, Oper.MOV src) =>
@@ -39,6 +63,8 @@ end = struct
                     line ("\tmovq\t$" ^ Int.toString (Word32.toInt n) ^ ", " ^ convertReg target)
                  | (SOME target, Oper.LOADl label) =>
                     line ("\tleaq\t" ^ convertLabel label ^ "(%rip), " ^ convertReg target)
+                 | (SOME target, Oper.LOADg name) =>
+                    line ("\tleaq\t" ^ convertGlobal name ^ "(%rip), " ^ convertReg target)
                  | (NONE, Oper.STORE (dest, src)) =>
                     line ("\tmovq\t" ^ convertReg src ^ ", " ^ convertMem dest)
                  | (NONE, Oper.PUSH src) => line ("\tpushq\t" ^ convertReg src)
@@ -76,7 +102,10 @@ end = struct
          ; line "\t.globl\tmain"
          ; line "\t.type\tmain, @function"
          ; line "main:"
-         ; Vector.app emitCont
+         ; Vector.app emitCont conts
+
+         ; line "\t.data"
+         ; Name.HashMap.appi emitGlobal globals
         end
 end
 

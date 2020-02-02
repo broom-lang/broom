@@ -17,7 +17,7 @@ end) :> INSERT_LOGUES
     structure Transfer = RegIsa.Transfer
     structure Instrs = RegIsa.Instrs
 
-    fun insert {program = {conts, main}, maxSlotCount} =
+    fun insert {program = {globals, conts, main}, maxSlotCount} =
         let val frameSize = Word32.fromInt (maxSlotCount * Instrs.registerSize)
             val prologue = Args.prologue frameSize
             val epilogue = Args.epilogue frameSize
@@ -33,7 +33,7 @@ end) :> INSERT_LOGUES
                         else stmts
                 in {name, cconv, params, stmts, transfer}
                 end
-        in {conts = Label.HashMap.map insertContLogues conts, main}
+        in {globals, conts = Label.HashMap.map insertContLogues conts, main}
         end
 end
 

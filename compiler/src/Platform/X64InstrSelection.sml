@@ -1,5 +1,6 @@
 structure X64InstrSelection = InstrSelectionFn(struct
     structure Isa = X64Isa
+    structure Global = Cps.Global
     structure Builder = Isa.Program.Builder
 
     datatype oper = datatype Cps.Expr.oper
@@ -10,16 +11,16 @@ structure X64InstrSelection = InstrSelectionFn(struct
     datatype transfer = datatype X64Instructions.Transfer.t
 
     structure Implement = struct
-        fun expr builder parent def =
+        fun global program builder name =
+            let val v = Cps.Program.global program name
+            in Global.appDeps (global program builder) v
+             ; Builder.insertGlobal builder name v
+            end
+
+        fun expr program builder parent def =
             fn ClosureNew (layout, label, clovers) =>
-                let val sizeDef = CpsId.fresh ()
-                    val alignDef = CpsId.fresh ()
-                    val ldef = CpsId.fresh ()
-                    val size = X64RegInstructions.registerSize * (1 + Vector.length clovers)
-                    val align = X64RegInstructions.registerSize
-                in expr builder parent sizeDef (Const (Const.Int size))
-                 ; expr builder parent alignDef (Const (Const.Int align))
-                 ; Builder.insertStmt builder parent (Def (def, CALL ("Broom_allocate", #[sizeDef, alignDef])))
+                let val ldef = CpsId.fresh ()
+                in Builder.insertStmt builder parent (Def (def, CALL ("Broom_allocate", #[layout])))
                  ; Builder.insertStmt builder parent (Def (ldef, LOADl label))
                  ; Builder.insertStmt builder parent (Eff (STORE ( { base = SOME def
                                                                    , index = NONE
@@ -64,8 +65,8 @@ structure X64InstrSelection = InstrSelectionFn(struct
                          val alignDef = CpsId.fresh ()
                          val size = X64RegInstructions.registerSize
                          val align = X64RegInstructions.registerSize
-                     in expr builder parent sizeDef (Const (Const.Int size))
-                      ; expr builder parent alignDef (Const (Const.Int align))
+                     in expr program builder parent sizeDef (Const (Const.Int size))
+                      ; expr program builder parent alignDef (Const (Const.Int align))
                       ; Builder.insertStmt builder parent (Def (def, CALL ("Broom_allocate", #[sizeDef, alignDef])))
                       ; #[def]
                      end
@@ -86,6 +87,10 @@ structure X64InstrSelection = InstrSelectionFn(struct
                       ; #[stack, v]
                      end)
              | Result (vals, i) => raise Fail "unreachable"
+             | Global name =>
+                ( global program builder name
+                ; Builder.insertStmt builder parent (Def (def, LOADg name))
+                ; #[def] )
              | Const (Const.Int n) => (* FIXME: `n` might not fit into 32 bits: *)
                 ( Builder.insertStmt builder parent (Def (def, LOADc (Word32.fromInt n)))
                 ; #[def] )
