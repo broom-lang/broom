@@ -61,8 +61,10 @@ structure X64InstrSelection = InstrSelectionFn(struct
                      ( Builder.insertStmt builder parent (Def (def, LOADc 0w0))
                      ; #[def] )
                   | Primop.BoxNew =>
-                     let val #[layout] = vArgs
-                     in Builder.insertStmt builder parent (Def (def, CALL ("Broom_allocate", #[layout])))
+                     let val #[] = vArgs
+                         val layout = CpsId.fresh ()
+                     in expr program builder parent layout (Global (Name.fromString "layout_Box")) (* HACK *)
+                      ; Builder.insertStmt builder parent (Def (def, CALL ("Broom_allocate", #[layout])))
                       ; #[def]
                      end
                   | Primop.BoxInit =>
