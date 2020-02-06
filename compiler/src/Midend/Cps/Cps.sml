@@ -77,10 +77,11 @@ signature CPS_EXPR = sig
         | Param of Label.t * int
         | Const of Const.t
 
-    type t = {parent : Label.t option, oper : oper}
+    type t = {parent : Label.t option, typ : Type.t, oper : oper}
 
     val toDoc : t -> PPrint.t
 
+    val typeOf : t -> Type.t
     val primopType : Primop.t
         -> {tParams : Type.param vector, vParams : Type.t vector, codomain : Type.t vector vector}
     val foldDeps : (CpsId.t * 'a -> 'a) -> 'a -> oper -> 'a
@@ -147,6 +148,7 @@ signature CPS_PROGRAM = sig
         , main : Label.t }
 
     val defSite : t -> CpsId.t -> Expr.t
+    val defType : t -> CpsId.t -> Expr.Type.t
     val labelCont : t -> Label.t -> Cont.t
     val global : t -> Name.t -> Global.t
     val byParent : t -> CpsId.SortedSet.set Expr.ParentMap.t
@@ -271,12 +273,21 @@ end = struct
                      VectorExt.zip (vDomain, vDomain')
                      |> Vector.all eq
                   | _ => raise Fail "unimplemented")
+             | (Closure {tDomain, vDomain, clovers}, Closure {tDomain = tDomain', vDomain = vDomain', clovers = clovers'}) =>
+                (case (tDomain, tDomain')
+                 of (#[], #[]) =>
+                     ( VectorExt.zip (vDomain, vDomain')
+                     |> Vector.all eq )
+                     andalso VectorExt.zip (clovers, clovers') |> Vector.all eq
+                  | _ => raise Fail "unimplemented")
              | (AppT {callee, args}, AppT {callee = callee', args = args'}) =>
                 eq (callee, callee')
                 andalso Vector1.length args = Vector1.length args'
                 andalso Vector1.all eq (Vector1.zip (args, args'))
              | (Record row, Record row') => eq (row, row')
              | (EmptyRow, EmptyRow) => true
+             | (Results ts, Results ts') => VectorExt.zip (ts, ts') |> Vector.all eq
+             | (Singleton def, Singleton def') => CpsId.eq (def, def')
              | (Prim p, Prim p') => true
              | (t, t') =>
                 raise Fail ("unimplemented " ^ PPrint.pretty 80 (toDoc t <+> text "?=" <+> toDoc t'))
@@ -522,7 +533,9 @@ end = struct
             | Param of Label.t * int
             | Const of Const.t
 
-        type t = {parent : Label.t option, oper : oper}
+        type t = {parent : Label.t option, typ : Type.t, oper : oper}
+
+        val typeOf : t -> Type.t = #typ
 
         fun foldDeps f acc =
             fn PrimApp {opn = _, tArgs = _, vArgs} => Vector.foldl f acc vArgs
@@ -582,7 +595,7 @@ end = struct
              | Param (label, i) => text "param" <+> Label.toDoc label <+> PPrint.int i
              | Const c => text "const" <+> Const.toDoc c
 
-        fun toDoc {parent = _, oper} = operToDoc oper
+        fun toDoc {parent = _, typ, oper} = operToDoc oper <+> text ":" <+> Type.toDoc typ
 
         (* OPTIMIZE: *)
         fun primopType opn =
@@ -615,12 +628,14 @@ end = struct
 
         fun defSite ({stmts, ...} : t) def = Map.lookup stmts def
 
+        fun defType program = Expr.typeOf o defSite program
+
         fun labelCont ({conts, ...} : t) label = LabelMap.lookup conts label
 
         fun global ({globals, ...} : t) name = Name.HashMap.lookup globals name
 
         fun byParent ({stmts, ...}: t) =
-            let fun step ((def, {parent, oper}), acc) =
+            let fun step ((def, {parent, typ = _, oper = _}), acc) =
                     case ParentMap.find acc parent
                     of SOME vs => ParentMap.insert acc (parent, DefSet.add (vs, def))
                      | NONE => ParentMap.insert acc (parent, DefSet.singleton def)
@@ -637,9 +652,9 @@ end = struct
                        orelse DefSetMut.member (visited, def)
                     then PPrint.empty
                     else let do DefSetMut.add (visited, def)
-                             val {parent = _, oper} = Map.lookup stmts def
+                             val expr as {oper, ...} = Map.lookup stmts def
                          in depsToDoc oper
-                            <++> CpsId.toDoc def <+> text "=" <+> Expr.operToDoc oper
+                            <++> CpsId.toDoc def <+> text "=" <+> Expr.toDoc expr
                          end
             in DefSet.foldl (fn (def, acc) => acc <++> stmtToDoc def) PPrint.empty exprs
             end

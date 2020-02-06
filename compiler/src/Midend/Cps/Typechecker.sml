@@ -19,7 +19,6 @@ structure CpsTypechecker :> sig
 
     val errorToDoc : error -> PPrint.t
 
-    val defType : Cps.Program.t -> CpsId.t -> Cps.Type.t
     val labelType : Cps.Program.t -> Label.t -> Cps.Type.t
     val checkProgram : Cps.Program.t -> (error, unit) Either.t
 end = struct
@@ -144,7 +143,12 @@ end = struct
 
     and defType (program : Program.t) def =
         case DefMap.find (#stmts program) def
-        of SOME {oper, parent = _} => operType program oper
+        of SOME {oper, typ, ...} =>
+            let val typ' = operType program oper
+            in  if Type.eq (typ', typ)
+                then typ'
+                else raise TypeError (Inequal (typ', typ))
+            end
          | NONE => raise TypeError (Unbound def)
 
     and checkDef program (t, def) =

@@ -17,7 +17,6 @@ end = struct
     datatype transfer = datatype Transfer.t
     datatype use_site = datatype DefUses.UseSite.t
 
-    val defType = CpsTypechecker.defType
     val labelType = CpsTypechecker.labelType
     val op|> = Fn.|>
 
@@ -38,7 +37,7 @@ end = struct
                 else freeDef label (def, frees)
              | {parent = NONE, ...} => raise Fail "unreachable"
 
-        fun analyzeStmt program ((_, {parent = SOME parent, oper}), frees) =
+        fun analyzeStmt program ((_, {parent = SOME parent, typ = _, oper}), frees) =
             (case oper
              of Expr.Label label =>
                  let val labelFrees = getOpt (LabelMap.find frees label, FreeSet.empty)
@@ -175,7 +174,7 @@ end = struct
             (case use
              of Expr _ =>
                  let val layout = closureLayout program (labelType program label)
-                                                (Vector.map (defType program) labelFrees)
+                                                (Vector.map (Program.defType program) labelFrees)
                  in SOME (Split {lift, close = (Label.fresh (), layout, labelFrees)})
                  end
               | Transfer use =>
@@ -199,7 +198,7 @@ end = struct
             (case use
              of Expr _ =>
                  let val layout = closureLayout program (labelType program label)
-                                                (Vector.map (defType program) labelFrees)
+                                                (Vector.map (Program.defType program) labelFrees)
                  in SOME (Close (layout, labelFrees))
                  end
               | Transfer use =>
@@ -245,7 +244,7 @@ end = struct
                     if CpsId.HashSetMut.member (visitedDefs, def)
                     then def
                     else let do CpsId.HashSetMut.add (visitedDefs, def)
-                             val {oper, parent} = Program.defSite program def
+                             val {oper, typ, parent} = Program.defSite program def
                          in case oper
                             of Label label =>
                                 (case LabelMap.lookup goals label
@@ -253,25 +252,27 @@ end = struct
                                      let val layoutName = closureLayoutName label
                                          do Builder.insertGlobal builder (layoutName, layout)
                                          val oper =
-                                             ClosureNew ( Builder.express builder {parent, oper = Global layoutName}
+                                             ClosureNew ( Builder.express builder { parent
+                                                                                  , typ = Type.Prim PrimType.Layout
+                                                                                  , oper = Global layoutName }
                                                         , convertLabel program label
                                                         , Vector.map (convertDef program env) frees )
-                                     in Builder.insertExpr builder (def, {parent, oper})
+                                     in Builder.insertExpr builder (def, {parent, typ = convertType typ, oper})
                                      end
                                   | Split {lift = _, close} =>
                                      let val oper = escapee program env parent (convertLabel program label) close
-                                     in Builder.insertExpr builder (def, {parent, oper})
+                                     in Builder.insertExpr builder (def, {parent, typ = convertType typ, oper})
                                      end
                                   | (Lift _ | Conditioned | Noop) => raise Fail "unreachable")
                              | PrimApp {opn, tArgs, vArgs} =>
                                 let val oper = PrimApp { opn
                                                        , tArgs = Vector.map convertType tArgs
                                                        , vArgs = Vector.map (convertDef program env) vArgs }
-                                in Builder.insertExpr builder (def, {oper, parent})
+                                in Builder.insertExpr builder (def, {oper, typ = convertType typ, parent})
                                 end
                              | _ =>
                                 let val oper = Expr.mapDefs (convertDef program env) oper
-                                in Builder.insertExpr builder (def, {oper, parent})
+                                in Builder.insertExpr builder (def, {oper, typ = convertType typ, parent})
                                 end
                           ; def
                          end
@@ -301,7 +302,14 @@ end = struct
                  | Jump {callee, tArgs, vArgs} =>
                     let val closure = convertDef program env callee
                         val callee =
-                            Builder.express builder {parent = SOME label, oper = ClosureFn closure}
+                            Builder.express builder { parent = SOME label
+                                                    , typ = case Program.defType program callee
+                                                            of Type.FnT {tDomain, vDomain} =>
+                                                                let val vDomain = Vector.map convertType vDomain
+                                                                in Type.FnT { tDomain
+                                                                            , vDomain = VectorExt.append (vDomain, Type.Singleton closure) }
+                                                                end
+                                                    , oper = ClosureFn closure }
                         val vArgs = Vector.map (convertDef program env) vArgs
                     in Jump {callee, tArgs, vArgs = VectorExt.append (vArgs, closure)}
                     end
@@ -326,22 +334,26 @@ end = struct
                            val {name, cconv, tParams, vParams, body = _} = Program.labelCont program label
                            val closureType =
                                Type.Closure { tDomain = tParams, vDomain = vParams
-                                            , clovers = Vector.map (defType program) clovers }
+                                            , clovers = Vector.map (Program.defType program) clovers }
+                           val closureType = convertType closureType
                            val vParams = Vector.map convertType vParams
-                           val vParams' = VectorExt.append (vParams, convertType closureType)
+                           val vParams' = VectorExt.append (vParams, closureType)
                            val vArgs =
-                               Vector.mapi (fn (i, _) =>
+                               Vector.mapi (fn (i, typ) =>
                                                 let val expr = { parent = SOME label'
+                                                               , typ
                                                                , oper = Param (label', i) }
                                                 in Builder.express builder expr
                                                 end)
                                            vParams
                            val closureParam =
                                Builder.express builder { parent = SOME label'
+                                                       , typ = closureType
                                                        , oper = Param (label', Vector.length vParams) }
                            val clovers =
-                               Vector.mapi (fn (i, _) =>
+                               Vector.mapi (fn (i, clover) =>
                                                   let val expr = { parent = SOME label'
+                                                                 , typ = convertType (Program.defType program clover)
                                                                  , oper = Clover (closureParam, i) }
                                                   in Builder.express builder expr
                                                   end)
@@ -352,7 +364,7 @@ end = struct
                        end
                 ; let val layoutName = closureLayoutName label'
                       do Builder.insertGlobal builder (layoutName, layout)
-                  in ClosureNew ( Builder.express builder {parent, oper = Global layoutName}
+                  in ClosureNew ( Builder.express builder {parent, typ = Type.Prim PrimType.Layout, oper = Global layoutName}
                                 , label'
                                 , Vector.map (convertDef program env) clovers )
                   end )
@@ -361,12 +373,13 @@ end = struct
                 case LabelMap.lookup goals label
                 of (Lift frees | Split {lift = frees, close = _}) =>
                     let val oldArity = Vector.length vParams
-                        val liftParams = Vector.map (defType program) frees
+                        val liftParams = Vector.map (Program.defType program) frees
                         val vParams = Vector.concat [vParams, liftParams]
                                       |> Vector.map convertType
                         val env =
                             Vector.foldli (fn (i, free, env) =>
                                                let val expr = { parent = SOME label
+                                                              , typ = convertType (Program.defType program free)
                                                               , oper = Param (label, i + oldArity) }
                                                in DefMap.insert env (free, Builder.express builder expr)
                                                end)
@@ -377,15 +390,17 @@ end = struct
                  | Close (layout, frees) =>
                     let val closureType =
                             Type.Closure { tDomain = tParams, vDomain = vParams
-                                         , clovers = Vector.map (defType program) frees }
+                                         , clovers = Vector.map (Program.defType program) frees }
                         val vParams = VectorExt.append (vParams, closureType)
                                       |> Vector.map convertType
                         val closureParam =
                             Builder.express builder { parent = SOME label
+                                                    , typ = convertType closureType
                                                     , oper = Param (label, Vector.length vParams - 1) }
                         val env =
                             Vector.foldli (fn (i, free, env) =>
                                                let val expr = { parent = SOME label
+                                                              , typ = convertType (Program.defType program free)
                                                               , oper = Clover (closureParam, i) }
                                                in DefMap.insert env (free, Builder.express builder expr)
                                                end)

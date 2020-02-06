@@ -20,7 +20,7 @@ end = struct
             val visitedLabels = Label.HashSetMut.mkEmpty 0
 
             fun selectExpr def =
-                fn {parent = SOME _, oper = Cps.Expr.Result (tuple, i)} =>
+                fn {parent = SOME _, typ, oper = Cps.Expr.Result (tuple, i)} =>
                     let val vals =
                             if not (CpsId.HashTable.inDomain visitedDefs tuple)
                             then let val definiends = selectExpr tuple (Cps.Program.defSite program tuple)
@@ -30,13 +30,13 @@ end = struct
                             else CpsId.HashTable.lookup visitedDefs tuple
                     in #[Vector.sub (vals, i)]
                     end
-                 | {parent = SOME parent, oper} =>
+                 | {parent = SOME parent, typ, oper} =>
                     let do Cps.Expr.foldLabels (fn (label, ()) => selectLabel label)
                                                () oper
                         val oper = Cps.Expr.mapDefs selectDef oper
                     in Implement.expr program builder parent def oper
                     end
-                 | {parent = NONE, oper = _} => raise Fail "unreachable"
+                 | {parent = NONE, ...} => raise Fail "unreachable"
 
             and selectDef def =
                 ( if not (CpsId.HashTable.inDomain visitedDefs def)

@@ -1,8 +1,8 @@
 functor CpsConvertFn (Abi : ABI) :> sig
     val cpsConvert : FAst.Term.program -> Cps.Program.t
 end = struct
-    structure FFType = FAst.Type
-    structure FFTerm = FAst.Term
+    structure FType = FAst.Type
+    structure FTerm = FAst.Term
     structure Type = Cps.Type
     structure Global = Cps.Global
     structure Expr = Cps.Expr
@@ -20,20 +20,20 @@ end = struct
     val op|> = Fn.|>
 
     datatype cont_param
-        = Named of FFTerm.def
-        | Anon of FFType.concr
+        = Named of FTerm.def
+        | Anon of FType.concr
 
     datatype cont
         = FnK of cont_param  * ({parent : Label.t option, stack : def, expr : def} -> transfer)
         | TrivK of def
-        | TrivlK of Label.t
+        | TrivlK of Type.t * Label.t
 
     structure Env = Type.Id.SortedMap (* TODO: HashMap *)
 
     val convertType = Cps.Type.fromF
 
     val rec convertCoercion =
-        fn FFType.Refl t => Refl (convertType t)
+        fn FType.Refl t => Refl (convertType t)
 
     fun cpsConvert {typeFns, code, sourcemap = _} =
         let val builder = Builder.new typeFns
@@ -46,35 +46,37 @@ end = struct
             do Builder.insertGlobal builder ( Name.fromString "layout_Box"
                                             , Global.boxLayout Abi.Isa.Instrs.registerSize )
             
-            fun convertExpr parent stack cont env : FFTerm.expr -> transfer =
-                fn FFTerm.Fn f =>
-                    Builder.express builder {parent, oper = Label (convertFn env f)}
+            fun convertExpr parent stack cont env : FTerm.expr -> transfer =
+                fn expr as FTerm.Fn f =>
+                    Builder.express builder { parent, typ = convertType (FTerm.typeOf expr)
+                                            , oper = Label (convertFn env f) }
                     |> continue parent stack cont
 
-                 | FFTerm.TFn f =>
-                    Builder.express builder {parent, oper = Label (convertTFn env f)}
+                 | expr as FTerm.TFn f =>
+                    Builder.express builder { parent, typ = convertType (FTerm.typeOf expr)
+                                            , oper = Label (convertTFn env f) }
                     |> continue parent stack cont
 
-                 | FFTerm.Let (_, stmts, body) =>
+                 | FTerm.Let (_, stmts, body) =>
                     convertBlock parent stack cont env (Vector1.Slice.full stmts) body
 
-                 | FFTerm.Letrec _ => raise Fail "unreachable"
+                 | FTerm.Letrec _ => raise Fail "unreachable"
 
-                 | FFTerm.Match (_, _, matchee, clauses) =>
+                 | FTerm.Match (_, _, matchee, clauses) =>
                     let val join = trivializeCont cont
                         val clauses = Vector.map (convertClause stack join env) clauses
-                        val split = FnK ( Anon (FFTerm.typeOf matchee)
+                        val split = FnK ( Anon (FTerm.typeOf matchee)
                                         , fn {parent = _, stack = _, expr} => Match (expr, clauses) )
                     in convertExpr parent stack split env matchee
                     end
 
                  (* OPTIMIZE: (Via Builder?:) When callee label is known, emit goto instead of jump: *)
 
-                 | FFTerm.App (_, _, {callee, arg}) =>
+                 | FTerm.App (_, _, {callee, arg}) =>
                     let val cont =
-                           FnK ( Anon (FFTerm.typeOf callee)
+                           FnK ( Anon (FTerm.typeOf callee)
                                , fn {parent, stack, expr = callee} =>
-                                     let val cont = FnK ( Anon (FFTerm.typeOf arg)
+                                     let val cont = FnK ( Anon (FTerm.typeOf arg)
                                                         , fn {parent, stack, expr = arg} =>
                                                               let val ret = contValue parent cont
                                                               in Jump { callee, tArgs = #[]
@@ -85,9 +87,9 @@ end = struct
                     in convertExpr parent stack cont env callee
                     end
 
-                 | FFTerm.TApp (_, _, {callee, args}) =>
+                 | FTerm.TApp (_, _, {callee, args}) =>
                     let val cont =
-                            FnK ( Anon (FFTerm.typeOf callee)
+                            FnK ( Anon (FTerm.typeOf callee)
                                 , fn {parent, stack, expr = callee} =>
                                       let val tArgs = Vector1.toVector (Vector1.map convertType args)
                                           val ret = contValue parent cont
@@ -96,14 +98,14 @@ end = struct
                     in convertExpr parent stack cont env callee
                     end
 
-                 | FFTerm.PrimApp (_, _, opn, tArgs, vArgs, clauses) =>
+                 | FTerm.PrimApp (_, typ, opn, tArgs, vArgs, clauses) =>
                     let val tArgs = Vector.map convertType tArgs
 
                         fun convertArgs parent stack cont env args revArgs =
                             case VectorSlice.uncons args
                             of SOME (arg, args) =>
                                 let val cont =
-                                        FnK ( Anon (FFTerm.typeOf arg)
+                                        FnK ( Anon (FTerm.typeOf arg)
                                             , fn {parent, stack, expr = arg} =>
                                                   convertArgs parent stack cont env args (arg :: revArgs) )
                                 in convertExpr parent stack cont env arg
@@ -114,11 +116,14 @@ end = struct
                                     of SOME ({def = {id = successId, typ = successTyp, ...}, body = success}, failure) =>
                                         let val join = trivializeCont cont
                                             val succeed = Label.fresh ()
+                                            val successTyp = convertType successTyp
                                             val succeedK =
                                                 let val successParam =
-                                                        Builder.express builder {parent = SOME succeed, oper = Param (succeed, 0)}
+                                                        Builder.express builder { parent = SOME succeed
+                                                                                , typ = successTyp
+                                                                                , oper = Param (succeed, 0) }
                                                     val env = Env.insert (env, successId, successParam)
-                                                in { name = NONE, tParams = #[], vParams = #[convertType successTyp]
+                                                in { name = NONE, tParams = #[], vParams = #[successTyp]
                                                    , cconv = NONE
                                                    , body = convertExpr (SOME succeed) stack join env success }
                                                 end
@@ -131,32 +136,38 @@ end = struct
                                         in Checked {opn, tArgs, vArgs, succeed, fail}
                                         end
                                      | NONE => 
-                                        let val (stack, expr) =
-                                            if Primop.isTotal opn
-                                            then (stack, Builder.express builder {parent, oper = PrimApp {opn, tArgs, vArgs}})
-                                            else let val vArgs = VectorExt.prepend (stack, vArgs)
-                                                     val results = Builder.express builder {parent, oper = PrimApp {opn, tArgs, vArgs}}
-                                                 in ( Builder.express builder {parent, oper = Result (results, 0)}
-                                                    , Builder.express builder {parent, oper = Result (results, 1)} )
-                                                 end
+                                        let val resultTyp = convertType typ
+                                            val (stack, expr) =
+                                                if Primop.isTotal opn
+                                                then (stack, Builder.express builder { parent, typ = resultTyp
+                                                                                     , oper = PrimApp {opn, tArgs, vArgs} })
+                                                else let val stackT = Type.Prim Type.Prim.StackT
+                                                         val resultsTyp = Results #[stackT, resultTyp]
+                                                         val vArgs = VectorExt.prepend (stack, vArgs)
+                                                         val results = Builder.express builder { parent, typ = resultsTyp
+                                                                                               , oper = PrimApp {opn, tArgs, vArgs} }
+                                                     in ( Builder.express builder {parent, typ = stackT, oper = Result (results, 0)}
+                                                        , Builder.express builder {parent, typ = resultTyp, oper = Result (results, 1)} )
+                                                     end
                                         in continue parent stack cont expr
                                         end
                                 end
                     in convertArgs parent stack cont env (VectorSlice.full vArgs) []
                     end
 
-                 | FFTerm.EmptyRecord _ =>
-                    Builder.express builder {parent, oper = EmptyRecord}
+                 | FTerm.EmptyRecord _ =>
+                    Builder.express builder {parent, typ = Type.Record EmptyRow, oper = EmptyRecord}
                     |> continue parent stack cont
                  
-                 | FFTerm.With (_, _, {base, field = (label, fielde)}) =>
+                 | FTerm.With (_, typ, {base, field = (label, fielde)}) =>
                     let val cont =
-                            FnK ( Anon (FFTerm.typeOf base)
+                            FnK ( Anon (FTerm.typeOf base)
                                 , fn {parent, stack, expr = base} =>
                                       let val cont =
-                                              FnK ( Anon (FFTerm.typeOf fielde)
+                                              FnK ( Anon (FTerm.typeOf fielde)
                                                   , fn {parent, stack, expr = fielde} =>
                                                         Builder.express builder { parent
+                                                                                , typ = convertType typ
                                                                                 , oper = With {base, field = (label, fielde)} }
                                                         |> continue parent stack cont )
                                       in convertExpr parent stack cont env fielde
@@ -164,14 +175,15 @@ end = struct
                     in convertExpr parent stack cont env base
                     end
  
-                 | FFTerm.Where (_, _, {base, field = (label, fielde)}) =>
+                 | FTerm.Where (_, typ, {base, field = (label, fielde)}) =>
                     let val cont =
-                            FnK ( Anon (FFTerm.typeOf base)
+                            FnK ( Anon (FTerm.typeOf base)
                                 , fn {parent, stack, expr = base} =>
                                       let val cont =
-                                              FnK ( Anon (FFTerm.typeOf fielde)
+                                              FnK ( Anon (FTerm.typeOf fielde)
                                                   , fn {parent, stack, expr = fielde} =>
                                                         Builder.express builder { parent
+                                                                                , typ = convertType typ
                                                                                 , oper = Where {base, field = (label, fielde)} }
                                                         |> continue parent stack cont )
                                       in convertExpr parent stack cont env fielde
@@ -179,52 +191,56 @@ end = struct
                     in convertExpr parent stack cont env base
                     end
  
-                 | FFTerm.Without (_, _, {base, field}) =>
+                 | FTerm.Without (_, typ, {base, field}) =>
                     let val cont =
-                            FnK ( Anon (FFTerm.typeOf base)
+                            FnK ( Anon (FTerm.typeOf base)
                                 , fn {parent, stack, expr = base} =>
-                                      Builder.express builder {parent, oper = Without {base, field}}
+                                      Builder.express builder { parent, typ = convertType typ
+                                                              , oper = Without {base, field} }
                                       |> continue parent stack cont )
                     in convertExpr parent stack cont env base
                     end
 
-                 | FFTerm.Field (_, _, expr, label) =>
+                 | FTerm.Field (_, typ, expr, label) =>
                     let val cont =
-                            FnK ( Anon (FFTerm.typeOf expr)
+                            FnK ( Anon (FTerm.typeOf expr)
                                 , fn {parent, stack, expr} =>
-                                      Builder.express builder {parent, oper = Field (expr, label)}
+                                      Builder.express builder {parent, typ = convertType typ, oper = Field (expr, label)}
                                       |> continue parent stack cont )
                     in convertExpr parent stack cont env expr
                     end
 
-                 | FFTerm.Cast (_, _, expr, co) =>
+                 | FTerm.Cast (_, typ, expr, co) =>
                     let val cont =
-                            FnK ( Anon (FFTerm.typeOf expr)
+                            FnK ( Anon (FTerm.typeOf expr)
                                 , fn {parent, stack, expr} =>
-                                      Builder.express builder {parent, oper = Cast (expr, convertCoercion co)}
+                                      Builder.express builder { parent, typ = convertType typ
+                                                              , oper = Cast (expr, convertCoercion co) }
                                       |> continue parent stack cont )
                     in convertExpr parent stack cont env expr
                     end
 
-                 | FFTerm.Type (_, t) =>
-                    Builder.express builder {parent, oper = Type (convertType t)}
-                    |> continue parent stack cont
+                 | FTerm.Type (_, t) =>
+                    let val t = convertType t
+                    in Builder.express builder {parent, typ = Type.Type t, oper = Type t}
+                       |> continue parent stack cont
+                    end
 
-                 | FFTerm.Use (_, {id, ...}) => continue parent stack cont (Env.lookup (env, id))
+                 | FTerm.Use (_, {id, ...}) => continue parent stack cont (Env.lookup (env, id))
 
-                 | FFTerm.Const (_, c) =>
-                    Builder.express builder {parent, oper = Const c}
+                 | FTerm.Const (_, c) =>
+                    Builder.express builder {parent, typ = Type.Prim (Const.typeOf c), oper = Const c}
                     |> continue parent stack cont
 
             and convertFn env (_, {id = paramId, typ = domain, var = _, pos = _}, _, body) =
                 let val label = Label.fresh ()
                     val stackTyp = Type.Prim Type.Prim.StackT
-                    val stack = Builder.express builder {parent = SOME label, oper = Param (label, 0)}
+                    val stack = Builder.express builder {parent = SOME label, typ = stackTyp, oper = Param (label, 0)}
                     val domain = convertType domain
-                    val param = Builder.express builder {parent = SOME label, oper = Param (label, 1)}
-                    val codomain = convertType (FFTerm.typeOf body)
+                    val param = Builder.express builder {parent = SOME label, typ = domain, oper = Param (label, 1)}
+                    val codomain = convertType (FTerm.typeOf body)
                     val contTyp = FnT {tDomain = #[], vDomain = #[Type.Prim Type.Prim.StackT, codomain]}
-                    val cont = TrivK (Builder.express builder {parent = SOME label, oper = Param (label, 2)})
+                    val cont = TrivK (Builder.express builder {parent = SOME label, typ = contTyp, oper = Param (label, 2)})
 
                     val env = Env.insert (env, paramId, param)
                     val f = { name = NONE (* TODO: SOME when possible *)
@@ -235,7 +251,7 @@ end = struct
                 in label
                 end
 
-            and convertExportedFn (_, params : FFTerm.def vector, body) =
+            and convertExportedFn (_, params : FTerm.def vector, body) =
                 let val label = Label.fresh ()
                     val parent = SOME label
                     val paramTypes =
@@ -250,16 +266,16 @@ end = struct
                     val vParams =
                         Vector.concat [paramTypes, calleeSaveParams]
                     val paramDefs =
-                        Vector.mapi (fn (i, _) =>
-                                         Builder.express builder {parent, oper = Param (label, i)})
+                        Vector.mapi (fn (i, typ) =>
+                                         Builder.express builder {parent, typ, oper = Param (label, i)})
                                     vParams
                     val calleeSaveArgs =
                         VectorSlice.vector (VectorSlice.slice (paramDefs, Vector.length paramTypes, NONE))
                     val stack =
-                        Builder.express builder { parent
+                        Builder.express builder { parent, typ = Prim PrimType.StackT
                                                 , oper = PrimApp { opn = Primop.StackNew
                                                                  , tArgs = #[], vArgs = #[] } }
-                    val retT = FFTerm.typeOf body
+                    val retT = FTerm.typeOf body
                     val cont =
                         FnK ( Anon retT
                             , fn {parent = _, stack = _, expr} =>
@@ -281,10 +297,10 @@ end = struct
             and convertTFn env (_, params, body) =
                 let val label = Label.fresh ()
                     val stackTyp = Type.Prim Type.Prim.StackT
-                    val stack = Builder.express builder {parent = SOME label, oper = Param (label, 0)}
-                    val codomain = convertType (FFTerm.typeOf body)
+                    val stack = Builder.express builder {parent = SOME label, typ = stackTyp, oper = Param (label, 0)}
+                    val codomain = convertType (FTerm.typeOf body)
                     val contTyp = FnT {tDomain = #[], vDomain = #[Type.Prim Type.Prim.StackT, codomain]}
-                    val cont = TrivK (Builder.express builder {parent = SOME label, oper = Param (label, 1)})
+                    val cont = TrivK (Builder.express builder {parent = SOME label, typ = contTyp, oper = Param (label, 1)})
 
                     val f = { name = NONE (* TODO: SOME when possible *)
                             , cconv = NONE
@@ -298,7 +314,7 @@ end = struct
                 case Vector1.Slice.uncons stmts
                 of SOME (stmt, stmts) =>
                     (case stmt
-                     of FFTerm.Val (_, def as {id, ...}, expr) =>
+                     of FTerm.Val (_, def as {id, ...}, expr) =>
                          let val cont = FnK ( Named def
                                             , fn {parent, stack, expr} =>
                                                   let val env = Env.insert (env, id, expr)
@@ -306,8 +322,8 @@ end = struct
                                                   end )
                          in convertExpr parent stack cont env expr
                          end
-                      | FFTerm.Expr expr =>
-                         let val cont = FnK ( Anon (FFTerm.typeOf expr)
+                      | FTerm.Expr expr =>
+                         let val cont = FnK ( Anon (FTerm.typeOf expr)
                                             , fn {parent, stack, expr = _} =>
                                                    convertBlock parent stack cont env stmts body )
                          in convertExpr parent stack cont env expr
@@ -324,30 +340,32 @@ end = struct
                 in {pattern, target = kLabel}
                 end
 
-            and convertPattern (FFTerm.AnyP _) = AnyP
-              | convertPattern (FFTerm.ConstP (_, c)) = ConstP c
+            and convertPattern (FTerm.AnyP _) = AnyP
+              | convertPattern (FTerm.ConstP (_, c)) = ConstP c
 
             and continue parent stack cont expr =
                 case cont
                 of FnK (paramHint, k) => k {parent, stack, expr} (* FIXME: use `paramHint` *)
                  | TrivK k => Jump {callee = k, tArgs = #[], vArgs = #[stack, expr]}
-                 | TrivlK k => Goto {callee = k, tArgs = #[], vArgs = #[stack, expr]}
+                 | TrivlK (_, k) => Goto {callee = k, tArgs = #[], vArgs = #[stack, expr]}
 
             and trivializeCont cont =
                 case cont
                 of FnK (paramHint, kf) =>
                     let val kLabel = Label.fresh ()
-                        val stack = Builder.express builder {parent = SOME kLabel, oper = Param (kLabel, 0)}
+                        val stack = Builder.express builder { parent = SOME kLabel, typ = Prim PrimType.StackT
+                                                            , oper = Param (kLabel, 0) }
                         val param =
                             case paramHint
                             of Named {typ, ...} => convertType typ
                              | Anon typ => convertType typ
-                        val paramUse = Builder.express builder {parent = SOME kLabel, oper = Param (kLabel, 1)}
-                        val k = { name = NONE, cconv = NONE
-                                , tParams = #[], vParams = #[Type.Prim Type.Prim.StackT, param]
+                        val tParams = #[]
+                        val vParams = #[Type.Prim Type.Prim.StackT, param]
+                        val paramUse = Builder.express builder {parent = SOME kLabel, typ = param, oper = Param (kLabel, 1)}
+                        val k = { name = NONE, cconv = NONE, tParams, vParams
                                 , body = kf {parent = SOME kLabel, stack, expr = paramUse} }
                         do Builder.insertCont builder (kLabel, k)
-                    in TrivlK kLabel
+                    in TrivlK (FnT {tDomain = tParams, vDomain = vParams}, kLabel)
                     end
                  | (TrivK _ | TrivlK _) => cont
 
@@ -355,10 +373,10 @@ end = struct
                 case trivializeCont cont
                 of FnK _ => raise Fail "unreachable"
                  | TrivK kDef => kDef
-                 | TrivlK kLabel => Builder.express builder {parent, oper = Label kLabel}
+                 | TrivlK (typ, kLabel) => Builder.express builder {parent, typ, oper = Label kLabel}
 
             val codePos = #1 code
-            val main = (codePos, #[], FFTerm.Let code)
+            val main = (codePos, #[], FTerm.Let code)
             val mainLabel = convertExportedFn main
         in Builder.build builder mainLabel
         end

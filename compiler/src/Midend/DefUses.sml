@@ -58,7 +58,7 @@ end = struct
               | NONE => UseSiteSet.singleton use
           ) )
 
-    fun analyzeStmt ((use, {parent = _, oper}), defUses) =
+    fun analyzeStmt ((use, {parent = _, typ = _, oper}), defUses) =
         case oper
         of PrimApp {opn = _, tArgs = _, vArgs} =>
             Vector.foldl (fn (def', defUses) => useDef defUses def' (Expr use))
