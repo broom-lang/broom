@@ -150,6 +150,7 @@ signature CPS_PROGRAM = sig
     val defSite : t -> CpsId.t -> Expr.t
     val defType : t -> CpsId.t -> Expr.Type.t
     val labelCont : t -> Label.t -> Cont.t
+    val labelType : t -> Label.t -> Expr.Type.t
     val global : t -> Name.t -> Global.t
     val byParent : t -> CpsId.SortedSet.set Expr.ParentMap.t
 
@@ -631,6 +632,11 @@ end = struct
         fun defType program = Expr.typeOf o defSite program
 
         fun labelCont ({conts, ...} : t) label = LabelMap.lookup conts label
+
+        fun labelType program label =
+            let val {tParams, vParams, ...} = labelCont program label
+            in Type.FnT {tDomain = tParams, vDomain = vParams}
+            end
 
         fun global ({globals, ...} : t) name = Name.HashMap.lookup globals name
 

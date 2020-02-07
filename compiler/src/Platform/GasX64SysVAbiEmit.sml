@@ -84,7 +84,7 @@ end = struct
                     line ("\tcall\t" ^ sym ^ "@PLT")
 
             val emitStmt =
-                fn Stmt.Def (target, expr) => emitExpr (SOME target, expr)
+                fn Stmt.Def (target, _, expr) => emitExpr (SOME target, expr)
                  | Stmt.Eff expr => emitExpr (NONE, expr)
 
             val emitTransfer =

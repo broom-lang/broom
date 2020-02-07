@@ -36,12 +36,12 @@ signature REGISTER_ENV = sig
     val fixedDef : t -> hints -> builder -> Label.t -> CpsId.t -> Location.t -> t
 
     (* Move id:s away from caller-save registers (except the return value registers). *)
-    val evacuateCallerSaves : t -> builder -> Label.t -> t
+    val evacuateCallerSaves : t -> hints -> builder -> Label.t -> t
 
     (* Emit moves, loads and stores that change env to env'. *)
     val conform : t -> hints -> builder -> Label.t -> t -> unit
 
-    val incCounts : Hints.counts -> t -> Hints.counts
+    val incCounts : hints -> Hints.counts -> t -> Hints.counts
 
     val fromCounts : int ref -> Hints.counts -> t
 end
@@ -144,7 +144,7 @@ end) :> REGISTER_ENV
                                 SOME ({occupieds = Map.insert (occupieds, reg, id), frees}, reg)
                              | [] => NONE
                         end
-            in loop (Hints.find hints id)
+            in loop (#2 (Hints.find hints id))
             end
 
         fun allocateEnsuring ({occupieds, frees}) pred id =
@@ -247,20 +247,22 @@ end) :> REGISTER_ENV
 
 (* # Effectful Building Blocks *)
 
-    fun evacuateTo env builder label src target =
+    fun evacuateTo env hints builder label src target =
         if not (Location.eq (src, target))
         then case (src, target)
              of (srcLoc as Register src, Register target) =>
                  let val {registers, ...} = env
                      val srcId = Registers.lookup registers src
-                 in Builder.insertStmt builder label (Stmt.Def (src, Abi.RegIsa.Instrs.Oper.move target))
+                     val (typ, _) = Hints.find hints srcId
+                 in Builder.insertStmt builder label (Stmt.Def (src, typ, Abi.RegIsa.Instrs.Oper.move target))
                   ; freeLocation env srcId srcLoc
                  end
               | (srcLoc as Register src, StackSlot target) =>
                  let val {registers, ...} = env
                      val srcId = Registers.lookup registers src
+                     val (typ, _) = Hints.find hints srcId
                      val oper = Abi.RegIsa.Instrs.Oper.stackLoad Abi.sp (StackSlot.index target)
-                 in Builder.insertStmt builder label (Stmt.Def (src, oper))
+                 in Builder.insertStmt builder label (Stmt.Def (src, typ, oper))
                   ; freeLocation env srcId srcLoc
                  end
               | (srcLoc as StackSlot src, Register target) =>
@@ -276,13 +278,13 @@ end) :> REGISTER_ENV
 
     fun evacuateReg env hints builder label id reg =
         let val (env, loc') = allocate env hints id
-        in evacuateTo env builder label (Register reg) loc'
+        in evacuateTo env hints builder label (Register reg) loc'
         end
 
     fun evacuateEnsuring env builder label pred id loc =
         raise Fail "unimplemented"
 
-    fun freeIn env builder label id reg =
+    fun freeIn env hints builder label id reg =
         case locationsOf env id
         of SOME idLocs =>
             let val (origLoc, origReg) =
@@ -296,15 +298,15 @@ end) :> REGISTER_ENV
                     Location.SortedSet.foldl (fn (loc as Register reg, env) =>
                                                   if Register.eq (reg, origReg)
                                                   then env
-                                                  else evacuateTo env builder label loc origLoc
+                                                  else evacuateTo env hints builder label loc origLoc
                                                | (loc as StackSlot _, env) =>
-                                                  evacuateTo env builder label loc origLoc)
+                                                  evacuateTo env hints builder label loc origLoc)
                                              env idLocs
             in freeLocation env id origLoc
             end
          | NONE => raise Fail "unreachable"
 
-    fun free env builder label id =
+    fun free env hints builder label id =
         case locationsOf env id
         of SOME idLocs =>
             let val (origLoc, origReg) =
@@ -316,9 +318,9 @@ end) :> REGISTER_ENV
                     Location.SortedSet.foldl (fn (loc as Register reg, env) =>
                                                   if Register.eq (reg, origReg)
                                                   then env
-                                                  else evacuateTo env builder label loc origLoc
+                                                  else evacuateTo env hints builder label loc origLoc
                                                | (loc as StackSlot _, env) =>
-                                                  evacuateTo env builder label loc origLoc)
+                                                  evacuateTo env hints builder label loc origLoc)
                                              env idLocs
             in freeLocation env id origLoc
             end
@@ -354,19 +356,19 @@ end) :> REGISTER_ENV
 
     fun regDef env hints builder label id =
         let val (env, reg) = regUse env hints builder label id
-            val env = free env builder label id
+            val env = free env hints builder label id
         in (env, reg)
         end
 
     fun fixedRegDef env hints builder label id reg =
         let val env = fixedRegUse env hints builder label id reg
-        in freeIn env builder label id reg
+        in freeIn env hints builder label id reg
         end
 
     fun fixedDef env hints builder label id =
         fn Register reg => fixedRegDef env hints builder label id reg
 
-    fun evacuateCallerSaves (env as {locations, ...} : t) builder label =
+    fun evacuateCallerSaves (env as {locations, ...} : t) hints builder label =
         let fun step (id, idLocs, env) =
                 let val (env, idLocs, loc') =
                         case Location.SortedSet.find isCalleeSave idLocs
@@ -393,7 +395,7 @@ end) :> REGISTER_ENV
                     fun step (loc, env) =
                         if isCalleeSave loc orelse Location.eq (loc, loc')
                         then env
-                        else evacuateTo env builder label loc loc'
+                        else evacuateTo env hints builder label loc loc'
                 in Location.SortedSet.foldl step env idLocs
                 end
         in CpsId.SortedMap.foldli step env locations
@@ -412,16 +414,20 @@ end) :> REGISTER_ENV
         in ignore (CpsId.SortedMap.foldli step env locations)
         end
 
-    fun incCounts counts ({locations, ...} : t) =
-        let fun idLocsToCounts idLocs =
-                let fun step (loc, idCounts) =
+    fun incCounts hints counts ({locations, ...} : t) =
+        let fun idLocsToCounts (id, idLocs) =
+                let val (t, _) = Hints.find hints id
+                    fun step (loc, idCounts) =
                         let val count = getOpt (Location.SortedMap.find (idCounts, loc), 0)
                         in Location.SortedMap.insert (idCounts, loc, count + 1)
                         end
-                in Location.SortedSet.foldl step Location.SortedMap.empty idLocs
+                in (t, Location.SortedSet.foldl step Location.SortedMap.empty idLocs)
                 end
-        in CpsId.SortedMap.unionWith (Location.SortedMap.unionWith op+)
-                                     (counts, CpsId.SortedMap.map idLocsToCounts locations)
+
+            fun combine ((_, idCounts), (t, idCounts')) =
+                (t, Location.SortedMap.unionWith op+ (idCounts, idCounts'))
+        in CpsId.SortedMap.unionWith combine
+                                     (counts, CpsId.SortedMap.mapi idLocsToCounts locations)
         end
 
     fun fromCounts maxSlotCount counts =

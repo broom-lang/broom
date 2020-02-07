@@ -10,8 +10,8 @@ structure X64InsertLogues = InsertLoguesFn(struct
                 then frameSize
                 else frameSize + 0w8
         in  #[ Stmt.Eff (Oper.PUSH Reg.rbp)
-             , Stmt.Def (Reg.rbp, Oper.MOV Reg.rsp)
-             , Stmt.Def (Reg.rsp, Oper.SUBc (Reg.rsp, frameSize)) ]
+             , Stmt.Def (Reg.rbp, RegIsa.Type.Prim PrimType.Int, Oper.MOV Reg.rsp)
+             , Stmt.Def (Reg.rsp, RegIsa.Type.Prim PrimType.Int, Oper.SUBc (Reg.rsp, frameSize)) ]
         end
 
     fun epilogue frameSize = #[Stmt.Eff Oper.LEAVE]

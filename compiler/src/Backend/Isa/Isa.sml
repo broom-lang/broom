@@ -41,6 +41,7 @@ signature ISA = sig
     structure Register : REGISTER where type t = def
     structure Location : REGISTER where type t = loc
 
+    structure Type : CPS_TYPE where type t = Cps.Type.t
     structure Global : CPS_GLOBAL where type t = Cps.Global.t
 
     structure Instrs : INSTRUCTIONS
@@ -50,7 +51,7 @@ signature ISA = sig
 
     structure Stmt : sig
         datatype t
-            = Def of def * oper
+            = Def of def * Type.t * oper
             | Eff of oper
 
         val toDoc : t -> PPrint.t
@@ -62,7 +63,7 @@ signature ISA = sig
     structure Cont : sig
         type t = { name : Name.t option
                  , cconv : CallingConvention.t option
-                 , params : loc option vector
+                 , params : (loc option * Type.t) vector
                  , stmts : Stmt.t vector
                  , transfer : Transfer.t }
 
@@ -71,10 +72,11 @@ signature ISA = sig
         structure Builder : sig
             type builder
 
-            val new : {name : Name.t option, cconv : CallingConvention.t option, argc : int} -> builder
+            val new : { name : Name.t option, cconv : CallingConvention.t option
+                      , paramTypes : Type.t vector } -> builder
             val setParam : builder -> int -> loc -> unit
-            val setParams : builder -> loc option array -> unit
-            val getParam : builder -> int -> loc option
+            val setParams : builder -> (loc option * Type.t) array -> unit
+            val getParam : builder -> int -> loc option * Type.t
             val insertStmt : builder -> Stmt.t -> unit
             val setTransfer : builder -> Transfer.t -> unit
             val build : builder -> t
@@ -93,10 +95,11 @@ signature ISA = sig
             val new : unit -> builder
             val insertGlobal : builder -> Name.t -> Global.t -> unit
             val createCont : builder -> Label.t
-                -> {name : Name.t option, cconv : CallingConvention.t option, argc : int} -> unit
+                -> { name : Name.t option, cconv : CallingConvention.t option
+                   , paramTypes : Type.t vector } -> unit
             val setParam : builder -> Label.t -> int -> loc -> unit
-            val setParams : builder -> Label.t -> loc option array -> unit
-            val getParam : builder -> Label.t -> int -> loc option
+            val setParams : builder -> Label.t -> (loc option * Type.t) array -> unit
+            val getParam : builder -> Label.t -> int -> loc option * Type.t
             val insertStmt : builder -> Label.t -> Stmt.t -> unit
             val setTransfer : builder -> Label.t -> Transfer.t -> unit
             val build : builder -> Label.t -> t
@@ -116,6 +119,7 @@ end) :> ISA
 = struct
     structure Register = Args.Register
     structure Location = Args.Location
+    structure Type = Cps.Type
     structure Global = Cps.Global
     structure Instrs = Args.Instrs
     structure Oper = Instrs.Oper
@@ -138,15 +142,16 @@ end) :> ISA
 
     structure Stmt = struct
         datatype t
-            = Def of def * oper
+            = Def of def * Type.t * oper
             | Eff of oper
 
         val toDoc =
-            fn Def (reg, oper) => Register.toDoc reg <+> text "=" <+> Oper.toDoc oper
+            fn Def (reg, t, oper) =>
+                Register.toDoc reg <+> text ":" <+> Type.toDoc t <+> text "=" <+> Oper.toDoc oper
              | Eff oper => Oper.toDoc oper
 
         fun appLabels f =
-            fn (Def (_, oper) | Eff oper) => Oper.appLabels f oper
+            fn (Def (_, _, oper) | Eff oper) => Oper.appLabels f oper
     end
 
     structure Transfer = Args.Instrs.Transfer
@@ -154,13 +159,15 @@ end) :> ISA
     structure Cont = struct
         type t = { name : Name.t option
                  , cconv : CallingConvention.t option
-                 , params : loc option vector
+                 , params : (loc option * Type.t) vector
                  , stmts : Stmt.t vector
                  , transfer : Transfer.t }
 
-        val paramToDoc =
-            fn SOME loc => Location.toDoc loc
-             | NONE => text "_"
+        fun paramToDoc (loc, typ) =
+            (case loc
+             of SOME loc => Location.toDoc loc
+              | NONE => text "_")
+            <+> text ":" <+> Type.toDoc typ
 
         fun toDoc (label, {name, cconv, params, stmts, transfer}) =
             text "fun"
@@ -177,16 +184,20 @@ end) :> ISA
 
         structure Builder = struct
             type builder = { name : Name.t option, cconv : CallingConvention.t option
-                           , params : loc option array ref
+                           , params : (loc option * Type.t) array ref
                            , stmts : Stmt.t list ref
                            , transfer : Transfer.t option ref }
 
-            fun new {name, cconv, argc} =
+            fun new {name, cconv, paramTypes} =
                 { name, cconv
-                , params = ref (Array.tabulate (argc, Fn.constantly NONE))
+                , params = ref (Array.tabulate ( Vector.length paramTypes
+                                               , fn i => (NONE, Vector.sub (paramTypes, i)) ))
                 , stmts = ref [], transfer = ref NONE }
 
-            fun setParam ({params, ...} : builder) i loc = Array.update (!params, i, SOME loc)
+            fun setParam ({params, ...} : builder) i loc =
+                let val (_, t) = Array.sub (!params, i)
+                in Array.update (!params, i, (SOME loc, t))
+                end
 
             fun setParams ({params, ...} : builder) params' = params := params'
 

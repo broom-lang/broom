@@ -42,7 +42,7 @@ functor IsaLabelUsesFn (Isa : ISA) :> LABEL_USES
             val usesInExpr = Isa.Instrs.Oper.appLabels escape
 
             val usesInStmt =
-                fn Def (_, expr) => usesInExpr expr
+                fn Def (_, _, expr) => usesInExpr expr
                  | Eff expr => usesInExpr expr
 
             val usesInTransfer = Isa.Instrs.Transfer.appLabels call

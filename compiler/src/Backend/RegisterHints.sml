@@ -5,13 +5,13 @@ signature REGISTER_HINTS = sig
         where type RegIsa.loc = Location.t
 
     type t
-    type counts = (int Location.SortedMap.map) CpsId.SortedMap.map
+    type counts = (Abi.Isa.Type.t * int Location.SortedMap.map) CpsId.SortedMap.map
 
     val empty : t
     val emptyCounts : counts
     val fromCounts : counts -> t
-    val find : t -> CpsId.t -> Location.t list
-    val hint : t -> CpsId.t -> Location.t -> t
+    val find : t -> CpsId.t -> Abi.Isa.Type.t * Location.t list
+    val hint : t -> CpsId.t -> Abi.Isa.Type.t -> Location.t option -> t
     val merge : t -> t -> t
     val forgetCallerSaves : t -> t
 end
@@ -33,8 +33,8 @@ end) :> REGISTER_HINTS
 
     val op|> = Fn.|>
 
-    type t = location list Map.map
-    type counts = (int Location.SortedMap.map) Map.map
+    type t = (Abi.Isa.Type.t * location list) Map.map
+    type counts = (Abi.Isa.Type.t * int Location.SortedMap.map) Map.map
 
     val empty = Map.empty
 
@@ -51,17 +51,30 @@ end) :> REGISTER_HINTS
                 |> Location.SortedMap.listItemsi |> Vector.fromList
                 |> VectorExt.sort compareCountedLocs
                 |> Vector.map #1 |> VectorExt.toList
-        in Map.map idHints counts
+        in Map.map (Pair.second idHints) counts
         end
 
-    fun find hints id = getOpt (Map.find (hints, id), [])
+    fun find hints id = Map.lookup (hints, id)
 
     fun forget hints loc =
-        Map.map (List.filter (fn loc' => not (Location.eq (loc', loc)))) hints
+        Map.map (Pair.second (List.filter (fn loc' => not (Location.eq (loc', loc))))) hints
 
-    fun hint hints id loc =
-        let val hints = forget hints loc
-        in Map.insert (hints, id, loc :: find hints id)
+    fun hint hints id t loc =
+        let val hints =
+                case loc
+                of SOME loc => forget hints loc
+                 | NONE => hints
+            val idHints =
+                case Map.find (hints, id)
+                of SOME (_, idHints) =>
+                    (case loc
+                     of SOME loc => loc :: idHints
+                      | NONE => idHints)
+                 | NONE =>
+                    (case loc
+                     of SOME loc => [loc]
+                      | NONE => [])
+        in Map.insert (hints, id, (t, idHints))
         end
 
     fun forgetCallerSaves hints =
@@ -70,6 +83,6 @@ end) :> REGISTER_HINTS
                      (Vector.map Register (#callerSaves Abi.foreignCallingConvention))
 
     fun merge hints hints' =
-        Map.unionWith (fn (idHints, idHints') => idHints' @ idHints) (hints, hints')
+        Map.unionWith (fn ((_, idHints), (t, idHints')) => (t, idHints' @ idHints)) (hints, hints')
 end
 

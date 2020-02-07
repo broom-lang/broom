@@ -1,5 +1,6 @@
 structure X64InstrSelection = InstrSelectionFn(struct
     structure Isa = X64Isa
+    structure Type = Cps.Type
     structure Global = Cps.Global
     structure Builder = Isa.Program.Builder
 
@@ -17,11 +18,11 @@ structure X64InstrSelection = InstrSelectionFn(struct
              ; Builder.insertGlobal builder name v
             end
 
-        fun expr program builder parent def =
+        fun expr program builder parent def typ =
             fn ClosureNew (layout, label, clovers) =>
                 let val ldef = CpsId.fresh ()
-                in Builder.insertStmt builder parent (Def (def, CALL ("Broom_allocate", #[layout])))
-                 ; Builder.insertStmt builder parent (Def (ldef, LOADl label))
+                in Builder.insertStmt builder parent (Def (def, typ, CALL ("Broom_allocate", #[layout])))
+                 ; Builder.insertStmt builder parent (Def (ldef, Cps.Program.labelType program label, LOADl label))
                  ; Builder.insertStmt builder parent (Eff (STORE ( { base = SOME def
                                                                    , index = NONE
                                                                    , disp = 0 }
@@ -38,19 +39,19 @@ structure X64InstrSelection = InstrSelectionFn(struct
                  ; #[def]
                 end
              | ClosureFn closure =>
-                ( Builder.insertStmt builder parent (Def (def, LOAD { base = SOME closure
-                                                                    , index = NONE
-                                                                    , disp = 0 }))
+                ( Builder.insertStmt builder parent (Def (def, typ, LOAD { base = SOME closure
+                                                                         , index = NONE
+                                                                         , disp = 0 }))
                 ; #[def] )
              | Clover (closure, i) =>
                 let val disp = X64RegInstructions.registerSize * (1 + i)
-                in Builder.insertStmt builder parent (Def (def, LOAD { base = SOME closure
-                                                                     , index = NONE
-                                                                     , disp }))
+                in Builder.insertStmt builder parent (Def (def, typ, LOAD { base = SOME closure
+                                                                          , index = NONE
+                                                                          , disp }))
                  ; #[def]
                 end
              | EmptyRecord =>
-                ( Builder.insertStmt builder parent (Def (def, LOADc 0w0))
+                ( Builder.insertStmt builder parent (Def (def, typ, LOADc 0w0))
                 ; #[def] )
              | Cps.Expr.Param (label, i) =>
                 ( Builder.setParam builder parent i def
@@ -58,13 +59,14 @@ structure X64InstrSelection = InstrSelectionFn(struct
              | PrimApp {opn, tArgs = _, vArgs} =>
                 (case opn
                  of Primop.StackNew => (* HACK: *)
-                     ( Builder.insertStmt builder parent (Def (def, LOADc 0w0))
+                     ( Builder.insertStmt builder parent (Def (def, typ, LOADc 0w0))
                      ; #[def] )
                   | Primop.BoxNew =>
                      let val #[] = vArgs
                          val layout = CpsId.fresh ()
-                     in expr program builder parent layout (Global (Name.fromString "layout_Box")) (* HACK *)
-                      ; Builder.insertStmt builder parent (Def (def, CALL ("Broom_allocate", #[layout])))
+                     in expr program builder parent layout (Type.Prim PrimType.Layout)
+                             (Global (Name.fromString "layout_Box")) (* HACK *)
+                      ; Builder.insertStmt builder parent (Def (def, typ, CALL ("Broom_allocate", #[layout])))
                       ; #[def]
                      end
                   | Primop.BoxInit =>
@@ -78,18 +80,18 @@ structure X64InstrSelection = InstrSelectionFn(struct
                   | Primop.BoxGet =>
                      let val #[stack, box] = vArgs
                          val v = CpsId.fresh ()
-                     in Builder.insertStmt builder parent (Def (v, (LOAD { base = SOME box
-                                                                         , index = NONE
-                                                                         , disp = 0 })))
+                     in Builder.insertStmt builder parent (Def (v, typ, LOAD { base = SOME box
+                                                                             , index = NONE
+                                                                             , disp = 0 }))
                       ; #[stack, v]
                      end)
              | Result (vals, i) => raise Fail "unreachable"
              | Global name =>
                 ( global program builder name
-                ; Builder.insertStmt builder parent (Def (def, LOADg name))
+                ; Builder.insertStmt builder parent (Def (def, typ, LOADg name))
                 ; #[def] )
              | Const (Const.Int n) => (* FIXME: `n` might not fit into 32 bits: *)
-                ( Builder.insertStmt builder parent (Def (def, LOADc (Word32.fromInt n)))
+                ( Builder.insertStmt builder parent (Def (def, typ, LOADc (Word32.fromInt n)))
                 ; #[def] )
 
         fun checked builder label {opn, tArgs = #[], vArgs = #[a, b], succeed, fail} =
@@ -98,9 +100,9 @@ structure X64InstrSelection = InstrSelectionFn(struct
                     of Primop.IAdd => ADD
                      | Primop.ISub => SUB
                      | Primop.IMul => IMUL
-                val succDef = valOf (Builder.getParam builder succeed 0)
+                val (succDef, typ) = Pair.first valOf (Builder.getParam builder succeed 0)
             in Builder.setParams builder succeed (Array.fromList [])
-             ; Builder.insertStmt builder label (Def (succDef, instr (a, b)))
+             ; Builder.insertStmt builder label (Def (succDef, typ, instr (a, b)))
              ; Jcc (X64Instructions.Transfer.Overflow, succeed, fail)
             end
 

@@ -3,7 +3,7 @@ functor InstrSelectionFn (Args : sig
 
     structure Implement : sig
         val expr : Cps.Program.t -> Isa.Program.Builder.builder
-            -> Label.t -> CpsId.t -> Cps.Expr.oper -> CpsId.t vector
+            -> Label.t -> CpsId.t -> Cps.Type.t -> Cps.Expr.oper -> CpsId.t vector
         val transfer : Isa.Program.Builder.builder -> Label.t -> Cps.Transfer.t -> Isa.Transfer.t
     end
 end) :> sig
@@ -34,7 +34,7 @@ end = struct
                     let do Cps.Expr.foldLabels (fn (label, ()) => selectLabel label)
                                                () oper
                         val oper = Cps.Expr.mapDefs selectDef oper
-                    in Implement.expr program builder parent def oper
+                    in Implement.expr program builder parent def typ oper
                     end
                  | {parent = NONE, ...} => raise Fail "unreachable"
 
@@ -61,7 +61,7 @@ end = struct
                 end
 
             and selectCont (label, {name, cconv, tParams = _, vParams, body}) =
-                ( Builder.createCont builder label {name, cconv, argc = Vector.length vParams}
+                ( Builder.createCont builder label {name, cconv, paramTypes = vParams}
                 ; Builder.setTransfer builder label (selectTransfer body label) )
 
             and selectLabel label =

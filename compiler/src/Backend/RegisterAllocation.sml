@@ -41,7 +41,7 @@ end = struct
                 in  if calls = 1
                     then let val hints = Env.Hints.merge predHints (Env.Hints.fromCounts counts)
                              val env = allocateEBB label hints (LabelMap.lookup conts label)
-                         in ( Env.incCounts counts env
+                         in ( Env.incCounts hints counts env
                             , env :: revEnvs )
                          end
                     else (counts, revEnvs)
@@ -74,8 +74,8 @@ end = struct
                         case Label.HashTable.find cconvs label
                         of SOME targetLocs => targetLocs
                          | NONE => Abi.escapeeCallingConvention (* HACK *)
-                in Vector.foldl (fn ((SOME param, loc), hints) => Env.Hints.hint hints param loc
-                                  | ((NONE, _), hints) => hints)
+                in Vector.foldl (fn (((SOME param, typ), loc), hints) => Env.Hints.hint hints param typ (SOME loc)
+                                  | (((NONE, _), _), hints) => hints)
                                 Env.Hints.empty
                                 (VectorExt.zip (params, targetLocs))
                 end
@@ -86,7 +86,7 @@ end = struct
                         case Label.HashTable.find cconvs label
                         of SOME targetLocs => targetLocs
                          | NONE => Abi.escapeeCallingConvention (* HACK *)
-                in Vector.foldri (fn (i, (param, loc'), env) => (* FIXME: Target register should not be freed: *)
+                in Vector.foldri (fn (i, ((param, _), loc'), env) => (* FIXME: Target register should not be freed: *)
                                       let val param = case param
                                                       of SOME param => param
                                                        | NONE => CpsId.fresh () (* HACK *)
@@ -98,13 +98,13 @@ end = struct
                 end
 
             and allocateEBB label hints {name, cconv, params, stmts, transfer} =
-                let do Builder.createCont builder label {name, cconv, argc = Vector.length params}
+                let do Builder.createCont builder label {name, cconv, paramTypes = Vector.map #2 params}
                     fun allocateBlock hints stmts =
                         case VectorSlice.uncons stmts
                         of SOME (stmt, stmts) =>
                             let val hints' = Registerizer.stmtHints cconvs label hints stmt
                                 val env = allocateBlock hints' stmts
-                            in allocateStmt label env hints stmt
+                            in allocateStmt label env hints' stmt
                             end
                          | NONE => allocateTransfer label hints transfer
                     val env = allocateBlock hints (VectorSlice.full stmts)

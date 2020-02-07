@@ -22,10 +22,11 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
     val op|> = Fn.|>
 
     fun stmtHints cconvs label hints =
-        fn Isa.Stmt.Def (target, X64Instructions.Oper.CALLd (dest, args)) =>
+        fn Isa.Stmt.Def (target, typ, X64Instructions.Oper.CALLd (dest, args)) =>
             let val hints = Hints.forgetCallerSaves hints
-            in Hints.hint hints target (Register Reg.rax)
+            in Hints.hint hints target typ (SOME (Register Reg.rax))
             end
+         | Isa.Stmt.Def (target, typ, _) => Hints.hint hints target typ NONE
          | _ => hints (* TODO *)
 
     fun transferHints cconvs label hints =
@@ -56,10 +57,10 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
         end
 
     fun stmt program cconvs builder label env hints =
-        fn Isa.Stmt.Def (target, expr as (X64Instructions.Oper.CALL (dest, args) | X64Instructions.Oper.CALLd (dest, args))) =>
+        fn Isa.Stmt.Def (target, typ, expr as (X64Instructions.Oper.CALL (dest, args) | X64Instructions.Oper.CALLd (dest, args))) =>
             let val targetReg = Reg.rax
                 val env = Env.fixedRegDef env hints builder label target targetReg
-                val env = Env.evacuateCallerSaves env builder label
+                val env = Env.evacuateCallerSaves env hints builder label
                 val paramRegs = #args Abi.foreignCallingConvention
                 val env = VectorExt.zip (args, paramRegs)
                         |> Vector.foldl (fn ((arg, reg), env) =>
@@ -69,44 +70,44 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
                     case expr
                     of X64Instructions.Oper.CALL _ => CALL
                      | X64Instructions.Oper.CALLd _ => CALLd
-            in Builder.insertStmt builder label (Stmt.Def (targetReg, oper (dest, #[])))
+            in Builder.insertStmt builder label (Stmt.Def (targetReg, typ, oper (dest, #[])))
              ; env
             end
 
-         | Isa.Stmt.Def (target, expr) =>
+         | Isa.Stmt.Def (target, typ, expr) =>
             let val (env, target) = Env.regDef env hints builder label target
             in  case expr
                 of X64Instructions.Oper.LOAD src =>
                     let val (env, src) = allocateMem env hints builder label src
-                    in Builder.insertStmt builder label (Stmt.Def (target, LOAD src))
+                    in Builder.insertStmt builder label (Stmt.Def (target, typ, LOAD src))
                      ; env
                     end
                  | X64Instructions.Oper.LOADc n =>
-                    ( Builder.insertStmt builder label (Stmt.Def (target, LOADc n))
+                    ( Builder.insertStmt builder label (Stmt.Def (target, typ, LOADc n))
                     ; env )
                  | X64Instructions.Oper.LOADl lLabel =>
-                    ( Builder.insertStmt builder label (Stmt.Def (target, LOADl lLabel))
+                    ( Builder.insertStmt builder label (Stmt.Def (target, typ, LOADl lLabel))
                     ; env )
                  | X64Instructions.Oper.LOADg name =>
                     ( global program builder name
-                    ; Builder.insertStmt builder label (Stmt.Def (target, LOADg name))
+                    ; Builder.insertStmt builder label (Stmt.Def (target, typ, LOADg name))
                     ; env )
                  | X64Instructions.Oper.ADD (a, b) =>
                     let val env = Env.fixedRegUse env hints builder label a target
                         val (env, b) = Env.regUse env hints builder label b
-                    in Builder.insertStmt builder label (Stmt.Def (target, ADD (target, b)))
+                    in Builder.insertStmt builder label (Stmt.Def (target, typ, ADD (target, b)))
                      ; env
                     end
                  | X64Instructions.Oper.SUB (a, b) =>
                     let val env = Env.fixedRegUse env hints builder label a target
                         val (env, b) = Env.regUse env hints builder label b
-                    in Builder.insertStmt builder label (Stmt.Def (target, SUB (target, b)))
+                    in Builder.insertStmt builder label (Stmt.Def (target, typ, SUB (target, b)))
                      ; env
                     end
                  | X64Instructions.Oper.IMUL (a, b) =>
                     let val env = Env.fixedRegUse env hints builder label a target
                         val (env, b) = Env.regUse env hints builder label b
-                    in Builder.insertStmt builder label (Stmt.Def (target, IMUL (target, b)))
+                    in Builder.insertStmt builder label (Stmt.Def (target, typ, IMUL (target, b)))
                      ; env
                     end
             end
