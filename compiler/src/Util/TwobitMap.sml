@@ -1,12 +1,16 @@
 signature TWOBIT_MAP = sig
     type t
-
+  
     val pack : Word8Vector.vector -> t
     val unpack : t -> Word8Vector.vector
     val bytes : t -> Word8Vector.vector
+    val toDoc : t -> PPrint.t
 end
 
 structure TwobitMap :> TWOBIT_MAP = struct
+    val op<> = PPrint.<>
+    val op<+> = PPrint.<+>
+
     structure Word2 :> sig
         type word
 
@@ -35,7 +39,7 @@ structure TwobitMap :> TWOBIT_MAP = struct
 
         val length = 4
         val maxIndex = length - 1
-        val mask = 0w3
+        val mask = Word8.fromLargeWord 0w3
 
         val fromWord8 = Fn.identity
         val toWord8 = Fn.identity
@@ -97,5 +101,19 @@ structure TwobitMap :> TWOBIT_MAP = struct
         Word8Vector.tabulate (len, fn i => sub (vs, i))
 
     val bytes : t -> Word8Vector.vector = #bytes
+
+    fun toDoc (vs : t) =
+        let val doc =
+                if #len vs = 0
+                then PPrint.empty
+                else let val vs = unpack vs
+                         fun step (v, acc) =
+                             acc <> PPrint.comma <+> PPrint.text (Word8.toString v)
+                     in Word8VectorSlice.foldl step
+                                               (PPrint.text (Word8.toString (Word8Vector.sub (vs, 0))))
+                                               (Word8VectorSlice.slice (vs, 1, NONE))
+                     end
+        in PPrint.brackets doc
+        end
 end
 

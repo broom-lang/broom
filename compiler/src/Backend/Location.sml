@@ -11,6 +11,7 @@ signature LOCATION = sig
     val toString : t -> string
 
     val isReg : t -> bool
+    val isStackSlot : t -> bool
 
     structure SortedSet : ORD_SET where type Key.ord_key = t
     structure SortedMap : ORD_MAP where type Key.ord_key = t
@@ -34,6 +35,10 @@ functor Location (Register : REGISTER) :> LOCATION
     val isReg =
         fn Register _ => true
          | StackSlot _ => false
+
+    val isStackSlot =
+        fn Register _ => false
+         | StackSlot _ => true
 
     val compare =
         fn (Register reg, Register reg') => Register.compare (reg, reg')

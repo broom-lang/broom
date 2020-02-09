@@ -31,6 +31,9 @@ signature CPS_TYPE = sig
 
         val toDoc : co -> PPrint.t
     end
+
+    val scalar : Word8.word
+    val pointiness : t -> Word8.word
 end
 
 signature CPS_GLOBAL = sig
@@ -38,6 +41,7 @@ signature CPS_GLOBAL = sig
 
     datatype t
         = Layout of layout
+        | SlotMap of TwobitMap.t
 
     withtype layout =
         { size : LargeWord.word option
@@ -326,6 +330,16 @@ end = struct
             val toDoc =
                 fn Refl t => toDoc t
         end
+
+        val scalar = Word8.fromLargeWord 0w0
+        val pointer = Word8.fromLargeWord 0w1
+
+        val pointiness =
+            fn FnT _ => scalar
+             | (Closure _ | AnyClosure _) => pointer
+             | AppT _ => pointer
+             | Record EmptyRow => scalar
+             | Prim _ => scalar
     end
 
     structure Global = struct
@@ -333,6 +347,7 @@ end = struct
 
         datatype t
             = Layout of layout
+            | SlotMap of TwobitMap.t
 
         withtype layout =
             { size : LargeWord.word option
@@ -371,6 +386,7 @@ end = struct
 
         val toDoc =
             fn Layout layout => layoutToDoc layout
+             | SlotMap slots => text "SlotMap" <+> TwobitMap.toDoc slots
 
         fun blobLayout size =
             let val size = LargeWord.fromInt size
@@ -395,6 +411,7 @@ end = struct
 
         fun appDeps f =
             fn Layout {fields, ...} => Vector.app (appFieldLayoutDeps f) fields
+             | SlotMap _ => ()
     end
 
     structure Transfer = struct

@@ -12,6 +12,7 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
         structure Abi = Abi
         structure Hints = Hints
     end)
+    structure Type = RegIsa.Type
     structure Builder = RegIsa.Program.Builder
     structure Stmt = RegIsa.Stmt
 
@@ -57,7 +58,26 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
         end
 
     fun stmt program cconvs builder label env hints =
-        fn Isa.Stmt.Def (target, typ, expr as (X64Instructions.Oper.CALL (dest, args) | X64Instructions.Oper.CALLd (dest, args))) =>
+        fn Isa.Stmt.Def (target, typ, expr as (X64Instructions.Oper.CALL (dest as "Broom_allocate", args))) =>
+            let val targetReg = Reg.rax
+                val env = Env.fixedRegDef env hints builder label target targetReg
+                val env = Env.evacuateRegisters env hints builder label
+                val slotMapName = Name.fresh ()
+                do Builder.insertGlobal builder slotMapName (RegIsa.Global.SlotMap (Env.slotMap env hints))
+                val slotMapId = CpsId.fresh ()
+                val args = VectorExt.append (args, slotMapId)
+                val paramRegs = #args Abi.foreignCallingConvention
+                val env = VectorExt.zip (args, paramRegs)
+                        |> Vector.foldl (fn ((arg, reg), env) =>
+                                             Env.fixedRegUse env hints builder label arg reg)
+                                        env
+                do Builder.insertStmt builder label (Stmt.Def (targetReg, typ, CALL (dest, #[])))
+                val (env, slotMapReg) = Env.regDef env hints builder label slotMapId
+            in Builder.insertStmt builder label (Stmt.Def (slotMapReg, Type.Prim PrimType.SlotMap, LOADg slotMapName))
+             ; env
+            end
+
+         | Isa.Stmt.Def (target, typ, expr as (X64Instructions.Oper.CALL (dest, args) | X64Instructions.Oper.CALLd (dest, args))) =>
             let val targetReg = Reg.rax
                 val env = Env.fixedRegDef env hints builder label target targetReg
                 val env = Env.evacuateCallerSaves env hints builder label

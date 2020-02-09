@@ -23,8 +23,8 @@ is
     src/Util/String.sml
     src/Util/Monoid.sml
     src/Util/UnionFind.sml
-    src/Util/TwobitMap.sml
     src/Util/PPrint.sml
+    src/Util/TwobitMap.sml
     src/Util/Id.sml
     src/Util/CLIParser.sml
 

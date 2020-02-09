@@ -113,7 +113,7 @@ end = struct
                                     val program = X64InstrSelection.selectInstructions program
                                     do log (PPrint.pretty 80 (X64Isa.Program.toDoc program) ^ "\n")
                                     do log "# Allocating registers...\n\n"
-                                    val allocated as {program, ...} = X64SysVRegisterAllocation.allocate program
+                                    val allocated as {program, maxSlotCount} = X64SysVRegisterAllocation.allocate program
                                     do log (PPrint.pretty 80 (X64RegIsa.Program.toDoc program) ^ "\n")
                                     do log "# Inserting logues...\n\n"
                                     val program = X64InsertLogues.insert allocated
@@ -127,7 +127,7 @@ end = struct
                                     of SOME output =>
                                         let val asmFilename = output ^ ".s"
                                             val asmStream = TextIO.openOut asmFilename
-                                        in GasX64SysVAbiEmit.emit asmStream program
+                                        in GasX64SysVAbiEmit.emit asmStream {program, maxSlotCount}
                                          ; TextIO.closeOut asmStream
                                          ; if asm
                                            then ()
@@ -139,7 +139,7 @@ end = struct
                                                 ; OS.FileSys.remove asmFilename )
                                         end
                                      | NONE => (* HACK: Handy for debugging but unconventional: *)
-                                        GasX64SysVAbiEmit.emit TextIO.stdOut program
+                                        GasX64SysVAbiEmit.emit TextIO.stdOut {program, maxSlotCount}
                                   ; OS.Process.success
                                  end )
                             | Left errors =>

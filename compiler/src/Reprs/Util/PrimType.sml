@@ -2,7 +2,7 @@ signature PRIM_TYPE = sig
     datatype t
         = Bool | Int | UInt
         | Array | Box
-        | Layout | StackT
+        | Layout | SlotMap | StackT
 
     val toString: t -> string
     val toDoc: t -> PPrint.t
@@ -12,7 +12,7 @@ structure PrimType :> PRIM_TYPE = struct
     datatype t
         = Bool | Int | UInt
         | Array | Box
-        | Layout | StackT
+        | Layout | SlotMap | StackT
     
     fun toString t =
         "__"
@@ -23,6 +23,7 @@ structure PrimType :> PRIM_TYPE = struct
             | Array => "array"
             | Box => "box"
             | Layout => "layout"
+            | SlotMap => "slotMap"
             | StackT => "stack")
 
     val toDoc = PPrint.text o toString

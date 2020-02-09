@@ -1,7 +1,7 @@
 structure X64SeqIsa = SeqIsaFn(X64SysVAbi.RegIsa)
 
 structure GasX64SysVAbiEmit :> sig
-    val emit : TextIO.outstream -> X64SeqIsa.Program.t -> unit
+    val emit : TextIO.outstream -> {program : X64SeqIsa.Program.t, maxSlotCount : int} -> unit
 end = struct
     structure Register = X64Register
     structure Global = X64SeqIsa.RegIsa.Global
@@ -30,7 +30,7 @@ end = struct
                "(" ^ convertReg index ^ ", " ^ Word.toString scale ^ ")"
             | (NONE, NONE) => "")
 
-    fun emit outstream {globals, conts} =
+    fun emit outstream {program = {globals, conts}, maxSlotCount} =
         let fun line s = TextIO.output (outstream, s ^ "\n")
 
             fun emitFieldLayout {offset = SOME offset, layout = SOME layout} =
@@ -52,6 +52,15 @@ end = struct
                        ; line "\t.zero\t6"
                        ; line ("\t.quad\t" ^ Int.toString (Vector.length fields))
                        ; Vector.app emitFieldLayout fields )
+                    | Global.SlotMap slots =>
+                       let val bytes = TwobitMap.bytes slots
+                           val pad = maxSlotCount - Word8Vector.length bytes * 4
+                           val bytes = if pad > 0
+                                       then Word8Vector.concat [ bytes
+                                                               , Word8Vector.tabulate (pad, Fn.constantly 0w0) ]
+                                       else bytes
+                       in Word8Vector.app (fn b => line ("\t.byte\t" ^ Word8.fmt StringCvt.DEC b)) bytes
+                       end
                 end
 
             val emitExpr =

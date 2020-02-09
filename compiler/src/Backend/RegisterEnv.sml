@@ -11,6 +11,8 @@ signature REGISTER_ENV = sig
 
     val empty : int ref -> t
 
+    val slotMap : t -> hints -> TwobitMap.t
+
     (* Use in some register.
        Allocates a register for the id if it does not have any.
        Returns the register for the definition site. *)
@@ -34,6 +36,9 @@ signature REGISTER_ENV = sig
     val fixedRegDef : t -> hints -> builder -> Label.t -> CpsId.t -> Register.t -> t
 
     val fixedDef : t -> hints -> builder -> Label.t -> CpsId.t -> Location.t -> t
+
+    (* Move id:s away from registers (except the return value registers) *)
+    val evacuateRegisters : t -> hints -> builder -> Label.t -> t
 
     (* Move id:s away from caller-save registers (except the return value registers). *)
     val evacuateCallerSaves : t -> hints -> builder -> Label.t -> t
@@ -62,6 +67,7 @@ end) :> REGISTER_ENV
     structure Hints = Args.Hints
     structure Location = Hints.Location
     structure Register = Abi.RegIsa.Register
+    structure Type = Abi.RegIsa.Type
     structure Stmt = Abi.RegIsa.Stmt
     structure Builder = Abi.RegIsa.Program.Builder
     structure CallingConvention = Abi.CallingConvention
@@ -166,6 +172,7 @@ end) :> REGISTER_ENV
 
         val empty : int ref -> t
         val lookup : t -> StackSlot.t -> CpsId.t
+        val slotMap : t -> hints -> TwobitMap.t
         val allocate : t -> CpsId.t -> t * StackSlot.t
         val free : t -> StackSlot.t -> t
     end = struct
@@ -177,6 +184,15 @@ end) :> REGISTER_ENV
         fun empty maxSlotCount = {occupieds = Map.empty, frees = Pool.empty maxSlotCount}
 
         fun lookup ({occupieds, ...} : t) slot = Map.lookup (occupieds, slot)
+
+        fun slotMap {occupieds, frees} hints =
+            let val len = Pool.count frees
+                fun step i =
+                    case Map.find (occupieds, StackSlot.fromIndex i)
+                    of SOME id => Type.pointiness (#1 (Hints.find hints id))
+                     | NONE => Type.scalar
+            in TwobitMap.pack (Word8Vector.tabulate (len, step))
+            end
 
         fun allocate {occupieds, frees} id =
             let val (frees, slot) = Pool.allocate frees
@@ -328,6 +344,8 @@ end) :> REGISTER_ENV
 
 (* # Public API *)
 
+    fun slotMap ({frame, ...} : t) = StackFrame.slotMap frame
+
     fun regUse env hints builder label id =
         case findReg env id
         of SOME reg => (env, reg)
@@ -368,15 +386,15 @@ end) :> REGISTER_ENV
     fun fixedDef env hints builder label id =
         fn Register reg => fixedRegDef env hints builder label id reg
 
-    fun evacuateCallerSaves (env as {locations, ...} : t) hints builder label =
+    fun evacuate isSafeLoc (env as {locations, ...} : t) hints builder label =
         let fun step (id, idLocs, env) =
                 let val (env, idLocs, loc') =
-                        case Location.SortedSet.find isCalleeSave idLocs
+                        case Location.SortedSet.find isSafeLoc idLocs
                         of SOME loc' => (env, idLocs, loc')
                          | NONE =>
                             let val {registers, locations, frame} = env
                                 val (env, loc') =
-                                    case Registers.allocateEnsuring registers (isCalleeSave o Register) id
+                                    case Registers.allocateEnsuring registers (isSafeLoc o Register) id
                                     of SOME (registers, reg) =>
                                         let val loc' = Register reg
                                         in ( { locations = insertLocation locations id loc'
@@ -393,13 +411,17 @@ end) :> REGISTER_ENV
                             in (env, valOf (locationsOf env id), loc')
                             end
                     fun step (loc, env) =
-                        if isCalleeSave loc orelse Location.eq (loc, loc')
+                        if isSafeLoc loc orelse Location.eq (loc, loc')
                         then env
                         else evacuateTo env hints builder label loc loc'
                 in Location.SortedSet.foldl step env idLocs
                 end
         in CpsId.SortedMap.foldli step env locations
         end
+
+    val evacuateCallerSaves = evacuate isCalleeSave
+
+    val evacuateRegisters = evacuate Location.isStackSlot
 
     fun conform (env as {locations, ...} : t) hints builder label ({locations = locations', ...} : t) =
         let fun step (id, _, env) =

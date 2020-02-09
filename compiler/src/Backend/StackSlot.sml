@@ -3,6 +3,7 @@ structure StackSlot :> sig
 
     val eq : t * t -> bool
     val compare : t * t -> order
+    val fromIndex : int -> t
     val index : t -> int
     val toDoc : t -> PPrint.t
     val toString : t -> string
@@ -14,6 +15,7 @@ structure StackSlot :> sig
         type t
 
         val empty : int ref -> t
+        val count : t -> int
         val allocate : t -> t * item
         val free : t -> item -> t
     end
@@ -24,6 +26,7 @@ end = struct
 
     val compare = Int.compare
 
+    val fromIndex = Fn.identity
     val index = Fn.identity
 
     fun toString i = "sp[" ^ Int.toString i ^ "]"
@@ -41,6 +44,8 @@ end = struct
         type t = {reusables : item list, created : int, maxSlotCount : int ref}
 
         fun empty maxSlotCount = {reusables = [], created = 0, maxSlotCount}
+
+        fun count ({maxSlotCount, ...} : t) = !maxSlotCount
 
         fun allocate {reusables, created, maxSlotCount} =
             case reusables
