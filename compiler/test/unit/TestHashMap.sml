@@ -1,5 +1,5 @@
 structure TestHashMap = struct
-    structure Map = HashMap(struct
+    structure Map = HashMapFn(struct
         type hash_key = int
         val hashVal = Word32.fromInt
         val sameKey = op=

@@ -7,15 +7,19 @@ in  ann "allowSuccessorML true"
             ../../src/Util/Fn.sml
             ../../src/Util/Bimappable.sml
             ../../src/Util/Pair.sml
-            ../../src/Util/Vector.sml
+            ../../src/Util/ArraySliceExt.sml
+            ../../src/Util/ArrayExt.sml
+            ../../src/Util/VectorExt.sml
             ../../src/Util/Word32.sml
             ../../src/Util/Trictor.sml
             ../../src/Util/HashMap.sml
+            ../../src/Util/TwobitMap.sml
         in
             Assert.sml
             TestWord32.sml
             TestTrictor.sml
             TestHashMap.sml
+            TestTwobitMap.sml
             unit.sml
         end
     end
