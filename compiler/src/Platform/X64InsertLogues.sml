@@ -6,7 +6,7 @@ structure X64InsertLogues = InsertLoguesFn(struct
 
     fun prologue frameSize =
         let val frameSize = (* Align stack pointer to 16 as per Sys V ABI: *)
-                if Word32.mod (frameSize, 0w16) = 0w0
+                if LargeWord.mod (frameSize, 0w16) = 0w0
                 then frameSize
                 else frameSize + 0w8
         in  #[ Stmt.Eff (Oper.PUSH Reg.rbp)

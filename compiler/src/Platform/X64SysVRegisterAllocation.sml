@@ -57,15 +57,19 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
         in (env, {base, index, disp})
         end
 
+    val slotCountName = Name.fromString "Broom_frameLength"
+
     fun stmt program cconvs builder label env hints =
         fn Isa.Stmt.Def (target, typ, expr as (X64Instructions.Oper.CALL (dest as "Broom_allocate", args))) =>
+            (* TODO: Pass slot count: *)
             let val targetReg = Reg.rax
                 val env = Env.fixedRegDef env hints builder label target targetReg
-                val env = Env.evacuateRegisters env hints builder label
+                val env = Env.evacuateRegisters env hints builder label (* OPTIMIZE: evacuatePotentialORefs *)
                 val slotMapName = Name.fresh ()
                 do Builder.insertGlobal builder slotMapName (RegIsa.Global.SlotMap (Env.slotMap env hints))
+                val slotCountId = CpsId.fresh ()
                 val slotMapId = CpsId.fresh ()
-                val args = VectorExt.append (args, slotMapId)
+                val args = Vector.concat [args, #[slotCountId, slotMapId]]
                 val paramRegs = #args Abi.foreignCallingConvention
                 val env = VectorExt.zip (args, paramRegs)
                         |> Vector.foldl (fn ((arg, reg), env) =>
@@ -73,7 +77,9 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
                                         env
                 do Builder.insertStmt builder label (Stmt.Def (targetReg, typ, CALL (dest, #[])))
                 val (env, slotMapReg) = Env.regDef env hints builder label slotMapId
-            in Builder.insertStmt builder label (Stmt.Def (slotMapReg, Type.Prim PrimType.SlotMap, LOADg slotMapName))
+                do Builder.insertStmt builder label (Stmt.Def (slotMapReg, Type.Prim PrimType.SlotMap, LOADg slotMapName))
+                val (env, slotCountReg) = Env.regDef env hints builder label slotCountId
+            in Builder.insertStmt builder label (Stmt.Def (slotCountReg, Type.Prim PrimType.UInt, LOADg slotCountName))
              ; env
             end
 

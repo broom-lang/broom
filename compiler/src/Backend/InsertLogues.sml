@@ -1,3 +1,5 @@
+(* TODO: Change name since also inserts Broom_frameLength *)
+
 signature INSERT_LOGUES = sig
     structure RegIsa : ISA
 
@@ -6,19 +8,22 @@ end
 
 functor InsertLoguesFn (Args : sig
     structure RegIsa : ISA
-    val prologue : Word32.word -> RegIsa.Stmt.t vector
-    val epilogue : Word32.word -> RegIsa.Stmt.t vector
+    val prologue : LargeWord.word -> RegIsa.Stmt.t vector
+    val epilogue : LargeWord.word -> RegIsa.Stmt.t vector
 end) :> INSERT_LOGUES
     where type RegIsa.loc = Args.RegIsa.loc
     where type RegIsa.Stmt.t = Args.RegIsa.Stmt.t
     where type RegIsa.transfer = Args.RegIsa.Transfer.t
 = struct
     structure RegIsa = Args.RegIsa
+    structure Global = RegIsa.Global
     structure Transfer = RegIsa.Transfer
     structure Instrs = RegIsa.Instrs
 
+    val frameSizeName = Name.fromString "Broom_frameLength" (* TODO: DRY *)
+
     fun insert {program = {globals, conts, main}, maxSlotCount} =
-        let val frameSize = Word32.fromInt (maxSlotCount * Instrs.registerSize)
+        let val frameSize = LargeWord.fromInt (maxSlotCount * Instrs.registerSize)
             val prologue = Args.prologue frameSize
             val epilogue = Args.epilogue frameSize
 
@@ -33,7 +38,8 @@ end) :> INSERT_LOGUES
                         else stmts
                 in {name, cconv, params, stmts, transfer}
                 end
-        in {globals, conts = Label.HashMap.map insertContLogues conts, main}
+        in { globals = Name.HashMap.insert globals (frameSizeName, Global.UInt (LargeWord.fromInt maxSlotCount))
+           , conts = Label.HashMap.map insertContLogues conts, main }
         end
 end
 

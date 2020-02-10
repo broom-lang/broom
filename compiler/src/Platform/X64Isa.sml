@@ -32,7 +32,7 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
             | LEAVE
             | ADD of def * def
             | SUB of def * def
-            | SUBc of def * Word32.word (* HACK *)
+            | SUBc of def * LargeWord.word (* HACK *)
             | IMUL of def * def
             | IDIV of def * def
             | CMP of def * Word32.word
@@ -143,7 +143,7 @@ end = struct
             | LEAVE
             | ADD of def * def
             | SUB of def * def
-            | SUBc of def * Word32.word (* HACK *)
+            | SUBc of def * LargeWord.word (* HACK *)
             | IMUL of def * def
             | IDIV of def * def
             | CMP of def * Word32.word
@@ -177,7 +177,7 @@ end = struct
         val toDoc =
             fn MOV src => text "mov" <+> Register.toDoc src
              | LOAD mem => text "mov" <+> memToDoc mem
-             | LOADc n => text "mov" <+> PPrint.int (Word32.toInt n) (* HACK: toInt *)
+             | LOADc n => text "mov" <+> text (Word32.fmt StringCvt.DEC n)
              | LOADl label => text "lea" <+> Label.toDoc label
              | LOADg name => text "lea" <+> Name.toDoc name
              | STORE (target, src) =>
@@ -188,9 +188,9 @@ end = struct
              | SUB (a, b) => text "sub" <+> Register.toDoc a <> comma <+> Register.toDoc b
              | IMUL (a, b) => text "imul" <+> Register.toDoc a <> comma <+> Register.toDoc b
              | SUBc (def, n) =>
-                text "sub" <+> Register.toDoc def <> comma <+> PPrint.int (Word32.toInt n) (* HACK: toInt *)
+                text "sub" <+> Register.toDoc def <> comma <+> text (LargeWord.fmt StringCvt.DEC n)
              | CMP (def, n) =>
-                text "cmp" <+> Register.toDoc def <> comma <+>  PPrint.int (Word32.toInt n) (* HACK: toInt *)
+                text "cmp" <+> Register.toDoc def <> comma <+> text (Word32.fmt StringCvt.DEC n)
              | CALL (callee, args) =>
                 text "call" <+> text callee
                 <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))

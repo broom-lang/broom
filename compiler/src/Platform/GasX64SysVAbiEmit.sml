@@ -39,13 +39,17 @@ end = struct
 
             fun emitGlobal (name, global) =
                 let val name = convertGlobal name
-                in line ("\t.globl\t" ^ name)
-                 ; line "\t.align 8"
-                 ; line ("\t.type\t" ^ name ^ ", @object")
-                 ; line (name ^ ":")
-                 ; case global
-                   of Global.Layout {size = SOME size, align = SOME align, inlineable, isArray, fields} =>
-                       ( line ("\t.quad\t" ^ LargeWord.fmt StringCvt.DEC size)
+                in case global
+                   of Global.UInt n =>
+                       ( line "\t.align 8"
+                       ; line ("\t.type\t" ^ name ^ ", @object")
+                       ; line (name ^ ":")
+                       ; line ("\t.quad\t" ^ LargeWord.fmt StringCvt.DEC n) )
+                    | Global.Layout {size = SOME size, align = SOME align, inlineable, isArray, fields} =>
+                       ( line "\t.align 8"
+                       ; line ("\t.type\t" ^ name ^ ", @object")
+                       ; line (name ^ ":")
+                       ; line ("\t.quad\t" ^ LargeWord.fmt StringCvt.DEC size)
                        ; line ("\t.quad\t" ^ Word.fmt StringCvt.DEC align)
                        ; line ("\t.byte\t" ^ (if inlineable then "1" else "0"))
                        ; line ("\t.byte\t" ^ (if isArray then "1" else "0"))
@@ -53,14 +57,16 @@ end = struct
                        ; line ("\t.quad\t" ^ Int.toString (Vector.length fields))
                        ; Vector.app emitFieldLayout fields )
                     | Global.SlotMap slots =>
-                       let val bytes = TwobitMap.bytes slots
-                           val pad = maxSlotCount - Word8Vector.length bytes * 4
-                           val bytes = if pad > 0
-                                       then Word8Vector.concat [ bytes
-                                                               , Word8Vector.tabulate (pad, Fn.constantly 0w0) ]
-                                       else bytes
-                       in Word8Vector.app (fn b => line ("\t.byte\t" ^ Word8.fmt StringCvt.DEC b)) bytes
-                       end
+                       ( line ("\t.type\t" ^ name ^ ", @object")
+                       ; line (name ^ ":")
+                       ; let val bytes = TwobitMap.bytes slots
+                             val pad = maxSlotCount - Word8Vector.length bytes * 4
+                             val bytes = if pad > 0
+                                         then Word8Vector.concat [ bytes
+                                                                 , Word8Vector.tabulate (pad, Fn.constantly 0w0) ]
+                                         else bytes
+                         in Word8Vector.app (fn b => line ("\t.byte\t" ^ Word8.fmt StringCvt.DEC b)) bytes
+                         end )
                 end
 
             val emitExpr =
@@ -85,7 +91,7 @@ end = struct
                  | (SOME _, Oper.SUB (a, b)) =>
                     line ("\tsubq\t" ^ convertReg b ^ ", " ^ convertReg a)
                  | (SOME target, Oper.SUBc (_, n)) =>
-                    line ("\tsubq\t$" ^ Int.toString (Word32.toInt n) ^ ", " ^ convertReg target)
+                    line ("\tsubq\t$" ^ LargeWord.fmt StringCvt.DEC n ^ ", " ^ convertReg target)
                  | (SOME _, Oper.IMUL (a, b)) =>
                     line ("\timulq\t" ^ convertReg b ^ ", " ^ convertReg a)
                  | (SOME _, Oper.CALL (sym, _)) => line ("\tcall\t" ^ sym)

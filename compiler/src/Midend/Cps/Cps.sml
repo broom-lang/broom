@@ -40,7 +40,8 @@ signature CPS_GLOBAL = sig
     structure Type : CPS_TYPE
 
     datatype t
-        = Layout of layout
+        = UInt of LargeWord.word
+        | Layout of layout
         | SlotMap of TwobitMap.t
 
     withtype layout =
@@ -346,7 +347,8 @@ end = struct
         structure Type = Type
 
         datatype t
-            = Layout of layout
+            = UInt of LargeWord.word
+            | Layout of layout
             | SlotMap of TwobitMap.t
 
         withtype layout =
@@ -385,7 +387,8 @@ end = struct
                        <> newline)
 
         val toDoc =
-            fn Layout layout => layoutToDoc layout
+            fn UInt n => PPrint.largeWord n
+             | Layout layout => layoutToDoc layout
              | SlotMap slots => text "SlotMap" <+> TwobitMap.toDoc slots
 
         fun blobLayout size =
@@ -410,7 +413,8 @@ end = struct
         fun appFieldLayoutDeps f {offset, layout} = Option.app f layout
 
         fun appDeps f =
-            fn Layout {fields, ...} => Vector.app (appFieldLayoutDeps f) fields
+            fn UInt _ => ()
+             | Layout {fields, ...} => Vector.app (appFieldLayoutDeps f) fields
              | SlotMap _ => ()
     end
 
