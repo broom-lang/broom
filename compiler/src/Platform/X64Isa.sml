@@ -27,6 +27,7 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
             | LOADc of Word32.word (* MOV r64 imm64 *)
             | LOADl of Label.t     (* LEA the label *)
             | LOADg of Name.t      (* LEA the global *)
+            | LOADgv of Name.t     (* MOV the global *)
             | STORE of mem * def   (* MOV m64 r64 *)
             | PUSH of def
             | LEAVE
@@ -138,6 +139,7 @@ end = struct
             | LOADc of Word32.word (* MOV r64 imm64 *)
             | LOADl of Label.t     (* LEA the label *)
             | LOADg of Name.t      (* LEA the global *)
+            | LOADgv of Name.t     (* MOV the global *)
             | STORE of mem * def   (* MOV m64 r64 *)
             | PUSH of def
             | LEAVE
@@ -165,13 +167,13 @@ end = struct
              | (PUSH def | SUBc (def, _)) => f (def, acc)
              | (ADD (def, def') | SUB (def, def') | IMUL (def, def') | IDIV (def, def')) =>
                 f (def', f (def, acc))
-             | (LOADc _ | LOADl _ | LOADg _ | LEAVE) => acc
+             | (LOADc _ | LOADl _ | LOADg _ | LOADgv _ | LEAVE) => acc
              | (CALL (_, defs) | CALLd (_, defs)) => Vector.foldl f acc defs
              | CALLi (def, defs) => Vector.foldl f (f (def, acc)) defs
 
         fun appLabels f =
             fn LOADl label => f label
-             | ( MOV _ | LOAD _ | LOADg _ | LOADc _ | STORE _ | PUSH _ | LEAVE
+             | ( MOV _ | LOAD _ | LOADg _ | LOADgv _ | LOADc _ | STORE _ | PUSH _ | LEAVE
                | ADD _ | SUB _ | SUBc _ | IMUL _ | IDIV _ | CMP _ | CALL _ | CALLd _ | CALLi _ ) => ()
 
         val toDoc =
@@ -180,6 +182,7 @@ end = struct
              | LOADc n => text "mov" <+> text (Word32.fmt StringCvt.DEC n)
              | LOADl label => text "lea" <+> Label.toDoc label
              | LOADg name => text "lea" <+> Name.toDoc name
+             | LOADgv name => text "mov" <+> brackets (Name.toDoc name)
              | STORE (target, src) =>
                 text "mov" <+> memToDoc target <+> Register.toDoc src
              | PUSH def => text "push" <+> Register.toDoc def

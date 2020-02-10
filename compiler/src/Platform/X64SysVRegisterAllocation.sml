@@ -81,7 +81,7 @@ structure X64SysVRegisterAllocation = RegisterAllocationFn(struct
                 val (env, spReg) = Env.regDef env hints builder label spId
                 do Builder.insertStmt builder label (Stmt.Def (spReg, Type.Prim PrimType.VoidPtr, MOV Reg.rsp))
                 val (env, slotCountReg) = Env.regDef env hints builder label slotCountId
-            in Builder.insertStmt builder label (Stmt.Def (slotCountReg, Type.Prim PrimType.UInt, LOADg slotCountName))
+            in Builder.insertStmt builder label (Stmt.Def (slotCountReg, Type.Prim PrimType.UInt, LOADgv slotCountName))
              ; env
             end
 

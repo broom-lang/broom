@@ -80,6 +80,8 @@ end = struct
                     line ("\tleaq\t" ^ convertLabel label ^ "(%rip), " ^ convertReg target)
                  | (SOME target, Oper.LOADg name) =>
                     line ("\tleaq\t" ^ convertGlobal name ^ "(%rip), " ^ convertReg target)
+                 | (SOME target, Oper.LOADgv name) =>
+                    line ("\tmovq\t" ^ convertGlobal name ^ "(%rip), " ^ convertReg target)
                  | (NONE, Oper.STORE (dest, src)) =>
                     line ("\tmovq\t" ^ convertReg src ^ ", " ^ convertMem dest)
                  | (NONE, Oper.PUSH src) => line ("\tpushq\t" ^ convertReg src)
