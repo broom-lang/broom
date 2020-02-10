@@ -122,7 +122,7 @@ impl ORef<Object> {
 
 /// Tagged pointer (`ORef` or immediate scalar)
 #[derive(Clone, Copy)]
-struct VRef(usize);
+pub struct VRef(usize);
 
 impl VRef {
     const COUNT: usize = mem::size_of::<usize>();
@@ -219,7 +219,9 @@ lazy_static! {
 }
 
 #[no_mangle]
-pub extern fn Broom_allocate(layout: NonNull<Layout>) -> Option<NonNull<u8>> {
+pub extern fn Broom_allocate(layout: NonNull<Layout>, frame_len: usize, slots: *mut VRef, slot_map: *const u8)
+    -> Option<NonNull<u8>>
+{
     MANAGER.lock().unwrap().allocate(unsafe { layout.as_ref() })
 }
 
@@ -227,6 +229,7 @@ pub extern fn Broom_allocate(layout: NonNull<Layout>) -> Option<NonNull<u8>> {
 mod tests {
     use super::*;
     use std::mem::{size_of, align_of};
+    use std::ptr;
 
     #[test]
     fn test_allocate() {
@@ -237,7 +240,7 @@ mod tests {
             is_array: false,
             field_count: 0
         };
-        match Broom_allocate(From::from(&layout)) {
+        match Broom_allocate(From::from(&layout), 0, ptr::null_mut(), ptr::null_mut()) {
             Some(ptr) => {
                 let mut ptr: *const Object = ptr.as_ptr() as _;
                 unsafe {
