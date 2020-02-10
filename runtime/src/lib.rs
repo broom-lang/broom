@@ -3,6 +3,7 @@ extern crate nix;
 extern crate lazy_static;
 
 mod zone;
+mod twobit_slice;
 
 use std::slice;
 use std::mem::{self, MaybeUninit};
@@ -12,6 +13,7 @@ use std::convert::TryFrom;
 use std::sync::{Mutex, MutexGuard, LockResult};
 
 use zone::ZoneAllocator;
+use twobit_slice::TwobitSlice;
 
 const HEAP_SIZE: usize = 1 << 20; // 1 MiB
 
@@ -35,7 +37,7 @@ impl MemoryManager {
     }
 
     // FIXME: Zeroing:
-    fn allocate(&mut self, layout: &Layout) -> Option<NonNull<u8>> {
+    fn allocate(&mut self, layout: &Layout, slots: &[usize], slot_map: TwobitSlice) -> Option<NonNull<u8>> {
         let mut address: usize = self.prev as _;
         address = address.checked_sub(layout.size)?; // bump down
         address = address & !(layout.align as usize - 1); // ensure alignment
@@ -219,10 +221,12 @@ lazy_static! {
 }
 
 #[no_mangle]
-pub extern fn Broom_allocate(layout: NonNull<Layout>, frame_len: usize, slots: *mut VRef, slot_map: *const u8)
+pub unsafe extern fn Broom_allocate(layout: NonNull<Layout>, frame_len: usize, slots: *mut usize, slot_map: *const u8)
     -> Option<NonNull<u8>>
 {
-    MANAGER.lock().unwrap().allocate(unsafe { layout.as_ref() })
+    let slots = slice::from_raw_parts(slots, frame_len);
+    let slot_map = TwobitSlice::from_raw_parts(slot_map, frame_len);
+    MANAGER.lock().unwrap().allocate(layout.as_ref(), slots, slot_map)
 }
 
 #[cfg(test)]
