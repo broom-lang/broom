@@ -16,33 +16,53 @@ use zone::ZoneAllocator;
 use twobit_slice::TwobitSlice;
 
 const HEAP_SIZE: usize = 1 << 20; // 1 MiB
+const SEMISPACE_SIZE: usize = HEAP_SIZE / 2;
+
+// ---
+
+struct SpanMut {
+    start: *mut u8,
+    end: *mut u8
+}
 
 // ---
 
 struct MemoryManager {
     zones: ZoneAllocator,
-    start: *mut u8,
-    end: *mut u8,
+    fromspace: SpanMut,
+    tospace: SpanMut,
     prev: *mut u8 
 }
 
 impl MemoryManager {
     fn new() -> Self {
         let mut zones = ZoneAllocator::new(HEAP_SIZE);
-        let start = zones.allocate(HEAP_SIZE)
-            .expect("could not obtain initial heap")
-            .as_ptr();
-        let end = unsafe { start.offset(HEAP_SIZE as isize) };
-        Self { zones, start, end, prev: end }
+        let fromspace = {
+            let start = zones.allocate(SEMISPACE_SIZE)
+                .expect("could not obtain initial heap")
+                .as_ptr();
+            let end = unsafe { start.offset(SEMISPACE_SIZE as isize) };
+            SpanMut {start, end}
+        };
+        let tospace = {
+            let start = zones.allocate(SEMISPACE_SIZE)
+                .expect("could not obtain initial heap")
+                .as_ptr();
+            let end = unsafe { start.offset(SEMISPACE_SIZE as isize) };
+            SpanMut {start, end}
+        };
+        let prev = tospace.end;
+        Self { zones, fromspace, tospace, prev }
     }
 
     // FIXME: Zeroing:
-    fn allocate(&mut self, layout: &Layout, slots: &[usize], slot_map: TwobitSlice) -> Option<NonNull<u8>> {
+    fn allocate(&mut self, layout: &Layout, slots: &mut[usize], slot_map: TwobitSlice) -> Option<NonNull<u8>> {
         let mut address: usize = self.prev as _;
         address = address.checked_sub(layout.size)?; // bump down
-        address = address & !(layout.align as usize - 1); // ensure alignment
+        let align = (layout.align as usize).max(mem::align_of::<NonNull<Layout>>());
+        address = address & !(align - 1); // ensure alignment
         address = address.checked_sub(mem::size_of::<NonNull<Layout>>())?; // space for layout
-        if address < self.start as usize {
+        if address < self.tospace.start as usize {
             None // does not fit
         } else {
             self.prev = address as *mut u8;
@@ -56,6 +76,28 @@ impl MemoryManager {
 
     fn mark<T>(&mut self, oref: ORef<T>) -> ORef<T> {
         unimplemented!()
+    }
+
+    fn gc(&mut self, slots: &mut[usize], slot_map: TwobitSlice) {
+        // Swap semispaces:
+        mem::swap(&mut self.fromspace, &mut self.tospace);
+        self.prev = self.tospace.end;
+
+        // Mark roots:
+        for (slot, kind) in slots.iter_mut().zip(slot_map.iter()) {
+            match kind {
+                0 => (),
+                1 => {
+                    let slot: &mut ORef<Object> = unsafe { mem::transmute(slot) };
+                    *slot = slot.mark(self);
+                },
+                3 => unimplemented!(),
+                _ => unreachable!()
+            }
+        }
+
+        // Scan tospace:
+        unimplemented!();
     }
 }
 
@@ -224,7 +266,7 @@ lazy_static! {
 pub unsafe extern fn Broom_allocate(layout: NonNull<Layout>, frame_len: usize, slots: *mut usize, slot_map: *const u8)
     -> Option<NonNull<u8>>
 {
-    let slots = slice::from_raw_parts(slots, frame_len);
+    let slots = slice::from_raw_parts_mut(slots, frame_len);
     let slot_map = TwobitSlice::from_raw_parts(slot_map, frame_len);
     MANAGER.lock().unwrap().allocate(layout.as_ref(), slots, slot_map)
 }
