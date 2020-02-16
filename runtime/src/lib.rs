@@ -8,7 +8,7 @@ mod twobit_slice;
 use std::slice;
 use std::mem::{self, MaybeUninit};
 use std::ptr::{self, NonNull};
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::convert::TryFrom;
 use std::sync::{Mutex, MutexGuard, LockResult};
 
@@ -18,8 +18,11 @@ use twobit_slice::TwobitSlice;
 const HEAP_SIZE: usize = 1 << 20; // 1 MiB
 const SEMISPACE_SIZE: usize = HEAP_SIZE / 2;
 
+const GC_ALOT: bool = false;
+
 // ---
 
+#[derive(Debug)]
 struct SpanMut {
     start: *mut u8,
     end: *mut u8
@@ -63,7 +66,7 @@ impl MemoryManager {
         address = address.checked_sub(layout.size)?; // bump down
         let align = (layout.align as usize).max(mem::align_of::<NonNull<Layout>>());
         address = address & !(align - 1); // ensure alignment
-        address = address.checked_sub(mem::size_of::<NonNull<Layout>>())?; // space for layout
+        address = address.checked_sub(mem::size_of::<Header>())?; // space for header
         if address < self.tospace.start as usize {
             None // does not fit
         } else {
@@ -71,23 +74,28 @@ impl MemoryManager {
             let obj: *mut MaybeUninit<Object> = address as _;
             unsafe {
                 obj.write(MaybeUninit::new(Object {header: Header::layout(layout)}));
-                Some(NonNull::new_unchecked(obj.offset(1) as _)) // back to start of fields
+                let res = Some(NonNull::new_unchecked(obj.offset(1) as _)); // back to start of fields
+                let oref = ORef(res.unwrap().cast());
+                res
             }
         }
     }
 
-    fn mark(&mut self, oref: ORef) -> ORef {
-        unsafe {
-            // Allocate and memcpy to tospace copy:
-            let new_data = self.allocate(oref.layout()).unwrap();
-            ptr::copy_nonoverlapping(oref.data(), new_data.as_ptr(), (*oref.layout()).size);
-            let new_oref = ORef(new_data.cast());
-            
-            // Make `oref` grey:
-            oref.header = Header::forwarding(new_oref);
-            self.greys.push(oref);
+    fn mark(&mut self, mut oref: ORef) -> ORef {
+        match oref.forwarded() {
+            Some(oref) => oref,
+            None => unsafe {
+                // Allocate and memcpy to tospace copy:
+                let new_data = self.allocate(oref.layout()).unwrap();
+                ptr::copy_nonoverlapping(oref.data(), new_data.as_ptr(), (*oref.layout()).size);
+                let new_oref = ORef(new_data.cast());
+                
+                // Make `oref` grey:
+                oref.header = Header::forwarding(new_oref);
+                self.greys.push(new_oref);
 
-            new_oref
+                new_oref
+            }
         }
     }
 
@@ -96,12 +104,12 @@ impl MemoryManager {
         mem::swap(&mut self.fromspace, &mut self.tospace);
         self.prev = self.tospace.end;
 
-        // Mark roots:
+        // Evacuate roots:
         for (slot, kind) in slots.iter_mut().zip(slot_map.iter()) {
             match kind {
                 0 => (),
                 1 => {
-                    let slot: &mut ORef = unsafe { mem::transmute(slot) };
+                    let slot = unsafe { mem::transmute::<&mut usize, &mut ORef>(slot) };
                     *slot = slot.mark(self);
                 },
                 3 => unimplemented!(),
@@ -109,7 +117,7 @@ impl MemoryManager {
             }
         }
 
-        // Scan tospace:
+        // Evacuate the rest:
         while let Some(mut oref) = self.greys.pop() {
             oref.scan(self);
         }
@@ -143,7 +151,16 @@ impl Deref for ORef {
 
     fn deref(&self) -> &Self::Target {
         unsafe { 
-            let ptr: *const *const Layout = mem::transmute(self);
+            let ptr: *const Object = mem::transmute(self.0);
+            mem::transmute(ptr.offset(-1)) // ORef points to start of actual fields
+        }
+    }
+}
+
+impl DerefMut for ORef {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { 
+            let ptr: *mut Object = mem::transmute(self.0);
             mem::transmute(ptr.offset(-1)) // ORef points to start of actual fields
         }
     }
@@ -171,6 +188,8 @@ impl TryFrom<VRef> for ORef {
 
 impl ORef {
     fn data(self) -> *const u8 { self.0.as_ptr() as _ }
+
+    fn forwarded(self) -> Option<ORef> { self.header.forwarded() }
 
     fn mark(self, mem: &mut MemoryManager) -> Self { mem.mark(self) }
 
@@ -203,7 +222,7 @@ impl VRef {
 // ---
 
 /// Object header:
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 struct Header(usize);
 
 impl Header {
@@ -213,10 +232,18 @@ impl Header {
     fn layout(layout: *const Layout) -> Self { Self(layout as usize) }
 
     fn forwarding(new_oref: ORef) -> Self {
-        Self(new_oref.data() as usize & Self::FWD_TAG)
+        Self(new_oref.data() as usize | Self::FWD_TAG)
     }
 
-    fn is_forwarding(self) -> bool { self.0 & Self::MASK == 0 }
+    fn is_forwarding(self) -> bool { self.0 & Self::MASK == Self::FWD_TAG }
+
+    fn forwarded(self) -> Option<ORef> {
+        if self.is_forwarding() {
+            Some(ORef(unsafe { mem::transmute(self.0 & !Self::MASK) }))
+        } else {
+            None
+        }
+    }
 
     unsafe fn as_layout(self) -> *const Layout { self.0 as _ }
 }
@@ -224,6 +251,7 @@ impl Header {
 // ---
 
 /// Heap object
+#[derive(Debug)]
 #[repr(C)]
 struct Object {
     header: Header
@@ -270,6 +298,7 @@ impl FieldLayout {
     }
 }
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct Layout {
     size: usize, // TODO: separate .stride
@@ -307,13 +336,21 @@ pub unsafe extern fn Broom_allocate(layout: NonNull<Layout>, frame_len: usize, s
     -> NonNull<u8>
 {
     let mut manager = MANAGER.lock().unwrap();
-    match manager.allocate(layout.as_ref()) {
-        Some(res) => res,
-        None => {
-            let slots = slice::from_raw_parts_mut(slots, frame_len);
-            let slot_map = TwobitSlice::from_raw_parts(slot_map, frame_len);
-            manager.gc(slots, slot_map);
-            manager.allocate(layout.as_ref()).unwrap()
+
+    if GC_ALOT {
+        let slots = slice::from_raw_parts_mut(slots, frame_len);
+        let slot_map = TwobitSlice::from_raw_parts(slot_map, frame_len);
+        manager.gc(slots, slot_map);
+        manager.allocate(layout.as_ref()).unwrap()
+    } else {
+        match manager.allocate(layout.as_ref()) {
+            Some(res) => res,
+            None => {
+                let slots = slice::from_raw_parts_mut(slots, frame_len);
+                let slot_map = TwobitSlice::from_raw_parts(slot_map, frame_len);
+                manager.gc(slots, slot_map);
+                manager.allocate(layout.as_ref()).unwrap()
+            }
         }
     }
 }
