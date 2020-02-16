@@ -63,7 +63,6 @@ impl MemoryManager {
         Self { zones, fromspace, tospace, prev, greys: vec![] }
     }
 
-    // FIXME: Zeroing:
     fn allocate(&mut self, layout: *const Layout) -> Option<NonNull<u8>> {
         let layout = unsafe { &*layout };
         let mut address: usize = self.prev as _;
@@ -78,9 +77,9 @@ impl MemoryManager {
             let obj: *mut MaybeUninit<Object> = address as _;
             unsafe {
                 obj.write(MaybeUninit::new(Object {header: Header::layout(layout)}));
-                let res = Some(NonNull::new_unchecked(obj.offset(1) as _)); // back to start of fields
-                let oref = ORef(res.unwrap().cast());
-                res
+                let data: *mut u8 = obj.offset(1) as _;
+                ptr::write_bytes(data, 0, layout.size);
+                Some(NonNull::new_unchecked(data))
             }
         }
     }
@@ -88,10 +87,12 @@ impl MemoryManager {
     fn mark(&mut self, mut oref: ORef) -> ORef {
         match oref.forwarded() {
             Some(oref) => oref,
-            None => unsafe {
+            None => {
                 // Allocate and memcpy to tospace copy:
-                let new_data = self.allocate(oref.layout()).unwrap();
-                ptr::copy_nonoverlapping(oref.data(), new_data.as_ptr(), (*oref.layout()).size);
+                let new_data = unsafe { self.allocate(oref.layout()).unwrap() };
+                unsafe {
+                    ptr::copy_nonoverlapping(oref.data(), new_data.as_ptr(), (*oref.layout()).size);
+                }
                 let new_oref = ORef(new_data.cast());
                 
                 // Make `oref` grey:
@@ -114,7 +115,7 @@ impl MemoryManager {
                 0 => (),
                 1 => {
                     let slot = unsafe { mem::transmute::<&mut usize, &mut ORef>(slot) };
-                    *slot = slot.mark(self);
+                    *slot = self.mark(*slot);
                 },
                 3 => unimplemented!(),
                 _ => unreachable!()
@@ -154,8 +155,8 @@ impl Deref for ORef {
     type Target = Object;
 
     fn deref(&self) -> &Self::Target {
+        let ptr: *const Object = self.0.as_ptr();
         unsafe { 
-            let ptr: *const Object = mem::transmute(self.0);
             mem::transmute(ptr.offset(-1)) // ORef points to start of actual fields
         }
     }
@@ -163,8 +164,8 @@ impl Deref for ORef {
 
 impl DerefMut for ORef {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        let ptr: *mut Object = self.0.as_ptr();
         unsafe { 
-            let ptr: *mut Object = mem::transmute(self.0);
             mem::transmute(ptr.offset(-1)) // ORef points to start of actual fields
         }
     }
@@ -190,18 +191,6 @@ impl TryFrom<VRef> for ORef {
     }
 }
 
-impl ORef {
-    fn data(self) -> *const u8 { self.0.as_ptr() as _ }
-
-    fn forwarded(self) -> Option<ORef> { self.header.forwarded() }
-
-    fn mark(self, mem: &mut MemoryManager) -> Self { mem.mark(self) }
-
-    fn scan(&mut self, mem: &mut MemoryManager) {
-        unsafe { (*self.layout()).scan(mem::transmute(self.0), mem) }
-    }
-}
-
 // ---
 
 /// Tagged pointer (`ORef` or immediate scalar)
@@ -212,11 +201,11 @@ impl VRef {
     const COUNT: usize = mem::size_of::<usize>();
     const MASK: usize = Self::COUNT - 1;
 
-    fn is_oref(self) -> bool { self.0 & Self::MASK != 0 }
+    fn is_oref(self) -> bool { self.0 & Self::MASK == 0 }
 
     fn mark(self, mem: &mut MemoryManager) -> Self {
         if let Ok(oref) = ORef::try_from(self) {
-            VRef(oref.mark(mem).0.as_ptr() as usize)
+            VRef(mem.mark(oref).0.as_ptr() as usize)
         } else {
             self
         }
@@ -262,24 +251,21 @@ struct Object {
 }
 
 impl Object {
+    fn data(&self) -> *const u8 { (unsafe { (self as *const Object).offset(1) }) as _ }
+
+    fn forwarded(&self) -> Option<ORef> { self.header.forwarded() }
+
+    fn scan(&mut self, mem: &mut MemoryManager) {
+        unsafe { &*self.layout() }.scan(self, mem)
+    }
+
     unsafe fn layout(&self) -> *const Layout { self.header.as_layout() }
-
-    fn field_layout(&self, index: usize) -> NonNull<Layout> {
-        unsafe { (&(*self.layout()).fields()[index]).layout }
-    }
-
-    fn field_data<'a>(&'a self, index: usize) -> &'a [u8] {
-        unsafe {
-            let ptr: *const u8 = mem::transmute(self);
-            let field_lo = &(*self.layout()).fields()[index];
-            slice::from_raw_parts(ptr.offset(field_lo.offset as isize), field_lo.layout.as_ref().size)
-        }
-    }
 }
 
 // ---
 
 /// Object layout / runtime type
+#[derive(Debug)]
 #[repr(C)]
 struct FieldLayout {
     offset: usize,
@@ -288,18 +274,15 @@ struct FieldLayout {
 
 impl FieldLayout {
     fn is_oref(&self) -> bool {
-        unsafe {
-            self.layout.as_ptr() as *const Layout == &Broom_layout_ORef as *const Layout
-        }
+        ptr::eq(self.layout.as_ptr(), unsafe { &Broom_layout_ORef })
     }
 
-    fn scan(&self, obj: *mut u8, mem: &mut MemoryManager) {
+    fn scan(&self, obj: &mut Object, mem: &mut MemoryManager) {
         if self.is_oref() {
-            unsafe {
-                let field_ref: &mut *mut Object = mem::transmute(obj.offset(self.offset as isize));
-                if let Some(field) = NonNull::new(*field_ref) {
-                    *mem::transmute::<&mut *mut Object, &mut ORef>(field_ref) = ORef(field).mark(mem);
-                }
+            let obj = obj.data();
+            let field: &mut Option<ORef> = unsafe { mem::transmute(obj.offset(self.offset as isize)) };
+            if let Some(field) = field {
+                *field = mem.mark(*field);
             }
         }
         // FIXME: Scan inside inlined fields
@@ -318,14 +301,14 @@ pub struct Layout {
 
 impl Layout {
     fn fields<'a>(&'a self) -> &'a [FieldLayout] {
+        let ptr: *const Self = self as _;
         unsafe {
-            let ptr: *const Self = mem::transmute(self);
-            let ptr = mem::transmute(ptr.offset(1));
+            let ptr: *const FieldLayout = ptr.offset(1) as _;
             slice::from_raw_parts(ptr, self.field_count)
         }
     }
 
-    fn scan(&self, obj: *mut u8, mem: &mut MemoryManager) {
+    fn scan(&self, obj: &mut Object, mem: &mut MemoryManager) {
         for field_lo in self.fields() {
             field_lo.scan(obj, mem);
         }
@@ -366,7 +349,6 @@ pub unsafe extern fn Broom_allocate(layout: NonNull<Layout>, frame_len: usize, s
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::mem::{size_of, align_of};
     use std::ptr;
 
     #[test]
@@ -378,15 +360,11 @@ mod tests {
             is_array: false,
             field_count: 0
         };
-        match Broom_allocate(From::from(&layout), 0, ptr::null_mut(), ptr::null_mut()) {
-            Some(ptr) => {
-                let mut ptr: *const Object = ptr.as_ptr() as _;
-                unsafe {
-                    ptr = ptr.offset(-1);
-                    assert_eq!((*ptr).layout, From::from(&layout));
-                }
-            }
-            None => assert!(false)
+        let ptr = unsafe { Broom_allocate(From::from(&layout), 0, ptr::null_mut(), ptr::null_mut()) };
+        let mut ptr: *const Object = ptr.as_ptr() as _;
+        unsafe {
+            ptr = ptr.offset(-1);
+            assert_eq!((*ptr).layout(), &layout as *const Layout);
         }
     }
 }
