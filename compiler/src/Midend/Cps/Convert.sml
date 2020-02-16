@@ -39,7 +39,7 @@ end = struct
         let val builder = Builder.new typeFns
             do Builder.insertGlobal builder ( Name.fromString "layout_Int"
                                             , Global.blobLayout Abi.Isa.Instrs.registerSize )
-            do Builder.insertGlobal builder ( Name.fromString "layout_ORef"
+            do Builder.insertGlobal builder ( Name.fromString "Broom_layout_ORef"
                                             , Global.blobLayout Abi.Isa.Instrs.registerSize )
             do Builder.insertGlobal builder ( Name.fromString "layout_FnPtr"
                                             , Global.blobLayout Abi.Isa.Instrs.registerSize )

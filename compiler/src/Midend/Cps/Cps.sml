@@ -407,7 +407,7 @@ end = struct
                       , inlineable = false
                       , isArray = false
                       , fields = #[{ offset = SOME 0w0
-                                   , layout = SOME (Name.fromString "layout_ORef") }] }
+                                   , layout = SOME (Name.fromString "Broom_layout_ORef") }] }
             end
 
         fun appFieldLayoutDeps f {offset, layout} = Option.app f layout

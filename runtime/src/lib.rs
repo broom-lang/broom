@@ -15,6 +15,10 @@ use std::sync::{Mutex, MutexGuard, LockResult};
 use zone::ZoneAllocator;
 use twobit_slice::TwobitSlice;
 
+extern {
+    static Broom_layout_ORef: Layout;
+}
+
 const HEAP_SIZE: usize = 1 << 20; // 1 MiB
 const SEMISPACE_SIZE: usize = HEAP_SIZE / 2;
 
@@ -283,7 +287,11 @@ struct FieldLayout {
 }
 
 impl FieldLayout {
-    fn is_oref(&self) -> bool { !unsafe { self.layout.as_ref() }.inlineable }
+    fn is_oref(&self) -> bool {
+        unsafe {
+            self.layout.as_ptr() as *const Layout == &Broom_layout_ORef as *const Layout
+        }
+    }
 
     fn scan(&self, obj: *mut u8, mem: &mut MemoryManager) {
         if self.is_oref() {

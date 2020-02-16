@@ -39,7 +39,10 @@ end = struct
 
             fun emitGlobal (name, global) =
                 let val name = convertGlobal name
-                in case global
+                in if String.isPrefix "Broom_" name
+                   then line ("\t.globl\t" ^ name)
+                   else ()
+                 ; case global
                    of Global.UInt n =>
                        ( line "\t.align 8"
                        ; line ("\t.type\t" ^ name ^ ", @object")
