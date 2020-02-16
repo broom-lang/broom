@@ -53,10 +53,10 @@ end = struct
                        ; line ("\t.type\t" ^ name ^ ", @object")
                        ; line (name ^ ":")
                        ; line ("\t.quad\t" ^ LargeWord.fmt StringCvt.DEC size)
-                       ; line ("\t.quad\t" ^ Word.fmt StringCvt.DEC align)
+                       ; line ("\t.word\t" ^ Word.fmt StringCvt.DEC align)
                        ; line ("\t.byte\t" ^ (if inlineable then "1" else "0"))
                        ; line ("\t.byte\t" ^ (if isArray then "1" else "0"))
-                       ; line "\t.zero\t6"
+                       ; line "\t.zero\t4"
                        ; line ("\t.quad\t" ^ Int.toString (Vector.length fields))
                        ; Vector.app emitFieldLayout fields )
                     | Global.SlotMap slots =>
