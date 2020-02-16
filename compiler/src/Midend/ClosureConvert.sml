@@ -118,8 +118,7 @@ end = struct
          | Type.Prim PrimType.Int => Name.fromString "layout_Int"
 
     fun closureLayout program codeType cloverTypes =
-        let val fieldTypes = VectorExt.prepend (codeType, cloverTypes)
-            fun step (typ, {size, alignment, revFields}) =
+        let fun step (typ, {size, alignment, revFields}) =
                 let val layoutName = typeLayoutName program typ
                 in  case Program.global program layoutName
                     of Global.Layout { size = SOME fieldSize
@@ -153,7 +152,7 @@ end = struct
                 of Global.Layout {size = SOME size, align = SOME alignment, ...} =>
                     {size, alignment, revFields = [{ offset = SOME 0w0
                                                    , layout = SOME (Name.fromString "layout_FnPtr") }]}
-            val {size, alignment, revFields} = Vector.foldl step acc fieldTypes
+            val {size, alignment, revFields} = Vector.foldl step acc cloverTypes
         in Global.Layout { size = SOME size
                          , align = SOME alignment
                          , inlineable = false (* OPTIMIZE: true *)
