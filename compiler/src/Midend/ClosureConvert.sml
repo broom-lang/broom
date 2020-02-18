@@ -114,7 +114,7 @@ end = struct
 
     fun typeLayoutName program =
         fn Type.FnT _ => Name.fromString "Broom_layout_ORef"
-         | Type.AppT {callee = Type.Prim PrimType.Box, ...} => Name.fromString "layout_Box"
+         | Type.AppT {callee = Type.Prim PrimType.Box, ...} => Name.fromString "Broom_layout_ORef"
          | Type.Prim PrimType.Int => Name.fromString "layout_Int"
 
     fun closureLayout program codeType cloverTypes =
