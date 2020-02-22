@@ -55,11 +55,13 @@ functor X64InstructionsFn (Register : REGISTER) :> sig
 
         datatype pred = datatype X64JumpCondition.t
 
-        datatype t
+        datatype oper
             = JMP of Label.t * def vector (* relative/absolute JMP *)
             | JMPi of def * def vector    (* indirect JMP through register *)
             | Jcc of pred * Label.t * Label.t
             | RET of def vector
+
+        type t = {pos : Pos.span, oper : oper}
 
         val toDoc : t -> PPrint.t
         val isReturn : t -> bool
@@ -207,33 +209,40 @@ end = struct
 
         datatype pred = datatype X64JumpCondition.t
 
-        datatype t
+        datatype oper
             = JMP of Label.t * def vector (* relative/absolute JMP *)
             | JMPi of def * def vector    (* indirect JMP through register *)
             | Jcc of pred * Label.t * Label.t
             | RET of def vector
 
-        val isReturn =
-            fn RET _ => true
+        type t = {pos : Pos.span, oper : oper}
+
+        fun isReturn {pos = _, oper} =
+            case oper
+            of RET _ => true
              | _ => false
 
-        fun foldDefs f acc =
-            fn (JMP (_, defs) | RET defs) => Vector.foldl f acc defs
+        fun foldDefs f acc {pos = _, oper} =
+            case oper
+            of (JMP (_, defs) | RET defs) => Vector.foldl f acc defs
              | JMPi (def, defs) => Vector.foldl f (f (def, acc)) defs
              | Jcc _ => acc
 
-        fun foldLabels f acc =
-            fn JMP (label, _) => f (label, acc)
+        fun foldLabels f acc {pos = _, oper} =
+            case oper
+            of JMP (label, _) => f (label, acc)
              | (JMPi _ | RET _) => acc
              | Jcc (_, conseq, alt) => f (alt, f (conseq, acc))
 
-        fun appLabels f =
-            fn JMP (label, _) => f label
+        fun appLabels f {pos = _, oper} =
+            case oper
+            of JMP (label, _) => f label
              | (JMPi _ | RET _) => ()
              | Jcc (_, conseq, alt) => (f conseq; f alt)
 
-        val toDoc =
-            fn JMP (label, args) =>
+        fun toDoc {pos = _, oper} =
+            case oper
+            of JMP (label, args) =>
                 text "jmp" <+> Label.toDoc label
                 <+> parens (punctuate (comma <> space) (Vector.map Register.toDoc args))
              | JMPi (def, args) =>

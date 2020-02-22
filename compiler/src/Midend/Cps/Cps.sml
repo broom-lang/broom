@@ -82,7 +82,7 @@ signature CPS_EXPR = sig
         | Param of Label.t * int
         | Const of Const.t
 
-    type t = {parent : Label.t option, typ : Type.t, oper : oper}
+    type t = {pos : Pos.span, parent : Label.t option, typ : Type.t, oper : oper}
 
     val toDoc : t -> PPrint.t
 
@@ -103,13 +103,15 @@ signature CPS_TRANSFER = sig
         = AnyP
         | ConstP of Const.t
 
-    datatype t
+    datatype oper
         = Goto of {callee : Label.t, tArgs : Type.t vector, vArgs : def vector}
         | Jump of {callee : def, tArgs : Type.t vector, vArgs : def vector}
         | Match of def * {pattern : pat, target : Label.t} vector
         | Checked of { opn : Primop.t , tArgs : Type.t vector, vArgs : def vector
                      , succeed : Label.t, fail : Label.t }
         | Return of Type.t vector * def vector
+
+    type t = {pos : Pos.span, oper : oper}
 
     val toDoc : t -> PPrint.t
 
@@ -124,7 +126,8 @@ signature CPS_CONT = sig
     structure Transfer : CPS_TRANSFER
 
     type t =
-        { name : Name.t option
+        { pos : Pos.span
+        , name : Name.t option
         , cconv : CallingConvention.t option
         , tParams : Type.param vector, vParams : Type.t vector
         , body : Transfer.t }
@@ -182,13 +185,13 @@ structure Cps :> sig
     structure Transfer : CPS_TRANSFER where type Type.t = Type.t
     structure Cont : CPS_CONT
         where type Type.t = Type.t
-        where type Transfer.t = Transfer.t
+        where type Transfer.oper = Transfer.oper
     structure Program : CPS_PROGRAM
         where type Global.t = Global.t
         where type Expr.Type.t = Type.t
         where type Expr.oper = Expr.oper
         where type Cont.Type.t = Cont.Type.t
-        where type Cont.Transfer.t = Cont.Transfer.t
+        where type Cont.Transfer.oper = Cont.Transfer.oper
 end = struct
     structure DefSet = CpsId.SortedSet
     structure DefSetMut = CpsId.HashSetMut
@@ -427,13 +430,15 @@ end = struct
             = AnyP
             | ConstP of Const.t
 
-        datatype t
+        datatype oper
             = Goto of {callee : Label.t, tArgs : Type.t vector, vArgs : def vector}
             | Jump of {callee : def, tArgs : Type.t vector, vArgs : def vector}
             | Match of def * {pattern : pat, target : Label.t} vector
             | Checked of { opn : Primop.t , tArgs : Type.t vector, vArgs : def vector
                          , succeed : Label.t, fail : Label.t }
             | Return of Type.t vector * def vector
+
+        type t = {pos : Pos.span, oper : oper}
 
         val patToDoc =
             fn AnyP => text "_"
@@ -442,7 +447,7 @@ end = struct
         fun clauseToDoc {pattern, target} =
             patToDoc pattern <+> text "->" <+> Label.toDoc target
 
-        val toDoc =
+        val operToDoc =
             fn Goto {callee, tArgs, vArgs} =>
                 text "goto" <+> Label.toDoc callee
                 <+> Type.argsDoc Type.toDoc tArgs
@@ -465,21 +470,27 @@ end = struct
                 <+> Type.argsDoc Type.toDoc domain 
                 <+> parens (punctuate (comma <> space) (Vector.map CpsId.toDoc args))
 
-        fun foldlDeps f acc =
+        fun toDoc {pos = _, oper} = operToDoc oper
+
+        fun foldlOperDeps f acc =
             fn Goto {callee = _, tArgs = _, vArgs} => Vector.foldl f acc vArgs
              | Jump {callee, tArgs = _, vArgs} => Vector.foldl f (f (callee, acc)) vArgs
              | Match (matchee, _) => f (matchee, acc)
              | Checked {opn = _, tArgs = _, vArgs, succeed = _, fail = _} => Vector.foldl f acc vArgs
              | Return (_, args) => Vector.foldl f acc args
 
-        fun foldrDeps f acc =
+        fun foldlDeps f acc {pos = _, oper} = foldlOperDeps f acc oper
+
+        fun foldrOperDeps f acc =
             fn Goto {callee = _, tArgs = _, vArgs} => Vector.foldr f acc vArgs
              | Jump {callee, tArgs = _, vArgs} => f (callee, Vector.foldr f acc vArgs)
              | Match (matchee, _) => f (matchee, acc)
              | Checked {opn = _, tArgs = _, vArgs, succeed = _, fail = _} => Vector.foldr f acc vArgs
              | Return (_, args) => Vector.foldr f acc args
 
-        fun mapDefs f =
+        fun foldrDeps f acc {pos = _, oper} = foldrOperDeps f acc oper
+
+        fun mapOperDefs f =
             fn Goto {callee, tArgs, vArgs} =>
                 Goto {callee, tArgs, vArgs = Vector.map f vArgs}
              | Jump {callee, tArgs, vArgs} =>
@@ -489,7 +500,9 @@ end = struct
                 Checked {opn, tArgs, vArgs = Vector.map f vArgs, succeed, fail}
              | Return (domain, args) => Return (domain, Vector.map f args)
 
-        fun foldLabels f acc =
+        fun mapDefs f {pos, oper} = {pos, oper = mapOperDefs f oper}
+
+        fun foldOperLabels f acc =
             fn Goto {callee, ...} => f (callee, acc)
              | Jump _ => acc
              | Match (_, clauses) =>
@@ -497,6 +510,8 @@ end = struct
                              acc clauses
              | Checked {opn = _, tArgs = _, vArgs = _, succeed, fail} => f (fail, f (succeed, acc))
              | Return _ => acc
+
+        fun foldLabels f acc {pos = _, oper} = foldOperLabels f acc oper
     end
 
     structure Cont = struct
@@ -504,12 +519,13 @@ end = struct
         structure Transfer = Transfer
 
         type t =
-            { name : Name.t option
+            { pos : Pos.span
+            , name : Name.t option
             , cconv : CallingConvention.t option
             , tParams : Type.param vector, vParams : Type.t vector
             , body : Transfer.t }
 
-        fun toDoc {name, cconv, tParams, vParams, body} =
+        fun toDoc {pos = _, name, cconv, tParams, vParams, body} =
             text "fn"
             <> (case cconv
                 of SOME cconv => space <> CallingConvention.toDoc cconv
@@ -555,7 +571,7 @@ end = struct
             | Param of Label.t * int
             | Const of Const.t
 
-        type t = {parent : Label.t option, typ : Type.t, oper : oper}
+        type t = {pos : Pos.span, parent : Label.t option, typ : Type.t, oper : oper}
 
         val typeOf : t -> Type.t = #typ
 
@@ -617,7 +633,7 @@ end = struct
              | Param (label, i) => text "param" <+> Label.toDoc label <+> PPrint.int i
              | Const c => text "const" <+> Const.toDoc c
 
-        fun toDoc {parent = _, typ, oper} = operToDoc oper <+> text ":" <+> Type.toDoc typ
+        fun toDoc {pos = _, parent = _, typ, oper} = operToDoc oper <+> text ":" <+> Type.toDoc typ
 
         (* OPTIMIZE: *)
         fun primopType opn =
@@ -662,7 +678,7 @@ end = struct
         fun global ({globals, ...} : t) name = Name.HashMap.lookup globals name
 
         fun byParent ({stmts, ...}: t) =
-            let fun step ((def, {parent, typ = _, oper = _}), acc) =
+            let fun step ((def, {pos = _, parent, typ = _, oper = _}), acc) =
                     case ParentMap.find acc parent
                     of SOME vs => ParentMap.insert acc (parent, DefSet.add (vs, def))
                      | NONE => ParentMap.insert acc (parent, DefSet.singleton def)
@@ -687,7 +703,7 @@ end = struct
             end
 
         fun fnToDoc (program as {stmts, conts, ...} : t) visited label exprs =
-            let val {name, cconv, tParams, vParams, body} = LabelMap.lookup conts label
+            let val {pos = _, name, cconv, tParams, vParams, body} = LabelMap.lookup conts label
             in text "fun"
                <> (case cconv
                    of SOME cconv => space <> CallingConvention.toDoc cconv <> space

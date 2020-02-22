@@ -52,8 +52,10 @@ end = struct
                 in  if calls = 1
                     then case envs
                          of env :: envs =>
-                             ( Env.conform env hints builder label env'
-                             ; envs )
+                             let val pos = #pos (LabelMap.lookup conts label)
+                             in Env.conform env hints pos builder label env'
+                              ; envs
+                             end
                           | [] => raise Fail "unreachable"
                     else envs
                 end
@@ -81,7 +83,7 @@ end = struct
                 end
 
             (* OPTIMIZE: Parallel move algorithm for spill-free, shorter code: *)
-            and allocateParams env hints label ({params, ...} : Cont.t) =
+            and allocateParams env hints label ({pos, params, ...} : Cont.t) =
                 let val targetLocs =
                         case Label.HashTable.find cconvs label
                         of SOME targetLocs => targetLocs
@@ -91,14 +93,14 @@ end = struct
                                                       of SOME param => param
                                                        | NONE => CpsId.fresh () (* HACK *)
                                       in Builder.setParam builder label i loc'
-                                       ; Env.fixedDef env hints builder label param loc'
+                                       ; Env.fixedDef env hints pos builder label param loc'
                                       end)
                                  env
                                  (VectorExt.zip (params, targetLocs))
                 end
 
-            and allocateEBB label hints {name, cconv, params, stmts, transfer} =
-                let do Builder.createCont builder label {name, cconv, paramTypes = Vector.map #2 params}
+            and allocateEBB label hints {pos, name, cconv, params, stmts, transfer} =
+                let do Builder.createCont builder label {pos, name, cconv, paramTypes = Vector.map #2 params}
                     fun allocateBlock hints stmts =
                         case VectorSlice.uncons stmts
                         of SOME (stmt, stmts) =>
@@ -131,8 +133,8 @@ end = struct
             val {globals, conts, main} = Builder.build builder main
             
             (* HACK: Stmts were pushed to builder in reverse, so need to..: *)
-            fun reverseStmts {name, params, cconv, stmts, transfer} =
-                {name, params, cconv, stmts = VectorExt.rev stmts, transfer}
+            fun reverseStmts {pos, name, params, cconv, stmts, transfer} =
+                {pos, name, params, cconv, stmts = VectorExt.rev stmts, transfer}
         in { program = {globals, conts = LabelMap.map reverseStmts conts, main}
            , maxSlotCount = !maxSlotCount }
         end

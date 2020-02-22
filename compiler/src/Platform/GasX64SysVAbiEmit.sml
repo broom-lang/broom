@@ -104,17 +104,18 @@ end = struct
                     line ("\tcall\t" ^ sym ^ "@PLT")
 
             val emitStmt =
-                fn Stmt.Def (target, _, expr) => emitExpr (SOME target, expr)
-                 | Stmt.Eff expr => emitExpr (NONE, expr)
+                fn Stmt.Def (pos, target, _, expr) => emitExpr (SOME target, expr)
+                 | Stmt.Eff (pos, expr) => emitExpr (NONE, expr)
 
-            val emitTransfer =
-                fn Transfer.JMP (dest, _) => line ("\tjmp\t" ^ convertLabel dest)
+            fun emitTransfer {pos, oper} =
+                case oper
+                of Transfer.JMP (dest, _) => line ("\tjmp\t" ^ convertLabel dest)
                  | Transfer.JMPi (dest, _) => line ("\tjmp\t*" ^ convertReg dest)
                  | Transfer.Jcc (Neq, _, dest') => line ("\tjne\t" ^ convertLabel dest')
                  | Transfer.Jcc (Overflow, _, dest') => line ("\tjo\t" ^ convertLabel dest')
                  | Transfer.RET _ => line "\tret\t"
 
-            fun emitCont (label, {name, cconv = _, params = _, stmts, transfer}) =
+            fun emitCont (label, {pos, name, cconv = _, params = _, stmts, transfer}) =
                 ( line (convertLabel label ^ ":")
                 ; Vector.app emitStmt stmts
                 ; emitTransfer transfer )

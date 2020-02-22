@@ -21,7 +21,7 @@ end = struct
     structure LabelMap = Cps.Program.LabelMap
 
     datatype oper = datatype Cps.Expr.oper
-    datatype transfer = datatype Cps.Transfer.t
+    datatype transfer = datatype Cps.Transfer.oper
 
     val op|> = Fn.|>
 
@@ -58,7 +58,7 @@ end = struct
               | NONE => UseSiteSet.singleton use
           ) )
 
-    fun analyzeStmt ((use, {parent = _, typ = _, oper}), defUses) =
+    fun analyzeStmt ((use, {pos = _, parent = _, typ = _, oper}), defUses) =
         case oper
         of PrimApp {opn = _, tArgs = _, vArgs} =>
             Vector.foldl (fn (def', defUses) => useDef defUses def' (Expr use))
@@ -85,7 +85,7 @@ end = struct
     fun analyzeStmts stmts defUses =
         DefMap.fold analyzeStmt defUses stmts
 
-    fun analyzeCont ((use, {body, ...} : Cps.Cont.t), defUses) =
+    fun analyzeCont ((use, {body = {pos = _, oper = body}, ...} : Cps.Cont.t), defUses) =
         case body
         of Goto {callee, tArgs = _, vArgs} =>
             let val defUses = useLabel defUses callee (Transfer use)

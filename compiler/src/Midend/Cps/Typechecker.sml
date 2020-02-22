@@ -31,7 +31,7 @@ end = struct
 
     datatype typ = datatype Type.t
     datatype oper = datatype Expr.oper
-    datatype transfer = datatype Transfer.t
+    datatype transfer = datatype Transfer.oper
     datatype pat = datatype Transfer.pat
 
     val op|> = Fn.|>
@@ -250,12 +250,13 @@ end = struct
 
     and labelType (program : Program.t) label =
         case LabelMap.find (#conts program) label
-        of SOME {name = _, cconv = _, tParams, vParams, body = _} => FnT {tDomain = tParams, vDomain = vParams}
+        of SOME {pos = _, name = _, cconv = _, tParams, vParams, body = _} =>
+            FnT {tDomain = tParams, vDomain = vParams}
          | NONE => raise TypeError (UnboundLabel label)
 
     and checkCont (program : Program.t) label =
         case LabelMap.find (#conts program) label
-        of SOME {name = _, cconv = _, tParams, vParams, body} =>
+        of SOME {pos = _, name = _, cconv = _, tParams, vParams, body = {pos = _, oper = body}} =>
             ( checkTransfer program body
             ; FnT {tDomain = tParams, vDomain = vParams} )
          | NONE => raise TypeError (UnboundLabel label)

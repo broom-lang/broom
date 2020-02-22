@@ -19,7 +19,6 @@ structure X64SysVAbi :> ABI
     structure LabelUses = IsaLabelUsesFn(Isa)
 
     datatype oper = datatype X64RegInstructions.Oper.t
-    datatype transfer = datatype X64RegInstructions.Transfer.t
 
     val op|> = Fn.|>
 
