@@ -127,7 +127,7 @@ end = struct
                                     of SOME output =>
                                         let val asmFilename = output ^ ".s"
                                             val asmStream = TextIO.openOut asmFilename
-                                        in GasX64SysVAbiEmit.emit asmStream {program, maxSlotCount}
+                                        in GasX64SysVAbiEmit.emit asmStream {program, maxSlotCount, sourcemap}
                                          ; TextIO.closeOut asmStream
                                          ; if asm
                                            then ()
@@ -139,7 +139,7 @@ end = struct
                                                 ; OS.FileSys.remove asmFilename )
                                         end
                                      | NONE => (* HACK: Handy for debugging but unconventional: *)
-                                        GasX64SysVAbiEmit.emit TextIO.stdOut {program, maxSlotCount}
+                                        GasX64SysVAbiEmit.emit TextIO.stdOut {program, maxSlotCount, sourcemap}
                                   ; OS.Process.success
                                  end )
                             | Left errors =>

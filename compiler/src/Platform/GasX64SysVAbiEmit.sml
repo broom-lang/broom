@@ -1,7 +1,7 @@
 structure X64SeqIsa = SeqIsaFn(X64SysVAbi.RegIsa)
 
 structure GasX64SysVAbiEmit :> sig
-    val emit : TextIO.outstream -> {program : X64SeqIsa.Program.t, maxSlotCount : int} -> unit
+    val emit : TextIO.outstream -> {program : X64SeqIsa.Program.t, maxSlotCount : int, sourcemap : Pos.sourcemap} -> unit
 end = struct
     structure Register = X64Register
     structure Global = X64SeqIsa.RegIsa.Global
@@ -30,8 +30,47 @@ end = struct
                "(" ^ convertReg index ^ ", " ^ Word.toString scale ^ ")"
             | (NONE, NONE) => "")
 
-    fun emit outstream {program = {globals, conts}, maxSlotCount} =
+    fun emit outstream {program = {globals, conts}, maxSlotCount, sourcemap} =
         let fun line s = TextIO.output (outstream, s ^ "\n")
+
+            val fileIndices = String.HashTable.mkTable (0, Subscript)
+            fun fileIndex filename =
+                case String.HashTable.find fileIndices filename
+                of SOME i => i
+                 | NONE =>
+                    let val i = String.HashTable.numItems fileIndices + 1
+                    in String.HashTable.insert fileIndices (filename, i)
+                     ; i
+                    end
+
+            fun emitFilename (pos : Pos.sourceloc option) (pos' : Pos.sourceloc) =
+                let val changed =
+                        case pos
+                        of SOME pos => #fileName pos' <> #fileName pos
+                         | NONE => true
+                in  if changed
+                    then line ( "\t.file " ^ Int.toString (fileIndex (getOpt (#fileName pos', "<stdin>")))
+                              ^ " \"" ^ getOpt (#fileName pos', "<stdin>") ^ "\"" )
+                    else ()
+                end
+
+            fun emitLoc (pos : Pos.sourceloc option) (pos' : Pos.sourceloc) =
+                let val changed =
+                        case pos
+                        of SOME pos => pos' <> pos
+                         | NONE => true
+                in  if changed
+                    then line ( "\t.loc " ^ Int.toString (fileIndex (getOpt (#fileName pos', "<stdin>"))) ^ " "
+                              ^ Int.toString (#lineNo pos') ^ " " ^ Int.toString (#colNo pos') )
+                    else ()
+                 ;  SOME pos'
+                end
+
+            fun emitPos (pos : Pos.sourceloc option) (pos' : Pos.span) =
+                let val pos' = Pos.sourceLoc sourcemap (#1 pos')
+                in emitFilename pos pos'
+                 ; emitLoc pos pos'
+                end
 
             fun emitFieldLayout {offset = SOME offset, layout = SOME layout} =
                 ( line ("\t.quad\t" ^ LargeWord.fmt StringCvt.DEC offset)
@@ -103,27 +142,38 @@ end = struct
                  | (SOME _, Oper.CALLd (sym, _)) =>
                     line ("\tcall\t" ^ sym ^ "@PLT")
 
-            val emitStmt =
-                fn Stmt.Def (pos, target, _, expr) => emitExpr (SOME target, expr)
-                 | Stmt.Eff (pos, expr) => emitExpr (NONE, expr)
+            fun emitStmt (stmt, pos) =
+                let val (pos', target, expr) =
+                        case stmt
+                        of Stmt.Def (pos, target, _, expr) => (pos, SOME target, expr)
+                         | Stmt.Eff (pos, expr) => (pos, NONE, expr)
+                    val pos = emitPos pos pos'
+                in emitExpr (target, expr)
+                 ; pos
+                end
 
-            fun emitTransfer {pos, oper} =
-                case oper
-                of Transfer.JMP (dest, _) => line ("\tjmp\t" ^ convertLabel dest)
-                 | Transfer.JMPi (dest, _) => line ("\tjmp\t*" ^ convertReg dest)
-                 | Transfer.Jcc (Neq, _, dest') => line ("\tjne\t" ^ convertLabel dest')
-                 | Transfer.Jcc (Overflow, _, dest') => line ("\tjo\t" ^ convertLabel dest')
-                 | Transfer.RET _ => line "\tret\t"
+            fun emitTransfer pos {pos = pos', oper} =
+                let val pos = emitPos pos pos'
+                in  case oper
+                    of Transfer.JMP (dest, _) => line ("\tjmp\t" ^ convertLabel dest)
+                     | Transfer.JMPi (dest, _) => line ("\tjmp\t*" ^ convertReg dest)
+                     | Transfer.Jcc (Neq, _, dest') => line ("\tjne\t" ^ convertLabel dest')
+                     | Transfer.Jcc (Overflow, _, dest') => line ("\tjo\t" ^ convertLabel dest')
+                     | Transfer.RET _ => line "\tret\t"
+                 ; pos
+                end
 
-            fun emitCont (label, {pos, name, cconv = _, params = _, stmts, transfer}) =
-                ( line (convertLabel label ^ ":")
-                ; Vector.app emitStmt stmts
-                ; emitTransfer transfer )
+            fun emitCont ((label, {pos = pos', name, cconv = _, params = _, stmts, transfer}), pos) =
+                let val pos = emitPos pos pos'
+                    do line (convertLabel label ^ ":")
+                    val pos = Vector.foldl emitStmt pos stmts
+                in emitTransfer pos transfer
+                end
         in line "\t.text"
          ; line "\t.globl\tmain"
          ; line "\t.type\tmain, @function"
          ; line "main:"
-         ; Vector.app emitCont conts
+         ; Vector.foldl emitCont NONE conts
 
          ; line "\t.data"
          ; Name.HashMap.appi emitGlobal globals
