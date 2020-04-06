@@ -90,6 +90,7 @@
     | COMMA (",")
     | COLON (":")
     | SEMI (";")
+    | BACKQUOTE ("`")
 
     | OP4 of Name.t
     | OP5 of Name.t
@@ -221,7 +222,9 @@ app
                |> ArgExpr
             end
          | [] => select
-    );
+    )
+    | "`" tag=ID arg=select? => ( raise Fail "todo" ) (* polymorphic variant *)
+    ;
 
 select
     : nestable fields=("." ID => ((ID_SPAN, ID)))* => (
@@ -272,6 +275,11 @@ nestable
           of RecordFields fields => Term.Record (FULL_SPAN, fields)
            | RowType row => Term.Type (FULL_SPAN, Type.RecordT (FULL_SPAN, row))
       )
+    | "[" suspClauses "]" => (
+          let val (explicitness, clauses) = suspClauses
+          in Term.Fn (FULL_SPAN, explicitness, clauses)
+          end
+      )
     | "(" "=" expr ")" => (Term.Type (FULL_SPAN, Type.Singleton (FULL_SPAN, expr)))
     | "(" INTRINSIC selects=select* clauses=("|" succeed=(var=ID "->" body=expr => ({var, body})) "|" "->" fail=expr)? ")" => (
           let val args = Vector.fromList selects
@@ -293,6 +301,25 @@ nestable
     | "(" expr ")"
     | atom
     ;
+
+(* TODO: `pattern=paramPattern` => `patterns=apat+`: *)
+suspClauses
+    : "|" pattern=paramPattern suspClausesTail => (
+        let val (explicitness, body, clauses) = suspClausesTail
+        in (explicitness, Vector.fromList ({pattern, body} :: clauses))
+        end
+    )
+    | expr => ( raise Fail "todo" ) (* thunk *)
+    ;
+
+suspClausesTail
+    : "->" body=expr clauses=explicitSuspClause* => ((Explicit (), body, clauses))
+    | "=>" body=expr clauses=implicitSuspClause* => ((Implicit, body, clauses))
+    ;
+
+(* TODO: `pattern=paramPattern` => `patterns=apat+`: *)
+explicitSuspClause : "|" pattern=paramPattern "->" body=expr => ({pattern, body});
+implicitSuspClause : "|" pattern=paramPattern "=>" body=expr => ({pattern, body});
 
 fnClauses : "|"? pattern=paramPattern clausesTail => (
         let val (explicitness, body, clauses) = clausesTail
