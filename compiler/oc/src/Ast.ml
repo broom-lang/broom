@@ -26,7 +26,7 @@ and expr
     | Seal of expr with_pos * typ with_pos
     | Struct of def list
     | Select of expr with_pos * Name.t
-    | Proxy of typ with_pos
+    | Proxy of typ
     | Use of Name.t
     | Const of int
 
@@ -87,7 +87,7 @@ and expr_to_doc = function
             def_to_doc defs
     | Select ({v = record; _}, label) ->
         selectee_to_doc record ^^ PPrint.dot ^^ Name.to_doc label
-    | Proxy {v = typ; _} -> PPrint.brackets (typ_to_doc typ)
+    | Proxy typ -> PPrint.brackets (typ_to_doc typ)
     | Use name -> Name.to_doc name
     | Const v -> PPrint.string (Int.to_string v)
 

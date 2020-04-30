@@ -26,7 +26,7 @@ and expr
     | Seal of expr with_pos * typ with_pos
     | Struct of def list
     | Select of expr with_pos * Name.t
-    | Proxy of typ with_pos
+    | Proxy of typ
     | Use of Name.t
     | Const of int
 

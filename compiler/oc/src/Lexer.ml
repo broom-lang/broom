@@ -11,18 +11,20 @@ let integer = [%sedlex.regexp? Plus ('0'..'9')]
 let rec token ({stream; _} as lexbuf) =
     match%sedlex stream with
     | "fun"  -> update lexbuf; FUN
+    | "pi"   -> update lexbuf; PI
     | "if"   -> update lexbuf; IF
     | "then" -> update lexbuf; THEN
     | "else" -> update lexbuf; ELSE
+    | "val"  -> update lexbuf; VAL
     | "type" -> update lexbuf; TYPE
 
     | "->" -> update lexbuf; ARROW
     | "=>" -> update lexbuf; DARROW
     | '.'  -> update lexbuf; DOT
-    | ":>" -> update lexbuf; COLON
     | ':'  -> update lexbuf; COLON
     | '='  -> update lexbuf; EQ
     | ';'  -> update lexbuf; SEMI
+    | '|'  -> update lexbuf; BAR
 
     | '(' -> update lexbuf; LPAREN
     | ')' -> update lexbuf; RPAREN
