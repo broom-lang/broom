@@ -2,3 +2,7 @@
 *.log
 typerules.pdf
 
+.spago
+.psci_modules
+output
+
