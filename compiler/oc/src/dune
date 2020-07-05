@@ -1,0 +1,7 @@
+(executable
+  (name broom)
+  (libraries menhirLib pprint linenoise)
+  (preprocess (pps sedlex.ppx)))
+
+(menhir (modules Parser))
+

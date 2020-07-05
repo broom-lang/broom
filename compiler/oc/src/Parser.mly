@@ -1,4 +1,8 @@
-%{open Ast%}
+%{
+open Ast
+open Ast.Term
+open Ast.Type
+%}
 
 %token
     IF "if" THEN "then" ELSE "else" FUN "fun" PI "pi" VAL "val" TYPE "type"
@@ -30,7 +34,7 @@ domain
 typ_nestable_mixin : typ_nestable_mixin_impl { Proxy $1 }
 
 typ_nestable_mixin_impl
-    : "{" "|" decls=separated_list(";", decl) "|" "}" { Sig decls }
+    : "{" "|" decls=separated_list(";", decl) "|" "}" { Sig (Vector.of_list decls) }
     | "(" "=" expr=expr ")" { Singleton expr }
     | "(" typ ")" { $2.v }
     | "type" { Type }

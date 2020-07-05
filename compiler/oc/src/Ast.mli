@@ -1,46 +1,51 @@
 type span = Lexing.position * Lexing.position
 
+val span_to_string : span -> string
+
 type 'a with_pos = {v : 'a; pos: span}
 
-type domain = {name : Name.t option; typ : typ with_pos}
+module rec Term : sig
+    type expr =
+        | Fn of lvalue * expr with_pos
+        | If of expr with_pos * expr with_pos * expr with_pos
+        | App of expr with_pos * expr with_pos
+        | Seal of expr with_pos * Type.t with_pos
+        | Struct of def Vector.t
+        | Select of expr with_pos * Name.t
+        | Proxy of Type.t with_pos
+        | Use of Name.t
+        | Const of Const.t
 
-and lvalue = {pat : Name.t; ann: typ with_pos option}
+    and stmt =
+        | Def of def
+        | Expr of expr with_pos
 
-and effect = Pure | Impure
+    and def = span * lvalue * expr with_pos
 
-and typ
-    = Pi of domain * effect * typ with_pos
-    | Sig of decl list
-    | Path of expr
-    | Singleton of expr with_pos
-    | Type
-    | Int
-    | Bool
+    and lvalue = {pat : Name.t; ann: Type.t with_pos option}
 
-and decl = {name : Name.t; typ : typ with_pos}
+    val expr_to_doc : expr -> PPrint.document
+    val stmt_to_doc : stmt -> PPrint.document
+end
 
-and expr
-    = Fn of lvalue * expr with_pos
-    | If of expr with_pos * expr with_pos * expr with_pos
-    | App of expr with_pos * expr with_pos
-    | Seal of expr with_pos * typ with_pos
-    | Struct of def list
-    | Select of expr with_pos * Name.t
-    | Proxy of typ
-    | Use of Name.t
-    | Const of int
+and Type : sig
+    type t =
+        | Pi of Name.t option decl * Effect.t * t with_pos
+        | Sig of Name.t decl Vector.t
+        | Path of Term.expr
+        | Singleton of Term.expr with_pos
+        | Type
+        | Prim of Prim.t
 
-and def = span * lvalue * expr with_pos
+    and 'a decl = {name : 'a; typ : t with_pos}
 
-and stmt
-    = Def of def
-    | Expr of expr with_pos
+    val to_doc : t -> PPrint.document
+end
 
-val effect_to_doc : effect -> PPrint.document
-val effect_arrow : effect -> PPrint.document
-val def_to_doc : def -> PPrint.document
-val typ_to_doc : typ -> PPrint.document
-val decl_to_doc : decl -> PPrint.document
-val expr_to_doc : expr -> PPrint.document
-val stmt_to_doc : stmt -> PPrint.document
+and Effect : sig
+    type t = Pure | Impure
+
+    val to_doc : t -> PPrint.document
+    val arrow : t -> PPrint.document
+end
 
