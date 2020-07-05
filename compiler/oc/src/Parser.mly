@@ -14,7 +14,15 @@ open Ast.Type
 %token <string> ID
 %token <int> CONST
 
-%start <Ast.stmt list> stmts
+%start <Ast.Term.stmt list> stmts
+
+%type <Ast.Type.t with_pos> typ
+%type <Name.t option Ast.Type.decl> domain
+%type <Ast.Term.expr> typ_nestable_mixin
+%type <Ast.Type.t> typ_impl typ_nestable_mixin_impl
+%type <Ast.Type.t with_pos option> ann
+
+%type <Name.t Ast.Type.decl> decl
 
 %%
 
@@ -31,7 +39,7 @@ domain
     : "pi" "(" name=ID ":" typ=typ ")" { {name = Some (Name.of_string name); typ} }
     | unann_expr(typ_nestable_mixin) { {name = None; typ = {$1 with v = Path $1.v}} }
 
-typ_nestable_mixin : typ_nestable_mixin_impl { Proxy $1 }
+typ_nestable_mixin : typ_nestable_mixin_impl { Proxy {v = $1; pos = $sloc} }
 
 typ_nestable_mixin_impl
     : "{" "|" decls=separated_list(";", decl) "|" "}" { Sig (Vector.of_list decls) }
@@ -48,14 +56,14 @@ ann
 decl
     : "val" name=ID ":" typ=typ { {name = Name.of_string name; typ} }
     | "type" name=ID "=" typ=typ {
-        {name = Name.of_string name; typ = {v = Singleton {v = Proxy typ.v; pos = $loc(typ)}; pos = $sloc}}
+        {name = Name.of_string name; typ = {v = Singleton {v = Proxy typ; pos = $loc(typ)}; pos = $sloc}}
     }
     | "type" name=ID { {name = Name.of_string name; typ = {v = Type; pos = $loc(name)}} }
 
 (* # Expressions *)
 
 expr
-    : "type" typ { {$2 with v = Proxy $2.v} }
+    : "type" typ { {$2 with v = Proxy $2} }
     | ann_expr(expr_nestable_mixin) { $1 }
 
 ann_expr(nestable_mixin)
@@ -79,7 +87,7 @@ select(nestable_mixin)
 expr_nestable(nestable_mixin) : expr_nestable_impl(nestable_mixin) { {v = $1; pos = $sloc} }
 
 expr_nestable_impl(nestable_mixin)
-    : "{" defs=separated_list(";", def) "}" { Struct defs }
+    : "{" defs=separated_list(";", def) "}" { Struct (Vector.of_list defs) }
     | "[" expr "]" { failwith "todo" }
     | "[" clause+ "]" { failwith "todo" }
     | nestable_mixin { $1 }
@@ -94,12 +102,12 @@ atom
     : ID {
         if $1.[0] = '_' && $1.[1] = '_' then
             match $1 with
-            | "__int" -> Proxy Int
-            | "__bool" -> Proxy Bool
+            | "__int" -> Proxy {v = Type.Prim Prim.Int; pos = $sloc}
+            | "__bool" -> Proxy {v = Type.Prim Prim.Bool; pos = $sloc}
             | _ -> failwith ("nonexistent intrinsic " ^ $1)
         else Use (Name.of_string $1)
     }
-    | CONST { Const $1 }
+    | CONST { Const (Const.Int $1) }
 
 param
     : ID { {pat = Name.of_string $1; ann = None} }
@@ -116,7 +124,7 @@ stmt
 def 
     : val_def { $1 }
     | "type" pat=ID "=" typ=typ {
-        ($sloc, {pat = Name.of_string pat; ann = None}, {v = Proxy typ.v; pos = $loc(typ)})
+        ($sloc, {pat = Name.of_string pat; ann = None}, {v = Proxy typ; pos = $loc(typ)})
     }
 
 val_def : "val" pat=ID ann=ann "=" expr=expr { ($sloc, {pat = Name.of_string pat; ann}, expr) }
