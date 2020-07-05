@@ -20,7 +20,7 @@ let create_lexbuf ?(file="") stream =
   in { pos ; stream }
 
 (** Register a new line in the lexer's position. *)
-let new_line ?(n=0) lexbuf =
+let new_line lexbuf =
   let open Lexing in
   let lcp = lexbuf.pos in
   lexbuf.pos <-
@@ -36,7 +36,7 @@ let update lexbuf =
   lexbuf.pos <- {p with Lexing.pos_cnum = new_pos }
 
 (** The last matched word. *)
-let lexeme { stream } = Sedlexing.Utf8.lexeme stream
+let lexeme { stream; pos = _ } = Sedlexing.Utf8.lexeme stream
 
 
 (** [ParseError (file, line, col, token)] *)
@@ -53,7 +53,7 @@ let string_of_ParseError (file, line, cnum, tok) =
     line cnum tok
 
 let raise_ParseError lexbuf =
-  let { pos } = lexbuf in
+  let { pos; stream = _ } = lexbuf in
   let tok = lexeme lexbuf in
   let open Lexing in
   let line = pos.pos_lnum in
