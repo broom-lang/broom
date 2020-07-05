@@ -19,7 +19,7 @@ open Ast.Type
 %type <Ast.Type.t with_pos> typ
 %type <Name.t option Ast.Type.decl> domain
 %type <Ast.Term.expr> typ_nestable_mixin
-%type <Ast.Type.t> typ_impl typ_nestable_mixin_impl
+%type <Ast.Type.t> typ_without_pos typ_nestable_mixin_without_pos
 %type <Ast.Type.t with_pos option> ann
 
 %type <Name.t Ast.Type.decl> decl
@@ -28,9 +28,9 @@ open Ast.Type
 
 (* # Types *)
 
-typ : typ_impl { {v = $1; pos = $sloc} }
+typ : typ_without_pos { {v = $1; pos = $sloc} }
 
-typ_impl
+typ_without_pos
     : domain=domain "=>" codomain=typ { Pi (domain, Pure, codomain) }
     | domain=domain "->" codomain=typ { Pi (domain, Impure, codomain) }
     | ann_expr(typ_nestable_mixin) { Path $1.v }
@@ -39,9 +39,9 @@ domain
     : "pi" "(" name=ID ":" typ=typ ")" { {name = Some (Name.of_string name); typ} }
     | unann_expr(typ_nestable_mixin) { {name = None; typ = {$1 with v = Path $1.v}} }
 
-typ_nestable_mixin : typ_nestable_mixin_impl { Proxy {v = $1; pos = $sloc} }
+typ_nestable_mixin : typ_nestable_mixin_without_pos { Proxy {v = $1; pos = $sloc} }
 
-typ_nestable_mixin_impl
+typ_nestable_mixin_without_pos (* Non-infix types that are not valid as exprs *)
     : "{" "|" decls=separated_list(";", decl) "|" "}" { Sig (Vector.of_list decls) }
     | "(" "=" expr=expr ")" { Singleton expr }
     | "(" typ ")" { $2.v }
@@ -84,16 +84,16 @@ select(nestable_mixin)
     : record=select(nestable_mixin) "." label=ID { {v = Select (record, Name.of_string label); pos = $sloc} }
     | expr_nestable(nestable_mixin) { $1 }
 
-expr_nestable(nestable_mixin) : expr_nestable_impl(nestable_mixin) { {v = $1; pos = $sloc} }
+expr_nestable(nestable_mixin) : expr_nestable_without_pos(nestable_mixin) { {v = $1; pos = $sloc} }
 
-expr_nestable_impl(nestable_mixin)
+expr_nestable_without_pos(nestable_mixin)
     : "{" defs=separated_list(";", def) "}" { Struct (Vector.of_list defs) }
     | "[" expr "]" { failwith "todo" }
     | "[" clause+ "]" { failwith "todo" }
     | nestable_mixin { $1 }
     | atom { $1 }
 
-expr_nestable_mixin
+expr_nestable_mixin (* Non-infix exprs that are not valid as types *)
     : "(" expr ")" { $2.v }
 
 clause : "|" param+ "->" expr { failwith "todo" }
