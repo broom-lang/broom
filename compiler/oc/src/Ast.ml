@@ -27,7 +27,10 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
     and def = Util.span * pat with_pos * expr with_pos
 
     let rec expr_to_doc = function
-        | Fn clauses -> failwith "FIXME"
+        | Fn clauses ->
+            PPrint.surround_separate_map 4 1 (PPrint.brackets PPrint.empty)
+                PPrint.lbracket (PPrint.break 1 ^^ PPrint.bar ^^ PPrint.blank 1) PPrint.rbracket
+                clause_to_doc (Vector.to_list clauses)
         | If (cond, conseq, alt) ->
             PPrint.string "if" ^/^ expr_to_doc cond.v
                 ^/^ PPrint.string "then" ^/^ expr_to_doc conseq.v
@@ -45,6 +48,12 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | Use name -> Name.to_doc name
         | Const v -> Const.to_doc v
 
+    and clause_to_doc {pats; body} =
+        if Vector.length pats > 0
+        then PPrint.separate_map (PPrint.break 1) (fun {Util.v; pos = _} -> Pattern.to_doc v)
+            (Vector.to_list pats) ^/^ PPrint.string "->" ^/^ expr_to_doc body.v
+        else expr_to_doc body.v
+
     and callee_to_doc = function
         | (Fn _ | If _) as callee -> PPrint.parens (expr_to_doc callee)
         | callee -> expr_to_doc callee
@@ -61,8 +70,8 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | (Fn _ | If _ | App _) as callee -> PPrint.parens (expr_to_doc callee)
         | callee -> expr_to_doc callee
 
-    and def_to_doc (_, def, {v = expr; _}) =
-        failwith "FIXME" ^/^ PPrint.equals ^/^ expr_to_doc expr
+    and def_to_doc (_, pat, expr) =
+        PPrint.infix 4 1 PPrint.equals (Pattern.to_doc pat.v) (expr_to_doc expr.v)
 
     let stmt_to_doc = function
         | Def def -> def_to_doc def
@@ -77,6 +86,12 @@ and Pattern : AstSigs.PATTERN with type typ = Type.t = struct
         | Binder of Name.t
         | Ignore
         | Const of Const.t
+
+    let rec to_doc = function
+        | Ann (inner, typ) -> PPrint.infix 4 1 PPrint.colon (to_doc inner.v) (Type.to_doc typ.v)
+        | Binder name -> Name.to_doc name
+        | Ignore -> PPrint.string "_"
+        | Const c -> Const.to_doc c
 end
 
 and Type : AstSigs.TYPE
@@ -100,7 +115,11 @@ and Type : AstSigs.TYPE
 
     let rec to_doc = function
         | Pi (domain, eff, codomain) ->
-            domain_to_doc domain ^/^ Effect.arrow eff ^/^ to_doc codomain.v
+            PPrint.infix 4 1 (Effect.arrow eff)
+                (PPrint.string "pi" ^^ PPrint.blank 1
+                    ^^ PPrint.separate_map (PPrint.break 1) (fun {Util.v; pos = _} -> Pattern.to_doc v)
+                        (Vector.to_list domain))
+                (to_doc codomain.v)
         | Sig decls ->
             PPrint.surround_separate_map 4 1 (PPrint.braces PPrint.empty)
                 PPrint.lbrace (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
@@ -112,8 +131,6 @@ and Type : AstSigs.TYPE
 
     and decl_to_doc {name; typ = {v = typ; _}} =
         PPrint.string "val" ^/^ Name.to_doc name ^/^ PPrint.colon ^/^ to_doc typ
-
-    and domain_to_doc = fun _ -> failwith "TODO"
 end
 
 and Effect : sig

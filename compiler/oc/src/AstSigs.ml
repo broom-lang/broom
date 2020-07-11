@@ -35,6 +35,8 @@ module type PATTERN = sig
         | Binder of Name.t
         | Ignore (* "_" *)
         | Const of Const.t
+
+    val to_doc : t -> PPrint.document
 end
 
 module type TYPE = sig
