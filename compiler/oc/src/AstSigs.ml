@@ -9,7 +9,10 @@ module type TERM = sig
         | If of expr with_pos * expr with_pos * expr with_pos
         | App of expr with_pos * expr with_pos
         | Seal of expr with_pos * typ with_pos
-        | Struct of def Vector.t
+        | With of expr with_pos * Name.t * expr with_pos
+        | Where of expr with_pos * Name.t * expr with_pos
+        | Without of expr with_pos * Name.t
+        | EmptyRecord
         | Select of expr with_pos * Name.t
         | Proxy of typ with_pos
         | Use of Name.t

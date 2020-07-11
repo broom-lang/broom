@@ -11,10 +11,13 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | Fn of clause Vector.t
         | If of expr with_pos * expr with_pos * expr with_pos
         | App of expr with_pos * expr with_pos
-        | Seal of expr with_pos * Type.t with_pos
-        | Struct of def Vector.t
+        | Seal of expr with_pos * typ with_pos
+        | With of expr with_pos * Name.t * expr with_pos
+        | Where of expr with_pos * Name.t * expr with_pos
+        | Without of expr with_pos * Name.t
+        | EmptyRecord
         | Select of expr with_pos * Name.t
-        | Proxy of Type.t with_pos
+        | Proxy of typ with_pos
         | Use of Name.t
         | Const of Const.t
 
@@ -38,10 +41,16 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | App ({v = callee; _}, {v = arg; _}) -> callee_to_doc callee ^/^ arg_to_doc arg
         | Seal (expr, typ) ->
             PPrint.infix 4 1 (PPrint.string ":>") (sealee_to_doc expr.v) (Type.to_doc typ.v)
-        | Struct defs ->
-            PPrint.surround_separate_map 4 1 (PPrint.braces PPrint.empty)
-                PPrint.lbrace (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
-                def_to_doc (Vector.to_list defs)
+        | With (super, label, expr) ->
+            PPrint.braces (PPrint.infix 4 1 (PPrint.string "with") (expr_to_doc super.v)
+                (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (expr_to_doc expr.v)))
+        | Where (super, label, expr) ->
+            PPrint.braces (PPrint.infix 4 1 (PPrint.string "where") (expr_to_doc super.v)
+                (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (expr_to_doc expr.v)))
+        | Without (super, label) ->
+            PPrint.braces (PPrint.infix 4 1 (PPrint.string "without") (expr_to_doc super.v)
+                (Name.to_doc label))
+        | EmptyRecord -> PPrint.braces PPrint.empty
         | Select ({v = record; _}, label) ->
             selectee_to_doc record ^^ PPrint.dot ^^ Name.to_doc label
         | Proxy {v = typ; _} -> PPrint.brackets (Type.to_doc typ)
@@ -70,7 +79,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | (Fn _ | If _ | App _) as callee -> PPrint.parens (expr_to_doc callee)
         | callee -> expr_to_doc callee
 
-    and def_to_doc (_, pat, expr) =
+    and def_to_doc ((_, pat, expr) : def) =
         PPrint.infix 4 1 PPrint.equals (Pattern.to_doc pat.v) (expr_to_doc expr.v)
 
     let stmt_to_doc = function

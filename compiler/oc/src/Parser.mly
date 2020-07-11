@@ -27,7 +27,7 @@ open Util
 %type <Name.t Ast.Type.decl> decl
 
 %type <Ast.Term.clause> clause
-%type <Ast.Term.expr with_pos> row_expr
+%type <Ast.Term.expr> row_expr
 
 %type <Ast.Pattern.t with_pos> pat apat
 
@@ -90,7 +90,7 @@ select(nestable_mixin)
 expr_nestable(nestable_mixin) : expr_nestable_without_pos(nestable_mixin) { {v = $1; pos = $sloc} }
 
 expr_nestable_without_pos(nestable_mixin) :
-    | "{" row_expr "}" { failwith "TODO" }
+    | "{" row_expr "}" { $2 }
     | "{" separated_nonempty_list(",", field) "}" { failwith "TODO" }
     | "[" clause* "]" { Fn (Vector.of_list $2) }
     | "[" expr "]" { Fn (Vector.singleton {pats = Vector.of_list []; body = $2}) }
@@ -106,24 +106,26 @@ row_expr :
     | with_row { $1 }
     | where_row { $1 }
     | without_row { $1 }
-    | { failwith "TODO" }
+    | { EmptyRecord }
 
 with_row :
-    | row_or_expr "with" field { failwith "TODO" }
-    | with_row "," field { failwith "TODO" }
+    | row_or_expr "with" field { With ($1, fst $3, snd $3) }
+    | with_row "," field { With ({v = $1; pos = $loc($1)}, fst $3, snd $3) }
 
 where_row :
-    | row_or_expr "where" field { failwith "TODO" }
-    | where_row "," field { failwith "TODO" }
+    | row_or_expr "where" field { Where ($1, fst $3, snd $3) }
+    | where_row "," field { Where ({v = $1; pos = $loc($1)}, fst $3, snd $3) }
 
 without_row :
-    | row_or_expr "without" ID { failwith "TODO" }
-    | without_row "," ID { failwith "TODO" }
+    | row_or_expr "without" ID { Without ($1, Name.of_string $3) }
+    | without_row "," ID { Without ({v = $1; pos = $loc($1)}, Name.of_string $3) }
 
-row_or_expr : expr | row_expr { $1 }
+row_or_expr :
+    | expr { $1 }
+    | row_expr { {v = $1; pos = $sloc} }
 
 field
-    : ID "=" expr { failwith "TODO" }
+    : ID "=" expr { (Name.of_string $1, $3) }
     | ID { failwith "TODO" }
 
 clause : "|" apat+ "->" expr { failwith "TODO" }
