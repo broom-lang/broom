@@ -3,5 +3,7 @@
   (libraries menhirLib pprint linenoise)
   (preprocess (pps sedlex.ppx)))
 
-(menhir (modules Parser))
+(menhir
+  (modules Parser)
+  (flags --explain))
 

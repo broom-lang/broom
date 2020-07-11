@@ -1,17 +1,14 @@
 let (^^) = PPrint.(^^)
 let (^/^) = PPrint.(^/^)
 
-type span = Lexing.position * Lexing.position
+type 'a with_pos = 'a Util.with_pos
 
-let pos_to_string ({pos_lnum = line; pos_bol = bol; pos_cnum = offset; pos_fname = _} : Lexing.position) =
-    Int.to_string line ^ ":" ^ Int.to_string (offset - bol)
-let span_to_string (pos, pos') = pos_to_string pos ^ "-" ^ pos_to_string pos'
+module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t = struct
+    type typ = Type.t
+    type pat = Pattern.t
 
-type 'a with_pos = {v : 'a; pos: span}
-
-module rec Term : sig
     type expr =
-        | Fn of lvalue * expr with_pos
+        | Fn of clause Vector.t
         | If of expr with_pos * expr with_pos * expr with_pos
         | App of expr with_pos * expr with_pos
         | Seal of expr with_pos * Type.t with_pos
@@ -21,39 +18,16 @@ module rec Term : sig
         | Use of Name.t
         | Const of Const.t
 
-    and stmt =
-        | Def of def
-        | Expr of expr with_pos
-
-    and def = span * lvalue * expr with_pos
-
-    and lvalue = {pat : Name.t; ann: Type.t with_pos option}
-
-    val expr_to_doc : expr -> PPrint.document
-    val stmt_to_doc : stmt -> PPrint.document
-end = struct
-    type expr =
-        | Fn of lvalue * expr with_pos
-        | If of expr with_pos * expr with_pos * expr with_pos
-        | App of expr with_pos * expr with_pos
-        | Seal of expr with_pos * Type.t with_pos
-        | Struct of def Vector.t
-        | Select of expr with_pos * Name.t
-        | Proxy of Type.t with_pos
-        | Use of Name.t
-        | Const of Const.t
+    and clause = {pats : pat with_pos Vector.t; body : expr with_pos}
 
     and stmt =
         | Def of def
         | Expr of expr with_pos
 
-    and def = span * lvalue * expr with_pos
-
-    and lvalue = {pat : Name.t; ann: Type.t with_pos option}
+    and def = Util.span * pat with_pos * expr with_pos
 
     let rec expr_to_doc = function
-        | Fn (param, body) ->
-            PPrint.string "fun" ^/^ lvalue_to_doc param ^/^ PPrint.string "=>" ^/^ expr_to_doc body.v
+        | Fn clauses -> failwith "FIXME"
         | If (cond, conseq, alt) ->
             PPrint.string "if" ^/^ expr_to_doc cond.v
                 ^/^ PPrint.string "then" ^/^ expr_to_doc conseq.v
@@ -88,35 +62,37 @@ end = struct
         | callee -> expr_to_doc callee
 
     and def_to_doc (_, def, {v = expr; _}) =
-        lvalue_to_doc def ^/^ PPrint.equals ^/^ expr_to_doc expr
-
-    and lvalue_to_doc = function
-        | {pat; ann = Some {v = ann; _}} -> Name.to_doc pat ^/^ PPrint.colon ^/^ Type.to_doc ann
-        | {pat; ann = None} -> Name.to_doc pat
+        failwith "FIXME" ^/^ PPrint.equals ^/^ expr_to_doc expr
 
     let stmt_to_doc = function
         | Def def -> def_to_doc def
         | Expr {v = expr; _} -> expr_to_doc expr
 end
 
-and Type : sig
-    type t =
-        | Pi of Name.t option decl * Effect.t * t with_pos
-        | Sig of Name.t decl Vector.t
-        | Path of Term.expr
-        | Singleton of Term.expr with_pos
-        | Type
-        | Prim of Prim.t
+and Pattern : AstSigs.PATTERN with type typ = Type.t = struct
+    type typ = Type.t
 
-    and 'a decl = {name : 'a; typ : t with_pos}
-
-    val to_doc : t -> PPrint.document
-end = struct
     type t =
-        | Pi of Name.t option decl * Effect.t * t with_pos
+        | Ann of t with_pos * typ with_pos
+        | Binder of Name.t
+        | Ignore
+        | Const of Const.t
+end
+
+and Type : AstSigs.TYPE
+    with type expr = Term.expr
+    with type pat = Pattern.t
+    with type eff = Effect.t
+= struct
+    type expr = Term.expr
+    type pat = Pattern.t
+    type eff = Effect.t
+
+    type t =
+        | Pi of pat with_pos Vector.t * eff * t with_pos
         | Sig of Name.t decl Vector.t
-        | Path of Term.expr
-        | Singleton of Term.expr with_pos
+        | Path of expr
+        | Singleton of expr with_pos
         | Type
         | Prim of Prim.t
 
@@ -137,11 +113,7 @@ end = struct
     and decl_to_doc {name; typ = {v = typ; _}} =
         PPrint.string "val" ^/^ Name.to_doc name ^/^ PPrint.colon ^/^ to_doc typ
 
-    and domain_to_doc = function
-        | {name = Some name; typ} ->
-            PPrint.parens (Name.to_doc name ^/^ PPrint.colon ^/^ to_doc typ.v)
-        | {name = None; typ = {v = Pi _ as typ; _}} -> PPrint.parens (to_doc typ)
-        | {name = None; typ} -> to_doc typ.v
+    and domain_to_doc = fun _ -> failwith "TODO"
 end
 
 and Effect : sig

@@ -15,14 +15,23 @@ let rec token ({stream; _} as lexbuf) =
     | "if"   -> update lexbuf; IF
     | "then" -> update lexbuf; THEN
     | "else" -> update lexbuf; ELSE
+    | "begin" -> update lexbuf; BEGIN
+    | "do" -> update lexbuf; DO
+    | "end" -> update lexbuf; END
     | "val"  -> update lexbuf; VAL
+    | "var"  -> update lexbuf; failwith "`var` reserved (just in case)"
+    | "without" -> update lexbuf; WITHOUT
+    | "with" -> update lexbuf; WITH
+    | "where" -> update lexbuf; WHERE
     | "type" -> update lexbuf; TYPE
+    | "typeof" -> update lexbuf; TYPEOF
 
     | "->" -> update lexbuf; ARROW
     | "=>" -> update lexbuf; DARROW
     | '.'  -> update lexbuf; DOT
     | ':'  -> update lexbuf; COLON
     | '='  -> update lexbuf; EQ
+    | ','  -> update lexbuf; COMMA
     | ';'  -> update lexbuf; SEMI
     | '|'  -> update lexbuf; BAR
 
