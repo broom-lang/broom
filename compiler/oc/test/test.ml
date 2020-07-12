@@ -30,6 +30,7 @@ let%test_unit "parse_begin" =
         "begin type t = int; val x = 23; x end"
 
 let%test_unit "parse_do" =
+    try_roundtrip "do end";
     try_roundtrip "do 23 end";
     try_roundtrip "do val x = 23; x end";
     try_prints_as "do val t = type int; val x = 23; x end"

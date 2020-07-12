@@ -43,10 +43,10 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
                     ^^ PPrint.semi ^^ PPrint.break 1 ^^ expr_to_doc body.v)
                 (PPrint.string "end")
         | Do stmts ->
-            PPrint.surround 4 1 (PPrint.string "do")
-                (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) stmt_to_doc
-                    (Vector.to_list stmts))
-                (PPrint.string "end")
+            PPrint.surround_separate_map 4 1
+                (PPrint.string "do" ^/^ PPrint.string "end")
+                (PPrint.string "do") (PPrint.semi ^^ PPrint.break 1) (PPrint.string "end")
+                stmt_to_doc (Vector.to_list stmts)
         | Seal (expr, typ) ->
             PPrint.infix 4 1 (PPrint.string ":>") (sealee_to_doc expr.v) (Type.to_doc typ.v)
         | With (super, label, expr) ->
