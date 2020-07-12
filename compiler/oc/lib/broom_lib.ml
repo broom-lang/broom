@@ -1,5 +1,7 @@
 module Vector = Vector (* HACK *)
 
+module Util = Util (* HACK *)
+
 module Ast = Ast
 
 module SedlexMenhir = SedlexMenhir
