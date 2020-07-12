@@ -16,7 +16,7 @@ open Util
 %token <string> ID
 %token <int> CONST
 
-%start <Ast.Term.stmt Vector.t> stmts
+%start <Ast.Term.stmt Vector.t> program
 
 %type <Ast.Type.t with_pos> typ
 %type <Ast.Pattern.t with_pos Vector.t> domain
@@ -31,6 +31,8 @@ open Util
 %type <Ast.Pattern.t with_pos> pat apat
 
 %%
+
+program : stmts EOF { $1 }
 
 (* # Types *)
 
@@ -89,8 +91,12 @@ expr_nestable_without_pos(nestable_mixin) :
     | "{" separated_nonempty_list(",", field) "}" { failwith "TODO" }
     | "[" clause* "]" { Fn (Vector.of_list $2) }
     | "[" expr "]" { Fn (Vector.singleton {pats = Vector.of_list []; body = $2}) }
-    | "begin" begin_def* expr "end" { failwith "TODO" }
-    | "do" stmts "end" { failwith "TODO" }
+    | "begin" begin_def* expr "end" {
+        match Vector1.of_list $2 with
+        | Some defs -> Begin (defs, $3)
+        | None -> $3.v
+    } 
+    | "do" stmts "end" { Do $2 }
     | nestable_mixin { $1 }
     | atom { $1 }
 
@@ -140,7 +146,7 @@ atom
 
 (* # Definitions and Statements *)
 
-stmts : separated_list(";", stmt) EOF { Vector.of_list $1 }
+stmts : separated_list(";", stmt) { Vector.of_list $1 }
 
 stmt
     : def { Def $1 }

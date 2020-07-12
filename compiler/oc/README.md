@@ -33,7 +33,7 @@ def ::= "val" pat "=" expr
     | "fun" ID apat* "=" expr
     | "type" ID apat* "=" type
 
-stmt ::= ";"? def | ";" expr
+stmt ::= def | expr
 
 type ::= "pi" apat+ "->" type
     | type "->" type

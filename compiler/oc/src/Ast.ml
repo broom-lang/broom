@@ -10,6 +10,8 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
     type expr =
         | Fn of clause Vector.t
         | App of expr with_pos * expr with_pos
+        | Begin of def Vector1.t * expr with_pos
+        | Do of stmt Vector.t
         | Seal of expr with_pos * typ with_pos
         | With of expr with_pos * Name.t * expr with_pos
         | Where of expr with_pos * Name.t * expr with_pos
@@ -34,6 +36,17 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
                 PPrint.lbracket (PPrint.break 1 ^^ PPrint.bar ^^ PPrint.blank 1) PPrint.rbracket
                 clause_to_doc (Vector.to_list clauses)
         | App ({v = callee; _}, {v = arg; _}) -> callee_to_doc callee ^/^ arg_to_doc arg
+        | Begin (defs, body) ->
+            PPrint.surround 4 1 (PPrint.string "begin")
+                ((PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) def_to_doc
+                    (Vector1.to_list defs))
+                    ^^ PPrint.semi ^^ PPrint.break 1 ^^ expr_to_doc body.v)
+                (PPrint.string "end")
+        | Do stmts ->
+            PPrint.surround 4 1 (PPrint.string "do")
+                (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) stmt_to_doc
+                    (Vector.to_list stmts))
+                (PPrint.string "end")
         | Seal (expr, typ) ->
             PPrint.infix 4 1 (PPrint.string ":>") (sealee_to_doc expr.v) (Type.to_doc typ.v)
         | With (super, label, expr) ->
@@ -75,11 +88,12 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | callee -> expr_to_doc callee
 
     and def_to_doc ((_, pat, expr) : def) =
-        PPrint.infix 4 1 PPrint.equals (Pattern.to_doc pat.v) (expr_to_doc expr.v)
+        PPrint.string "val" ^^ PPrint.blank 1
+            ^^ PPrint.infix 4 1 PPrint.equals (Pattern.to_doc pat.v) (expr_to_doc expr.v)
 
-    let stmt_to_doc = function
+    and stmt_to_doc = function
         | Def def -> def_to_doc def
-        | Expr {v = expr; _} -> expr_to_doc expr
+        | Expr expr -> expr_to_doc expr.v
 end
 
 and Pattern : AstSigs.PATTERN with type typ = Type.t = struct
