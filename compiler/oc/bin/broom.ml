@@ -1,3 +1,5 @@
+open Broom_lib
+
 let (^^) = PPrint.(^^)
 
 let prompt = "Broom> "

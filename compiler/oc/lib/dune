@@ -1,6 +1,6 @@
-(executable
-  (name broom)
-  (libraries menhirLib pprint linenoise)
+(library
+  (public_name broom_lib)
+  (libraries menhirLib pprint)
   (preprocess (pps sedlex.ppx)))
 
 (menhir
