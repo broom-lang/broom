@@ -12,9 +12,6 @@ let rec token ({stream; _} as lexbuf) =
     match%sedlex stream with
     | "fun"  -> update lexbuf; FUN
     | "pi"   -> update lexbuf; PI
-    | "if"   -> update lexbuf; IF
-    | "then" -> update lexbuf; THEN
-    | "else" -> update lexbuf; ELSE
     | "begin" -> update lexbuf; BEGIN
     | "do" -> update lexbuf; DO
     | "end" -> update lexbuf; END

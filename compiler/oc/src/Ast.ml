@@ -9,7 +9,6 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
 
     type expr =
         | Fn of clause Vector.t
-        | If of expr with_pos * expr with_pos * expr with_pos
         | App of expr with_pos * expr with_pos
         | Seal of expr with_pos * typ with_pos
         | With of expr with_pos * Name.t * expr with_pos
@@ -34,10 +33,6 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
             PPrint.surround_separate_map 4 1 (PPrint.brackets PPrint.empty)
                 PPrint.lbracket (PPrint.break 1 ^^ PPrint.bar ^^ PPrint.blank 1) PPrint.rbracket
                 clause_to_doc (Vector.to_list clauses)
-        | If (cond, conseq, alt) ->
-            PPrint.string "if" ^/^ expr_to_doc cond.v
-                ^/^ PPrint.string "then" ^/^ expr_to_doc conseq.v
-                ^/^ PPrint.string "else" ^/^ expr_to_doc alt.v
         | App ({v = callee; _}, {v = arg; _}) -> callee_to_doc callee ^/^ arg_to_doc arg
         | Seal (expr, typ) ->
             PPrint.infix 4 1 (PPrint.string ":>") (sealee_to_doc expr.v) (Type.to_doc typ.v)
@@ -64,11 +59,11 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         else expr_to_doc body.v
 
     and callee_to_doc = function
-        | (Fn _ | If _) as callee -> PPrint.parens (expr_to_doc callee)
+        | Fn _ as callee -> PPrint.parens (expr_to_doc callee)
         | callee -> expr_to_doc callee
 
     and arg_to_doc = function
-        | (Fn _ | If _ | App _) as callee -> PPrint.parens (expr_to_doc callee)
+        | (Fn _ | App _) as callee -> PPrint.parens (expr_to_doc callee)
         | callee -> expr_to_doc callee
 
     and sealee_to_doc = function
@@ -76,7 +71,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | sealee -> expr_to_doc sealee
 
     and selectee_to_doc = function
-        | (Fn _ | If _ | App _) as callee -> PPrint.parens (expr_to_doc callee)
+        | (Fn _ | App _) as callee -> PPrint.parens (expr_to_doc callee)
         | callee -> expr_to_doc callee
 
     and def_to_doc ((_, pat, expr) : def) =

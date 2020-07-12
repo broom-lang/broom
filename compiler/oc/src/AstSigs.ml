@@ -6,7 +6,6 @@ module type TERM = sig
 
     type expr =
         | Fn of clause Vector.t
-        | If of expr with_pos * expr with_pos * expr with_pos
         | App of expr with_pos * expr with_pos
         | Seal of expr with_pos * typ with_pos
         | With of expr with_pos * Name.t * expr with_pos

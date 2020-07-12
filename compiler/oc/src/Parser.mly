@@ -6,8 +6,7 @@ open Util
 %}
 
 %token
-    IF "if" THEN "then" ELSE "else" FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof"
-    BEGIN "begin" DO "do" END "end"
+    FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" BEGIN "begin" DO "do" END "end"
     WITH "with" WHERE "where" WITHOUT "without"
     ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|"
     LPAREN "(" RPAREN ")"
@@ -73,11 +72,7 @@ ann_expr(nestable_mixin)
     : expr=unann_expr(nestable_mixin) ":" ann=typ { {v = Seal (expr, ann); pos = $sloc} }
     | unann_expr(nestable_mixin) { $1 }
 
-unann_expr(nestable_mixin)
-    : "if" expr "then" expr "else" unann_expr(nestable_mixin) {
-        {v = If ($2, $4, $6); pos = $sloc}
-    }
-    | app(nestable_mixin) { $1 }
+unann_expr(nestable_mixin) : app(nestable_mixin) { $1 }
 
 app(nestable_mixin)
     : app(nestable_mixin) select(nestable_mixin) { {v = App ($1, $2); pos = $sloc} }
