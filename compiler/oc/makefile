@@ -6,6 +6,10 @@ prod:
 dev:
 	dune build
 
+.PHONY: test
+test:
+	dune runtest
+
 .PHONY: clean
 clean:
 	dune clean
