@@ -88,7 +88,7 @@ expr_nestable(nestable_mixin) : expr_nestable_without_pos(nestable_mixin) { {v =
 
 expr_nestable_without_pos(nestable_mixin) :
     | "{" row_expr "}" { $2 }
-    | "{" separated_nonempty_list(",", field) "}" { failwith "TODO" }
+    | "{" superless_row "}" { $2 }
     | "[" clause* "]" { Fn (Vector.of_list $2) }
     | "[" expr "]" { Fn (Vector.singleton {pats = Vector.of_list []; body = $2}) }
     | "begin" begin_def* expr "end" {
@@ -124,6 +124,10 @@ without_row :
 row_or_expr :
     | expr { $1 }
     | row_expr { {v = $1; pos = $sloc} }
+
+superless_row :
+    | superless_row "," field { With ({v = $1; pos = $loc($1)}, fst $3, snd $3) }
+    | field { With ({v = EmptyRecord; pos = $loc($1)}, fst $1, snd $1) }
 
 field
     : ID "=" expr { (Name.of_string $1, $3) }

@@ -35,3 +35,10 @@ let%test_unit "parse_do" =
     try_prints_as "do val t = type int; val x = 23; x end"
         "do type t = int; val x = 23; x end"
 
+let%test_unit "parse_record" =
+    try_roundtrip "{}";
+    try_roundtrip "{foo with x = 23}";
+    try_prints_as "{{} with x = 23}" "{with x = 23}";
+    try_prints_as "{{foo with x = 23} with y = 17}" "{foo with x = 23, y = 17}";
+    try_prints_as "{{{} with x = 23} with y = 17}" "{x = 23, y = 17}"
+
