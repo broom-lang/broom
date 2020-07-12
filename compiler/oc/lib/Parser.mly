@@ -71,7 +71,7 @@ expr :
     | ann_expr(expr_nestable_mixin) { $1 }
 
 ann_expr(nestable_mixin)
-    : expr=unann_expr(nestable_mixin) ":" ann=typ { {v = Seal (expr, ann); pos = $sloc} }
+    : expr=unann_expr(nestable_mixin) ":" ann=typ { {v = Ann (expr, ann); pos = $sloc} }
     | unann_expr(nestable_mixin) { $1 }
 
 unann_expr(nestable_mixin) : app(nestable_mixin) { $1 }

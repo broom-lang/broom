@@ -12,7 +12,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | App of expr with_pos * expr with_pos
         | Begin of def Vector1.t * expr with_pos
         | Do of stmt Vector.t
-        | Seal of expr with_pos * typ with_pos
+        | Ann of expr with_pos * typ with_pos
         | With of expr with_pos * Name.t * expr with_pos
         | Where of expr with_pos * Name.t * expr with_pos
         | Without of expr with_pos * Name.t
@@ -47,8 +47,8 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
                 (PPrint.string "do" ^/^ PPrint.string "end")
                 (PPrint.string "do") (PPrint.semi ^^ PPrint.break 1) (PPrint.string "end")
                 stmt_to_doc (Vector.to_list stmts)
-        | Seal (expr, typ) ->
-            PPrint.infix 4 1 (PPrint.string ":>") (sealee_to_doc expr.v) (Type.to_doc typ.v)
+        | Ann (expr, typ) ->
+            PPrint.infix 4 1 PPrint.colon (sealee_to_doc expr.v) (Type.to_doc typ.v)
         | With (super, label, expr) ->
             PPrint.braces (PPrint.infix 4 1 (PPrint.string "with") (expr_to_doc super.v)
                 (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (expr_to_doc expr.v)))
