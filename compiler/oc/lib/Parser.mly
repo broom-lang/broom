@@ -7,7 +7,7 @@ open Util
 
 %token
     FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" BEGIN "begin" DO "do" END "end"
-    WITH "with" WHERE "where" WITHOUT "without"
+    WITH "with" WHERE "where" WITHOUT "without" REIFY "reify"
     ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|"
     LPAREN "(" RPAREN ")"
     LBRACKET "[" RBRACKET "]"
@@ -41,6 +41,7 @@ typ : typ_without_pos { {v = $1; pos = $sloc} }
 typ_without_pos
     : domain "=>" typ { Pi ($1, Pure, $3) }
     | domain "->" typ { Pi ($1, Impure, $3) }
+    | "typeof" expr=ann_expr(expr_nestable_mixin) { Singleton expr }
     | ann_expr(typ_nestable_mixin) { Path $1.v }
 
 domain
@@ -51,7 +52,6 @@ typ_nestable_mixin : typ_nestable_mixin_without_pos { Proxy {v = $1; pos = $sloc
 
 typ_nestable_mixin_without_pos (* Non-infix types that are not valid as exprs *)
     : "{" "|" decls=separated_list(";", decl) "|" "}" { Sig (Vector.of_list decls) }
-    | "typeof" expr=expr_nestable(expr_nestable_mixin) { Singleton expr }
     | "(" typ ")" { $2.v }
     | "type" { Type }
 
@@ -67,7 +67,7 @@ decl
 (* # Expressions *)
 
 expr :
-    (*| "type" typ { {$2 with v = Proxy $2} }*)
+    | "reify" typ { {$2 with v = Proxy $2} }
     | ann_expr(expr_nestable_mixin) { $1 }
 
 ann_expr(nestable_mixin)

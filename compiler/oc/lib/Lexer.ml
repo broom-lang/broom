@@ -21,6 +21,7 @@ let rec token ({stream; _} as lexbuf) =
     | "with" -> update lexbuf; WITH
     | "where" -> update lexbuf; WHERE
     | "type" -> update lexbuf; TYPE
+    | "reify" -> update lexbuf; REIFY
     | "typeof" -> update lexbuf; TYPEOF
 
     | "->" -> update lexbuf; ARROW
