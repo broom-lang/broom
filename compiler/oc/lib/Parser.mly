@@ -57,6 +57,11 @@ domain
     : "pi" apat* { Vector.of_list $2 }
     | unann_expr { Vector.singleton {v = Pattern.Ann ({v = Pattern.Ignore; pos = $sloc}, {v = path $1.v; pos = $sloc}); pos = $sloc} }
 
+nestable_typ :
+    | "{" "|" decls=separated_list(";", decl) "|" "}" { Sig (Vector.of_list decls) }
+    | "(" typ ")" { $2.v }
+    | "type" { Type }
+
 (* # Expressions *)
 
 expr : typ { {$1 with v = proxy $1.v} }
@@ -88,9 +93,7 @@ nestable_without_pos :
         | None -> $3.v
     } 
     | "do" stmts "end" { Do $2 }
-    | "{" "|" decls=separated_list(";", decl) "|" "}" { proxy (Sig (Vector.of_list decls)) }
-    | "(" typ ")" { proxy $2.v }
-    | "type" { proxy Type }
+    | nestable_typ { proxy $1 }
     | atom { $1 }
 
 row_expr :
