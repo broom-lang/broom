@@ -3,11 +3,20 @@ open Ast
 open Ast.Term
 open Ast.Type
 open Util
+
+let path = function
+    | Proxy typ -> typ
+    | expr -> Path expr
+
+let proxy = function
+    | Path expr -> expr
+    | typ -> Proxy typ
+
 %}
 
 %token
     FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" BEGIN "begin" DO "do" END "end"
-    WITH "with" WHERE "where" WITHOUT "without" REIFY "reify"
+    WITH "with" WHERE "where" WITHOUT "without"
     ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|"
     LPAREN "(" RPAREN ")"
     LBRACKET "[" RBRACKET "]"
@@ -20,11 +29,11 @@ open Util
 
 %type <Ast.Type.t with_pos> typ
 %type <Ast.Pattern.t with_pos Vector.t> domain
-%type <Ast.Term.expr> typ_nestable_mixin
-%type <Ast.Type.t> typ_without_pos typ_nestable_mixin_without_pos
+%type <Ast.Type.t> typ_without_pos
 
 %type <Name.t Ast.Type.decl> decl
 
+%type <Ast.Term.expr with_pos> expr
 %type <Ast.Term.clause> clause
 %type <Ast.Term.expr> row_expr
 
@@ -41,52 +50,34 @@ typ : typ_without_pos { {v = $1; pos = $sloc} }
 typ_without_pos
     : domain "=>" typ { Pi ($1, Pure, $3) }
     | domain "->" typ { Pi ($1, Impure, $3) }
-    | "typeof" expr=ann_expr(expr_nestable_mixin) { Singleton expr }
-    | ann_expr(typ_nestable_mixin) { Path $1.v }
+    | "typeof" ann_expr { Singleton $2 }
+    | ann_expr { path $1.v }
 
 domain
     : "pi" apat* { Vector.of_list $2 }
-    | unann_expr(typ_nestable_mixin) { Vector.singleton {v = Pattern.Ignore; pos = $sloc} }
-
-typ_nestable_mixin : typ_nestable_mixin_without_pos { Proxy {v = $1; pos = $sloc} }
-
-typ_nestable_mixin_without_pos (* Non-infix types that are not valid as exprs *)
-    : "{" "|" decls=separated_list(";", decl) "|" "}" { Sig (Vector.of_list decls) }
-    | "(" typ ")" { $2.v }
-    | "type" { Type }
-
-(* ## Declarations *)
-
-decl
-    : "val" name=ID ":" typ=typ { {name = Name.of_string name; typ} }
-    | "type" name=ID "=" typ=typ {
-        {name = Name.of_string name; typ = {v = Singleton {v = Proxy typ; pos = $loc(typ)}; pos = $sloc}}
-    }
-    | "type" name=ID { {name = Name.of_string name; typ = {v = Type; pos = $loc(name)}} }
+    | unann_expr { Vector.singleton {v = Pattern.Ann ({v = Pattern.Ignore; pos = $sloc}, {v = path $1.v; pos = $sloc}); pos = $sloc} }
 
 (* # Expressions *)
 
-expr :
-    | "reify" typ { {$2 with v = Proxy $2} }
-    | ann_expr(expr_nestable_mixin) { $1 }
+expr : typ { {$1 with v = proxy $1.v} }
 
-ann_expr(nestable_mixin)
-    : expr=unann_expr(nestable_mixin) ":" ann=typ { {v = Ann (expr, ann); pos = $sloc} }
-    | unann_expr(nestable_mixin) { $1 }
+ann_expr
+    : expr=unann_expr ":" ann=typ { {v = Ann (expr, ann); pos = $sloc} }
+    | unann_expr { $1 }
 
-unann_expr(nestable_mixin) : app(nestable_mixin) { $1 }
+unann_expr : app { $1 }
 
-app(nestable_mixin)
-    : app(nestable_mixin) select(nestable_mixin) { {v = App ($1, $2); pos = $sloc} }
-    | select(nestable_mixin) { $1 }
+app
+    : app select { {v = App ($1, $2); pos = $sloc} }
+    | select { $1 }
 
-select(nestable_mixin)
-    : record=select(nestable_mixin) "." label=ID { {v = Select (record, Name.of_string label); pos = $sloc} }
-    | expr_nestable(nestable_mixin) { $1 }
+select
+    : record=select "." label=ID { {v = Select (record, Name.of_string label); pos = $sloc} }
+    | nestable { $1 }
 
-expr_nestable(nestable_mixin) : expr_nestable_without_pos(nestable_mixin) { {v = $1; pos = $sloc} }
+nestable : nestable_without_pos { {v = $1; pos = $sloc} }
 
-expr_nestable_without_pos(nestable_mixin) :
+nestable_without_pos :
     | "{" row_expr "}" { $2 }
     | "{" superless_row "}" { $2 }
     | "[" clause* "]" { Fn (Vector.of_list $2) }
@@ -97,11 +88,10 @@ expr_nestable_without_pos(nestable_mixin) :
         | None -> $3.v
     } 
     | "do" stmts "end" { Do $2 }
-    | nestable_mixin { $1 }
+    | "{" "|" decls=separated_list(";", decl) "|" "}" { proxy (Sig (Vector.of_list decls)) }
+    | "(" typ ")" { proxy $2.v }
+    | "type" { proxy Type }
     | atom { $1 }
-
-expr_nestable_mixin (* Non-infix exprs that are not valid as types *)
-    : "(" expr ")" { $2.v }
 
 row_expr :
     | with_row { $1 }
@@ -141,12 +131,21 @@ atom
     : ID {
         if $1.[0] = '_' && $1.[1] = '_' then
             match $1 with
-            | "__int" -> Proxy {v = Type.Prim Prim.Int; pos = $sloc}
-            | "__bool" -> Proxy {v = Type.Prim Prim.Bool; pos = $sloc}
+            | "__int" -> proxy (Type.Prim Prim.Int)
+            | "__bool" -> proxy (Type.Prim Prim.Bool)
             | _ -> failwith ("nonexistent intrinsic " ^ $1)
         else Use (Name.of_string $1)
     }
     | CONST { Const (Const.Int $1) }
+
+(* # Declarations *)
+
+decl
+    : "val" name=ID ":" typ=typ { {name = Name.of_string name; typ} }
+    | "type" name=ID "=" typ=typ {
+        {name = Name.of_string name; typ = {v = Singleton {v = proxy typ.v; pos = $loc(typ)}; pos = $sloc}}
+    }
+    | "type" name=ID { {name = Name.of_string name; typ = {v = Type; pos = $loc(name)}} }
 
 (* # Definitions and Statements *)
 
@@ -156,12 +155,7 @@ stmt
     : def { Def $1 }
     | expr { Expr $1 }
 
-def :
-    | "val" pat "=" expr { ($sloc, $2, $4) }
-    | "type" ID "=" typ {
-        ( $sloc, {v = Pattern.Binder (Name.of_string $2); pos = $loc($2)}
-        , {v = Proxy $4; pos = $loc($4)} )
-    }
+def : "val" pat "=" expr { ($sloc, $2, $4) }
 
 (* # Patterns *)
 

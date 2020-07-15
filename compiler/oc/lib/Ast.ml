@@ -18,7 +18,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | Without of expr with_pos * Name.t
         | EmptyRecord
         | Select of expr with_pos * Name.t
-        | Proxy of typ with_pos
+        | Proxy of typ
         | Use of Name.t
         | Const of Const.t
 
@@ -61,7 +61,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | EmptyRecord -> PPrint.braces PPrint.empty
         | Select ({v = record; _}, label) ->
             selectee_to_doc record ^^ PPrint.dot ^^ Name.to_doc label
-        | Proxy {v = typ; _} -> PPrint.string "type" ^^ PPrint.blank 1 ^^ Type.to_doc typ
+        | Proxy typ -> Type.to_doc typ
         | Use name -> Name.to_doc name
         | Const v -> Const.to_doc v
 
@@ -167,3 +167,4 @@ end = struct
         | Pure -> PPrint.string "=>"
         | Impure -> PPrint.string "->"
 end
+

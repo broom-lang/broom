@@ -3,16 +3,23 @@
 ## Syntax
 
 ```
-expr ::= "[" ("|" apat+ "->" expr)* "]" (* function literal *)
-    | "[" expr "]" (* thunk *)
+expr ::= type ::= "pi" apat+ "->" type
+    | type "->" type
+    | "pi" apat+ "=>" type
+    | type "=>" type
+    | expr ":" type
     | expr expr+
+    | expr "." ID
     | "begin" (def ";")* expr "end"
     | "do" (stmt (";" stmt)*)? "end"
+    | "[" ("|" apat+ "->" expr)* "]" (* function literal *)
+    | "[" expr "]" (* thunk *)
     | "{" row_expr "}"
     | "{" field ("," field)* "}" (* := "{" "with" field ("," field)* "}" *) 
-    | expr "." ID
-    | expr ":" type
-    | "type" type
+    | "{" "|" row "|" ")"
+    | "(" "|" row "|" ")"
+    | "typeof" expr
+    | "type"
     | ID | CONST
     | "(" expr ")"
 
@@ -29,25 +36,6 @@ pat ::= CTOR apat*
 
 apat ::= "(" pat ")" | ID | "_" | CONST
 
-def ::= "val" pat "=" expr
-    | "fun" ID apat* "=" expr
-    | "type" ID apat* "=" type
-
-stmt ::= def | expr
-
-type ::= "pi" apat+ "->" type
-    | type "->" type
-    | "pi" apat+ "~>" type
-    | type "~>" type
-    | "pi" apat+ "=>" type
-    | type "=>" type
-    | "{" "|" row "|" ")"
-    | "(" "|" row "|" ")"
-    | expr
-    | "typeof" expr
-    | "type"
-    | "(" type ")"
-
 row ::= (row "with")? ID ":" type ("," ID ":" type)*
     | row "where" ID ("." ID)* ":" type
     | row "where" "type" ID ("." ID)* apat* "=" type
@@ -55,5 +43,10 @@ row ::= (row "with")? ID ":" type ("," ID ":" type)*
 
 decl ::= "val" ID "=" type
     | "type" ID apat* "=" type
+
+def ::= "val" pat "=" expr
+    | "fun" ID apat* "=" expr
+
+stmt ::= def | expr
 ```
 
