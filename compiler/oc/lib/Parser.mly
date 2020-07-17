@@ -17,7 +17,7 @@ let proxy = function
 %token
     FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" BEGIN "begin" DO "do" END "end"
     WITH "with" WHERE "where" WITHOUT "without"
-    ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|"
+    ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|" ELLIPSIS "..."
     LPAREN "(" RPAREN ")"
     LBRACKET "[" RBRACKET "]"
     LBRACE "{" RBRACE "}"
@@ -33,9 +33,8 @@ let proxy = function
 
 %type <Name.t Ast.Type.decl> decl
 
-%type <Ast.Term.expr with_pos> expr
+%type <Ast.Term.expr with_pos> expr row_expr
 %type <Ast.Term.clause> clause
-%type <Ast.Term.expr> row_expr
 
 %type <Ast.Pattern.t with_pos> pat apat
 
@@ -83,7 +82,7 @@ select
 nestable : nestable_without_pos { {v = $1; pos = $sloc} }
 
 nestable_without_pos :
-    | "{" row_expr "}" { $2 }
+    | "{" row_expr "}" { $2.v }
     | "{" superless_row "}" { $2 }
     | "[" clause* "]" { Fn (Vector.of_list $2) }
     | "[" expr "]" { Fn (Vector.singleton {pats = Vector.of_list []; body = $2}) }
@@ -97,33 +96,30 @@ nestable_without_pos :
     | atom { $1 }
 
 row_expr :
-    | with_row { $1 }
-    | where_row { $1 }
-    | without_row { $1 }
-    | { EmptyRecord }
+    | with_row { {v = $1; pos = $loc} }
+    | where_row { {v = $1; pos = $loc} }
+    | without_row { {v = $1; pos = $loc} }
+    | "..." expr { $2 }
+    | { {v = EmptyRecord; pos = $loc} }
 
 with_row :
-    | row_or_expr "with" field { With ($1, fst $3, snd $3) }
+    | row_expr "with" field { With ($1, fst $3, snd $3) }
     | with_row "," field { With ({v = $1; pos = $loc($1)}, fst $3, snd $3) }
 
 where_row :
-    | row_or_expr "where" field { Where ($1, fst $3, snd $3) }
+    | row_expr "where" field { Where ($1, fst $3, snd $3) }
     | where_row "," field { Where ({v = $1; pos = $loc($1)}, fst $3, snd $3) }
 
 without_row :
-    | row_or_expr "without" ID { Without ($1, Name.of_string $3) }
+    | row_expr "without" ID { Without ($1, Name.of_string $3) }
     | without_row "," ID { Without ({v = $1; pos = $loc($1)}, Name.of_string $3) }
-
-row_or_expr :
-    | expr { $1 }
-    | row_expr { {v = $1; pos = $sloc} }
 
 superless_row :
     | superless_row "," field { With ({v = $1; pos = $loc($1)}, fst $3, snd $3) }
     | field { With ({v = EmptyRecord; pos = $loc($1)}, fst $1, snd $1) }
 
 field
-    : ID "=" expr { (Name.of_string $1, $3) }
+    : pat "=" expr { failwith "TODO" } (*{ (Name.of_string $1, $3) }*)
     | ID { failwith "TODO" }
 
 clause : "|" apat+ "->" expr { failwith "TODO" }

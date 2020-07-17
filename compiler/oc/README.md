@@ -23,10 +23,13 @@ expr ::= type ::= "pi" apat+ "->" type
     | ID | CONST
     | "(" expr ")"
 
-row_expr ::= (expr | row_expr) "with" field ("," field)*
-    | (expr | row_expr) "where" field ("," field)*
-    | (expr | row_expr) "without" ID ("," ID)*
+row_expr ::= row_expr "with" field ("," field)*
+    | row_expr "where" field ("," field)*
+    | row_expr "without" ID ("," ID)*
+    | "..." expr
     | (* empty *)
+
+field ::= pat "=" expr | ID
 
 pat ::= CTOR apat*
     | pat ":" type
