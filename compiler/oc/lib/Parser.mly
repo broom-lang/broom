@@ -15,7 +15,7 @@ let proxy = function
 %}
 
 %token
-    FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" BEGIN "begin" DO "do" END "end"
+    FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" LET "let" BEGIN "begin" DO "do" END "end" REC "rec"
     WITH "with" WHERE "where" WITHOUT "without"
     ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|" ELLIPSIS "..."
     LPAREN "(" RPAREN ")"
@@ -40,7 +40,7 @@ let proxy = function
 
 %%
 
-program : stmts EOF { $1 }
+program : stmt* EOF { Vector.of_list $1 }
 
 (* # Types *)
 
@@ -86,12 +86,8 @@ nestable_without_pos :
     | "{" superless_row "}" { $2 }
     | "[" clause* "]" { Fn (Vector.of_list $2) }
     | "[" expr "]" { Fn (Vector.singleton {pats = Vector.of_list []; body = $2}) }
-    | "begin" begin_def* expr "end" {
-        match Vector1.of_list $2 with
-        | Some defs -> Begin (defs, $3)
-        | None -> $3.v
-    } 
-    | "do" stmts "end" { Do $2 }
+    | "let" reclet { $2 }
+    | "begin" beginet { $2 }
     | nestable_typ { proxy $1 }
     | atom { $1 }
 
@@ -119,12 +115,20 @@ superless_row :
     | field { With ({v = EmptyRecord; pos = $loc($1)}, fst $1, snd $1) }
 
 field
-    : pat "=" expr { failwith "TODO" } (*{ (Name.of_string $1, $3) }*)
+    : def { failwith "TODO" } (*{ (Name.of_string $1, $3) }*)
     | ID { failwith "TODO" }
 
 clause : "|" apat+ "->" expr { failwith "TODO" }
 
-begin_def : def ";" { $1 }
+reclet :
+    | def_semi+ "begin" beginet { match Vector1.of_list $1 with
+        | Some defs -> Begin (defs, {v = $3; pos = $loc($3)})
+        | None -> failwith "unreachable"
+    }
+
+beginet :
+    | stmt* "rec" reclet { Do (Vector.of_list ($1 @ [Expr {v = $3; pos = $loc($3)}])) } (* OPTIMIZE *)
+    | stmt* "end" { Do (Vector.of_list $1) }
 
 atom
     : ID {
@@ -148,13 +152,13 @@ decl
 
 (* # Definitions and Statements *)
 
-stmts : separated_list(";", stmt) { Vector.of_list $1 }
-
 stmt
-    : def { Def $1 }
-    | expr { Expr $1 }
+    : def_semi { Def $1 }
+    | "do" expr ";" { Expr $2 }
 
-def : "val" pat "=" expr { ($sloc, $2, $4) }
+def : pat "=" expr { ($sloc, $1, $3) }
+
+def_semi : def ";" { $1 }
 
 (* # Patterns *)
 

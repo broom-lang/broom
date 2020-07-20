@@ -10,8 +10,8 @@ expr ::= type ::= "pi" apat+ "->" type
     | expr ":" type
     | expr expr+
     | expr "." ID
-    | "begin" (def ";")* expr "end"
-    | "do" (stmt (";" stmt)*)? "end"
+    | "let" reclet
+    | "begin" beginet
     | "[" ("|" apat+ "->" expr)* "]" (* function literal *)
     | "[" expr "]" (* thunk *)
     | "{" row_expr "}"
@@ -22,6 +22,10 @@ expr ::= type ::= "pi" apat+ "->" type
     | "type"
     | ID | CONST
     | "(" expr ")"
+
+reclet : (def ";")+ "begin" beginet
+
+beginet : stmt* ("rec" reclet | "end")
 
 row_expr ::= row_expr "with" field ("," field)*
     | row_expr "where" field ("," field)*
