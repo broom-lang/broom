@@ -3,17 +3,15 @@
 ## (Abstract) Syntax
 
 ```
-expr ::= type ::= "pi" apat+ "->" type
-    | type "->" type
-    | "pi" apat+ "=>" type
-    | type "=>" type
+expr ::= type ::= ("pi" apat* | type) "->" row "!" type
+    | ("pi" apat* | type) "=>" type
     | expr ":" type
     | expr expr+
     | expr "." ID
     | "let" reclet
     | "begin" beginet
-    | "module" ("extends" def ";")? (def ";")* "end"
-    | "interface" ("extends" ID "=" type ";")? (decl ";")* "end"
+    | "module" (("extends" def | def) (";" def)* ";"?)? "end"
+    | "interface" (("extends" ID ":" type | decl) (";" decl)* ";"?)? "end"
     | "[" ("|" apat+ "->" expr)* "]" (* function literal *)
     | "[" expr "]" (* thunk *)
     | "{" row_expr "}"
@@ -26,7 +24,7 @@ expr ::= type ::= "pi" apat+ "->" type
 
 reclet : (def ";")+ "begin" beginet
 
-beginet : stmt* ("rec" reclet | "end")
+beginet : stmt (";" stmt)* ";"? ("rec" reclet | "end") | "end"
 
 row_expr ::= row_expr "with" field ("," field)*
     | row_expr "where" field ("," field)*
@@ -60,7 +58,6 @@ decl ::= ID "=" type
 
 def ::= pat "=" expr
 
-stmt ::= def ";"
-    | "do" expr ";"
+stmt ::= def | "do" expr
 ```
 

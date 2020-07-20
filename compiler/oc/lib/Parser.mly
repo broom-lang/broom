@@ -41,7 +41,7 @@ let proxy = function
 
 %%
 
-program : stmt* EOF { Vector.of_list $1 }
+program : stmt_semi* EOF { Vector.of_list $1 }
 
 (* # Types *)
 
@@ -60,13 +60,17 @@ domain
 nestable_typ :
     | "{" "|" row "|" "}" { failwith "FIXME" }
     | "(" "|" row "|" ")" { failwith "FIXME" }
-    | "interface" super_typ decl_semi* "end" { Interface ($2, Vector.of_list $3) }
+    | "interface" super_typ interface_tail { Interface (Some $2, Vector.of_list $3) }
+    | "interface" decl interface_tail { Interface (None, Vector.of_list ($2 :: $3)) }
+    | "interface" "end" { Interface (None, Vector.of_list []) }
     | "(" typ ")" { $2.v }
     | "type" { Type }
 
-super_typ :
-    | "extends" ID "=" typ ";" { Some (Name.of_string $2, $4) }
-    | { None }
+super_typ : "extends" ID ":" typ { (Name.of_string $2, $4) }
+
+interface_tail :
+    | ";" decl interface_tail { $2 :: $3 }
+    | ";"? "end" { [] }
 
 row :
     | with_row { failwith "TODO" }
@@ -120,11 +124,19 @@ nestable_without_pos :
     | "[" clause* "]" { Fn (Vector.of_list $2) }
     | "[" expr "]" { Fn (Vector.singleton {pats = Vector.of_list []; body = $2}) }
     | "{" row_expr "}" { $2.v }
-    | "module" super def_semi* "end" { Module ($2, Vector.of_list $3) }
+    | "module" super module_tail "end" { Module (Some $2, Vector.of_list $3) }
+    | "module" def module_tail "end" { Module (None, Vector.of_list $3) }
+    | "module" "end" { Module (None, Vector.of_list []) }
     | "let" reclet { $2 }
     | "begin" beginet { $2 }
     | nestable_typ { proxy $1 }
     | atom { $1 }
+
+super : "extends" def { let (_, pat, expr) = $2 in (pat, expr) }
+
+module_tail :
+    | ";" def module_tail { $2 :: $3 }
+    | ";"? "end" { [] }
 
 row_expr :
     | with_row_expr { {v = $1; pos = $loc} }
@@ -154,10 +166,6 @@ field
     : ID "=" expr { (Name.of_string $1, $3) }
     | ID { let name = Name.of_string $1 in (name, {v = Use name; pos = $loc}) }
 
-super :
-    | "extends" def_semi { let (_, pat, expr) = $2 in Some (pat, expr) }
-    | { None }
-
 reclet :
     | def_semi+ "begin" beginet { match Vector1.of_list $1 with
         | Some defs -> Let (defs, {v = $3; pos = $loc($3)})
@@ -165,8 +173,13 @@ reclet :
     }
 
 beginet :
-    | stmt* "rec" reclet { Begin (Vector.of_list ($1 @ [Expr {v = $3; pos = $loc($3)}])) } (* OPTIMIZE *)
-    | stmt* "end" { Begin (Vector.of_list $1) }
+    | stmt beginette { Begin (Vector.of_list ($1 :: $2)) }
+    | "end" { Begin (Vector.of_list []) }
+
+beginette :
+    | ";" stmt beginette { $2 :: $3 }
+    | ";"? "rec" reclet { [Expr {v = $3; pos = $loc($3)}] }
+    | ";"? "end" { [] }
 
 clause : "|" apat+ "->" expr { failwith "TODO" }
 
@@ -190,13 +203,13 @@ decl
     }
     | "type" name=ID { {name = Name.of_string name; typ = {v = Type; pos = $loc(name)}} }
 
-decl_semi : decl ";" { $1 }
-
 (* # Definitions and Statements *)
 
 stmt
-    : def_semi { Def $1 }
-    | "do" expr ";" { Expr $2 }
+    : def { Def $1 }
+    | "do" expr { Expr $2 }
+
+stmt_semi : stmt ";" { $1 }
 
 def : pat "=" expr { ($sloc, $1, $3) }
 
