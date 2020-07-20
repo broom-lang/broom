@@ -40,15 +40,14 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
                 clause_to_doc (Vector.to_list clauses)
         | App ({v = callee; _}, {v = arg; _}) -> callee_to_doc callee ^/^ arg_to_doc arg
         | Let (defs, body) ->
-            PPrint.surround 4 1 (PPrint.string "begin")
+            PPrint.surround 4 1 (PPrint.string "let")
                 ((PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) def_to_doc
-                    (Vector1.to_list defs))
-                    ^^ PPrint.semi ^^ PPrint.break 1 ^^ expr_to_doc body.v)
+                    (Vector1.to_list defs)) ^/^ PPrint.string "do" ^/^ expr_to_doc body.v)
                 (PPrint.string "end")
         | Begin stmts ->
             PPrint.surround_separate_map 4 1
-                (PPrint.string "do" ^/^ PPrint.string "end")
-                (PPrint.string "do") (PPrint.semi ^^ PPrint.break 1) (PPrint.string "end")
+                (PPrint.string "begin" ^/^ PPrint.string "end")
+                (PPrint.string "begin") (PPrint.semi ^^ PPrint.break 1) (PPrint.string "end")
                 stmt_to_doc (Vector.to_list stmts)
         | Module (None, fields) when Vector.length fields = 0 ->
             PPrint.string "module" ^/^ PPrint.string "end"
@@ -104,12 +103,11 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | callee -> expr_to_doc callee
 
     and def_to_doc ((_, pat, expr) : def) =
-        PPrint.string "val" ^^ PPrint.blank 1
-            ^^ PPrint.infix 4 1 PPrint.equals (Pattern.to_doc pat.v) (expr_to_doc expr.v)
+        PPrint.infix 4 1 PPrint.equals (Pattern.to_doc pat.v) (expr_to_doc expr.v)
 
     and stmt_to_doc = function
         | Def def -> def_to_doc def
-        | Expr expr -> expr_to_doc expr.v
+        | Expr expr -> PPrint.prefix 4 1 (PPrint.string "do") (expr_to_doc expr.v)
 end
 
 and Pattern : AstSigs.PATTERN with type typ = Type.t = struct

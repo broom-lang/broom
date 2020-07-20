@@ -41,14 +41,14 @@ let proxy = function
 
 %%
 
-program : stmt_semi* EOF { Vector.of_list $1 }
+program : separated_list(";", stmt) EOF { Vector.of_list $1 }
 
 (* # Types *)
 
 typ : typ_without_pos { {v = $1; pos = $sloc} }
 
 typ_without_pos :
-    | domain "->" eff=row "!" typ { Pi ($1, Impure, $5) }
+    | domain "->" row "!" typ { Pi ($1, Impure, $5) } (* FIXME: use effect row *)
     | domain "=>" typ { Pi ($1, Pure, $3) }
     | "typeof" ann_expr { Typeof $2 }
     | ann_expr { path $1.v }
@@ -167,10 +167,14 @@ field
     | ID { let name = Name.of_string $1 in (name, {v = Use name; pos = $loc}) }
 
 reclet :
-    | def_semi+ "begin" beginet { match Vector1.of_list $1 with
-        | Some defs -> Let (defs, {v = $3; pos = $loc($3)})
+    | def reclette { match Vector1.of_list ($1 :: fst $2) with
+        | Some defs -> Let (defs, snd $2)
         | None -> failwith "unreachable"
     }
+
+reclette :
+    | ";" def reclette { ($2 :: fst $3, snd $3) }
+    | ";"? "do" expr "end" { ([], $3) }
 
 beginet :
     | stmt beginette { Begin (Vector.of_list ($1 :: $2)) }
@@ -209,11 +213,7 @@ stmt
     : def { Def $1 }
     | "do" expr { Expr $2 }
 
-stmt_semi : stmt ";" { $1 }
-
 def : pat "=" expr { ($sloc, $1, $3) }
-
-def_semi : def ";" { $1 }
 
 (* # Patterns *)
 

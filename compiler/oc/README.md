@@ -22,7 +22,7 @@ expr ::= type ::= ("pi" apat* | type) "->" row "!" type
     | ID | CONST
     | "(" expr ")"
 
-reclet : (def ";")+ "begin" beginet
+reclet : def (";" def)* ";"? "do" expr "end"
 
 beginet : stmt (";" stmt)* ";"? ("rec" reclet | "end") | "end"
 
