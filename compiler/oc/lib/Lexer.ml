@@ -31,11 +31,13 @@ let rec token ({stream; _} as lexbuf) =
     | "->" -> update lexbuf; ARROW
     | "=>" -> update lexbuf; DARROW
     | "..." -> update lexbuf; ELLIPSIS
-    | '.'  -> update lexbuf; DOT
-    | ':'  -> update lexbuf; COLON
     | '='  -> update lexbuf; EQ
+    | ':'  -> update lexbuf; COLON
+    | '.'  -> update lexbuf; DOT
     | ','  -> update lexbuf; COMMA
     | ';'  -> update lexbuf; SEMI
+    | '!'  -> update lexbuf; BANG
+    | '?'  -> update lexbuf; QMARK
     | '|'  -> update lexbuf; BAR
 
     | '(' -> update lexbuf; LPAREN

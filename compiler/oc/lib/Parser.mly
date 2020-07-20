@@ -18,6 +18,7 @@ let proxy = function
     FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" LET "let" BEGIN "begin" DO "do" END "end" REC "rec"
     WITH "with" WHERE "where" WITHOUT "without" MODULE "module" INTERFACE "interface" EXTENDS "extends"
     ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|" ELLIPSIS "..."
+    BANG "!" QMARK "?"
     LPAREN "(" RPAREN ")"
     LBRACKET "[" RBRACKET "]"
     LBRACE "{" RBRACE "}"
@@ -47,7 +48,7 @@ program : stmt* EOF { Vector.of_list $1 }
 typ : typ_without_pos { {v = $1; pos = $sloc} }
 
 typ_without_pos :
-    | domain "->" typ { Pi ($1, Impure, $3) }
+    | domain "->" eff=row "!" typ { Pi ($1, Impure, $5) }
     | domain "=>" typ { Pi ($1, Pure, $3) }
     | "typeof" ann_expr { Typeof $2 }
     | ann_expr { path $1.v }
