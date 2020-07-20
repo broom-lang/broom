@@ -17,7 +17,6 @@ expr ::= type ::= "pi" apat+ "->" type
     | "[" ("|" apat+ "->" expr)* "]" (* function literal *)
     | "[" expr "]" (* thunk *)
     | "{" row_expr "}"
-    | "{" field ("," field)* "}" (* := "{" "with" field ("," field)* "}" *) 
     | "{" "|" row "|" ")"
     | "(" "|" row "|" ")"
     | "typeof" expr
@@ -32,6 +31,7 @@ beginet : stmt* ("rec" reclet | "end")
 row_expr ::= row_expr "with" field ("," field)*
     | row_expr "where" field ("," field)*
     | row_expr "without" ID ("," ID)*
+    | field ("," field)* (* := "with" field ("," field)* *) 
     | "..." expr
     | (* empty *)
 
@@ -45,16 +45,20 @@ pat ::= CTOR apat*
 
 apat ::= "(" pat ")" | ID | "_" | CONST
 
-row ::= (row "with")? ID ":" type ("," ID ":" type)*
-    | row "where" ID ("." ID)* ":" type
-    | row "where" "type" ID ("." ID)* apat* "=" type
-    | type
+row ::= row "with" type_field ("," type_field)*
+    | row "where" type_field ("," type_field)*
+    | row "without" ID ("," ID)*
+    | typ_field ("," typ_field)* (* := "with" typ_field ("," typ_field)* *)
+    | "..." type
+    | (* empty *)
+
+type_field ::= decl | ID
 
 decl ::= ID "=" type
     | "type" ID apat* "=" type
+    | "type" ID apat*
 
 def ::= pat "=" expr
-    | "fun" ID apat* "=" expr
 
 stmt ::= def ";"
     | "do" expr ";"

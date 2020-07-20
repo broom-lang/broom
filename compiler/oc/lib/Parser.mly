@@ -46,9 +46,9 @@ program : stmt* EOF { Vector.of_list $1 }
 
 typ : typ_without_pos { {v = $1; pos = $sloc} }
 
-typ_without_pos
-    : domain "=>" typ { Pi ($1, Pure, $3) }
+typ_without_pos :
     | domain "->" typ { Pi ($1, Impure, $3) }
+    | domain "=>" typ { Pi ($1, Pure, $3) }
     | "typeof" ann_expr { Typeof $2 }
     | ann_expr { path $1.v }
 
@@ -57,7 +57,8 @@ domain
     | unann_expr { Vector.singleton {v = Pattern.Ann ({v = Pattern.Ignore; pos = $sloc}, {v = path $1.v; pos = $sloc}); pos = $sloc} }
 
 nestable_typ :
-    | "{" "|" decls=separated_list(";", decl) "|" "}" { failwith "FIXME" }
+    | "{" "|" row "|" "}" { failwith "FIXME" }
+    | "(" "|" row "|" ")" { failwith "FIXME" }
     | "interface" super_typ decl_semi* "end" { Interface ($2, Vector.of_list $3) }
     | "(" typ ")" { $2.v }
     | "type" { Type }
@@ -65,6 +66,34 @@ nestable_typ :
 super_typ :
     | "extends" ID "=" typ ";" { Some (Name.of_string $2, $4) }
     | { None }
+
+row :
+    | with_row { failwith "TODO" }
+    | where_row { failwith "TODO" }
+    | without_row { failwith "TODO" }
+    | superless_row { failwith "TODO" }
+    | "..." typ { failwith "TODO" }
+    | { failwith "TODO" }
+
+with_row :
+    | row "with" typ_field { failwith "TODO" }
+    | with_row "," typ_field { failwith "TODO" }
+
+where_row :
+    | row "where" typ_field { failwith "TODO" }
+    | where_row "," typ_field { failwith "TODO" }
+
+without_row :
+    | row "without" ID { failwith "TODO" }
+    | without_row "," ID { failwith "TODO" }
+
+superless_row :
+    | superless_row "," typ_field { failwith "TODO" }
+    | typ_field { failwith "TODO" }
+
+typ_field :
+    | decl { failwith "TODO" }
+    | ID { failwith "TODO" }
 
 (* # Expressions *)
 
@@ -90,7 +119,6 @@ nestable_without_pos :
     | "[" clause* "]" { Fn (Vector.of_list $2) }
     | "[" expr "]" { Fn (Vector.singleton {pats = Vector.of_list []; body = $2}) }
     | "{" row_expr "}" { $2.v }
-    | "{" superless_row "}" { $2 }
     | "module" super def_semi* "end" { Module ($2, Vector.of_list $3) }
     | "let" reclet { $2 }
     | "begin" beginet { $2 }
@@ -98,26 +126,27 @@ nestable_without_pos :
     | atom { $1 }
 
 row_expr :
-    | with_row { {v = $1; pos = $loc} }
-    | where_row { {v = $1; pos = $loc} }
-    | without_row { {v = $1; pos = $loc} }
+    | with_row_expr { {v = $1; pos = $loc} }
+    | where_row_expr { {v = $1; pos = $loc} }
+    | without_row_expr { {v = $1; pos = $loc} }
+    | superless_row_expr { {v = $1; pos = $loc} }
     | "..." expr { $2 }
     | { {v = EmptyRecord; pos = $loc} }
 
-with_row :
+with_row_expr :
     | row_expr "with" field { With ($1, fst $3, snd $3) }
-    | with_row "," field { With ({v = $1; pos = $loc($1)}, fst $3, snd $3) }
+    | with_row_expr "," field { With ({v = $1; pos = $loc($1)}, fst $3, snd $3) }
 
-where_row :
+where_row_expr :
     | row_expr "where" field { Where ($1, fst $3, snd $3) }
-    | where_row "," field { Where ({v = $1; pos = $loc($1)}, fst $3, snd $3) }
+    | where_row_expr "," field { Where ({v = $1; pos = $loc($1)}, fst $3, snd $3) }
 
-without_row :
+without_row_expr :
     | row_expr "without" ID { Without ($1, Name.of_string $3) }
-    | without_row "," ID { Without ({v = $1; pos = $loc($1)}, Name.of_string $3) }
+    | without_row_expr "," ID { Without ({v = $1; pos = $loc($1)}, Name.of_string $3) }
 
-superless_row :
-    | superless_row "," field { With ({v = $1; pos = $loc($1)}, fst $3, snd $3) }
+superless_row_expr :
+    | superless_row_expr "," field { With ({v = $1; pos = $loc($1)}, fst $3, snd $3) }
     | field { With ({v = EmptyRecord; pos = $loc($1)}, fst $1, snd $1) }
 
 field
