@@ -1,6 +1,6 @@
 # Broom Rewrite in OCaml
 
-## Syntax
+## (Abstract) Syntax
 
 ```
 expr ::= type ::= "pi" apat+ "->" type
@@ -12,6 +12,8 @@ expr ::= type ::= "pi" apat+ "->" type
     | expr "." ID
     | "let" reclet
     | "begin" beginet
+    | "module" ("extends" def ";")? (def ";")* "end"
+    | "interface" ("extends" ID "=" type ";")? (decl ";")* "end"
     | "[" ("|" apat+ "->" expr)* "]" (* function literal *)
     | "[" expr "]" (* thunk *)
     | "{" row_expr "}"
@@ -33,7 +35,7 @@ row_expr ::= row_expr "with" field ("," field)*
     | "..." expr
     | (* empty *)
 
-field ::= pat "=" expr | ID
+field ::= ID ("=" expr)?
 
 pat ::= CTOR apat*
     | pat ":" type
@@ -48,12 +50,13 @@ row ::= (row "with")? ID ":" type ("," ID ":" type)*
     | row "where" "type" ID ("." ID)* apat* "=" type
     | type
 
-decl ::= "val" ID "=" type
+decl ::= ID "=" type
     | "type" ID apat* "=" type
 
-def ::= "val" pat "=" expr
+def ::= pat "=" expr
     | "fun" ID apat* "=" expr
 
-stmt ::= def | expr
+stmt ::= def ";"
+    | "do" expr ";"
 ```
 

@@ -16,7 +16,7 @@ let proxy = function
 
 %token
     FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" LET "let" BEGIN "begin" DO "do" END "end" REC "rec"
-    WITH "with" WHERE "where" WITHOUT "without"
+    WITH "with" WHERE "where" WITHOUT "without" MODULE "module" INTERFACE "interface" EXTENDS "extends"
     ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|" ELLIPSIS "..."
     LPAREN "(" RPAREN ")"
     LBRACKET "[" RBRACKET "]"
@@ -49,7 +49,7 @@ typ : typ_without_pos { {v = $1; pos = $sloc} }
 typ_without_pos
     : domain "=>" typ { Pi ($1, Pure, $3) }
     | domain "->" typ { Pi ($1, Impure, $3) }
-    | "typeof" ann_expr { Singleton $2 }
+    | "typeof" ann_expr { Typeof $2 }
     | ann_expr { path $1.v }
 
 domain
@@ -57,9 +57,14 @@ domain
     | unann_expr { Vector.singleton {v = Pattern.Ann ({v = Pattern.Ignore; pos = $sloc}, {v = path $1.v; pos = $sloc}); pos = $sloc} }
 
 nestable_typ :
-    | "{" "|" decls=separated_list(";", decl) "|" "}" { Sig (Vector.of_list decls) }
+    | "{" "|" decls=separated_list(";", decl) "|" "}" { failwith "FIXME" }
+    | "interface" super_typ decl_semi* "end" { Interface ($2, Vector.of_list $3) }
     | "(" typ ")" { $2.v }
     | "type" { Type }
+
+super_typ :
+    | "extends" ID "=" typ ";" { Some (Name.of_string $2, $4) }
+    | { None }
 
 (* # Expressions *)
 
@@ -82,10 +87,11 @@ select
 nestable : nestable_without_pos { {v = $1; pos = $sloc} }
 
 nestable_without_pos :
-    | "{" row_expr "}" { $2.v }
-    | "{" superless_row "}" { $2 }
     | "[" clause* "]" { Fn (Vector.of_list $2) }
     | "[" expr "]" { Fn (Vector.singleton {pats = Vector.of_list []; body = $2}) }
+    | "{" row_expr "}" { $2.v }
+    | "{" superless_row "}" { $2 }
+    | "module" super def_semi* "end" { Module ($2, Vector.of_list $3) }
     | "let" reclet { $2 }
     | "begin" beginet { $2 }
     | nestable_typ { proxy $1 }
@@ -115,20 +121,24 @@ superless_row :
     | field { With ({v = EmptyRecord; pos = $loc($1)}, fst $1, snd $1) }
 
 field
-    : def { failwith "TODO" } (*{ (Name.of_string $1, $3) }*)
-    | ID { failwith "TODO" }
+    : ID "=" expr { (Name.of_string $1, $3) }
+    | ID { let name = Name.of_string $1 in (name, {v = Use name; pos = $loc}) }
 
-clause : "|" apat+ "->" expr { failwith "TODO" }
+super :
+    | "extends" def_semi { let (_, pat, expr) = $2 in Some (pat, expr) }
+    | { None }
 
 reclet :
     | def_semi+ "begin" beginet { match Vector1.of_list $1 with
-        | Some defs -> Begin (defs, {v = $3; pos = $loc($3)})
+        | Some defs -> Let (defs, {v = $3; pos = $loc($3)})
         | None -> failwith "unreachable"
     }
 
 beginet :
-    | stmt* "rec" reclet { Do (Vector.of_list ($1 @ [Expr {v = $3; pos = $loc($3)}])) } (* OPTIMIZE *)
-    | stmt* "end" { Do (Vector.of_list $1) }
+    | stmt* "rec" reclet { Begin (Vector.of_list ($1 @ [Expr {v = $3; pos = $loc($3)}])) } (* OPTIMIZE *)
+    | stmt* "end" { Begin (Vector.of_list $1) }
+
+clause : "|" apat+ "->" expr { failwith "TODO" }
 
 atom
     : ID {
@@ -144,11 +154,13 @@ atom
 (* # Declarations *)
 
 decl
-    : "val" name=ID ":" typ=typ { {name = Name.of_string name; typ} }
+    : name=ID ":" typ=typ { {name = Name.of_string name; typ} }
     | "type" name=ID "=" typ=typ {
-        {name = Name.of_string name; typ = {v = Singleton {v = proxy typ.v; pos = $loc(typ)}; pos = $sloc}}
+        {name = Name.of_string name; typ = {v = Typeof {v = proxy typ.v; pos = $loc(typ)}; pos = $sloc}}
     }
     | "type" name=ID { {name = Name.of_string name; typ = {v = Type; pos = $loc(name)}} }
+
+decl_semi : decl ";" { $1 }
 
 (* # Definitions and Statements *)
 

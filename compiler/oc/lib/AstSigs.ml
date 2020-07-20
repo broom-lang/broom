@@ -7,8 +7,9 @@ module type TERM = sig
     type expr =
         | Fn of clause Vector.t
         | App of expr with_pos * expr with_pos
-        | Begin of def Vector1.t * expr with_pos
-        | Do of stmt Vector.t
+        | Let of def Vector1.t * expr with_pos
+        | Begin of stmt Vector.t
+        | Module of (pat with_pos * expr with_pos) option * def Vector.t
         | Ann of expr with_pos * typ with_pos
         | With of expr with_pos * Name.t * expr with_pos
         | Where of expr with_pos * Name.t * expr with_pos
@@ -50,9 +51,9 @@ module type TYPE = sig
 
     type t =
         | Pi of pat with_pos Vector.t * eff * t with_pos
-        | Sig of Name.t decl Vector.t
+        | Interface of (Name.t * t with_pos) option * Name.t decl Vector.t
         | Path of expr
-        | Singleton of expr with_pos
+        | Typeof of expr with_pos
         | Type
         | Prim of Prim.t
 

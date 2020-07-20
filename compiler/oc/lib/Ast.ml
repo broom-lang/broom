@@ -1,6 +1,8 @@
 let (^^) = PPrint.(^^)
 let (^/^) = PPrint.(^/^)
 
+(* FIXME: Printing syntax differs from parsed syntax: *)
+
 type 'a with_pos = 'a Util.with_pos
 
 module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t = struct
@@ -10,8 +12,9 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
     type expr =
         | Fn of clause Vector.t
         | App of expr with_pos * expr with_pos
-        | Begin of def Vector1.t * expr with_pos
-        | Do of stmt Vector.t
+        | Let of def Vector1.t * expr with_pos
+        | Begin of stmt Vector.t
+        | Module of (pat with_pos * expr with_pos) option * def Vector.t
         | Ann of expr with_pos * typ with_pos
         | With of expr with_pos * Name.t * expr with_pos
         | Where of expr with_pos * Name.t * expr with_pos
@@ -36,17 +39,30 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
                 PPrint.lbracket (PPrint.break 1 ^^ PPrint.bar ^^ PPrint.blank 1) PPrint.rbracket
                 clause_to_doc (Vector.to_list clauses)
         | App ({v = callee; _}, {v = arg; _}) -> callee_to_doc callee ^/^ arg_to_doc arg
-        | Begin (defs, body) ->
+        | Let (defs, body) ->
             PPrint.surround 4 1 (PPrint.string "begin")
                 ((PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) def_to_doc
                     (Vector1.to_list defs))
                     ^^ PPrint.semi ^^ PPrint.break 1 ^^ expr_to_doc body.v)
                 (PPrint.string "end")
-        | Do stmts ->
+        | Begin stmts ->
             PPrint.surround_separate_map 4 1
                 (PPrint.string "do" ^/^ PPrint.string "end")
                 (PPrint.string "do") (PPrint.semi ^^ PPrint.break 1) (PPrint.string "end")
                 stmt_to_doc (Vector.to_list stmts)
+        | Module (None, fields) when Vector.length fields = 0 ->
+            PPrint.string "module" ^/^ PPrint.string "end"
+        | Module (super, fields) ->
+            let super_doc = match super with
+                | Some (pat, expr) ->
+                    (PPrint.string "extends") ^^ PPrint.blank 1 ^^
+                        PPrint.infix 4 1 PPrint.equals (Pattern.to_doc pat.v)
+                            (expr_to_doc expr.v ^^ PPrint.semi) ^^ PPrint.break 1
+                | None -> PPrint.empty in
+            PPrint.surround 4 1 (PPrint.string "module")
+                (super_doc ^^ PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) def_to_doc
+                    (Vector.to_list fields))
+                (PPrint.string "end")
         | Ann (expr, typ) ->
             PPrint.infix 4 1 PPrint.colon (sealee_to_doc expr.v) (Type.to_doc typ.v)
         | With (super, label, expr) ->
@@ -123,9 +139,9 @@ and Type : AstSigs.TYPE
 
     type t =
         | Pi of pat with_pos Vector.t * eff * t with_pos
-        | Sig of Name.t decl Vector.t
+        | Interface of (Name.t * t with_pos) option * Name.t decl Vector.t
         | Path of expr
-        | Singleton of expr with_pos
+        | Typeof of expr with_pos
         | Type
         | Prim of Prim.t
 
@@ -138,12 +154,19 @@ and Type : AstSigs.TYPE
                     ^^ PPrint.separate_map (PPrint.break 1) (fun {Util.v; pos = _} -> Pattern.to_doc v)
                         (Vector.to_list domain))
                 (to_doc codomain.v)
-        | Sig decls ->
-            PPrint.surround_separate_map 4 1 (PPrint.braces PPrint.empty)
-                PPrint.lbrace (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
-                decl_to_doc (Vector.to_list decls)
+        | Interface (None, decls) when Vector.length decls = 0 ->
+            PPrint.string "interface" ^/^ PPrint.string "end"
+        | Interface (super, decls) ->
+            let super_doc = match super with
+                | Some (name, typ) ->
+                    PPrint.infix 4 1 PPrint.equals (Name.to_doc name) (to_doc typ.v) ^^ PPrint.break 1
+                | None -> PPrint.empty in
+            PPrint.surround 4 1 (PPrint.string "interface")
+                (super_doc ^^ PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) decl_to_doc
+                    (Vector.to_list decls))
+                (PPrint.string "end")
         | Path expr -> Term.expr_to_doc expr
-        | Singleton {v = expr; _} -> PPrint.parens (PPrint.equals ^/^ Term.expr_to_doc expr)
+        | Typeof {v = expr; _} -> PPrint.parens (PPrint.equals ^/^ Term.expr_to_doc expr)
         | Type -> PPrint.string "type"
         | Prim pt -> Prim.to_doc pt
 
