@@ -13,7 +13,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | Fn of clause Vector.t
         | App of expr with_pos * expr with_pos
         | Let of def Vector1.t * expr with_pos
-        | Begin of stmt Vector.t
+        | Begin of stmt Vector1.t * expr with_pos
         | Module of (pat with_pos * expr with_pos) option * def Vector.t
         | Ann of expr with_pos * typ with_pos
         | With of expr with_pos * Name.t * expr with_pos
@@ -44,11 +44,11 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
                 ((PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) def_to_doc
                     (Vector1.to_list defs)) ^^ PPrint.semi ^/^ PPrint.string "do" ^/^ expr_to_doc body.v)
                 (PPrint.string "end")
-        | Begin stmts ->
+        | Begin (stmts, expr) ->
             PPrint.surround_separate_map 4 1
                 (PPrint.string "begin" ^/^ PPrint.string "end")
                 (PPrint.string "begin") (PPrint.semi ^^ PPrint.break 1) (PPrint.string "end")
-                stmt_to_doc (Vector.to_list stmts)
+                stmt_to_doc (Vector1.to_list stmts @ [Expr expr])
         | Module (None, fields) when Vector.length fields = 0 ->
             PPrint.string "module" ^/^ PPrint.string "end"
         | Module (super, fields) ->

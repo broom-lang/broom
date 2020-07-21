@@ -16,7 +16,6 @@ let rec token ({stream; _} as lexbuf) =
     | "interface" -> update lexbuf; INTERFACE
     | "extends" -> update lexbuf; EXTENDS
     | "let" -> update lexbuf; LET
-    | "rec" -> update lexbuf; REC
     | "begin" -> update lexbuf; BEGIN
     | "do" -> update lexbuf; DO
     | "end" -> update lexbuf; END

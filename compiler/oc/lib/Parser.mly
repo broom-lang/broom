@@ -15,7 +15,7 @@ let proxy = function
 %}
 
 %token
-    FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" LET "let" BEGIN "begin" DO "do" END "end" REC "rec"
+    FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" LET "let" BEGIN "begin" DO "do" END "end"
     WITH "with" WHERE "where" WITHOUT "without" MODULE "module" INTERFACE "interface" EXTENDS "extends"
     ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|" ELLIPSIS "..."
     BANG "!" QMARK "?"
@@ -167,18 +167,16 @@ field
     | ID { let name = Name.of_string $1 in (name, {v = Use name; pos = $loc}) }
 
 block :
-    | "let" def_semi+ let_tail { Let (Vector1.of_list $2 |> Option.get, $3) }
-    | "begin" stmt ";" beginet { Begin (Vector.of_list ($2 :: $4)) }
+    | "let" def_semi+ block_tail { Let (Vector1.of_list $2 |> Option.get, $3) }
+    | "begin" stmt ";" begin_tail { Begin (Vector1.of_list ($2 :: fst $4) |> Option.get, snd $4) }
 
-let_tail :
+begin_tail :
+    | stmt ";" begin_tail { ($1 :: fst $3, snd $3) }
+    | block_tail { ([], $1) }
+
+block_tail :
     | "do" expr "end" { $2 }
     | block { {v = $1; pos = $loc} }
-
-beginet :
-    | def ";" beginet { Def $1 :: $3 }
-    | "do" expr ";" beginet { Expr $2 :: $4 }
-    | "do" expr "end" { [Expr $2] }
-    | block { [Expr {v = $1; pos = $loc($1)}] }
 
 clause : "|" apat+ "->" expr { failwith "TODO" }
 

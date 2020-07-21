@@ -8,7 +8,7 @@ module type TERM = sig
         | Fn of clause Vector.t
         | App of expr with_pos * expr with_pos
         | Let of def Vector1.t * expr with_pos
-        | Begin of stmt Vector.t
+        | Begin of stmt Vector1.t * expr with_pos
         | Module of (pat with_pos * expr with_pos) option * def Vector.t
         | Ann of expr with_pos * typ with_pos
         | With of expr with_pos * Name.t * expr with_pos
