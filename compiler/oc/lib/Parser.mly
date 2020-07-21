@@ -35,6 +35,7 @@ let proxy = function
 %type <Name.t Ast.Type.decl> decl
 
 %type <Ast.Term.expr with_pos> expr row_expr
+%type <Ast.Term.expr> block
 %type <Ast.Term.clause> clause
 
 %type <Ast.Pattern.t with_pos> pat apat
@@ -127,8 +128,7 @@ nestable_without_pos :
     | "module" super module_tail "end" { Module (Some $2, Vector.of_list $3) }
     | "module" def module_tail "end" { Module (None, Vector.of_list $3) }
     | "module" "end" { Module (None, Vector.of_list []) }
-    | "let" reclet { $2 }
-    | "begin" beginet { $2 }
+    | block { $1 }
     | nestable_typ { proxy $1 }
     | atom { $1 }
 
@@ -166,24 +166,19 @@ field
     : ID "=" expr { (Name.of_string $1, $3) }
     | ID { let name = Name.of_string $1 in (name, {v = Use name; pos = $loc}) }
 
-reclet :
-    | def reclette { match Vector1.of_list ($1 :: fst $2) with
-        | Some defs -> Let (defs, snd $2)
-        | None -> failwith "unreachable"
-    }
+block :
+    | "let" def_semi+ let_tail { Let (Vector1.of_list $2 |> Option.get, $3) }
+    | "begin" stmt ";" beginet { Begin (Vector.of_list ($2 :: $4)) }
 
-reclette :
-    | ";" def reclette { ($2 :: fst $3, snd $3) }
-    | ";"? "do" expr "end" { ([], $3) }
+let_tail :
+    | "do" expr "end" { $2 }
+    | block { {v = $1; pos = $loc} }
 
 beginet :
-    | stmt beginette { Begin (Vector.of_list ($1 :: $2)) }
-    | "end" { Begin (Vector.of_list []) }
-
-beginette :
-    | ";" stmt beginette { $2 :: $3 }
-    | ";"? "rec" reclet { [Expr {v = $3; pos = $loc($3)}] }
-    | ";"? "end" { [] }
+    | def ";" beginet { Def $1 :: $3 }
+    | "do" expr ";" beginet { Expr $2 :: $4 }
+    | "do" expr "end" { [Expr $2] }
+    | block { [Expr {v = $1; pos = $loc($1)}] }
 
 clause : "|" apat+ "->" expr { failwith "TODO" }
 
@@ -214,6 +209,8 @@ stmt
     | "do" expr { Expr $2 }
 
 def : pat "=" expr { ($sloc, $1, $3) }
+
+def_semi : def ";" { $1 }
 
 (* # Patterns *)
 

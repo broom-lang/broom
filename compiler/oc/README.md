@@ -8,8 +8,8 @@ expr ::= type ::= ("pi" apat* | type) "->" row "!" type
     | expr ":" type
     | expr expr+
     | expr "." ID
-    | "let" reclet
-    | "begin" beginet
+    | block
+    | ("let" (def ";")+ | "begin" (stmt ";")+)+ "do" expr "end"
     | "module" (("extends" def | def) (";" def)* ";"?)? "end"
     | "interface" (("extends" ID ":" type | decl) (";" decl)* ";"?)? "end"
     | "[" ("|" apat+ "->" expr)* "]" (* function literal *)
@@ -21,10 +21,6 @@ expr ::= type ::= ("pi" apat* | type) "->" row "!" type
     | "type"
     | ID | CONST
     | "(" expr ")"
-
-reclet : def (";" def)* ";"? "do" expr "end"
-
-beginet : stmt (";" stmt)* ";"? ("rec" reclet | "end") | "end"
 
 row_expr ::= row_expr "with" field ("," field)*
     | row_expr "where" field ("," field)*

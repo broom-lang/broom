@@ -42,7 +42,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | Let (defs, body) ->
             PPrint.surround 4 1 (PPrint.string "let")
                 ((PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) def_to_doc
-                    (Vector1.to_list defs)) ^/^ PPrint.string "do" ^/^ expr_to_doc body.v)
+                    (Vector1.to_list defs)) ^^ PPrint.semi ^/^ PPrint.string "do" ^/^ expr_to_doc body.v)
                 (PPrint.string "end")
         | Begin stmts ->
             PPrint.surround_separate_map 4 1

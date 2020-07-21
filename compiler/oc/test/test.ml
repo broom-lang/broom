@@ -23,14 +23,17 @@ let%test_unit "parse_use" = try_roundtrip "do foo"
 
 let%test_unit "parse_app" = try_roundtrip "do foo bar"
 
-let%test_unit "parse_let" = try_roundtrip "do let x = 23 do x end"
+let%test_unit "parse_let" =
+    try_roundtrip "do let x = 23; do x end";
+    try_prints_as "do let x = 23; do begin y = 17; do y end end"
+        "do let x = 23; begin y = 17; do y end"
 
 let%test_unit "parse_ann" = try_roundtrip "do foo : int"
 
 let%test_unit "parse_begin" =
-    try_roundtrip "do begin end";
-    try_roundtrip "do begin do 23 end";
-    try_roundtrip "do begin x = 23; do x end"
+    try_roundtrip "do begin x = 23; do x end";
+    try_prints_as "do begin x = 23; do let y = 17; do y end end"
+        "do begin x = 23; let y = 17; do y end"
 
 let%test_unit "parse_record" =
     try_roundtrip "do {}";
