@@ -52,6 +52,11 @@ module type TYPE = sig
     type t =
         | Pi of pat with_pos Vector.t * eff * t with_pos
         | Interface of (Name.t * t with_pos) option * Name.t decl Vector.t
+        | Record of t with_pos
+        | With of t with_pos * Name.t * t with_pos
+        | Where of t with_pos * Name.t * t with_pos
+        | Without of t with_pos * Name.t
+        | EmptyRow
         | Path of expr
         | Typeof of expr with_pos
         | Type

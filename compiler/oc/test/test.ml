@@ -42,3 +42,10 @@ let%test_unit "parse_record" =
     try_prints_as "do {... {foo with x = 23} with y = 17}" "do {... foo with x = 23, y = 17}";
     try_prints_as "do {... {{} with x = 23} with y = 17}" "do {x = 23, y = 17}"
 
+let%test_unit "parse_record_type" =
+    try_roundtrip "do {||}";
+    try_roundtrip "do {|... foo with x : int|}";
+    try_prints_as "do {|... (||) with x : int|}" "do {|with x : int|}";
+    try_prints_as "do {|... (|... foo with x : int|) with y : int|}" "do {|... foo with x : int, y : int|}";
+    try_prints_as "do {|... (|... (||) with x : int|) with y : int|}" "do {|x : int, y : int|}" 
+

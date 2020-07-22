@@ -138,6 +138,11 @@ and Type : AstSigs.TYPE
     type t =
         | Pi of pat with_pos Vector.t * eff * t with_pos
         | Interface of (Name.t * t with_pos) option * Name.t decl Vector.t
+        | Record of t with_pos
+        | With of t with_pos * Name.t * t with_pos
+        | Where of t with_pos * Name.t * t with_pos
+        | Without of t with_pos * Name.t
+        | EmptyRow
         | Path of expr
         | Typeof of expr with_pos
         | Type
@@ -163,13 +168,33 @@ and Type : AstSigs.TYPE
                 (super_doc ^^ PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) decl_to_doc
                     (Vector.to_list decls))
                 (PPrint.string "end")
+        | Record row -> row_to_doc (PPrint.lbrace ^^ PPrint.bar) row.v (PPrint.bar ^^ PPrint.rbrace)
+        | (With _ | Where _ | Without _ | EmptyRow) as row ->
+            row_to_doc (PPrint.lparen ^^ PPrint.bar) row (PPrint.bar ^^ PPrint.rparen)
         | Path expr -> Term.expr_to_doc expr
         | Typeof {v = expr; _} -> PPrint.parens (PPrint.equals ^/^ Term.expr_to_doc expr)
         | Type -> PPrint.string "type"
         | Prim pt -> Prim.to_doc pt
 
-    and decl_to_doc {name; typ = {v = typ; _}} =
-        PPrint.string "val" ^/^ Name.to_doc name ^/^ PPrint.colon ^/^ to_doc typ
+    and decl_to_doc {name; typ = {v = typ; _}} = Name.to_doc name ^/^ PPrint.colon ^/^ to_doc typ
+
+    and row_to_doc l row r =
+        let contents = match row with
+            | With (super, label, typ) ->
+                PPrint.infix 4 1 (PPrint.string "with")
+                    (PPrint.prefix 4 1 (PPrint.string "...") (to_doc super.v))
+                    (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (to_doc typ.v))
+            | Where (super, label, typ) ->
+                PPrint.infix 4 1 (PPrint.string "where")
+                    (PPrint.prefix 4 1 (PPrint.string "...") (to_doc super.v))
+                    (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (to_doc typ.v))
+            | Without (super, label) ->
+                PPrint.infix 4 1 (PPrint.string "without")
+                    (PPrint.prefix 4 1 (PPrint.string "...") (to_doc super.v))
+                    (Name.to_doc label)
+            | EmptyRow -> PPrint.empty
+            | typ -> to_doc typ in
+        PPrint.surround 4 0 l contents r
 end
 
 and Effect : sig
