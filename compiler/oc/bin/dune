@@ -1,4 +1,4 @@
 (executable
   (name broom)
-  (libraries broom_lib pprint linenoise))
+  (libraries broom_lib pprint cmdliner linenoise))
 
