@@ -15,10 +15,11 @@ let proxy = function
 %}
 
 %token
-    FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" LET "let" BEGIN "begin" DO "do" END "end"
-    WITH "with" WHERE "where" WITHOUT "without" MODULE "module" INTERFACE "interface" EXTENDS "extends"
-    ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|" ELLIPSIS "..."
-    BANG "!" QMARK "?"
+    (*FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" LET "let" BEGIN "begin" DO "do" END "end"
+    WITH "with" WHERE "where" WITHOUT "without" MODULE "module" INTERFACE "interface" EXTENDS "extends" *)
+    ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|" (* ELLIPSIS "..." *)
+    BANG "!" QMARK "?" AT "@"
+    OP1 OP2 OP3
     LPAREN "(" RPAREN ")"
     LBRACKET "[" RBRACKET "]"
     LBRACE "{" RBRACE "}"
@@ -26,6 +27,9 @@ let proxy = function
 %token <string> ID
 %token <int> CONST
 
+%start <unit> program
+
+(*
 %start <Ast.Term.stmt Vector.t> program
 
 %type <Ast.Type.t with_pos> typ
@@ -39,9 +43,67 @@ let proxy = function
 %type <Ast.Term.clause> clause
 
 %type <Ast.Pattern.t with_pos> pat apat
+*)
 
 %%
 
+program : separated_list(";", def) EOF { failwith "TODO" }
+
+(* # Definitions & Statements *)
+
+def : expr "=" expr { failwith "TODO" }
+
+stmt :
+    | def { failwith "TODO" }
+    | expr { failwith "TODO" }
+
+(* # Expressions *)
+
+expr : typ { failwith "TODO" }
+
+ann_expr :
+    | binop1 ":" typ { failwith "TODO" }
+    | binop1 { failwith "TODO" }
+
+binop1 :
+    | binop1 OP1 binop2 { failwith "TODO" }
+    | binop2 { failwith "TODO" }
+
+binop2 :
+    | binop2 OP2 binop3 { failwith "TODO" }
+    | binop3 { failwith "TODO" }
+
+binop3 :
+    | binop3 OP3 app { failwith "TODO" }
+    | app { failwith "TODO" }
+
+app :
+    | select params { failwith "TODO" }
+    | select { failwith "TODO" }
+
+select :
+    | select "." nestable { failwith "TODO" }
+    | nestable { failwith "TODO" }
+
+nestable :
+    | "{" separated_list(";", stmt) "}" { failwith "TODO" }
+    | "[" clause* "]" { failwith "TODO" }
+    | "[" expr "]" { failwith "TODO" }
+    | "(" expr ")" { failwith "TODO" }
+    | ID { failwith "TODO" }
+    | CONST { failwith "TODO" }
+
+clause : "|" params "->" expr { failwith "TODO" }
+
+params : separated_list(",", select) "@" separated_list(",", select) { failwith "TODO" }
+
+(* # Types *)
+
+typ : binop1 "->" typ "!" typ { failwith "TODO" }
+    | binop1 "=>" typ { failwith "TODO" }
+    | ann_expr { failwith "TODO" }
+
+(*
 program : separated_list(";", stmt) EOF { Vector.of_list $1 }
 
 (* # Types *)
@@ -220,4 +282,4 @@ apat :
     | "(" pat ")" { $2 }
     | ID { {v = Pattern.Binder (Name.of_string $1); pos = $sloc} }
     | CONST { failwith "TODO" }
-
+*)
