@@ -88,12 +88,12 @@ select :
 nestable :
     | "{" separated_list(";", stmt) "}" { failwith "TODO" }
     | "[" clause* "]" { failwith "TODO" }
-    | "[" expr "]" { failwith "TODO" }
-    | "(" expr ")" { failwith "TODO" }
+    | "[" typ "]" { failwith "TODO" }
+    | "(" typ ")" { failwith "TODO" }
     | ID { failwith "TODO" }
     | CONST { failwith "TODO" }
 
-clause : "|" params "->" expr { failwith "TODO" }
+clause : "|" params "->" typ { failwith "TODO" }
 
 params : separated_list(",", select) "@" separated_list(",", select) { failwith "TODO" }
 
