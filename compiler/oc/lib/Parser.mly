@@ -19,7 +19,6 @@ let proxy = function
     WITH "with" WHERE "where" WITHOUT "without" MODULE "module" INTERFACE "interface" EXTENDS "extends" *)
     ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|" (* ELLIPSIS "..." *)
     BANG "!" QMARK "?" AT "@"
-    OP1 OP2 OP3
     LPAREN "(" RPAREN ")"
     LBRACKET "[" RBRACKET "]"
     LBRACE "{" RBRACE "}"
@@ -62,22 +61,11 @@ stmt :
 expr : typ { failwith "TODO" }
 
 ann_expr :
-    | binop1 ":" typ { failwith "TODO" }
-    | binop1 { failwith "TODO" }
-
-binop1 :
-    | binop1 OP1 binop2 { failwith "TODO" }
-    | binop2 { failwith "TODO" }
-
-binop2 :
-    | binop2 OP2 binop3 { failwith "TODO" }
-    | binop3 { failwith "TODO" }
-
-binop3 :
-    | binop3 OP3 app { failwith "TODO" }
+    | app ":" typ { failwith "TODO" }
     | app { failwith "TODO" }
 
 app :
+    | select select select { failwith "TODO" }
     | select params { failwith "TODO" }
     | select { failwith "TODO" }
 
@@ -99,8 +87,8 @@ params : separated_list(",", select) "@" separated_list(",", select) { failwith 
 
 (* # Types *)
 
-typ : binop1 "->" typ "!" typ { failwith "TODO" }
-    | binop1 "=>" typ { failwith "TODO" }
+typ : app "->" typ "!" typ { failwith "TODO" }
+    | app "=>" typ { failwith "TODO" }
     | ann_expr { failwith "TODO" }
 
 (*
