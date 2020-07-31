@@ -50,11 +50,11 @@ program : separated_list(";", def) EOF { failwith "TODO" }
 
 (* # Definitions & Statements *)
 
-def : expr "=" expr { failwith "TODO" }
+def : typ "=" typ { failwith "TODO" }
 
 stmt :
     | def { failwith "TODO" }
-    | expr { failwith "TODO" }
+    | typ { failwith "TODO" }
 
 (* # Expressions *)
 
