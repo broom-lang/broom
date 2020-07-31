@@ -93,7 +93,7 @@ nestable :
     | ID { failwith "TODO" }
     | CONST { failwith "TODO" }
 
-clause : "|" params "->" typ { failwith "TODO" }
+clause : "|" params? "->" typ { failwith "TODO" }
 
 params : separated_list(",", select) "@" separated_list(",", select) { failwith "TODO" }
 
