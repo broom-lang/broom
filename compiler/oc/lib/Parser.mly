@@ -105,8 +105,8 @@ select :
 nestable :
     | "{" separated_list(";", stmt) "}" { failwith "TODO" }
     | "[" clause* "]" { failwith "TODO" }
-    | "[" typ "]" { failwith "TODO" }
-    | "(" separated_list(",", typ) ")" { failwith "TODO" } (* unit, expr, tuple/`values` *)
+    | "[" expr "]" { failwith "TODO" }
+    | "(" separated_list(",", expr) ")" { failwith "TODO" } (* unit, expr, tuple/`values` *)
     | "(" OP1 ")" { failwith "TODO" }
     | "(" OP2 ")" { failwith "TODO" }
     | "(" OP3 ")" { failwith "TODO" }
