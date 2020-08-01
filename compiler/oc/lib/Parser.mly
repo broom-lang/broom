@@ -18,19 +18,18 @@ let proxy = function
     (*FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" LET "let" BEGIN "begin" DO "do" END "end"
     WITH "with" WHERE "where" WITHOUT "without" MODULE "module" INTERFACE "interface" EXTENDS "extends" *)
     ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|" (* ELLIPSIS "..." *)
-    BANG "!" QMARK "?" AT "@"
+    BANG "!" QMARK "?" HASH "#" AT "@"
+    QUOTE "'" BQUOTE "`"
     LPAREN "(" RPAREN ")"
     LBRACKET "[" RBRACKET "]"
     LBRACE "{" RBRACE "}"
     EOF
-%token <string> ID
+%token <string> OP1 OP2 OP3 OP4 OP5 OP6 PRIMOP ID WILD (* FIXME: actually design infix operators *)
 %token <int> CONST
 
-%start <unit> program
-
-(*
 %start <Ast.Term.stmt Vector.t> program
 
+(*
 %type <Ast.Type.t with_pos> typ
 %type <Ast.Pattern.t with_pos Vector.t> domain
 %type <Ast.Type.t> typ_without_pos
@@ -50,23 +49,53 @@ program : separated_list(";", def) EOF { failwith "TODO" }
 
 (* # Definitions & Statements *)
 
-def : typ "=" typ { failwith "TODO" }
+def : expr "=" expr { failwith "TODO" }
 
 stmt :
     | def { failwith "TODO" }
-    | typ { failwith "TODO" }
+    | expr { failwith "TODO" }
 
 (* # Expressions *)
 
 expr : typ { failwith "TODO" }
 
 ann_expr :
-    | app ":" typ { failwith "TODO" }
+    | binapp ":" typ { failwith "TODO" } (* NOTE: ~ right-associative *)
+    | binapp { failwith "TODO" }
+
+binapp :
+    | binapp OP1 binapp2 { failwith "TODO" }
+    | binapp2 { failwith "TODO" }
+
+binapp2 :
+    | binapp2 OP2 binapp3 { failwith "TODO" }
+    | binapp3 { failwith "TODO" }
+
+binapp3 :
+    | binapp4 OP3 binapp4 { failwith "TODO" } (* NOTE: nonassociative *)
+    | binapp4 { failwith "TODO" }
+
+binapp4 :
+    | binapp4 OP4 binapp5 { failwith "TODO" }
+    | binapp5 { failwith "TODO" }
+
+binapp5 :
+    | binapp5 OP5 binapp6 { failwith "TODO" }
+    | binapp6 { failwith "TODO" }
+
+binapp6 :
+    | binapp6 OP6 app { failwith "TODO" }
     | app { failwith "TODO" }
 
 app :
-    | select select select { failwith "TODO" }
-    | select params { failwith "TODO" }
+    | prefix_app params? { failwith "TODO" }
+    | PRIMOP params? { failwith "TODO" }
+
+prefix_app :
+    | "'" select { failwith "TODO" }
+    | "`" select { failwith "TODO" }
+    | "?" select { failwith "TODO" }
+    | "#" select { failwith "TODO" }
     | select { failwith "TODO" }
 
 select :
@@ -77,18 +106,25 @@ nestable :
     | "{" separated_list(";", stmt) "}" { failwith "TODO" }
     | "[" clause* "]" { failwith "TODO" }
     | "[" typ "]" { failwith "TODO" }
-    | "(" typ ")" { failwith "TODO" }
+    | "(" separated_list(",", typ) ")" { failwith "TODO" } (* unit, expr, tuple/`values` *)
+    | "(" OP1 ")" { failwith "TODO" }
+    | "(" OP2 ")" { failwith "TODO" }
+    | "(" OP3 ")" { failwith "TODO" }
+    | "(" OP4 ")" { failwith "TODO" }
+    | "(" OP5 ")" { failwith "TODO" }
+    | "(" OP6 ")" { failwith "TODO" }
     | ID { failwith "TODO" }
+    | WILD { failwith "TODO" }
     | CONST { failwith "TODO" }
 
-clause : "|" params? "->" typ { failwith "TODO" }
+clause : "|" params? "->" expr { failwith "TODO" }
 
-params : separated_list(",", select) "@" separated_list(",", select) { failwith "TODO" }
+params : prefix_app* "@" prefix_app* { failwith "TODO" }
 
 (* # Types *)
 
-typ : app "->" typ "!" typ { failwith "TODO" }
-    | app "=>" typ { failwith "TODO" }
+typ : binapp "->" typ "!" typ { failwith "TODO" }
+    | binapp "=>" typ { failwith "TODO" }
     | ann_expr { failwith "TODO" }
 
 (*
