@@ -17,14 +17,13 @@ let proxy = function
 %token
     (*FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" LET "let" BEGIN "begin" DO "do" END "end"
     WITH "with" WHERE "where" WITHOUT "without" MODULE "module" INTERFACE "interface" EXTENDS "extends" *)
-    ARROW "->" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|" (* ELLIPSIS "..." *)
-    BANG "!" QMARK "?" HASH "#" AT "@"
-    QUOTE "'" BQUOTE "`"
+    ARROW "->" LARROW "<-" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|" (* ELLIPSIS "..." *)
+    BANG "!" AT "@"
     LPAREN "(" RPAREN ")"
     LBRACKET "[" RBRACKET "]"
     LBRACE "{" RBRACE "}"
     EOF
-%token <string> OP1 OP2 OP3 OP4 OP5 OP6 PRIMOP ID WILD (* FIXME: actually design infix operators *)
+%token <string> OP1 OP2 OP3 OP4 OP5 OP6 PREFIX_OP PRIMOP ID WILD (* FIXME: actually design infix operators *)
 %token <int> CONST
 
 %start <Ast.Term.stmt Vector.t> program
@@ -45,19 +44,25 @@ let proxy = function
 
 %%
 
-program : separated_list(";", def) EOF { failwith "TODO" }
+program : defs EOF { failwith "TODO" }
 
 (* # Definitions & Statements *)
 
-def : expr "=" expr { failwith "TODO" }
+def : exprs "=" exprs { failwith "TODO" }
+
+defs : separated_list(";", def) { failwith "TODO" }
 
 stmt :
     | def { failwith "TODO" }
-    | expr { failwith "TODO" }
+    | exprs { failwith "TODO" }
+
+stmts : separated_list(";", stmt) { failwith "TODO" }
 
 (* # Expressions *)
 
 expr : typ { failwith "TODO" }
+
+exprs : separated_nonempty_list(",", expr) { failwith "TODO" }
 
 ann_expr :
     | binapp ":" typ { failwith "TODO" } (* NOTE: ~ right-associative *)
@@ -88,14 +93,12 @@ binapp6 :
     | app { failwith "TODO" }
 
 app :
-    | prefix_app params? { failwith "TODO" }
     | PRIMOP params? { failwith "TODO" }
+    | prefix_app params { failwith "TODO" }
+    | prefix_app { failwith "TODO" }
 
 prefix_app :
-    | "'" select { failwith "TODO" }
-    | "`" select { failwith "TODO" }
-    | "?" select { failwith "TODO" }
-    | "#" select { failwith "TODO" }
+    | PREFIX_OP select { failwith "TODO" }
     | select { failwith "TODO" }
 
 select :
@@ -103,10 +106,11 @@ select :
     | nestable { failwith "TODO" }
 
 nestable :
-    | "{" separated_list(";", stmt) "}" { failwith "TODO" }
+    | "{" stmts "}" { failwith "TODO" }
     | "[" clause* "]" { failwith "TODO" }
-    | "[" expr "]" { failwith "TODO" }
-    | "(" separated_list(",", expr) ")" { failwith "TODO" } (* unit, expr, tuple/`values` *)
+    | "[" exprs "]" { failwith "TODO" }
+    | "(" exprs ")" { failwith "TODO" }
+    | "(" ")" { failwith "TODO" }
     | "(" OP1 ")" { failwith "TODO" }
     | "(" OP2 ")" { failwith "TODO" }
     | "(" OP3 ")" { failwith "TODO" }
@@ -117,7 +121,7 @@ nestable :
     | WILD { failwith "TODO" }
     | CONST { failwith "TODO" }
 
-clause : "|" params? "->" expr { failwith "TODO" }
+clause : "|" params? "->" exprs { failwith "TODO" }
 
 params : prefix_app* "@" prefix_app* { failwith "TODO" }
 

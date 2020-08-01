@@ -44,10 +44,10 @@ let rec token ({stream; _} as lexbuf) =
     | ','  -> update lexbuf; COMMA
     | ';'  -> update lexbuf; SEMI
     | '!'  -> update lexbuf; BANG
-    | '?'  -> update lexbuf; QMARK
-    | '#'  -> update lexbuf; HASH
     | '|'  -> update lexbuf; BAR
     | '@'  -> update lexbuf; AT
+
+    | '?' | '#' | '\'' | '`' -> update lexbuf; PREFIX_OP (lexeme lexbuf)
 
     | '(' -> update lexbuf; LPAREN
     | ')' -> update lexbuf; RPAREN
