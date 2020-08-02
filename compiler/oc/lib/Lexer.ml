@@ -49,6 +49,8 @@ let rec token ({stream; _} as lexbuf) =
 
     | '?' | '#' | '\'' | '`' -> update lexbuf; PREFIX_OP (lexeme lexbuf)
 
+    | '$' -> failwith "`$` is reserved for future use"
+
     | '(' -> update lexbuf; LPAREN
     | ')' -> update lexbuf; RPAREN
     | '[' -> update lexbuf; LBRACKET

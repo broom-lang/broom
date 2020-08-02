@@ -23,7 +23,7 @@ let proxy = function
     LBRACKET "[" RBRACKET "]"
     LBRACE "{" RBRACE "}"
     EOF
-%token <string> OP1 OP2 OP3 OP4 OP5 OP6 PREFIX_OP PRIMOP ID WILD (* FIXME: actually design infix operators *)
+%token <string> OP1 OP2 OP3 OP4 OP5 OP6 PREFIX_OP POSTFIX_OP PRIMOP ID WILD (* FIXME: actually design infix operators *)
 %token <int> CONST
 
 %start <Ast.Term.stmt Vector.t> program
@@ -44,19 +44,19 @@ let proxy = function
 
 %%
 
-program : defs EOF { failwith "TODO" }
+program : defs? EOF { failwith "TODO" }
 
 (* # Definitions & Statements *)
 
 def : exprs "=" exprs { failwith "TODO" }
 
-defs : separated_list(";", def) { failwith "TODO" }
+defs : separated_nonempty_list(";", def) { failwith "TODO" }
 
 stmt :
     | def { failwith "TODO" }
     | exprs { failwith "TODO" }
 
-stmts : separated_list(";", stmt) { failwith "TODO" }
+stmts : separated_nonempty_list(";", stmt) { failwith "TODO" }
 
 (* # Expressions *)
 
@@ -65,7 +65,11 @@ expr : typ { failwith "TODO" }
 exprs : separated_nonempty_list(",", expr) { failwith "TODO" }
 
 ann_expr :
-    | binapp ":" typ { failwith "TODO" } (* NOTE: ~ right-associative *)
+    | explicitly ":" typ { failwith "TODO" } (* NOTE: ~ right-associative *)
+    | explicitly { failwith "TODO" }
+
+explicitly :
+    | binapp at_params { failwith "TODO" }
     | binapp { failwith "TODO" }
 
 binapp :
@@ -98,7 +102,11 @@ app :
     | prefix_app { failwith "TODO" }
 
 prefix_app :
-    | PREFIX_OP select { failwith "TODO" }
+    | PREFIX_OP prefix_app { failwith "TODO" }
+    | postfix_app { failwith "TODO" }
+
+postfix_app :
+    | postfix_app POSTFIX_OP { failwith "TODO" }
     | select { failwith "TODO" }
 
 select :
@@ -106,11 +114,10 @@ select :
     | nestable { failwith "TODO" }
 
 nestable :
-    | "{" stmts "}" { failwith "TODO" }
+    | "{" stmts? "}" { failwith "TODO" }
     | "[" clause* "]" { failwith "TODO" }
-    | "[" exprs "]" { failwith "TODO" }
-    | "(" exprs ")" { failwith "TODO" }
-    | "(" ")" { failwith "TODO" }
+    | "[" stmts "]" { failwith "TODO" }
+    | "(" exprs? ")" { failwith "TODO" }
     | "(" OP1 ")" { failwith "TODO" }
     | "(" OP2 ")" { failwith "TODO" }
     | "(" OP3 ")" { failwith "TODO" }
@@ -121,14 +128,16 @@ nestable :
     | WILD { failwith "TODO" }
     | CONST { failwith "TODO" }
 
-clause : "|" params? "->" exprs { failwith "TODO" }
+clause : "|" params? at_params? "->" exprs { failwith "TODO" }
 
-params : prefix_app* "@" prefix_app* { failwith "TODO" }
+params : prefix_app+ { failwith "TODO" }
+
+at_params : "@" params? { failwith "TODO" }
 
 (* # Types *)
 
-typ : binapp "->" typ "!" typ { failwith "TODO" }
-    | binapp "=>" typ { failwith "TODO" }
+typ : explicitly "->" typ "!" typ { failwith "TODO" }
+    | explicitly "=>" typ { failwith "TODO" }
     | ann_expr { failwith "TODO" }
 
 (*
