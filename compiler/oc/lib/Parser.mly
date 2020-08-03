@@ -15,8 +15,6 @@ let proxy = function
 %}
 
 %token
-    (*FUN "fun" PI "pi" VAL "val" TYPE "type" TYPEOF "typeof" LET "let" BEGIN "begin" DO "do" END "end"
-    WITH "with" WHERE "where" WITHOUT "without" MODULE "module" INTERFACE "interface" EXTENDS "extends" *)
     ARROW "->" LARROW "<-" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|" (* ELLIPSIS "..." *)
     BANG "!" AT "@"
     LPAREN "(" RPAREN ")"
@@ -27,20 +25,6 @@ let proxy = function
 %token <int> CONST
 
 %start <Ast.Term.stmt Vector.t> program
-
-(*
-%type <Ast.Type.t with_pos> typ
-%type <Ast.Pattern.t with_pos Vector.t> domain
-%type <Ast.Type.t> typ_without_pos
-
-%type <Name.t Ast.Type.decl> decl
-
-%type <Ast.Term.expr with_pos> expr row_expr
-%type <Ast.Term.expr> block
-%type <Ast.Term.clause> clause
-
-%type <Ast.Pattern.t with_pos> pat apat
-*)
 
 %%
 
