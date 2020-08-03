@@ -10,34 +10,17 @@ let integer = [%sedlex.regexp? Plus ('0'..'9')]
 
 let rec token ({stream; _} as lexbuf) =
     match%sedlex stream with
-    (*| "fun" -> update lexbuf; FUN
-    | "pi"  -> update lexbuf; PI
-    | "module" -> update lexbuf; MODULE
-    | "interface" -> update lexbuf; INTERFACE
-    | "extends" -> update lexbuf; EXTENDS
-    | "let" -> update lexbuf; LET
-    | "begin" -> update lexbuf; BEGIN
-    | "do" -> update lexbuf; DO
-    | "end" -> update lexbuf; END
-    | "val" -> update lexbuf; VAL
-    | "var" -> update lexbuf; failwith "`var` reserved (just in case)"
-    | "without" -> update lexbuf; WITHOUT
-    | "with"  -> update lexbuf; WITH
-    | "where" -> update lexbuf; WHERE
-    | "type"  -> update lexbuf; TYPE
-    | "typeof" -> update lexbuf; TYPEOF*)
+    | "->" -> update lexbuf; ARROW
+    | "=>" -> update lexbuf; DARROW
+    | "<-" -> update lexbuf; LARROW
 
-    (* FIXME: actually design infix operators *)
+    (* FIXME: actually design infix operators: *)
     | "||" -> update lexbuf; OP1 (lexeme lexbuf)
     | "&&" -> update lexbuf; OP2 (lexeme lexbuf)
     | "==" | '<' | '>' | "<=" | ">=" -> update lexbuf; OP3 (lexeme lexbuf)
     | '+' | '-' -> update lexbuf; OP4 (lexeme lexbuf)
     | '*' | '/' | '%' -> update lexbuf; OP5 (lexeme lexbuf)
-    | "|>" -> update lexbuf; OP6 (lexeme lexbuf) (* pipe-last *)
 
-    | "->" -> update lexbuf; ARROW
-    | "=>" -> update lexbuf; DARROW
-    (*| "..." -> update lexbuf; ELLIPSIS*)
     | '='  -> update lexbuf; EQ
     | ':'  -> update lexbuf; COLON
     | '.'  -> update lexbuf; DOT
@@ -46,10 +29,6 @@ let rec token ({stream; _} as lexbuf) =
     | '!'  -> update lexbuf; BANG
     | '|'  -> update lexbuf; BAR
     | '@'  -> update lexbuf; AT
-
-    | '?' | '#' | '\'' | '`' -> update lexbuf; PREFIX_OP (lexeme lexbuf)
-
-    | '$' -> failwith "`$` is reserved for future use"
 
     | '(' -> update lexbuf; LPAREN
     | ')' -> update lexbuf; RPAREN
