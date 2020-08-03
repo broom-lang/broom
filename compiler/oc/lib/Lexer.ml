@@ -45,7 +45,7 @@ let rec token ({stream; _} as lexbuf) =
         update lexbuf; WILD (String.sub tok 1 (String.length tok - 1))
 
     | identifier -> update lexbuf; ID (lexeme lexbuf)
-    | integer -> update lexbuf; CONST (int_of_string (lexeme lexbuf))
+    | integer -> update lexbuf; INT (int_of_string (lexeme lexbuf))
 
     | Plus (Chars " \t\r") -> update lexbuf; token lexbuf 
     | '\n' -> update lexbuf; new_line lexbuf; token lexbuf

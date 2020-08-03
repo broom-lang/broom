@@ -4,6 +4,7 @@
 
 type 'a t
 
+val empty : unit -> 'a t
 val singleton : 'a -> 'a t
 
 val length : 'a t -> int

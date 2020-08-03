@@ -1,5 +1,6 @@
 type 'a t = 'a Array.t
 
+let empty () = Array.of_list []
 let singleton v = Array.make 1 v
 
 let length = Array.length

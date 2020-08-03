@@ -5,8 +5,10 @@ module type TERM = sig
     type pat
 
     type expr =
+        | Values of expr with_pos Vector.t
         | Fn of clause Vector.t
-        | App of expr with_pos * expr with_pos
+        | App of expr with_pos * expr with_pos Vector.t
+        | AppSequence of expr with_pos Vector1.t
         | Let of def Vector1.t * expr with_pos
         | Begin of stmt Vector1.t * expr with_pos
         | Module of (pat with_pos * expr with_pos) option * def Vector.t
@@ -14,6 +16,7 @@ module type TERM = sig
         | With of expr with_pos * Name.t * expr with_pos
         | Where of expr with_pos * Name.t * expr with_pos
         | Without of expr with_pos * Name.t
+        | Record of stmt Vector.t
         | EmptyRecord
         | Select of expr with_pos * Name.t
         | Proxy of typ

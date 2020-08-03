@@ -10,8 +10,10 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
     type pat = Pattern.t
 
     type expr =
+        | Values of expr with_pos Vector.t
         | Fn of clause Vector.t
-        | App of expr with_pos * expr with_pos
+        | App of expr with_pos * expr with_pos Vector.t
+        | AppSequence of expr with_pos Vector1.t
         | Let of def Vector1.t * expr with_pos
         | Begin of stmt Vector1.t * expr with_pos
         | Module of (pat with_pos * expr with_pos) option * def Vector.t
@@ -19,6 +21,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | With of expr with_pos * Name.t * expr with_pos
         | Where of expr with_pos * Name.t * expr with_pos
         | Without of expr with_pos * Name.t
+        | Record of stmt Vector.t
         | EmptyRecord
         | Select of expr with_pos * Name.t
         | Proxy of typ
@@ -38,7 +41,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
             PPrint.surround_separate_map 4 1 (PPrint.brackets PPrint.empty)
                 PPrint.lbracket (PPrint.break 1 ^^ PPrint.bar ^^ PPrint.blank 1) PPrint.rbracket
                 clause_to_doc (Vector.to_list clauses)
-        | App ({v = callee; _}, {v = arg; _}) -> callee_to_doc callee ^/^ arg_to_doc arg
+        (*| App ({v = callee; _}, {v = arg; _}) -> callee_to_doc callee ^/^ arg_to_doc arg*)
         | Let (defs, body) ->
             PPrint.surround 4 1 (PPrint.string "let")
                 ((PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) def_to_doc
