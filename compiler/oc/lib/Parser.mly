@@ -1,5 +1,4 @@
 %{
-open Ast
 open Ast.Term
 open Ast.Type
 open Util
@@ -156,17 +155,7 @@ at_params : "@" params? { match $2 with (* TODO: Implicit args need more design 
 typ : typ_without_pos { {v = $1; pos = $sloc} }
 
 typ_without_pos :
-    | explicitly "->" typ "!" typ {
-        let pats = match $1.v with
-            | Values pats -> pats
-            | _ -> Vector.singleton $1 in
-        Pi (pats, $3, $5)
-    }
-    | explicitly "=>" typ {
-        let pats = match $1.v with
-            | Values pats -> pats
-            | _ -> Vector.singleton $1 in
-        Pi (pats, {v = EmptyRow; pos = $loc($2)}, $3)
-    }
+    | explicitly "->" typ "!" typ { Pi ($1, $3, $5) }
+    | explicitly "=>" typ { Pi ($1, {v = EmptyRow; pos = $loc($2)}, $3) }
     | ann_expr { path $1.v }
 

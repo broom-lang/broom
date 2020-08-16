@@ -55,7 +55,6 @@ let rec token ({stream; _} as lexbuf) =
         update lexbuf; STRING (String.sub tok 1 (String.length tok - 2))
     | integer -> update lexbuf; INT (int_of_string (lexeme lexbuf))
 
-
     | "__", Plus constituent ->
         let tok = lexeme lexbuf in
         update lexbuf; PRIMOP (String.sub tok 2 (String.length tok - 2))
