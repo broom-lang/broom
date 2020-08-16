@@ -2,9 +2,10 @@ open SedlexMenhir
 
 open Parser
 
+let reserved = [%sedlex.regexp? '(' | ')' | '[' | ']' | '{' | '}' | '.' | ':' | ',' | ';' | '|']
 let letter = [%sedlex.regexp? ll | lm | lo | lt | lu | pc]
 let number = [%sedlex.regexp? nd | nl | no]
-let symchar = [%sedlex.regexp? pd | pe | pf | pi | po | ps | sc | sk | sm | so]
+let symchar = [%sedlex.regexp? Sub ((pd | pe | pf | pi | po | ps | sc | sk | sm | so), reserved)]
 
 let initial = [%sedlex.regexp? letter]
 let constituent = [%sedlex.regexp? initial | symchar | number]

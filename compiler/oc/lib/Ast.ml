@@ -76,19 +76,22 @@ module rec Term : AstSigs.TERM with type typ = Type.t = struct
 
     and stmt_to_doc = function
         | Def def -> def_to_doc def
-        | Expr expr -> PPrint.prefix 4 1 (PPrint.string "do") (expr_to_doc expr.v)
+        | Expr expr -> expr_to_doc expr.v
 end
 
 and Type : AstSigs.TYPE
     with type expr = Term.expr
+    with type stmt = Term.stmt
     with type pat = Term.pat
 = struct
     type expr = Term.expr
+    type stmt = Term.stmt
     type pat = Term.pat
 
     type t =
         | Pi of pat with_pos * t with_pos * t with_pos
-        | EmptyRow
+        | Record of stmt Vector.t
+        | Row of stmt Vector.t
         | Path of expr
         | Prim of Prim.t
 
@@ -98,7 +101,14 @@ and Type : AstSigs.TYPE
         | Pi (domain, eff, codomain) ->
             PPrint.infix 4 1 (PPrint.string "->") (Term.expr_to_doc domain.v)
                 (PPrint.infix 4 1 PPrint.bang (to_doc eff.v) (to_doc codomain.v))
-        | EmptyRow -> PPrint.parens (PPrint.string "||")
+        | Record stmts ->
+            PPrint.surround_separate_map 4 0 (PPrint.braces (PPrint.bar ^^ PPrint.blank 1 ^^ PPrint.bar))
+                (PPrint.lbrace ^^ PPrint.bar) (PPrint.semi ^^ PPrint.break 1) (PPrint.bar ^^ PPrint.rbrace)
+                Term.stmt_to_doc (Vector.to_list stmts)
+        | Row stmts ->
+            PPrint.surround_separate_map 4 0 (PPrint.parens (PPrint.bar ^^ PPrint.blank 1 ^^ PPrint.bar))
+                (PPrint.lparen ^^ PPrint.bar) (PPrint.semi ^^ PPrint.break 1) (PPrint.bar ^^ PPrint.rparen)
+                Term.stmt_to_doc (Vector.to_list stmts)
         | Path expr -> Term.expr_to_doc expr
         | Prim pt -> Prim.to_doc pt
 end

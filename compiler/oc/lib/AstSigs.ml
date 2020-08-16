@@ -33,11 +33,13 @@ end
 
 module type TYPE = sig
     type expr
+    type stmt
     type pat
 
     type t =
         | Pi of pat with_pos * t with_pos * t with_pos
-        | EmptyRow
+        | Record of stmt Vector.t
+        | Row of stmt Vector.t
         | Path of expr
         | Prim of Prim.t
 

@@ -21,7 +21,7 @@ let proxy = function
     BAR "|" BANG "!" QMARK "?" AT "@" BACKSLASH
     LPAREN "(" RPAREN ")" LBRACKET "[" RBRACKET "]" LBRACE "{" RBRACE "}"
     EOF
-%token <string> DISJUNCTION CONJUNCTION COMPARISON ADDITIVE MULTIPLICATIVE
+%token <string> DISJUNCTION "||" CONJUNCTION "&&" COMPARISON ADDITIVE MULTIPLICATIVE
 %token <string> PRIMOP WILD ID OP
 %token <string> STRING
 %token <int> INT
@@ -66,14 +66,14 @@ explicitly :
     | binapp { $1 }
 
 binapp :
-    | binapp DISJUNCTION binapp2 {
+    | binapp "||" binapp2 {
         let operator = {v = Use (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
     }
     | binapp2 { $1 }
 
 binapp2 :
-    | binapp2 CONJUNCTION binapp3 {
+    | binapp2 "&&" binapp3 {
         let operator = {v = Use (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
     }
@@ -126,11 +126,19 @@ nestable_without_pos :
     | "[" clause* "]" { Fn (Vector.of_list $2) }
     | "[" stmts "]" { Thunk (Vector1.to_vector $2) }
     | "(" separated_list(",", expr) ")" { Values (Vector.of_list $2) }
-    | "(" DISJUNCTION ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
-    | "(" CONJUNCTION ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
+    | "(" "||" ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
+    | "(" "&&" ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
     | "(" COMPARISON ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
     | "(" ADDITIVE ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
     | "(" MULTIPLICATIVE ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
+    | "(" "|" stmts? "|" ")" { proxy (Row (match $3 with (* FIXME: (||) *)
+        | Some stmts -> Vector1.to_vector stmts
+        | None -> Vector.empty ()
+    )) }
+    | "{" "|" stmts? "|" "}" { proxy (Record (match $3 with (* FIXME: (||) *)
+        | Some stmts -> Vector1.to_vector stmts
+        | None -> Vector.empty ()
+    )) }
     | ID { Use (Name.of_string $1) }
     | WILD { failwith "TODO" }
     | INT { Const (Int $1) }
@@ -156,6 +164,6 @@ typ : typ_without_pos { {v = $1; pos = $sloc} }
 
 typ_without_pos :
     | explicitly "->" typ "!" typ { Pi ($1, $3, $5) }
-    | explicitly "=>" typ { Pi ($1, {v = EmptyRow; pos = $loc($2)}, $3) }
+    | explicitly "=>" typ { Pi ($1, {v = Row (Vector.empty ()); pos = $loc($2)}, $3) }
     | ann_expr { path $1.v }
 
