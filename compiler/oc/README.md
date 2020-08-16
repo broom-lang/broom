@@ -3,57 +3,46 @@
 ## (Abstract) Syntax
 
 ```
-expr ::= type ::= ("pi" apat* | type) "->" row "!" type
-    | ("pi" apat* | type) "=>" type
-    | expr ":" type
-    | expr expr+
-    | expr "." ID
-    | block
-    | ("let" (def ";")+ | "begin" (stmt ";")+)+ "do" expr "end"
-    | "module" (("extends" def | def) (";" def)* ";"?)? "end"
-    | "interface" (("extends" ID ":" type | decl) (";" decl)* ";"?)? "end"
-    | "[" ("|" apat+ "->" expr)* "]" (* function literal *)
-    | "[" expr "]" (* thunk *)
-    | "{" row_expr "}"
-    | "{" "|" row "|" ")"
-    | "(" "|" row "|" ")"
-    | "typeof" expr
-    | "type"
-    | ID | CONST
-    | "(" expr ")"
+program ::= defs
+repl_input ::= stmts*
 
-row_expr ::= row_expr "with" field ("," field)*
-    | row_expr "where" field ("," field)*
-    | row_expr "without" ID ("," ID)*
-    | field ("," field)* (* := "with" field ("," field)* *) 
-    | "..." expr
-    | (* empty *)
-
-field ::= ID ("=" expr)?
-
-pat ::= CTOR apat*
-    | pat ":" type
-    | pat "|" pat
-    | pat "&" pat
-    | apat
-
-apat ::= "(" pat ")" | ID | "_" | CONST
-
-row ::= row "with" type_field ("," type_field)*
-    | row "where" type_field ("," type_field)*
-    | row "without" ID ("," ID)*
-    | typ_field ("," typ_field)* (* := "with" typ_field ("," typ_field)* *)
-    | "..." type
-    | (* empty *)
-
-type_field ::= decl | ID
-
-decl ::= ID "=" type
-    | "type" ID apat* "=" type
-    | "type" ID apat*
+stmt ::= def | expr
+stmts ::= stmt (";" stmt)*
 
 def ::= pat "=" expr
+defs ::= def (";" def)*
 
-stmt ::= def | "do" expr
+expr ::=
+pat ::=
+type ::= 
+    | type "->" type "!" type
+    | type "=>" type
+
+    | expr ":" type
+    | expr "||" expr
+    | expr "&&" expr
+    | expr ("==" | "<" | "<=" | ">" | ">=") expr
+    | expr ("+" | "-") expr
+    | expr ("*" | "/" | "%") expr
+    | expr OTHER_INFIX expr
+    | expr expr+
+    | PREFIX expr
+    | expr POSTFIX
+    | expr "." ID
+
+    | "[" ("|" apat+ "->" expr)* "]" (* function literal *)
+    | "[" stmts "]" (* thunk *)
+    | "{" stmts? "}"
+    | "(" (expr ("," expr)*)? ")"
+    | "(" ( "||" | "&&"
+          | "==" | "<" | "<=" | ">" | ">="
+          | "+" | "-"
+          | "*" | "/" | "%" ) ")"
+    | "{" "|" stmts? "|" ")"
+    | "(" "|" stmts? "|" ")"
+
+    | ID
+    | "_"
+    | CONST
 ```
 
