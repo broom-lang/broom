@@ -88,7 +88,6 @@ and Type : AstSigs.TYPE
 
     type t =
         | Pi of pat with_pos * t with_pos * t with_pos
-        | Record of t with_pos
         | EmptyRow
         | Path of expr
         | Prim of Prim.t
@@ -99,7 +98,6 @@ and Type : AstSigs.TYPE
         | Pi (domain, eff, codomain) ->
             PPrint.infix 4 1 (PPrint.string "->") (Term.expr_to_doc domain.v)
                 (PPrint.infix 4 1 PPrint.bang (to_doc eff.v) (to_doc codomain.v))
-        | Record row -> PPrint.braces (to_doc row.v)
         | EmptyRow -> PPrint.parens (PPrint.string "||")
         | Path expr -> Term.expr_to_doc expr
         | Prim pt -> Prim.to_doc pt

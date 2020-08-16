@@ -37,7 +37,6 @@ module type TYPE = sig
 
     type t =
         | Pi of pat with_pos * t with_pos * t with_pos
-        | Record of t with_pos
         | EmptyRow
         | Path of expr
         | Prim of Prim.t
