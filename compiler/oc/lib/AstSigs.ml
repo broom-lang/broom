@@ -2,7 +2,6 @@ type 'a with_pos = 'a Util.with_pos
 
 module type TERM = sig
     type typ
-    type pat
 
     type expr =
         | Values of expr with_pos Vector.t
@@ -10,6 +9,7 @@ module type TERM = sig
         | Thunk of stmt Vector.t
         | App of expr with_pos * expr with_pos Vector.t
         | AppSequence of expr with_pos Vector1.t
+        | PrimApp of Primop.t * expr with_pos Vector.t
         | Let of def Vector1.t * expr with_pos
         | Begin of stmt Vector1.t * expr with_pos
         | Module of (pat with_pos * expr with_pos) option * def Vector.t
@@ -24,7 +24,7 @@ module type TERM = sig
         | Use of Name.t
         | Const of Const.t
 
-    and clause = {pats : expr with_pos Vector.t; body : expr with_pos}
+    and clause = {pats : pat with_pos Vector.t; body : expr with_pos}
 
     and stmt =
         | Def of def
@@ -32,29 +32,18 @@ module type TERM = sig
 
     and def = Util.span * expr with_pos * expr with_pos
 
+    and pat = expr
+
     val expr_to_doc : expr -> PPrint.document
     val stmt_to_doc : stmt -> PPrint.document
-end
-
-module type PATTERN = sig
-    type typ
-
-    type t =
-        | Ann of t with_pos * typ with_pos
-        | Binder of Name.t
-        | Ignore (* "_" *)
-        | Const of Const.t
-
-    val to_doc : t -> PPrint.document
 end
 
 module type TYPE = sig
     type expr
     type pat
-    type eff
 
     type t =
-        | Pi of pat with_pos Vector.t * eff * t with_pos
+        | Pi of pat with_pos Vector.t * t with_pos * t with_pos
         | Interface of (Name.t * t with_pos) option * Name.t decl Vector.t
         | Record of t with_pos
         | With of t with_pos * Name.t * t with_pos

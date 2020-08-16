@@ -4,6 +4,8 @@ open Ast.Term
 open Ast.Type
 open Util
 
+(* TODO: or-patterns *)
+
 let path = function
     | Proxy typ -> typ
     | expr -> Path expr
@@ -100,7 +102,14 @@ binapp5 :
     | app { $1 }
 
 app :
-    | PRIMOP params? { failwith "TODO" }
+    | PRIMOP params? {
+        let args = match $2 with
+            | Some args -> Vector1.to_vector args
+            | None -> Vector.empty () in
+        match Primop.of_string $1 with
+        | Some op -> {v = PrimApp (op, args); pos = $loc}
+        | None -> failwith ("No such primop: __" ^ $1)
+    }
     | select params { {v = AppSequence (Vector1.append (Vector1.singleton $1) $2); pos = $loc} }
     | select { $1 }
 
@@ -147,7 +156,17 @@ at_params : "@" params? { match $2 with (* TODO: Implicit args need more design 
 typ : typ_without_pos { {v = $1; pos = $sloc} }
 
 typ_without_pos :
-    | explicitly "->" typ "!" typ { failwith "TODO" }
-    | explicitly "=>" typ { failwith "TODO" }
+    | explicitly "->" typ "!" typ {
+        let pats = match $1.v with
+            | Values pats -> pats
+            | _ -> Vector.singleton $1 in
+        Pi (pats, $3, $5)
+    }
+    | explicitly "=>" typ {
+        let pats = match $1.v with
+            | Values pats -> pats
+            | _ -> Vector.singleton $1 in
+        Pi (pats, {v = EmptyRow; pos = $loc($2)}, $3)
+    }
     | ann_expr { path $1.v }
 

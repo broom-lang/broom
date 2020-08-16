@@ -5,9 +5,8 @@ let (^/^) = PPrint.(^/^)
 
 type 'a with_pos = 'a Util.with_pos
 
-module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t = struct
+module rec Term : AstSigs.TERM with type typ = Type.t = struct
     type typ = Type.t
-    type pat = Pattern.t
 
     type expr =
         | Values of expr with_pos Vector.t
@@ -15,6 +14,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | Thunk of stmt Vector.t
         | App of expr with_pos * expr with_pos Vector.t
         | AppSequence of expr with_pos Vector1.t
+        | PrimApp of Primop.t * expr with_pos Vector.t
         | Let of def Vector1.t * expr with_pos
         | Begin of stmt Vector1.t * expr with_pos
         | Module of (pat with_pos * expr with_pos) option * def Vector.t
@@ -29,13 +29,15 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | Use of Name.t
         | Const of Const.t
 
-    and clause = {pats : expr with_pos Vector.t; body : expr with_pos}
+    and clause = {pats : pat with_pos Vector.t; body : expr with_pos}
 
     and stmt =
         | Def of def
         | Expr of expr with_pos
 
-    and def = Util.span * expr with_pos * expr with_pos
+    and def = Util.span * pat with_pos * expr with_pos
+
+    and pat = expr
 
     let rec expr_to_doc = function
         | Fn clauses ->
@@ -59,7 +61,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
             let super_doc = match super with
                 | Some (pat, expr) ->
                     (PPrint.string "extends") ^^ PPrint.blank 1 ^^
-                        PPrint.infix 4 1 PPrint.equals (Pattern.to_doc pat.v)
+                        PPrint.infix 4 1 PPrint.equals (expr_to_doc pat.v)
                             (expr_to_doc expr.v ^^ PPrint.semi) ^^ PPrint.break 1
                 | None -> PPrint.empty in
             PPrint.surround 4 1 (PPrint.string "module")
@@ -114,33 +116,15 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | Expr expr -> PPrint.prefix 4 1 (PPrint.string "do") (expr_to_doc expr.v)
 end
 
-and Pattern : AstSigs.PATTERN with type typ = Type.t = struct
-    type typ = Type.t
-
-    type t =
-        | Ann of t with_pos * typ with_pos
-        | Binder of Name.t
-        | Ignore
-        | Const of Const.t
-
-    let rec to_doc = function
-        | Ann (inner, typ) -> PPrint.infix 4 1 PPrint.colon (to_doc inner.v) (Type.to_doc typ.v)
-        | Binder name -> Name.to_doc name
-        | Ignore -> PPrint.string "_"
-        | Const c -> Const.to_doc c
-end
-
 and Type : AstSigs.TYPE
     with type expr = Term.expr
-    with type pat = Pattern.t
-    with type eff = Effect.t
+    with type pat = Term.pat
 = struct
     type expr = Term.expr
-    type pat = Pattern.t
-    type eff = Effect.t
+    type pat = Term.pat
 
     type t =
-        | Pi of pat with_pos Vector.t * eff * t with_pos
+        | Pi of pat with_pos Vector.t * t with_pos * t with_pos
         | Interface of (Name.t * t with_pos) option * Name.t decl Vector.t
         | Record of t with_pos
         | With of t with_pos * Name.t * t with_pos
@@ -155,12 +139,12 @@ and Type : AstSigs.TYPE
     and 'a decl = {name : 'a; typ : t with_pos}
 
     let rec to_doc = function
-        | Pi (domain, eff, codomain) ->
+        (*| Pi (domain, eff, codomain) ->
             PPrint.infix 4 1 (Effect.arrow eff)
                 (PPrint.string "pi" ^^ PPrint.blank 1
                     ^^ PPrint.separate_map (PPrint.break 1) (fun {Util.v; pos = _} -> Pattern.to_doc v)
                         (Vector.to_list domain))
-                (to_doc codomain.v)
+                (to_doc codomain.v)*)
         | Interface (None, decls) when Vector.length decls = 0 ->
             PPrint.string "interface" ^/^ PPrint.string "end"
         | Interface (super, decls) ->
@@ -199,22 +183,5 @@ and Type : AstSigs.TYPE
             | EmptyRow -> PPrint.empty
             | typ -> to_doc typ in
         PPrint.surround 4 0 l contents r
-end
-
-and Effect : sig
-    type t = Pure | Impure
-
-    val to_doc : t -> PPrint.document
-    val arrow : t -> PPrint.document
-end = struct
-    type t = Pure | Impure
-
-    let to_doc = function
-        | Pure -> PPrint.string "pure"
-        | Impure -> PPrint.string "impure"
-
-    let arrow = function
-        | Pure -> PPrint.string "=>"
-        | Impure -> PPrint.string "->"
 end
 
