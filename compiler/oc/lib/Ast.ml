@@ -12,6 +12,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
     type expr =
         | Values of expr with_pos Vector.t
         | Fn of clause Vector.t
+        | Thunk of stmt Vector.t
         | App of expr with_pos * expr with_pos Vector.t
         | AppSequence of expr with_pos Vector1.t
         | Let of def Vector1.t * expr with_pos
@@ -28,13 +29,13 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | Use of Name.t
         | Const of Const.t
 
-    and clause = {pats : pat with_pos Vector.t; body : expr with_pos}
+    and clause = {pats : expr with_pos Vector.t; body : expr with_pos}
 
     and stmt =
         | Def of def
         | Expr of expr with_pos
 
-    and def = Util.span * pat with_pos * expr with_pos
+    and def = Util.span * expr with_pos * expr with_pos
 
     let rec expr_to_doc = function
         | Fn clauses ->
@@ -85,7 +86,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
 
     and clause_to_doc {pats; body} =
         if Vector.length pats > 0
-        then PPrint.separate_map (PPrint.break 1) (fun {Util.v; pos = _} -> Pattern.to_doc v)
+        then PPrint.separate_map (PPrint.break 1) (fun {Util.v; pos = _} -> expr_to_doc v)
             (Vector.to_list pats) ^/^ PPrint.string "->" ^/^ expr_to_doc body.v
         else expr_to_doc body.v
 
@@ -106,7 +107,7 @@ module rec Term : AstSigs.TERM with type typ = Type.t and type pat = Pattern.t =
         | callee -> expr_to_doc callee
 
     and def_to_doc ((_, pat, expr) : def) =
-        PPrint.infix 4 1 PPrint.equals (Pattern.to_doc pat.v) (expr_to_doc expr.v)
+        PPrint.infix 4 1 PPrint.equals (expr_to_doc pat.v) (expr_to_doc expr.v)
 
     and stmt_to_doc = function
         | Def def -> def_to_doc def

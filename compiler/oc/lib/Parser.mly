@@ -15,13 +15,14 @@ let proxy = function
 %}
 
 %token
-    ARROW "->" LARROW "<-" DARROW "=>" DOT "." COLON ":" EQ "=" COMMA "," SEMI ";" BAR "|" (* ELLIPSIS "..." *)
-    BANG "!" AT "@"
-    LPAREN "(" RPAREN ")"
-    LBRACKET "[" RBRACKET "]"
-    LBRACE "{" RBRACE "}"
+    ARROW "->" LARROW "<-" DARROW "=>" EQ "="
+    DOT "." COLON ":" COMMA "," SEMI ";"
+    BAR "|" BANG "!" QMARK "?" AT "@" BACKSLASH
+    LPAREN "(" RPAREN ")" LBRACKET "[" RBRACKET "]" LBRACE "{" RBRACE "}"
     EOF
-%token <string> OP1 OP2 OP3 OP4 OP5 PRIMOP ID WILD (* FIXME: actually design infix operators *)
+%token <string> DISJUNCTION CONJUNCTION COMPARISON ADDITIVE MULTIPLICATIVE
+%token <string> PRIMOP WILD ID OP
+%token <string> STRING
 %token <int> INT
 
 %start program commands
@@ -39,7 +40,9 @@ commands : stmts? EOF { match $1 with
 
 (* # Definitions & Statements *)
 
-def : exprs "=" exprs { failwith "TODO" }
+def : exprs "=" exprs { ($loc,
+    {v = Values (Vector1.to_vector $1); pos = $loc($1)},
+    {v = Values (Vector1.to_vector $3); pos = $loc($3)} ) }
 
 defs : separated_list(";", def) { Vector.of_list $1 }
 
@@ -56,7 +59,7 @@ expr : typ { {$1 with v = proxy $1.v} }
 exprs : separated_nonempty_list(",", expr) { Vector1.of_list $1 |> Option.get }
 
 ann_expr :
-    | explicitly ":" typ { failwith "TODO" } (* NOTE: ~ right-associative *)
+    | explicitly ":" typ { {v = Ann ($1, $3); pos = $loc} } (* NOTE: ~ right-associative *)
     | explicitly { $1 }
 
 explicitly :
@@ -64,35 +67,35 @@ explicitly :
     | binapp { $1 }
 
 binapp :
-    | binapp OP1 binapp2 {
+    | binapp DISJUNCTION binapp2 {
         let operator = {v = Use (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
     }
     | binapp2 { $1 }
 
 binapp2 :
-    | binapp2 OP2 binapp3 {
+    | binapp2 CONJUNCTION binapp3 {
         let operator = {v = Use (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
     }
     | binapp3 { $1 }
 
 binapp3 :
-    | binapp4 OP3 binapp4 { (* NOTE: nonassociative *)
+    | binapp4 COMPARISON binapp4 { (* NOTE: nonassociative *)
         let operator = {v = Use (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
     }
     | binapp4 { $1 }
 
 binapp4 :
-    | binapp4 OP4 binapp5 {
+    | binapp4 ADDITIVE binapp5 {
         let operator = {v = Use (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
     }
     | binapp5 { $1 }
 
 binapp5 :
-    | binapp5 OP5 app {
+    | binapp5 MULTIPLICATIVE app {
         let operator = {v = Use (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
     }
@@ -115,21 +118,27 @@ nestable_without_pos :
         | None -> Record (Vector.empty ())
     }
     | "[" clause* "]" { Fn (Vector.of_list $2) }
-    | "[" stmts "]" { failwith "TODO" }
+    | "[" stmts "]" { Thunk (Vector1.to_vector $2) }
     | "(" exprs? ")" { match $2 with
         | Some exprs -> Values (Vector1.to_vector exprs)
         | None -> Values (Vector.empty ())
     }
-    | "(" OP1 ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
-    | "(" OP2 ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
-    | "(" OP3 ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
-    | "(" OP4 ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
-    | "(" OP5 ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
+    | "(" DISJUNCTION ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
+    | "(" CONJUNCTION ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
+    | "(" COMPARISON ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
+    | "(" ADDITIVE ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
+    | "(" MULTIPLICATIVE ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
     | ID { Use (Name.of_string $1) }
     | WILD { failwith "TODO" }
     | INT { Const (Int $1) }
 
-clause : "|" params? at_params? "->" exprs { failwith "TODO" }
+(* TODO: Use `at_params`: *)
+clause : "|" params? at_params? "->" exprs {
+        let params = match $2 with
+            | Some params -> Vector1.to_vector params
+            | None -> Vector.empty () in
+        {pats = params; body = {v = Values (Vector1.to_vector $5); pos = $loc($5)}}
+    }
 
 params : select+ { Vector1.of_list $1 |> Option.get }
 

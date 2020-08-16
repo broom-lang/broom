@@ -7,6 +7,7 @@ module type TERM = sig
     type expr =
         | Values of expr with_pos Vector.t
         | Fn of clause Vector.t
+        | Thunk of stmt Vector.t
         | App of expr with_pos * expr with_pos Vector.t
         | AppSequence of expr with_pos Vector1.t
         | Let of def Vector1.t * expr with_pos
@@ -23,13 +24,13 @@ module type TERM = sig
         | Use of Name.t
         | Const of Const.t
 
-    and clause = {pats : pat with_pos Vector.t; body : expr with_pos}
+    and clause = {pats : expr with_pos Vector.t; body : expr with_pos}
 
     and stmt =
         | Def of def
         | Expr of expr with_pos
 
-    and def = Util.span * pat with_pos * expr with_pos
+    and def = Util.span * expr with_pos * expr with_pos
 
     val expr_to_doc : expr -> PPrint.document
     val stmt_to_doc : stmt -> PPrint.document
