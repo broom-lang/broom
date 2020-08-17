@@ -10,7 +10,7 @@ let prompt = name ^ "> "
 let rep input =
     try
         let stmts = Parse.parse_commands_exn input in
-        let doc = PPrint.group (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) Ast.Term.stmt_to_doc
+        let doc = PPrint.group (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) Ast.Term.Stmt.to_doc
             (Vector.to_list stmts)) in
         PPrint.ToChannel.pretty 1.0 80 stdout doc;
         print_newline ()

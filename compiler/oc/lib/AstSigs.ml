@@ -1,34 +1,48 @@
 type 'a with_pos = 'a Util.with_pos
 
-module type TERM = sig
+module type EXPR = sig
     type typ
+    type stmt
 
-    type expr =
-        | Values of expr with_pos Vector.t
-        | Ann of expr with_pos * typ with_pos
+    type t =
+        | Values of t with_pos Vector.t
+        | Ann of t with_pos * typ with_pos
         | Fn of clause Vector.t
         | Thunk of stmt Vector.t
-        | App of expr with_pos * expr with_pos Vector.t
-        | AppSequence of expr with_pos Vector1.t
-        | PrimApp of Primop.t * expr with_pos Vector.t
+        | App of t with_pos * t with_pos Vector.t
+        | AppSequence of t with_pos Vector1.t
+        | PrimApp of Primop.t * t with_pos Vector.t
         | Record of stmt Vector.t
-        | Select of expr with_pos * Name.t
+        | Select of t with_pos * Name.t
         | Proxy of typ
         | Use of Name.t
         | Const of Const.t
 
-    and clause = {pats : pat with_pos Vector.t; body : expr with_pos}
+    and clause = {pats : pat with_pos Vector.t; body : t with_pos}
 
-    and stmt =
+    and pat = t
+
+    val to_doc : t -> PPrint.document
+end
+
+module type STMT = sig
+    type expr
+    type pat
+
+    type def = Util.span * pat with_pos * expr with_pos
+
+    type t =
         | Def of def
         | Expr of expr with_pos
 
-    and def = Util.span * expr with_pos * expr with_pos
+    val to_doc : t -> PPrint.document
+end
 
-    and pat = expr
-
-    val expr_to_doc : expr -> PPrint.document
-    val stmt_to_doc : stmt -> PPrint.document
+module type TERM = sig
+    module rec Expr : (EXPR with type stmt = Stmt.t)
+    and Stmt : (STMT
+        with type expr = Expr.t
+        with type pat = Expr.pat)
 end
 
 module type TYPE = sig

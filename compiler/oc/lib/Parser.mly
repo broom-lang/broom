@@ -1,5 +1,6 @@
 %{
-open Ast.Term
+open Ast.Term.Expr
+open Ast.Term.Stmt
 open Ast.Type
 open Util
 
@@ -27,8 +28,8 @@ let proxy = function
 %token <int> INT
 
 %start program commands
-%type <Ast.Term.def Vector.t> program
-%type <Ast.Term.stmt Vector.t> commands
+%type <Ast.Term.Stmt.def Vector.t> program
+%type <Ast.Term.Stmt.t Vector.t> commands
 
 %%
 

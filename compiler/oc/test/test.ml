@@ -8,7 +8,7 @@ let try_parse s =
 
 let try_prints_as goal s =
     let stmts = try_parse s in
-    let s' = PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) Ast.Term.stmt_to_doc
+    let s' = PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) Ast.Term.Stmt.to_doc
         (Vector.to_list stmts)
         |> Util.doc_to_string in
     if s' = goal
