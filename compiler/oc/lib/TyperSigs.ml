@@ -9,17 +9,17 @@ type 'a typing = {term : 'a; typ : typ; eff : typ}
 (* Newtype to allow ignoring subtyping coercions without partial application warning: *)
 (* TODO: triv_expr with_pos -> expr with_pos to avoid bugs that would delay side effects
          or that duplicate large/nontrivial terms: *)
-type coercer = Cf of (FcTerm.expr with_pos -> FcTerm.expr with_pos)
+type coercer = Cf of (FcTerm.Expr.t with_pos -> FcTerm.Expr.t with_pos)
 
 module type ELABORATION = sig
-    val kindcheck : Env.t -> Ast.Type.t with_pos -> abs
-    val whnf : Env.t -> typ -> (typ * coercion option) option
+    val elaborate : Env.t -> Ast.Type.t with_pos -> abs
+    val eval : Env.t -> typ -> (typ * coercion option) option
 end
 
 module type CHECKING = sig
-    val typeof : Env.t -> Ast.Term.Expr.t with_pos -> FcTerm.expr with_pos typing
-    val deftype : Env.t -> Ast.Term.Stmt.def -> FcTerm.def typing
-    val lookup : span -> Env.t -> Name.t -> locator * FcTerm.lvalue
+    val typeof : Env.t -> Ast.Term.Expr.t with_pos -> FcTerm.Expr.t with_pos typing
+    val deftype : Env.t -> Ast.Term.Stmt.def -> FcTerm.Expr.def typing
+    val lookup : span -> Env.t -> Name.t -> locator * FcTerm.Expr.lvalue
 end
 
 module type MATCHING = sig
