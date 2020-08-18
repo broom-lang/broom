@@ -8,8 +8,9 @@ type coercion = FcType.coercion
 type lvalue = {name : Name.t; typ : typ}
 
 type expr
-    = Fn of FcType.binding Vector.t * lvalue * expr with_pos
-    | App of expr with_pos * typ Vector.t * expr with_pos
+    = Fn of FcType.binding Vector.t * lvalue Vector.t * expr with_pos
+    | App of expr with_pos * typ Vector.t * expr with_pos Vector.t
+    | Let of def * expr with_pos
     | Letrec of def Vector1.t * expr with_pos
     | LetType of FcType.binding Vector1.t * expr with_pos
     | Axiom of (Name.t * FcType.kind Vector.t * typ * typ) Vector1.t * expr with_pos
@@ -33,7 +34,7 @@ type stmt
     | Expr of expr with_pos
 
 val lvalue_to_doc : lvalue -> PPrint.document
-val expr_to_doc : expr -> PPrint.document
+val expr_to_doc : expr with_pos -> PPrint.document
 val def_to_doc : def -> PPrint.document
 val stmt_to_doc : stmt -> PPrint.document
 

@@ -19,7 +19,7 @@ and uv = uvv ref
 and abs = Exists of kind Vector.t * locator * t
 
 and t =
-    | Pi of kind Vector.t * locator * t * t * abs
+    | Pi of kind Vector.t * (locator * t) Vector.t * t * abs
     | Record of t field Vector.t
     | Type of abs
     | Fn of t
@@ -31,7 +31,7 @@ and t =
     | Prim of Prim.t
 
 and locator =
-    | PiL of kind Vector.t * t * locator
+    | PiL of locator
     | RecordL of locator field Vector.t
     | TypeL of t
     | Hole
@@ -76,14 +76,20 @@ let rec abs_to_doc (Exists (params, locator, body)) =
     else to_doc body
 
 and to_doc = function
-    (*| Pi (universals, locator, domain, eff, codomain) ->
+    | Pi (universals, domain, eff, codomain) ->
+        let domain_doc =
+            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
+                PPrint.lparen (PPrint.semi ^^ PPrint.break 1) PPrint.rparen
+                domain_to_doc (Vector.to_list domain) in
+        let unquantified_doc =
+            PPrint.prefix 4 1 domain_doc
+                (PPrint.string "->" ^^ PPrint.blank 1
+                    ^^ PPrint.infix 4 1 PPrint.bang (to_doc eff) (abs_to_doc codomain)) in
         if Vector.length universals > 0
-        then PPrint.prefix 4 1 (PPrint.group (PPrint.string "forall" ^/^ kinds_to_doc (Vector.to_list universals)))
-                 (PPrint.dot ^^ PPrint.blank 1
-                  ^^ PPrint.prefix 4 1 (PPrint.parens (locator_to_doc locator ^^ PPrint.comma ^/^ to_doc domain))
-                         (Ast.Effect.arrow eff ^^ PPrint.blank 1 ^^ abs_to_doc codomain))
-        else PPrint.prefix 4 1 (domain_to_doc domain) 
-                 (Ast.Effect.arrow eff ^^ PPrint.blank 1 ^^ abs_to_doc codomain)*)
+        then PPrint.prefix 4 1
+            (PPrint.group (PPrint.string "forall" ^/^ kinds_to_doc (Vector.to_list universals)))
+            (PPrint.dot ^^ PPrint.blank 1 ^^ unquantified_doc)
+        else unquantified_doc
     | Record fields ->
         PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
             PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
@@ -102,13 +108,7 @@ and to_doc = function
     | Uv uv -> uv_to_doc uv
     | Prim pt -> Prim.to_doc pt
 
-and domain_to_doc = function
-    | (Pi _ | Fn _) as domain -> PPrint.parens (to_doc domain)
-    (* FIXME: | Uv uv ->
-        (match !uv with
-        | Assigned typ -> domain_to_doc typ
-        | Unassigned _ -> uv_to_doc uv)*)
-    | domain -> to_doc domain
+and domain_to_doc (locator, domain) = locator_to_doc locator ^^ PPrint.comma ^/^ to_doc domain
 
 and callee_to_doc = function
     | (Pi _ | Fn _) as callee -> PPrint.parens (to_doc callee)
@@ -130,12 +130,8 @@ and field_to_doc {label; typ} =
     PPrint.string label ^/^ PPrint.colon ^/^ to_doc typ
 
 and locator_to_doc = function
-    (*| PiL (universals, eff, codomain) ->
-        if Vector.length universals > 0
-        then PPrint.prefix 4 1 (PPrint.group (PPrint.string "forall" ^/^ kinds_to_doc (Vector.to_list universals)))
-                 (PPrint.dot ^^ PPrint.blank 1
-                  ^^ (PPrint.infix 4 1 (Ast.Effect.arrow eff) PPrint.underscore (locator_to_doc codomain)))
-        else (PPrint.infix 4 1 (Ast.Effect.arrow eff) PPrint.underscore (locator_to_doc codomain))*)
+    | PiL codomain ->
+        PPrint.infix 4 1 (PPrint.string "->") PPrint.underscore (locator_to_doc codomain)
     | RecordL fields ->
         PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
             PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
@@ -204,10 +200,11 @@ let rec expose_abs' depth substitution (Exists (params, locator, body)) =
     Exists (params, expose_locator' depth substitution locator, expose' depth substitution body)
 
 and expose' depth substitution = function
-    | Pi (params, locator, domain, eff, codomain) ->
+    | Pi (params, domain, eff, codomain) ->
         let depth = depth + 1 in
-        Pi ( params, expose_locator' depth substitution locator, expose' depth substitution domain
-           , eff, expose_abs' depth substitution codomain )
+        let expose_domain (locator, domain) =
+            (expose_locator' depth substitution locator, expose' depth substitution domain) in
+        Pi (params, Vector.map expose_domain domain, eff, expose_abs' depth substitution codomain)
     | Record fields ->
         Record (Vector.map (fun {label; typ} ->
                                 {label; typ = expose' depth substitution typ}) fields)
@@ -226,9 +223,7 @@ and expose' depth substitution = function
     | (Use _ | Ov _ | Uv {contents = Unassigned _} | Prim _) as typ -> typ
 
 and expose_locator' depth substitution = function
-    | PiL (params, eff, codomain) ->
-        let depth = depth + 1 in
-        PiL (params, eff, expose_locator' depth substitution codomain)
+    | PiL codomain -> PiL (expose_locator' depth substitution codomain)
     | RecordL fields ->
         RecordL (Vector.map (fun {label; typ} ->
                                 {label; typ = expose_locator' depth substitution typ}) fields)
@@ -246,10 +241,11 @@ let rec close_abs' depth substitution (Exists (params, locator, body)) =
     Exists (params, close_locator' depth substitution locator, close' depth substitution body)
 
 and close' depth substitution = function
-    | Pi (params, locator, domain, eff, codomain) ->
+    | Pi (params, domain, eff, codomain) ->
         let depth = depth + 1 in
-        Pi ( params, close_locator' depth substitution locator, close' depth substitution domain
-           , eff, close_abs' depth substitution codomain )
+        let close_domain (locator, domain) =
+            (close_locator' depth substitution locator, close' depth substitution domain) in
+        Pi (params, Vector.map close_domain domain, eff, close_abs' depth substitution codomain)
     | Record fields ->
         Record (Vector.map (fun {label; typ} ->
                                 {label; typ = close' depth substitution typ}) fields)
@@ -267,9 +263,7 @@ and close' depth substitution = function
     | (Use _ | Bv _ | Uv {contents = Unassigned _} | Prim _) as typ -> typ
 
 and close_locator' depth substitution = function
-    | PiL (params, eff, codomain) ->
-        let depth = depth + 1 in
-        PiL (params, eff, close_locator' depth substitution codomain)
+    | PiL codomain -> PiL (close_locator' depth substitution codomain)
     | RecordL fields ->
         RecordL (Vector.map (fun {label; typ} ->
                                 {label; typ = close_locator' depth substitution typ}) fields)

@@ -8,8 +8,9 @@ type coercion = FcType.coercion
 type lvalue = {name : Name.t; typ : typ}
 
 type expr
-    = Fn of FcType.binding Vector.t * lvalue * expr with_pos
-    | App of expr with_pos * typ Vector.t * expr with_pos
+    = Fn of FcType.binding Vector.t * lvalue Vector.t * expr with_pos
+    | App of expr with_pos * typ Vector.t * expr with_pos Vector.t
+    | Let of def * expr with_pos
     | Letrec of def Vector1.t * expr with_pos
     | LetType of FcType.binding Vector1.t * expr with_pos
     | Axiom of (Name.t * FcType.kind Vector.t * typ * typ) Vector1.t * expr with_pos
@@ -41,52 +42,60 @@ let coercion_to_doc = Type.coercion_to_doc
 let lvalue_to_doc {name; typ} =
     PPrint.infix 4 1 PPrint.colon (Name.to_doc name) (Type.to_doc typ)
 
-let rec expr_to_doc = function
-    | Fn (universals, param, body) ->
+let rec expr_to_doc {Util.v = expr; pos = _} = match expr with
+    | Fn (universals, params, body) ->
         PPrint.prefix 4 1
             (PPrint.string "fun"
                  ^^ (PPrint.surround_separate_map 4 0 PPrint.empty
                          (PPrint.blank 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
                          FcType.binding_to_doc (Vector.to_list universals)
-                     ^^ PPrint.blank 1 ^^ PPrint.parens (lvalue_to_doc param))
+                     ^^ PPrint.blank 1
+                     ^^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
+                        PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+                        lvalue_to_doc (Vector.to_list params))
                  ^^ PPrint.blank 1 ^^ PPrint.string "=>")
-            (expr_to_doc body.v)
+            (expr_to_doc body)
+    | Let (def, body) ->
+        PPrint.surround 4 1 (PPrint.string "let") (def_to_doc def) (PPrint.string "in")
+            ^/^ expr_to_doc body
     | Letrec (defs, body) ->
         PPrint.group(
             PPrint.surround 4 1 (PPrint.string "letrec")
                 (PPrint.align (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) def_to_doc (Vector1.to_list defs)))
                 (PPrint.string "in")
-            ^/^ expr_to_doc body.v)
+            ^/^ expr_to_doc body)
     | LetType (bindings, body) ->
         PPrint.group(
             PPrint.surround 4 1 (PPrint.string "let type")
                 (PPrint.align (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1)
                                     Type.binding_to_doc (Vector1.to_list bindings)))
                 (PPrint.string "in")
-            ^/^ expr_to_doc body.v)
+            ^/^ expr_to_doc body)
     | If (cond, conseq, alt) ->
-        PPrint.string "if" ^/^ expr_to_doc cond.v
-            ^/^ PPrint.string "then" ^/^ expr_to_doc conseq.v
-            ^/^ PPrint.string "else" ^/^ expr_to_doc alt.v
-    | App (callee, targs, arg) ->
-        PPrint.align (callee_to_doc callee.v
+        PPrint.string "if" ^/^ expr_to_doc cond
+            ^/^ PPrint.string "then" ^/^ expr_to_doc conseq
+            ^/^ PPrint.string "else" ^/^ expr_to_doc alt
+    | App (callee, targs, args) ->
+        PPrint.align (expr_to_doc callee
                       ^^ PPrint.surround_separate_map 4 0 PPrint.empty
                             (PPrint.break 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
                             FcType.to_doc (Vector.to_list targs)
-                      ^/^ arg_to_doc arg.v)
+                      ^/^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
+                            PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+                            expr_to_doc (Vector.to_list args))
     | Axiom (axioms, body) ->
         PPrint.group(
             PPrint.surround 4 1 (PPrint.string "axiom")
                 (PPrint.align (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) axiom_to_doc (Vector1.to_list axioms)))
                 (PPrint.string "in")
-            ^/^ expr_to_doc body.v)
-    | Cast ({v = expr; _}, coercion) ->
-        PPrint.infix 4 1 (PPrint.string "|>") (castee_to_doc expr) (coercion_to_doc coercion)
+            ^/^ expr_to_doc body)
+    | Cast (castee, coercion) ->
+        PPrint.infix 4 1 (PPrint.string "|>") (castee_to_doc castee) (coercion_to_doc coercion)
     | Pack (existentials, impl) ->
         PPrint.string "pack" ^^ PPrint.blank 1
             ^^ PPrint.surround_separate 4 0 PPrint.empty
                 PPrint.langle (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
-                (Vector1.to_list (Vector1.map FcType.to_doc existentials) @ [expr_to_doc impl.v])
+                (Vector1.to_list (Vector1.map FcType.to_doc existentials) @ [expr_to_doc impl])
     | Unpack (existentials, lvalue, expr, body) ->
         PPrint.group(
             PPrint.surround 4 1
@@ -95,27 +104,19 @@ let rec expr_to_doc = function
                         PPrint.langle (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
                         (Vector1.to_list (Vector1.map FcType.binding_to_doc existentials) @ [lvalue_to_doc lvalue])
                     ^^ PPrint.blank 1 ^^ PPrint.equals)
-                (expr_to_doc expr.v)
+                (expr_to_doc expr)
                 (PPrint.string "in")
-            ^/^ expr_to_doc body.v)
+            ^/^ expr_to_doc body)
     | Record defs ->
         PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
             PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
             field_to_doc (Vector.to_list defs)
     | Select (record, label) ->
-        PPrint.prefix 4 0 (selectee_to_doc record.v) (PPrint.dot ^^ PPrint.string label)
+        PPrint.prefix 4 0 (selectee_to_doc record) (PPrint.dot ^^ PPrint.string label)
     | Proxy typ -> PPrint.brackets (Type.abs_to_doc typ)
     | Use name -> Name.to_doc name
     | Const c -> Const.to_doc c
-    | Patchable {contents} -> expr_to_doc contents.v
-
-and callee_to_doc = function
-    | (Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ | Unpack _) as callee -> PPrint.parens (expr_to_doc callee)
-    | callee -> expr_to_doc callee
-
-and arg_to_doc = function
-    | (Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ | Unpack _ | App _) as arg -> PPrint.parens (expr_to_doc arg)
-    | arg -> expr_to_doc arg
+    | Patchable {contents} -> expr_to_doc contents
 
 and axiom_to_doc (name, universals, l, r) = match Vector.to_list universals with
     | _ :: _ ->
@@ -129,23 +130,23 @@ and axiom_to_doc (name, universals, l, r) = match Vector.to_list universals with
                 (Type.to_doc l)
                 (Type.to_doc r))
 
-and castee_to_doc = function
-    | Fn _ as callee -> PPrint.parens (expr_to_doc callee)
-    | callee -> expr_to_doc callee
+and castee_to_doc (castee : expr with_pos) = match castee.v with
+    | Fn _ -> PPrint.parens (expr_to_doc castee)
+    | _ -> expr_to_doc castee
 
-and selectee_to_doc = function
-    | (Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ | If _ | App _) as selectee-> PPrint.parens (expr_to_doc selectee)
-    | selectee -> expr_to_doc selectee
+and selectee_to_doc (selectee : expr with_pos) = match selectee.v with
+    | Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ | If _ | App _ -> PPrint.parens (expr_to_doc selectee)
+    | _ -> expr_to_doc selectee
 
-and def_to_doc ((_, lvalue, {v = expr; _}) : def) =
+and def_to_doc ((_, lvalue, expr) : def) =
     PPrint.infix 4 1 PPrint.equals (lvalue_to_doc lvalue) (expr_to_doc expr)
 
 and field_to_doc {label; expr} =
-    PPrint.infix 4 1 PPrint.equals (PPrint.string label) (expr_to_doc expr.v)
+    PPrint.infix 4 1 PPrint.equals (PPrint.string label) (expr_to_doc expr)
 
 let stmt_to_doc = function
     | Def def -> def_to_doc def
-    | Expr {v = expr; _} -> expr_to_doc expr
+    | Expr expr -> expr_to_doc expr
 
 let letrec defs body = match Vector1.of_vector defs with
     | Some defs -> Letrec (defs, body)

@@ -24,7 +24,7 @@ and uv = uvv ref
 and abs = Exists of kind Vector.t * locator * t
 
 and t =
-    | Pi of kind Vector.t * locator * t * t * abs
+    | Pi of kind Vector.t * (locator * t) Vector.t * t * abs
     | Record of t field Vector.t
     | Type of abs
     | Fn of t
@@ -36,7 +36,7 @@ and t =
     | Prim of Prim.t
 
 and locator =
-    | PiL of kind Vector.t * t * locator
+    | PiL of locator
     | RecordL of locator field Vector.t
     | TypeL of t
     | Hole
