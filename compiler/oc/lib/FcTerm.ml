@@ -28,7 +28,6 @@ module rec Expr : FcSigs.EXPR
         | Cast of t with_pos * coercion
         | Pack of typ Vector1.t * t with_pos
         | Unpack of FcType.binding Vector1.t * lvalue * t with_pos * t with_pos
-        | If of t with_pos * t with_pos * t with_pos
         | Record of field Vector.t
         | Select of t with_pos * string
         | Proxy of abs 
@@ -73,10 +72,6 @@ module rec Expr : FcSigs.EXPR
                                         Type.binding_to_doc (Vector1.to_list bindings)))
                     (PPrint.string "in")
                 ^/^ to_doc body)
-        | If (cond, conseq, alt) ->
-            PPrint.string "if" ^/^ to_doc cond
-                ^/^ PPrint.string "then" ^/^ to_doc conseq
-                ^/^ PPrint.string "else" ^/^ to_doc alt
         | App (callee, targs, args) ->
             PPrint.align (to_doc callee
                           ^^ PPrint.surround_separate_map 4 0 PPrint.empty
@@ -137,7 +132,7 @@ module rec Expr : FcSigs.EXPR
         | _ -> to_doc castee
 
     and selectee_to_doc (selectee : t with_pos) = match selectee.v with
-        | Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ | If _ | App _ -> PPrint.parens (to_doc selectee)
+        | Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ | App _ -> PPrint.parens (to_doc selectee)
         | _ -> to_doc selectee
 
     and field_to_doc {label; expr} =

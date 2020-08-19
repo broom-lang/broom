@@ -19,7 +19,6 @@ module type EXPR = sig
         | Cast of t with_pos * coercion
         | Pack of typ Vector1.t * t with_pos
         | Unpack of FcType.binding Vector1.t * lvalue * t with_pos * t with_pos
-        | If of t with_pos * t with_pos * t with_pos
         | Record of field Vector.t
         | Select of t with_pos * string
         | Proxy of abs 
