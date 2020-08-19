@@ -1,6 +1,12 @@
-type t = unit
+module Bindings = Map.Make(Name)
 
-let interactive () = ()
+type t = FcType.t Bindings.t
 
-let eval () = ()
+let interactive () = Bindings.empty
+
+let eval () = Bindings.empty
+
+let add = Bindings.add
+
+let find = Bindings.find
 

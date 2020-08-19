@@ -8,14 +8,15 @@ let name = "broom"
 let name_c = String.capitalize_ascii name
 let prompt = name ^ "> "
 
-let ep env stmt =
-    let {term; typ; eff} : FcTerm.Stmt.t Typer.typing = Typer.check_stmt env stmt in
+let ep tenv stmt =
+    let ({term; typ; eff}, tenv) : FcTerm.Stmt.t Typer.typing * _ = Typer.check_stmt tenv stmt in
     let doc = PPrint.infix 4 1 PPrint.bang
-        (PPrint.infix 4 1 PPrint.colon (FcTerm.Stmt.to_doc term) (FcType.to_doc typ))
+        (PPrint.infix 4 1 PPrint.colon (FcTerm.Stmt.to_doc term ^^ PPrint.semi) (FcType.to_doc typ))
         (FcType.to_doc eff) in
-    PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc)
+    PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc);
+    tenv
 
-let rep env input =
+let rep tenv input =
     try
         let stmts = Parse.parse_commands_exn input in
         let doc = PPrint.group (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) Ast.Term.Stmt.to_doc
@@ -23,23 +24,24 @@ let rep env input =
         PPrint.ToChannel.pretty 1.0 80 stdout doc;
         print_newline ();
 
-        Vector.iter (ep env) stmts;
-        print_newline ()
+        let tenv = Vector.fold_left ep tenv stmts in
+        print_newline ();
+        tenv
     with
         | SedlexMenhir.ParseError err ->
-            prerr_endline (SedlexMenhir.string_of_ParseError err)
+            prerr_endline (SedlexMenhir.string_of_ParseError err);
+            tenv
 
 let repl () =
-    let env = Typer.Env.interactive () in
-    let rec loop () =
+    let rec loop tenv =
         match LNoise.linenoise prompt with
         | None -> ()
         | Some input ->
             let _ = LNoise.history_add input in
-            rep env input;
-            loop () in
+            let tenv = rep tenv input in
+            loop tenv in
     print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
-    loop ()
+    loop (Typer.Env.interactive ())
 
 let eval_t =
     let doc = "evaluate statements" in
@@ -47,7 +49,7 @@ let eval_t =
         let docv = "STATEMENTS" in
         let doc = "the statements to evaluate" in
         C.Arg.(value & pos 0 string "" & info [] ~docv ~doc) in
-    (C.Term.(const rep $ (const Typer.Env.eval $ const ()) $ expr), C.Term.info "eval" ~doc)
+    (C.Term.(const ignore $ (const rep $ (const Typer.Env.eval $ const ()) $ expr)), C.Term.info "eval" ~doc)
 
 let repl_t =
     let doc = "interactive evaluation loop" in
