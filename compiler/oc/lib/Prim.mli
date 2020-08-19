@@ -1,4 +1,4 @@
-type t = Int | Bool
+type t = Int | Bool | EmptyRow
 
 val to_doc : t -> PPrint.document
 

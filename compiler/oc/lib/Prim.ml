@@ -1,10 +1,9 @@
-type t = Int | Bool
+type t = Int | Bool | EmptyRow
 
-let to_string pt =
-    "__" ^
-    (match pt with
+let to_string = function
     | Int -> "int"
-    | Bool -> "bool")
+    | Bool -> "bool"
+    | EmptyRow -> "(||)"
 
 let to_doc pt = PPrint.string (to_string pt)
 
@@ -16,5 +15,9 @@ let eq pt pt' = match pt with
     | Bool ->
         (match pt' with
         | Bool -> true
+        | _ -> false)
+    | EmptyRow ->
+        (match pt' with
+        | EmptyRow -> true
         | _ -> false)
 

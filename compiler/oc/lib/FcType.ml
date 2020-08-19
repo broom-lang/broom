@@ -106,7 +106,7 @@ and to_doc = function
             ^^ PPrint.string (Int.to_string sibli)
     | Use (name, _) | Ov ((name, _), _) -> Name.to_doc name
     | Uv uv -> uv_to_doc uv
-    | Prim pt -> Prim.to_doc pt
+    | Prim pt -> PPrint.string "__" ^^ Prim.to_doc pt
 
 and domain_to_doc (locator, domain) = locator_to_doc locator ^^ PPrint.comma ^/^ to_doc domain
 

@@ -16,9 +16,10 @@ module type ELABORATION = sig
     val eval : Env.t -> typ -> (typ * coercion option) option
 end
 
-module type CHECKING = sig
+module type TYPING = sig
     val typeof : Env.t -> Ast.Term.Expr.t with_pos -> FcTerm.Expr.t with_pos typing
     val deftype : Env.t -> Ast.Term.Stmt.def -> FcTerm.Expr.def typing
+    val check_stmt : Env.t -> Ast.Term.Stmt.t -> FcTerm.Stmt.t typing
     val lookup : span -> Env.t -> Name.t -> locator * FcTerm.Expr.lvalue
 end
 
