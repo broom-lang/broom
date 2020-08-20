@@ -13,6 +13,22 @@ let const_typ c = T.Prim (match c with
     | Const.Int _ -> Prim.Int)
 
 let rec typeof env (expr : AExpr.t with_pos) : FExpr.t with_pos typing = match expr.v with
+    | AExpr.Fn clauses ->
+        (match Vector.to_seq clauses () with
+        | Cons (clause, clauses') ->
+            let (universals, domain, {TyperSigs.term = clause; typ = codomain; eff}) =
+                elaborate_clause env clause in
+            let clauses' = Seq.map (check_clause env domain eff codomain) clauses' in
+            let clauses = Vector.of_seq (fun () -> Seq.Cons (clause, clauses')) in
+            let params = clause . FExpr.pats in (* HACK *)
+            let param_uses =
+                Vector.map (fun {FExpr.name; _} -> {expr with v = FExpr.Use name}) params in
+            let body = {expr with v = FExpr.Match (param_uses, clauses)} in
+            { term = {expr with v = Fn ((* FIXME: *) Vector.empty (), params, body)}
+            ; typ = Pi (universals, domain, eff, FcType.to_abs codomain)
+            ; eff }
+        | Nil -> failwith "TODO: clauseless fn")
+
     | AExpr.Ann (expr, typ) ->
         let typ = E.elaborate env typ in
         (* FIXME: Abstract type generation effect: *)
@@ -27,12 +43,38 @@ let rec typeof env (expr : AExpr.t with_pos) : FExpr.t with_pos typing = match e
 
     | AExpr.Const c -> {term = {expr with v = Const c}; typ = const_typ c; eff = Prim EmptyRow}
 
-and check env typ expr = failwith "TODO"
+and elaborate_clause env {pats; body} =
+    let (existentials, pats, domain, body_env) = elaborate_pats env pats in
+    let {TyperSigs.term = body; typ = codomain; eff} = typeof body_env body in
+    (existentials, domain, {term = {FcTerm.Expr.pats; body}; typ = codomain ; eff})
 
-let check_pat env typ (pat : AExpr.pat with_pos) : FExpr.lvalue * Env.t = match pat.v with
+and check_clause env domain codomain eff clause = failwith "TODO: check_clause"
+
+and check env typ expr = failwith "TODO: check"
+
+and elaborate_pat env (pat : AExpr.pat with_pos) = match pat.v with
+    | AExpr.Values pats ->
+        if Vector.length pats = 1
+        then elaborate_pat env (Vector.get pats 0)
+        else failwith "TODO: multi-value elaborate_pat"
+
+    | AExpr.Ann (pat, typ) ->
+        let Exists (_, _, typ) as abs = E.elaborate env typ in
+        let (pat, env) = check_pat env typ pat in
+        (pat, abs, env)
+
+(* OPTIMIZE: *)
+and elaborate_pats env pats =
+    let step (existentials, pats, typs, env) pat =
+        let (pat, Exists (existentials', loc, typ), env) = elaborate_pat env pat in
+        (Vector.append existentials existentials', pat :: pats, (loc, typ) :: typs, env) in
+    let (existentials, pats, typs, env) = Vector.fold_left step (Vector.empty (), [], [], env) pats in
+    (existentials, Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), env)
+
+and check_pat env (typ : FcType.t) (pat : AExpr.pat with_pos) : FExpr.lvalue * Env.t = match pat.v with
     | AExpr.Use name -> ({name; typ}, Env.add name typ env)
 
-let deftype _ = failwith "TODO"
+let deftype _ = failwith "TODO: deftype"
 
 let check_stmt env : AStmt.t -> FStmt.t typing * Env.t = function
     | AStmt.Def (pos, pat, expr) ->
@@ -44,7 +86,7 @@ let check_stmt env : AStmt.t -> FStmt.t typing * Env.t = function
         let typing = typeof env expr in
         ({typing with term = FStmt.Expr typing.term}, env)
 
-let lookup _ = failwith "TODO"
+let lookup _ = failwith "TODO: lookup"
 
 end
 

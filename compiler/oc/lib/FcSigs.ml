@@ -15,6 +15,7 @@ module type EXPR = sig
         | Let of def * t with_pos
         | Letrec of def Vector1.t * t with_pos
         | LetType of FcType.binding Vector1.t * t with_pos
+        | Match of t with_pos Vector.t * clause Vector.t
         | Axiom of (Name.t * FcType.kind Vector.t * typ * typ) Vector1.t * t with_pos
         | Cast of t with_pos * coercion
         | Pack of typ Vector1.t * t with_pos
@@ -25,6 +26,8 @@ module type EXPR = sig
         | Use of Name.t
         | Const of Const.t
         | Patchable of t with_pos ref
+
+    and clause = {pats : lvalue Vector.t; body : t with_pos}
 
     and field = {label : string; expr : t with_pos}
 

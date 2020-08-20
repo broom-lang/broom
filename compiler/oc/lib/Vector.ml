@@ -8,6 +8,8 @@ let get = Array.get
 
 let of_list = Array.of_list
 let to_list = Array.to_list
+let of_seq = Array.of_seq
+let to_seq = Array.to_seq
 
 let fold_left = Array.fold_left
 let fold_right = Array.fold_right

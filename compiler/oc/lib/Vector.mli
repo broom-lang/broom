@@ -12,6 +12,8 @@ val get : 'a t -> int -> 'a
 
 val of_list : 'a list -> 'a t
 val to_list : 'a t -> 'a list
+val of_seq : 'a Seq.t -> 'a t
+val to_seq : 'a t -> 'a Seq.t
 
 val fold_left : ('a -> 'b -> 'a) -> 'a -> 'b t -> 'a
 val fold_right : ('b -> 'a -> 'a) -> 'b t -> 'a -> 'a
