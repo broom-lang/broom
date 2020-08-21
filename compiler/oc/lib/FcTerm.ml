@@ -56,7 +56,7 @@ module rec Expr : FcSigs.EXPR
                          ^^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                             PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                             lvalue_to_doc (Vector.to_list params))
-                     ^^ PPrint.blank 1 ^^ PPrint.string "=>")
+                     ^^ PPrint.blank 1 ^^ PPrint.string "->")
                 (to_doc body)
         | Let (def, body) ->
             PPrint.surround 4 1 (PPrint.string "let") (Stmt.def_to_doc def) (PPrint.string "in")
@@ -75,6 +75,14 @@ module rec Expr : FcSigs.EXPR
                                         Type.binding_to_doc (Vector1.to_list bindings)))
                     (PPrint.string "in")
                 ^/^ to_doc body)
+        | Match (matchees, clauses) ->
+            let matchees_doc =
+                PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) to_doc
+                    (Vector.to_list matchees) in
+            let start = PPrint.string "match" ^^ PPrint.blank 1 ^^ matchees_doc in
+            PPrint.surround_separate_map 4 1 (start ^/^ PPrint.string "end")
+                start (PPrint.break 1) (PPrint.string "end")
+                clause_to_doc (Vector.to_list clauses)
         | App (callee, targs, args) ->
             PPrint.align (to_doc callee
                           ^^ PPrint.surround_separate_map 4 0 PPrint.empty
@@ -129,6 +137,13 @@ module rec Expr : FcSigs.EXPR
                 (PPrint.infix 4 1 PPrint.tilde
                     (Type.to_doc l)
                     (Type.to_doc r))
+
+    and clause_to_doc {pats; body} =
+        PPrint.bar ^^ PPrint.blank 1
+        ^^ PPrint.infix 4 1 (PPrint.string "->")
+                (PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) lvalue_to_doc
+                    (Vector.to_list pats))
+                (to_doc body)
 
     and castee_to_doc (castee : t with_pos) = match castee.v with
         | Fn _ -> PPrint.parens (to_doc castee)

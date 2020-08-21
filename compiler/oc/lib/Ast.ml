@@ -36,9 +36,8 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                     PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                     (fun {Util.v = expr; _} -> to_doc expr) (Vector.to_list val_exprs)
             | Fn clauses ->
-                PPrint.surround_separate_map 4 0 (PPrint.brackets PPrint.empty)
-                    PPrint.lbracket (PPrint.break 1 ^^ PPrint.bar ^^ PPrint.blank 1) PPrint.rbracket
-                    clause_to_doc (Vector.to_list clauses)
+                PPrint.separate_map (PPrint.break 1) clause_to_doc (Vector.to_list clauses)
+                |> PPrint.brackets
             | Thunk stmts ->
                 PPrint.surround_separate_map 4 0 (PPrint.brackets PPrint.empty)
                     PPrint.lbracket (PPrint.semi ^^ PPrint.break 1) PPrint.rbracket
@@ -64,10 +63,11 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Const v -> Const.to_doc v
 
         and clause_to_doc {pats; body} =
-            if Vector.length pats > 0
-            then PPrint.separate_map (PPrint.break 1) (fun {Util.v; pos = _} -> to_doc v)
-                (Vector.to_list pats) ^/^ PPrint.string "->" ^/^ to_doc body.v
-            else to_doc body.v
+            PPrint.bar ^^ PPrint.blank 1
+            ^^  if Vector.length pats > 0
+                then PPrint.separate_map (PPrint.break 1) (fun {Util.v; pos = _} -> to_doc v)
+                    (Vector.to_list pats) ^/^ PPrint.string "->" ^/^ to_doc body.v
+                else to_doc body.v
     end
 
     module Stmt = struct
