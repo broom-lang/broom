@@ -94,6 +94,8 @@ module type UV = sig
     val make : subst -> v -> subst * t
     val get : subst -> t -> subst * v
     val getr : subst ref -> t -> v
+    val set : subst -> t -> v -> subst
+    val setr : subst ref -> t -> v -> unit
 end
 
 module type EXPR = sig

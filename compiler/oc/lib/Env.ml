@@ -12,5 +12,9 @@ let add k v (env : t) = {env with bindings = Bindings.add k v env.bindings}
 
 let find k (env : t) = Bindings.find k env.bindings
 
+let get_uv (env : t) uv = Fc.Uv.getr env.uv_subst uv
+
+let set_uv (env : t) uv v = Fc.Uv.setr env.uv_subst uv v
+
 let current_uv_subst (env : t) = ! (env.uv_subst)
 
