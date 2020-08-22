@@ -16,6 +16,11 @@ module rec Uv : FcSigs.UV
     type t = v rref
 
     let new_subst = new_store
+
+    let getr sr uv =
+        let (s, v) = get (!sr) uv in
+        sr := s;
+        v
 end
 
 and Type : FcSigs.TYPE
@@ -71,11 +76,6 @@ and Type : FcSigs.TYPE
 
     and typ = t
     and template = locator
-
-    let get_uv sr uv =
-        let (s, v) = Uv.get (!sr) uv in
-        sr := s;
-        v
 
     let (^^) = PPrint.(^^)
     let (^/^) = PPrint.(^/^)
@@ -216,7 +216,7 @@ and Type : FcSigs.TYPE
 
     let freshen (name, kind) = (Name.freshen name, kind)
 
-    let sibling sr uv = match get_uv sr uv with
+    let sibling sr uv = match Uv.getr sr uv with
         | Unassigned (_, level) ->
             let (s, uv') = Uv.make (!sr) (Unassigned (Name.fresh (), level)) in
             sr := s;
@@ -250,7 +250,7 @@ and Type : FcSigs.TYPE
             then Vector.get substitution sibli
             else typ
         | Uv uv as typ ->
-            (match get_uv sr uv with
+            (match Uv.getr sr uv with
             | Assigned typ -> expose' sr depth substitution typ
             | Unassigned _ -> typ)
         | (Use _ | Ov _ | Prim _) as typ -> typ
@@ -293,7 +293,7 @@ and Type : FcSigs.TYPE
             Name.Map.find_opt name substitution
                 |> Option.fold ~some: (fun sibli -> Bv {depth; sibli}) ~none: path
         | Uv uv as typ ->
-            (match get_uv sr uv with
+            (match Uv.getr sr uv with
             | Assigned typ -> close' sr depth substitution typ
             | Unassigned _ -> typ)
         | (Use _ | Bv _ | Prim _) as typ -> typ
