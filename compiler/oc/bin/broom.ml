@@ -10,9 +10,10 @@ let prompt = name ^ "> "
 
 let ep tenv stmt =
     let ({term; typ; eff}, tenv) : FcTerm.Stmt.t Typer.typing * _ = Typer.check_stmt tenv stmt in
-    let doc = FcTerm.Stmt.to_doc term ^^ PPrint.semi
-        ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ FcType.to_doc typ
-        ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ FcType.to_doc eff
+    let s = Typer.Env.current_uv_subst tenv in
+    let doc = FcTerm.Stmt.to_doc s term ^^ PPrint.semi
+        ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ FcType.to_doc s typ
+        ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ FcType.to_doc s eff
         |> PPrint.group in
     PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc);
     tenv

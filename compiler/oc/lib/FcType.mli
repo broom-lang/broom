@@ -14,12 +14,13 @@ type binding = Name.t * kind
 
 type ov = binding * level
 
+module Uv : UnionFind.STORE
+
 type uvv =
     | Unassigned of Name.t * level
     | Assigned of typ
 
-(* TODO: Union-Find: *)
-and uv = uvv ref
+and uv = uvv Uv.rref
 
 and abs = Exists of kind Vector.t * locator * t
 
@@ -58,22 +59,22 @@ and template = locator
 
 val kind_to_doc : kind -> PPrint.document
 val binding_to_doc : binding -> PPrint.document
-val abs_to_doc : abs -> PPrint.document
+val abs_to_doc : uvv Uv.store -> abs -> PPrint.document
 val universal_to_doc : kind Vector.t -> PPrint.document -> PPrint.document
-val to_doc : t -> PPrint.document
-val coercion_to_doc : coercion -> PPrint.document
-val locator_to_doc : locator -> PPrint.document
+val to_doc : uvv Uv.store -> t -> PPrint.document
+val coercion_to_doc : uvv Uv.store -> coercion -> PPrint.document
+val locator_to_doc : uvv Uv.store -> locator -> PPrint.document
 
 val to_abs : t -> abs
 
 val freshen : binding -> binding
-val sibling : uv -> uv
+val sibling : uvv Uv.store ref -> uv -> uv
 
-val expose_abs : t Vector.t -> abs -> abs
-val expose : t Vector.t -> t -> t
-val expose_locator : t Vector.t -> locator -> locator
+val expose_abs : uvv Uv.store ref -> t Vector.t -> abs -> abs
+val expose : uvv Uv.store ref -> t Vector.t -> t -> t
+val expose_locator : uvv Uv.store ref -> t Vector.t -> locator -> locator
 
-val close_abs : int Name.Map.t -> abs -> abs
-val close : int Name.Map.t -> t -> t
-val close_locator : int Name.Map.t -> locator -> locator
+val close_abs : uvv Uv.store ref -> int Name.Map.t -> abs -> abs
+val close : uvv Uv.store ref -> int Name.Map.t -> t -> t
+val close_locator : uvv Uv.store ref -> int Name.Map.t -> locator -> locator
 

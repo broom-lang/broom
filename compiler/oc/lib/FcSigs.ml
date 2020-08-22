@@ -31,8 +31,8 @@ module type EXPR = sig
 
     and field = {label : string; expr : t with_pos}
 
-    val lvalue_to_doc : lvalue -> PPrint.document
-    val to_doc : t with_pos -> PPrint.document
+    val lvalue_to_doc : FcType.uvv FcType.Uv.store -> lvalue -> PPrint.document
+    val to_doc : FcType.uvv FcType.Uv.store -> t with_pos -> PPrint.document
 
     (* TODO: Add more of these: *)
     val letrec : def Vector.t -> t with_pos -> t
@@ -48,7 +48,7 @@ module type STMT = sig
         = Def of def
         | Expr of expr with_pos
 
-    val def_to_doc : def -> PPrint.document
-    val to_doc : t -> PPrint.document
+    val def_to_doc : FcType.uvv FcType.Uv.store -> def -> PPrint.document
+    val to_doc : FcType.uvv FcType.Uv.store -> t -> PPrint.document
 end
 
