@@ -48,7 +48,11 @@ and elaborate_clause env {pats; body} =
     let {TyperSigs.term = body; typ = codomain; eff} = typeof body_env body in
     (existentials, domain, {term = {FExpr.pats; body}; typ = codomain ; eff})
 
-and check_clause env domain codomain eff clause = failwith "TODO: check_clause"
+and check_clause env domain codomain eff {pats; body} =
+    let (pats, body_env) = check_pats env domain pats in
+    let {TyperSigs.term = body; typ = _; eff = body_eff} = typeof body_env body in
+    ignore (M.solving_unify body.pos env body_eff eff);
+    {pats; body}
 
 and check env typ expr = failwith "TODO: check"
 
@@ -63,7 +67,6 @@ and elaborate_pat env (pat : AExpr.pat with_pos) = match pat.v with
         let (pat, env) = check_pat env typ pat in
         (pat, abs, env)
 
-(* OPTIMIZE: *)
 and elaborate_pats env pats =
     let step (existentials, pats, typs, env) pat =
         let (pat, Exists (existentials', loc, typ), env) = elaborate_pat env pat in
@@ -73,6 +76,13 @@ and elaborate_pats env pats =
 
 and check_pat env (typ : T.t) (pat : AExpr.pat with_pos) : FExpr.lvalue * Env.t = match pat.v with
     | AExpr.Use name -> ({name; typ}, Env.add name typ env)
+
+and check_pats env domain pats =
+    let step (pats, env) (_, domain) pat =
+        let (pat, env) = check_pat env domain pat in
+        (pat :: pats, env) in
+    let (pats, env) = Vector.fold_left2 step ([], env) domain pats in
+    (Vector.of_list (List.rev pats), env)
 
 let deftype _ = failwith "TODO: deftype"
 
