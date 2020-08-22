@@ -1,6 +1,6 @@
 (* Predeclare types and signatures for typer internal modules so that they can be separated: *)
 
-open FcType
+open Fc.Type
 
 type span = Util.span
 type 'a with_pos = 'a Ast.with_pos
@@ -9,7 +9,7 @@ type 'a typing = {term : 'a; typ : typ; eff : typ}
 (* Newtype to allow ignoring subtyping coercions without partial application warning: *)
 (* TODO: triv_expr with_pos -> expr with_pos to avoid bugs that would delay side effects
          or that duplicate large/nontrivial terms: *)
-type coercer = Cf of (FcTerm.Expr.t with_pos -> FcTerm.Expr.t with_pos)
+type coercer = Cf of (Fc.Term.Expr.t with_pos -> Fc.Term.Expr.t with_pos)
 
 module type ELABORATION = sig
     val elaborate : Env.t -> Ast.Type.t with_pos -> abs
@@ -17,10 +17,10 @@ module type ELABORATION = sig
 end
 
 module type TYPING = sig
-    val typeof : Env.t -> Ast.Term.Expr.t with_pos -> FcTerm.Expr.t with_pos typing
-    val deftype : Env.t -> Ast.Term.Stmt.def -> FcTerm.Expr.def typing
-    val check_stmt : Env.t -> Ast.Term.Stmt.t -> FcTerm.Stmt.t typing * Env.t
-    val lookup : span -> Env.t -> Name.t -> locator * FcTerm.Expr.lvalue
+    val typeof : Env.t -> Ast.Term.Expr.t with_pos -> Fc.Term.Expr.t with_pos typing
+    val deftype : Env.t -> Ast.Term.Stmt.def -> Fc.Term.Expr.def typing
+    val check_stmt : Env.t -> Ast.Term.Stmt.t -> Fc.Term.Stmt.t typing * Env.t
+    val lookup : span -> Env.t -> Name.t -> locator * Fc.Term.Expr.lvalue
 end
 
 module type MATCHING = sig

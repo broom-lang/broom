@@ -3,8 +3,7 @@ module Vector = Vector (* HACK *)
 module Util = Util (* HACK *)
 
 module Ast = Ast
-module FcType = FcType
-module FcTerm = FcTerm
+module Fc = Fc
 
 module SedlexMenhir = SedlexMenhir
 

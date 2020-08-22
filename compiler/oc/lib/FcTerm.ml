@@ -1,4 +1,8 @@
-module Type = FcType
+module Make (Type : FcSigs.TYPE) : FcSigs.TERM
+    with module Type = Type
+= struct 
+
+module Type = Type
 
 type 'a with_pos = 'a Ast.with_pos
 type abs = Type.abs
@@ -10,25 +14,28 @@ let (^^) = PPrint.(^^)
 let (^/^) = PPrint.(^/^)
 
 module rec Expr : FcSigs.EXPR
+    with module Type = Type
     with type def = Stmt.def
     with type stmt = Stmt.t
 = struct
+    module Type = Type
+
     type def = Stmt.def
     type stmt = Stmt.t
 
     type lvalue = {name : Name.t; typ : typ}
 
     type t
-        = Fn of FcType.binding Vector.t * lvalue Vector.t * t with_pos
+        = Fn of Type.binding Vector.t * lvalue Vector.t * t with_pos
         | App of t with_pos * typ Vector.t * t with_pos Vector.t
         | Let of def * t with_pos
         | Letrec of def Vector1.t * t with_pos
-        | LetType of FcType.binding Vector1.t * t with_pos
+        | LetType of Type.binding Vector1.t * t with_pos
         | Match of t with_pos Vector.t * clause Vector.t
-        | Axiom of (Name.t * FcType.kind Vector.t * typ * typ) Vector1.t * t with_pos
+        | Axiom of (Name.t * Type.kind Vector.t * typ * typ) Vector1.t * t with_pos
         | Cast of t with_pos * coercion
         | Pack of typ Vector1.t * t with_pos
-        | Unpack of FcType.binding Vector1.t * lvalue * t with_pos * t with_pos
+        | Unpack of Type.binding Vector1.t * lvalue * t with_pos * t with_pos
         | Record of field Vector.t
         | Select of t with_pos * string
         | Proxy of abs 
@@ -51,7 +58,7 @@ module rec Expr : FcSigs.EXPR
                 (PPrint.string "fun"
                      ^^ (PPrint.surround_separate_map 4 0 PPrint.empty
                              (PPrint.blank 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
-                             FcType.binding_to_doc (Vector.to_list universals)
+                             Type.binding_to_doc (Vector.to_list universals)
                          ^^ PPrint.blank 1
                          ^^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                             PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
@@ -87,7 +94,7 @@ module rec Expr : FcSigs.EXPR
             PPrint.align (to_doc s callee
                           ^^ PPrint.surround_separate_map 4 0 PPrint.empty
                                 (PPrint.break 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
-                                (FcType.to_doc s) (Vector.to_list targs)
+                                (Type.to_doc s) (Vector.to_list targs)
                           ^/^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                                 (to_doc s) (Vector.to_list args))
@@ -104,14 +111,14 @@ module rec Expr : FcSigs.EXPR
             PPrint.string "pack" ^^ PPrint.blank 1
                 ^^ PPrint.surround_separate 4 0 PPrint.empty
                     PPrint.langle (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
-                    (Vector1.to_list (Vector1.map (FcType.to_doc s) existentials) @ [to_doc s impl])
+                    (Vector1.to_list (Vector1.map (Type.to_doc s) existentials) @ [to_doc s impl])
         | Unpack (existentials, lvalue, expr, body) ->
             PPrint.group(
                 PPrint.surround 4 1
                     (PPrint.string "unpack" ^^ PPrint.blank 1
                         ^^ PPrint.surround_separate 4 0 PPrint.empty
                             PPrint.langle (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
-                            (Vector1.to_list (Vector1.map FcType.binding_to_doc existentials)
+                            (Vector1.to_list (Vector1.map Type.binding_to_doc existentials)
                                 @ [lvalue_to_doc s lvalue])
                         ^^ PPrint.blank 1 ^^ PPrint.equals)
                     (to_doc s expr)
@@ -132,8 +139,8 @@ module rec Expr : FcSigs.EXPR
         | _ :: _ ->
             PPrint.infix 4 1 PPrint.colon (Name.to_doc name)
                 (PPrint.infix 4 1 PPrint.tilde
-                    (Type.universal_to_doc universals (FcType.to_doc s l))
-                    (Type.universal_to_doc universals (FcType.to_doc s r)))
+                    (Type.universal_to_doc universals (Type.to_doc s l))
+                    (Type.universal_to_doc universals (Type.to_doc s r)))
         | [] ->
             PPrint.infix 4 1 PPrint.colon (Name.to_doc name)
                 (PPrint.infix 4 1 PPrint.tilde
@@ -164,9 +171,12 @@ module rec Expr : FcSigs.EXPR
 end
 
 and Stmt : FcSigs.STMT
+    with module Type = Type
     with type lvalue = Expr.lvalue
     with type expr = Expr.t
 = struct
+    module Type = Type
+
     type lvalue = Expr.lvalue
     type expr = Expr.t
 
@@ -182,5 +192,7 @@ and Stmt : FcSigs.STMT
     let to_doc s = function
         | Def def -> def_to_doc s def
         | Expr expr -> Expr.to_doc s expr
+end
+
 end
 
