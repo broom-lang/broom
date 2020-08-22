@@ -7,7 +7,6 @@ module Type = Type
 type 'a with_pos = 'a Ast.with_pos
 type abs = Type.abs
 type typ = Type.typ
-type ov = Type.ov
 type coercion = Type.coercion
 
 let (^^) = PPrint.(^^)

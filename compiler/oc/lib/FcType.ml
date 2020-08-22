@@ -175,7 +175,7 @@ and Type : FcSigs.TYPE
             (PPrint.dot ^^ PPrint.blank 1 ^^ body)
 
     and uv_to_doc s uv = match Uv.get s uv with
-        | (s, Unassigned (name, _)) -> PPrint.qmark ^^ Name.to_doc name
+        | (_, Unassigned (name, _)) -> PPrint.qmark ^^ Name.to_doc name
         | (s, Assigned t) -> to_doc s t
 
     let rec coercion_to_doc s = function
