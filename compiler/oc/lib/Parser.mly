@@ -68,35 +68,35 @@ explicitly :
 
 binapp :
     | binapp "||" binapp2 {
-        let operator = {v = Use (Name.of_string $2); pos = $loc($2)} in
+        let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
     }
     | binapp2 { $1 }
 
 binapp2 :
     | binapp2 "&&" binapp3 {
-        let operator = {v = Use (Name.of_string $2); pos = $loc($2)} in
+        let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
     }
     | binapp3 { $1 }
 
 binapp3 :
     | binapp4 COMPARISON binapp4 { (* NOTE: nonassociative *)
-        let operator = {v = Use (Name.of_string $2); pos = $loc($2)} in
+        let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
     }
     | binapp4 { $1 }
 
 binapp4 :
     | binapp4 ADDITIVE binapp5 {
-        let operator = {v = Use (Name.of_string $2); pos = $loc($2)} in
+        let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
     }
     | binapp5 { $1 }
 
 binapp5 :
     | binapp5 MULTIPLICATIVE app {
-        let operator = {v = Use (Name.of_string $2); pos = $loc($2)} in
+        let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
     }
     | app { $1 }
@@ -127,11 +127,11 @@ nestable_without_pos :
     | "[" clause* "]" { Fn (Vector.of_list $2) }
     | "[" stmts "]" { Thunk (Vector1.to_vector $2) }
     | "(" separated_list(",", expr) ")" { Values (Vector.of_list $2) }
-    | "(" "||" ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
-    | "(" "&&" ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
-    | "(" COMPARISON ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
-    | "(" ADDITIVE ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
-    | "(" MULTIPLICATIVE ")" { Values (Vector.singleton ({v = Use (Name.of_string $2); pos = $loc($2)}))}
+    | "(" "||" ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
+    | "(" "&&" ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
+    | "(" COMPARISON ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
+    | "(" ADDITIVE ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
+    | "(" MULTIPLICATIVE ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
     | "(" "|" stmts? "|" ")" { proxy (Row (match $3 with (* FIXME: (||) *)
         | Some stmts -> Vector1.to_vector stmts
         | None -> Vector.empty ()
@@ -140,7 +140,7 @@ nestable_without_pos :
         | Some stmts -> Vector1.to_vector stmts
         | None -> Vector.empty ()
     )) }
-    | ID { Use (Name.of_string $1) }
+    | ID { Var (Name.of_string $1) }
     | WILD { failwith "TODO" }
     | INT { Const (Int $1) }
 

@@ -23,7 +23,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Record of stmt Vector.t
             | Select of t with_pos * Name.t
             | Proxy of typ
-            | Use of Name.t
+            | Var of Name.t
             | Const of Const.t
 
         and clause = {pats : pat with_pos Vector.t; body : t with_pos}
@@ -59,7 +59,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                     Stmt.to_doc (Vector.to_list stmts)
             | Select ({v = record; _}, label) -> to_doc record ^^ PPrint.dot ^^ Name.to_doc label
             | Proxy typ -> Type.to_doc typ
-            | Use name -> Name.to_doc name
+            | Var name -> Name.to_doc name
             | Const v -> Const.to_doc v
 
         and clause_to_doc {pats; body} =

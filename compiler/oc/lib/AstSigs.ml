@@ -15,7 +15,7 @@ module type EXPR = sig
         | Record of stmt Vector.t
         | Select of t with_pos * Name.t
         | Proxy of typ
-        | Use of Name.t
+        | Var of Name.t
         | Const of Const.t
 
     and clause = {pats : pat with_pos Vector.t; body : t with_pos}

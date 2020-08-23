@@ -38,7 +38,7 @@ let rec typeof env (expr : AExpr.t with_pos) : FExpr.t with_pos typing = match e
         let typ = E.elaborate env {v = typ; pos = expr.pos} in
         {term = {expr with v = Proxy typ}; typ = Type typ; eff = Prim EmptyRow}
 
-    | AExpr.Use name ->
+    | AExpr.Var name ->
         {term = {expr with v = Use name}; typ = Env.find name env; eff = Prim EmptyRow}
 
     | AExpr.Const c -> {term = {expr with v = Const c}; typ = const_typ c; eff = Prim EmptyRow}
@@ -67,7 +67,7 @@ and elaborate_pat env (pat : AExpr.pat with_pos) : FExpr.lvalue * T.abs * Env.t 
         let (pat, env) = check_pat env typ pat in
         (pat, abs, env)
 
-    | AExpr.Use name ->
+    | AExpr.Var name ->
         let typ = T.Uv (Env.uv env (Name.fresh ())) in
         ({name; typ}, T.to_abs typ, Env.add name typ env)
 
@@ -79,7 +79,7 @@ and elaborate_pats env pats =
     (existentials, Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), env)
 
 and check_pat env (typ : T.t) (pat : AExpr.pat with_pos) : FExpr.lvalue * Env.t = match pat.v with
-    | AExpr.Use name -> ({name; typ}, Env.add name typ env)
+    | AExpr.Var name -> ({name; typ}, Env.add name typ env)
 
 and check_pats env domain pats =
     let step (pats, env) (_, domain) pat =
