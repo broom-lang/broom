@@ -16,5 +16,7 @@ let get_uv (env : t) uv = Fc.Uv.getr env.uv_subst uv
 
 let set_uv (env : t) uv v = Fc.Uv.setr env.uv_subst uv v
 
+let uv_substr (env : t) = env.uv_subst
+
 let current_uv_subst (env : t) = ! (env.uv_subst)
 
