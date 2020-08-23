@@ -1,6 +1,3 @@
-open Residual
-open Fc.Type
-
 type typ = Fc.Type.t
 type abs = Fc.Type.abs
 
@@ -41,7 +38,7 @@ let rec cause_to_doc s = function
         Fc.Type.to_doc s path ^/^ PPrint.string "cannot be resolved with the unresolved"
             ^/^ Fc.Type.to_doc s impl
     | Unsolvable residual ->
-        let rec to_doc = function
+        let rec to_doc : Residual.t -> PPrint.document = function
             | Axioms (_, residual) | Skolems (_, residual) -> to_doc residual
             | Residuals (residual, residual') ->
                 to_doc residual ^/^ PPrint.string "and" ^/^ to_doc residual'

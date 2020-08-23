@@ -13,7 +13,6 @@ let path = function
 let proxy = function
     | Path expr -> expr
     | typ -> Proxy typ
-
 %}
 
 %token

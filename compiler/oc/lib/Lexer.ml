@@ -1,6 +1,4 @@
-open SedlexMenhir
-
-open Parser
+module L = SedlexMenhir
 
 let reserved = [%sedlex.regexp? '(' | ')' | '[' | ']' | '{' | '}' | '.' | ':' | ',' | ';' | '|']
 let letter = [%sedlex.regexp? ll | lm | lo | lt | lu | pc]
@@ -16,55 +14,55 @@ let symbol = [%sedlex.regexp? symchar, Star constituent]
 let string = [%sedlex.regexp? '"', Star (Compl '"'), '"']
 let integer = [%sedlex.regexp? Plus ('0'..'9')]
 
-let rec token ({stream; _} as lexbuf) =
+let rec token ({SedlexMenhir.stream; _} as lexbuf) =
     match%sedlex stream with
-    | Plus (Chars " \t\r") -> update lexbuf; token lexbuf 
-    | '\n' -> update lexbuf; new_line lexbuf; token lexbuf
-    | "--", Star (Compl '\n') -> update lexbuf; token lexbuf
-    | eof -> update lexbuf; EOF
+    | Plus (Chars " \t\r") -> L.update lexbuf; token lexbuf 
+    | '\n' -> L.update lexbuf; L.new_line lexbuf; token lexbuf
+    | "--", Star (Compl '\n') -> L.update lexbuf; token lexbuf
+    | eof -> L.update lexbuf; Parser.EOF
 
-    | "->" -> update lexbuf; ARROW
-    | "<-" -> update lexbuf; LARROW
-    | "=>" -> update lexbuf; DARROW
+    | "->" -> L.update lexbuf; ARROW
+    | "<-" -> L.update lexbuf; LARROW
+    | "=>" -> L.update lexbuf; DARROW
 
-    | "||" -> update lexbuf; DISJUNCTION (lexeme lexbuf)
-    | "&&" -> update lexbuf; CONJUNCTION (lexeme lexbuf)
-    | "==" | '<' | '>' | "<=" | ">=" -> update lexbuf; COMPARISON (lexeme lexbuf)
-    | '+' | '-' -> update lexbuf; ADDITIVE (lexeme lexbuf)
-    | '*' | '/' | '%' -> update lexbuf; MULTIPLICATIVE (lexeme lexbuf)
+    | "||" -> L.update lexbuf; DISJUNCTION (L.lexeme lexbuf)
+    | "&&" -> L.update lexbuf; CONJUNCTION (L.lexeme lexbuf)
+    | "==" | '<' | '>' | "<=" | ">=" -> L.update lexbuf; COMPARISON (L.lexeme lexbuf)
+    | '+' | '-' -> L.update lexbuf; ADDITIVE (L.lexeme lexbuf)
+    | '*' | '/' | '%' -> L.update lexbuf; MULTIPLICATIVE (L.lexeme lexbuf)
 
-    | '='  -> update lexbuf; EQ
-    | ':'  -> update lexbuf; COLON
-    | '.'  -> update lexbuf; DOT
-    | ','  -> update lexbuf; COMMA
-    | ';'  -> update lexbuf; SEMI
-    | '!'  -> update lexbuf; BANG
-    | '|'  -> update lexbuf; BAR
-    | '@'  -> update lexbuf; AT
-    | '?'  -> update lexbuf; QMARK
-    | '\\' -> update lexbuf; BACKSLASH
+    | '='  -> L.update lexbuf; EQ
+    | ':'  -> L.update lexbuf; COLON
+    | '.'  -> L.update lexbuf; DOT
+    | ','  -> L.update lexbuf; COMMA
+    | ';'  -> L.update lexbuf; SEMI
+    | '!'  -> L.update lexbuf; BANG
+    | '|'  -> L.update lexbuf; BAR
+    | '@'  -> L.update lexbuf; AT
+    | '?'  -> L.update lexbuf; QMARK
+    | '\\' -> L.update lexbuf; BACKSLASH
 
-    | '(' -> update lexbuf; LPAREN
-    | ')' -> update lexbuf; RPAREN
-    | '[' -> update lexbuf; LBRACKET
-    | ']' -> update lexbuf; RBRACKET
-    | '{' -> update lexbuf; LBRACE
-    | '}' -> update lexbuf; RBRACE
+    | '(' -> L.update lexbuf; LPAREN
+    | ')' -> L.update lexbuf; RPAREN
+    | '[' -> L.update lexbuf; LBRACKET
+    | ']' -> L.update lexbuf; RBRACKET
+    | '{' -> L.update lexbuf; LBRACE
+    | '}' -> L.update lexbuf; RBRACE
 
     | string ->
-        let tok = lexeme lexbuf in
-        update lexbuf; STRING (String.sub tok 1 (String.length tok - 2))
-    | integer -> update lexbuf; INT (int_of_string (lexeme lexbuf))
+        let tok = L.lexeme lexbuf in
+        L.update lexbuf; STRING (String.sub tok 1 (String.length tok - 2))
+    | integer -> L.update lexbuf; INT (int_of_string (L.lexeme lexbuf))
 
     | "__", Plus constituent ->
-        let tok = lexeme lexbuf in
-        update lexbuf; PRIMOP (String.sub tok 2 (String.length tok - 2))
+        let tok = L.lexeme lexbuf in
+        L.update lexbuf; PRIMOP (String.sub tok 2 (String.length tok - 2))
     | '_', Star constituent ->
-        let tok = lexeme lexbuf in
-        update lexbuf; WILD (String.sub tok 1 (String.length tok - 1))
+        let tok = L.lexeme lexbuf in
+        L.update lexbuf; WILD (String.sub tok 1 (String.length tok - 1))
 
-    | identifier -> update lexbuf; ID (lexeme lexbuf)
-    | symbol -> update lexbuf; OP (lexeme lexbuf)
+    | identifier -> L.update lexbuf; ID (L.lexeme lexbuf)
+    | symbol -> L.update lexbuf; OP (L.lexeme lexbuf)
 
-    | _ -> raise_ParseError lexbuf
+    | _ -> L.raise_ParseError lexbuf
 
