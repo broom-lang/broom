@@ -13,18 +13,19 @@ let elaborate : Env.t -> AType.t with_pos -> T.abs
         else failwith "TODO: nonempty signature"
 
 and eval env typ =
-    let (>>=) = Option.bind in
+    let (let*) = Option.bind in
+    let (let+) = Fun.flip Option.map in
 
     let rec eval = function
         | T.App (callee, args) ->
-            eval callee >>= fun (callee, callee_co) ->
-            apply callee args |> Option.map (fun (typ, co) ->
+            let* (callee, callee_co) = eval callee in
+            let+ (typ, co) = apply callee args in
             ( typ
             , match (callee_co, co) with
               | (Some callee_co, Some co) -> Some (T.Trans (Inst (callee_co, args), co))
               | (Some callee_co, None) -> Some (Inst (callee_co, args))
               | (None, Some co) -> Some co
-              | (None, None) -> None ))
+              | (None, None) -> None )
         | Fn _ as typ -> Some (typ, None)
         (*| Ov ov as typ ->
             (match Env.get_implementation env ov with
