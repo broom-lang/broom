@@ -5,7 +5,8 @@ module T = Fc.Type
 
 type 'a with_pos = 'a Util.with_pos
 
-let elaborate env (typ : AType.t with_pos) = match typ.v with
+let elaborate : Env.t -> AType.t with_pos -> T.abs
+= fun env typ -> match typ.v with
     | Record decls ->
         if Vector.length decls = 0
         then Fc.Type.to_abs (Record (Vector.empty ()))

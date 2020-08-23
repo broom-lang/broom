@@ -12,7 +12,8 @@ type 'a typing = 'a TyperSigs.typing
 let const_typ c = T.Prim (match c with
     | Const.Int _ -> Prim.Int)
 
-let rec typeof env (expr : AExpr.t with_pos) : FExpr.t with_pos typing = match expr.v with
+let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
+= fun env expr -> match expr.v with
     | AExpr.Fn clauses ->
         (match Vector.to_seq clauses () with
         | Cons (clause, clauses') ->
@@ -56,7 +57,8 @@ and check_clause env domain codomain eff {pats; body} =
 
 and check env typ expr = failwith "TODO: check"
 
-and elaborate_pat env (pat : AExpr.pat with_pos) : FExpr.lvalue * T.abs * Env.t = match pat.v with
+and elaborate_pat : Env.t -> AExpr.pat with_pos -> FExpr.lvalue * T.abs * Env.t
+= fun env pat -> match pat.v with
     | AExpr.Values pats ->
         if Vector.length pats = 1
         then elaborate_pat env (Vector.get pats 0)
@@ -78,7 +80,8 @@ and elaborate_pats env pats =
     let (existentials, pats, typs, env) = Vector.fold_left step (Vector.empty (), [], [], env) pats in
     (existentials, Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), env)
 
-and check_pat env (typ : T.t) (pat : AExpr.pat with_pos) : FExpr.lvalue * Env.t = match pat.v with
+and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.lvalue * Env.t
+= fun env typ pat -> match pat.v with
     | AExpr.Var name -> ({name; typ}, Env.add name typ env)
 
 and check_pats env domain pats =
@@ -90,7 +93,8 @@ and check_pats env domain pats =
 
 let deftype _ = failwith "TODO: deftype"
 
-let check_stmt env : AStmt.t -> FStmt.t typing * Env.t = function
+let check_stmt : Env.t -> AStmt.t -> FStmt.t typing * Env.t
+= fun env -> function
     | AStmt.Def (pos, pat, expr) ->
         let {term = expr; typ; eff} : FExpr.t with_pos typing = typeof env expr in
         let (pat, env) = check_pat env typ pat in

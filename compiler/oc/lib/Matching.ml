@@ -16,7 +16,8 @@ type 'a matching = {coercion : 'a; residual : Residual.t option}
 
 let focalize _ = failwith "TODO"
 
-let rec focalize_locator (locator : T.locator) = function
+let rec focalize_locator : T.locator -> T.t -> T.locator 
+= fun locator -> function
     | T.Pi _ ->
         (match locator with
         | PiL _ -> locator
@@ -36,8 +37,8 @@ let rec focalize_locator (locator : T.locator) = function
 
 (* # Subtyping *)
 
-let rec coercion pos env (typ : T.typ) ((existentials, super_locator, super) : T.ov Vector.t * T.locator * T.t)
-        : coercer matching =
+let rec coercion : Util.span -> Env.t -> T.t -> T.ov Vector.t * T.locator * T.t -> coercer matching
+= fun pos env typ (existentials, super_locator, super) ->
     match Vector1.of_vector existentials with
     (*| Some existentials ->
         let axiom_bindings = Vector1.map (fun (((name, _), _) as param) ->
@@ -57,7 +58,8 @@ let rec coercion pos env (typ : T.typ) ((existentials, super_locator, super) : T
         ; residual = Option.map (fun residual -> Residual.Axioms (axiom_bindings, residual)) residual }*)
     | None -> subtype pos env typ super_locator super
 
-and subtype_abs pos env (typ : T.abs) locator (super : T.abs) : coercer matching =
+and subtype_abs : Util.span -> Env.t -> T.abs -> T.locator -> T.abs -> coercer matching
+= fun pos env typ locator super ->
     let Exists (sub_kinds, sub_locator, typ) = typ in
     let (env, skolems, _, typ) = failwith "FIXME" (*Env.push_abs_skolems env (sub_kinds, sub_locator, typ)*) in
     let Exists (existentials, super_locator, super) = super in
@@ -132,7 +134,8 @@ and subtype pos env typ locator super : coercer matching =
             | Assigned _ -> failwith "unreachable: `articulate` on assigned uv")
         | _ -> failwith "unreachable: `articulate` on non-uv" in
 
-    let subtype_whnf (typ : T.t) locator (super : T.t) : coercer matching = match (typ, super) with
+    let subtype_whnf : T.t -> T.locator -> T.t -> coercer matching
+    = fun typ locator super -> match (typ, super) with
         | (Uv uv, Uv uv') when uv = uv' -> {coercion = Cf Fun.id; residual = None}
         | (Uv uv, _) ->
             (match Env.get_uv env uv with
@@ -292,7 +295,8 @@ and subtype pos env typ locator super : coercer matching =
 
 (* # Unification *)
 
-and unify_abs pos env (Exists (existentials, locator, body) : T.abs) (Exists (existentials', locator', body') : T.abs) =
+and unify_abs : Util.span -> Env.t -> T.abs -> T.abs -> T.coercion option matching
+= fun pos env (Exists (existentials, locator, body)) (Exists (existentials', locator', body')) ->
     if Vector.length existentials = 0 && Vector.length existentials' = 0
     then unify pos env body body'
     else failwith "todo"
@@ -321,7 +325,8 @@ and unify pos env typ typ' : T.coercion option matching =
         { coercion = Some (T.Patchable patchable)
         ; residual = Some (Unify (typ, typ', patchable)) }
 
-and unify_whnf pos env (typ : T.t) (typ' : T.t) : T.coercion option matching =
+and unify_whnf : Util.span -> Env.t -> T.t -> T.t -> T.coercion option matching
+= fun pos env typ typ' ->
     let open ResidualMonoid in
     match (typ, typ') with
     | (Uv uv, typ') | (typ', Uv uv) ->
