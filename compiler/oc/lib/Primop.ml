@@ -12,7 +12,7 @@ let to_string op =
         | IAdd -> "iadd"
         | ISub -> "isub"
         | IMul -> "imul" in
-    "__" ^ name
+    name
 
 let to_doc op = PPrint.string (to_string op)
 

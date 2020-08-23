@@ -48,7 +48,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | AppSequence exprs ->
                 PPrint.separate_map (PPrint.break 1) (fun {Util.v = expr; _} -> to_doc expr)
                     (Vector1.to_list exprs)
-            | PrimApp (callee, args) -> Primop.to_doc callee
+            | PrimApp (callee, args) -> PPrint.string "__" ^^ Primop.to_doc callee
                 ^/^ PPrint.separate_map (PPrint.break 1) (fun {Util.v = expr; _} -> to_doc expr)
                     (Vector.to_list args)
             | Ann (expr, typ) ->

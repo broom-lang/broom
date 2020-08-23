@@ -56,7 +56,7 @@ and check_clause env domain codomain eff {pats; body} =
 
 and check env typ expr = failwith "TODO: check"
 
-and elaborate_pat env (pat : AExpr.pat with_pos) = match pat.v with
+and elaborate_pat env (pat : AExpr.pat with_pos) : FExpr.lvalue * T.abs * Env.t = match pat.v with
     | AExpr.Values pats ->
         if Vector.length pats = 1
         then elaborate_pat env (Vector.get pats 0)
@@ -66,6 +66,10 @@ and elaborate_pat env (pat : AExpr.pat with_pos) = match pat.v with
         let Exists (_, _, typ) as abs = E.elaborate env typ in
         let (pat, env) = check_pat env typ pat in
         (pat, abs, env)
+
+    | AExpr.Use name ->
+        let typ = T.Uv (Env.uv env (Name.fresh ())) in
+        ({name; typ}, T.to_abs typ, Env.add name typ env)
 
 and elaborate_pats env pats =
     let step (existentials, pats, typs, env) pat =
