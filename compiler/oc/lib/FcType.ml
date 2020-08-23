@@ -17,12 +17,17 @@ module rec Uv : FcSigs.UV
 
     let new_subst = new_store
 
+    let make_r sr v =
+        let (s, uv) = make !sr v in
+        sr := s;
+        uv
+
     let getr sr uv =
-        let (s, v) = get (!sr) uv in
+        let (s, v) = get !sr uv in
         sr := s;
         v
 
-    let setr sr uv v = sr := set (!sr) uv v;
+    let setr sr uv v = sr := set !sr uv v;
 end
 
 and Type : FcSigs.TYPE

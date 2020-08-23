@@ -92,6 +92,7 @@ module type UV = sig
     val new_subst : unit -> subst
    
     val make : subst -> v -> subst * t
+    val make_r : subst ref -> v -> t
     val get : subst -> t -> subst * v
     val getr : subst ref -> t -> v
     val set : subst -> t -> v -> subst
