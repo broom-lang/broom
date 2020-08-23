@@ -10,13 +10,67 @@ module T = Fc.Type
 module E = Fc.Term.Expr
 module Err = TypeError
 
+type span = Util.span
 type coercer = TyperSigs.coercer
 
 type 'a matching = {coercion : 'a; residual : Residual.t option}
 
-let focalize _ = failwith "TODO"
+(* # Focalization *)
 
-let rec focalize_locator : T.locator -> T.t -> T.locator 
+let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
+= fun pos env typ template ->
+    let articulate_template pos uv_typ template = match uv_typ with
+        | T.Uv uv ->
+            (match Env.get_uv env uv with
+            | Unassigned _ ->
+                let (uv, typ) = match template with
+                    (*| PiL _ ->
+                        (uv, Pi (Vector.of_list [], Hole, Uv (sibling uv), Impure, (to_abs (Uv (sibling uv)))))*)
+                    | T.TypeL _ -> (uv, T.Type (T.to_abs (Uv (Env.sibling env uv))))
+
+                    | RecordL _ -> raise (Err.TypeError (pos, RecordArticulationL template)) (* no can do without row typing *)
+                    | Hole -> failwith "unreachable: Hole as template in `articulate_template`" in
+                Env.set_uv env uv (Assigned typ);
+                typ
+            | Assigned _ -> failwith "unreachable: `articulate_template` on assigned uv")
+        | _ -> failwith "unreachable: `articulate_template` on non-uv" in
+
+    let focalize_whnf typ = match typ with
+        | T.Uv uv ->
+            (match Env.get_uv env uv with
+            | Unassigned _ -> (TyperSigs.Cf Fun.id, articulate_template pos typ template)
+            | Assigned _ -> failwith "unreachable: Assigned uv in `focalize`.")
+        | _ ->
+            (match template with
+            | PiL _ ->
+                (match typ with
+                | Pi _ -> (Cf Fun.id, typ)
+                | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
+            | TypeL _ ->
+                (match typ with
+                | Type _ -> (Cf Fun.id, typ)
+                | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
+            | RecordL req_fields ->
+                (match typ with
+                | T.Record fields ->
+                    let {T.label; typ = _} = Vector.get req_fields 0 in
+                    (match Vector.find_opt (fun {T.label = label'; typ = _} -> label' = label) fields with
+                    | Some {T.label = _; typ = field_typ} -> (Cf (fun v -> v), Record (Vector.singleton {T.label; typ = field_typ}))
+                    | None -> raise (Err.TypeError (pos, MissingField (typ, label))))
+                | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
+            | Hole -> failwith "unreachable: Hole as template in `focalize`.") in
+
+    match Elab.eval env typ with
+    | Some (typ, coercion) ->
+        let (Cf cf as coercer, typ) = focalize_whnf typ in
+        ( (match coercion with
+          | Some coercion -> TyperSigs.Cf (fun v -> cf {pos; v = Cast (v, coercion)})
+          | None -> coercer)
+        , typ )
+    | None -> failwith "unreachable: `whnf` failed in `focalize`."
+
+
+and focalize_locator : T.locator -> T.t -> T.locator 
 = fun locator -> function
     | T.Pi _ ->
         (match locator with
@@ -37,7 +91,7 @@ let rec focalize_locator : T.locator -> T.t -> T.locator
 
 (* # Subtyping *)
 
-let rec coercion : Util.span -> Env.t -> T.t -> T.ov Vector.t * T.locator * T.t -> coercer matching
+let rec coercion : span -> Env.t -> T.t -> T.ov Vector.t * T.locator * T.t -> coercer matching
 = fun pos env typ (existentials, super_locator, super) ->
     match Vector1.of_vector existentials with
     (*| Some existentials ->
@@ -58,7 +112,7 @@ let rec coercion : Util.span -> Env.t -> T.t -> T.ov Vector.t * T.locator * T.t 
         ; residual = Option.map (fun residual -> Residual.Axioms (axiom_bindings, residual)) residual }*)
     | None -> subtype pos env typ super_locator super
 
-and subtype_abs : Util.span -> Env.t -> T.abs -> T.locator -> T.abs -> coercer matching
+and subtype_abs : span -> Env.t -> T.abs -> T.locator -> T.abs -> coercer matching
 = fun pos env typ locator super ->
     let Exists (sub_kinds, sub_locator, typ) = typ in
     let (env, skolems, _, typ) = failwith "FIXME" (*Env.push_abs_skolems env (sub_kinds, sub_locator, typ)*) in
@@ -295,7 +349,7 @@ and subtype pos env typ locator super : coercer matching =
 
 (* # Unification *)
 
-and unify_abs : Util.span -> Env.t -> T.abs -> T.abs -> T.coercion option matching
+and unify_abs : span -> Env.t -> T.abs -> T.abs -> T.coercion option matching
 = fun pos env (Exists (existentials, locator, body)) (Exists (existentials', locator', body')) ->
     if Vector.length existentials = 0 && Vector.length existentials' = 0
     then unify pos env body body'
@@ -325,7 +379,7 @@ and unify pos env typ typ' : T.coercion option matching =
         { coercion = Some (T.Patchable patchable)
         ; residual = Some (Unify (typ, typ', patchable)) }
 
-and unify_whnf : Util.span -> Env.t -> T.t -> T.t -> T.coercion option matching
+and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
 = fun pos env typ typ' ->
     let open ResidualMonoid in
     match (typ, typ') with
