@@ -32,9 +32,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 
     | AExpr.App (callee, args) ->
         let check_args env eff domain args =
-            Vector.map2 (fun (_, domain) ({v = _; pos} as arg : AExpr.t with_pos) ->
-                let {TyperSigs.term = arg; typ = _; eff = arg_eff} =
-                    check env (T.to_abs domain) arg in
+            Vector.map2 (fun (locator, domain) ({v = _; pos} as arg : AExpr.t with_pos) ->
+                let {TyperSigs.term = arg; typ = _; eff = arg_eff} = check env locator domain arg in
                 let _ = M.solving_unify pos env arg_eff eff in
                 arg)
                 domain args in
@@ -59,8 +58,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 
     | AExpr.Ann (expr, typ) ->
         let typ = E.elaborate env typ in
-        (* FIXME: Abstract type generation effect: *)
-        check env typ expr
+        (* FIXME: Abstract type generation effect *)
+        check_abs env typ expr
 
     | AExpr.Proxy typ ->
         let typ = E.elaborate env {v = typ; pos = expr.pos} in
@@ -82,7 +81,20 @@ and check_clause env domain codomain eff {pats; body} =
     ignore (M.solving_unify body.pos env body_eff eff);
     {pats; body}
 
-and check env typ expr = failwith "TODO: check"
+and check_abs : Env.t -> T.abs -> AExpr.t with_pos -> FExpr.t with_pos typing
+= fun env (Exists (existentials, locator, body)) expr ->
+    if Vector.length existentials = 0
+    then check env locator body expr
+    else failwith "TODO: check_abs with existentials"
+
+and check : Env.t -> T.locator -> T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
+= fun env locator -> function
+    | T.Pi (universals, domain, eff, codomain) -> failwith "TODO: check Pi"
+    | Record row -> failwith "TODO: check Record"
+    | typ -> (fun expr ->
+        let {TyperSigs.term = expr; typ = expr_typ; eff} = typeof env expr in
+        let Cf coerce = M.solving_subtype expr.pos env expr_typ locator typ in
+        {term = coerce expr; typ; eff})
 
 and elaborate_pat : Env.t -> AExpr.pat with_pos -> FExpr.lvalue * T.abs * Env.t
 = fun env pat -> match pat.v with

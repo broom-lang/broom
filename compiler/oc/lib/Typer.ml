@@ -1,3 +1,5 @@
+module TypeError = TypeError
+
 module Env = Env
 
 module rec E : TyperSigs.ELABORATION = Elaboration.Make(T)(M)

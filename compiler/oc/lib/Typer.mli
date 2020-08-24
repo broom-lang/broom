@@ -1,3 +1,5 @@
+module TypeError = TypeError
+
 module Env = Env
 
 type 'a typing = 'a TyperSigs.typing

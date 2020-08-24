@@ -9,13 +9,20 @@ let name_c = String.capitalize_ascii name
 let prompt = name ^ "> "
 
 let ep tenv stmt =
-    let ({term; typ; eff}, tenv) : Fc.Term.Stmt.t Typer.typing * _ = Typer.check_stmt tenv stmt in
-    let s = Typer.Env.current_uv_subst tenv in
-    let doc = Fc.Term.Stmt.to_doc s term ^^ PPrint.semi
-        ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ Fc.Type.to_doc s typ
-        ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ Fc.Type.to_doc s eff
-        |> PPrint.group in
-    PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc);
+    (try begin
+        let ({term; typ; eff}, tenv) : Fc.Term.Stmt.t Typer.typing * _ = Typer.check_stmt tenv stmt in
+        let s = Typer.Env.current_uv_subst tenv in
+        let doc = Fc.Term.Stmt.to_doc s term ^^ PPrint.semi
+            ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ Fc.Type.to_doc s typ
+            ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ Fc.Type.to_doc s eff
+            |> PPrint.group in
+        PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc);
+    end with
+    | Typer.TypeError.TypeError (pos, err) ->
+        flush stdout;
+        PPrint.ToChannel.pretty 1.0 80 stderr
+            (PPrint.hardline ^^ Typer.TypeError.to_doc (Typer.Env.current_uv_subst tenv) pos err ^^ PPrint.hardline);
+        flush stderr);
     tenv
 
 let rep tenv input =
