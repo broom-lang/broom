@@ -2,6 +2,7 @@ type 'a t = 'a Vector.t
 
 let singleton = Vector.singleton
 
+let length = Vector.length
 let get = Vector.get
 
 let of_vector vec =

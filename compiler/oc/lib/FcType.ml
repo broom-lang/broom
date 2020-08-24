@@ -64,7 +64,7 @@ and Type : FcSigs.TYPE
         | Prim of Prim.t
 
     and locator =
-        | PiL of locator
+        | PiL of int * locator
         | RecordL of locator field Vector.t
         | TypeL of t
         | Hole
@@ -164,8 +164,13 @@ and Type : FcSigs.TYPE
         PPrint.string label ^/^ PPrint.colon ^/^ to_doc s typ
 
     and locator_to_doc s = function
-        | PiL codomain ->
-            PPrint.infix 4 1 (PPrint.string "->") PPrint.underscore (locator_to_doc s codomain)
+        | PiL (arity, codomain) ->
+            let domain_doc =
+                let rec loop doc = function
+                    | 0 -> doc
+                    | arity -> loop (doc ^^ PPrint.comma ^/^ PPrint.underscore) (arity - 1) in
+                PPrint.parens (loop PPrint.empty arity) in
+            PPrint.infix 4 1 (PPrint.string "->") domain_doc (locator_to_doc s codomain)
         | RecordL fields ->
             PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
                 PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
@@ -263,7 +268,7 @@ and Type : FcSigs.TYPE
         | (Use _ | Ov _ | Prim _) as typ -> typ
 
     and expose_locator' sr depth substitution = function
-        | PiL codomain -> PiL (expose_locator' sr depth substitution codomain)
+        | PiL (arity, codomain) -> PiL (arity, expose_locator' sr depth substitution codomain)
         | RecordL fields ->
             RecordL (Vector.map (fun {label; typ} ->
                                     {label; typ = expose_locator' sr depth substitution typ}) fields)
@@ -306,7 +311,7 @@ and Type : FcSigs.TYPE
         | (Use _ | Bv _ | Prim _) as typ -> typ
 
     and close_locator' sr depth substitution = function
-        | PiL codomain -> PiL (close_locator' sr depth substitution codomain)
+        | PiL (arity, codomain) -> PiL (arity, close_locator' sr depth substitution codomain)
         | RecordL fields ->
             RecordL (Vector.map (fun {label; typ} ->
                                     {label; typ = close_locator' sr depth substitution typ}) fields)

@@ -25,6 +25,7 @@ val map2 : ('a -> 'b -> 'c) -> 'a t -> 'b t -> 'c t
 val iter : ('a -> unit) -> 'a t -> unit
 val find_opt : ('a -> bool) -> 'a t -> 'a option
 val find : ('a -> bool) -> 'a t -> 'a
+val sub : 'a t -> int -> int -> 'a t
 val append : 'a t -> 'a t -> 'a t
 val split : ('a * 'b) t -> 'a t * 'b t
 

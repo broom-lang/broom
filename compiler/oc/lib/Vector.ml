@@ -40,6 +40,7 @@ let split vec =
     ( Array.init (length vec) (fun i -> fst (get vec i))
     , Array.init (length vec) (fun i -> snd (get vec i)) )
 
+let sub = Array.sub
 let append = Array.append
 
 let fold_left2 f acc xs ys =

@@ -35,7 +35,7 @@ module type TYPE = sig
         | Prim of Prim.t
 
     and locator =
-        | PiL of locator
+        | PiL of int * locator
         | RecordL of locator field Vector.t
         | TypeL of t
         | Hole

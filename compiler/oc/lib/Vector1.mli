@@ -2,6 +2,7 @@ type 'a t
 
 val singleton : 'a -> 'a t
 
+val length : 'a t -> int
 val get : 'a t -> int -> 'a
 
 val to_vector : 'a t -> 'a Vector.t

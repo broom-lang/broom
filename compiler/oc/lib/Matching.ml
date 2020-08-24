@@ -71,10 +71,10 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
 
 and focalize_locator : T.locator -> T.t -> T.locator 
 = fun locator -> function
-    | T.Pi _ ->
+    | T.Pi (_, domain, _, _) ->
         (match locator with
         | PiL _ -> locator
-        | Hole -> PiL Hole
+        | Hole -> PiL (Vector.length domain, Hole)
         | _ -> failwith "unreachable: `Pi` locator")
     | Record _ ->
         (match locator with

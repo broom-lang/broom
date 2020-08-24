@@ -30,6 +30,33 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
             ; eff }
         | Nil -> failwith "TODO: clauseless fn")
 
+    | AExpr.App (callee, args) ->
+        let check_args env eff domain args =
+            Vector.map2 (fun (_, domain) ({v = _; pos} as arg : AExpr.t with_pos) ->
+                let {TyperSigs.term = arg; typ = _; eff = arg_eff} =
+                    check env (T.to_abs domain) arg in
+                let _ = M.solving_unify pos env arg_eff eff in
+                arg)
+                domain args in
+
+        let {TyperSigs.term = callee; typ = callee_typ; eff = callee_eff} = typeof env callee in
+        (match M.focalize callee.pos env callee_typ (PiL (Vector.length args, Hole)) with
+        | (Cf coerce, Pi (universals, domain, app_eff, codomain)) ->
+            (* FIXME: Universal instantiation *)
+            let _ = M.solving_unify expr.pos env app_eff callee_eff in
+            let args = check_args env app_eff domain args in
+            let Exists (existentials, codomain_locator, concr_codomain) = codomain in
+            (* FIXME: Use `existentials` *)
+            { term = {expr with v = App (coerce callee, (* FIXME: *) Vector.empty (), args)}
+            ; typ = concr_codomain
+            ; eff = app_eff }
+        | _ -> failwith "compiler bug: callee focalization returned non-function")
+
+    | AppSequence exprs -> (* TODO: in/pre/postfix parsing, special forms, macros *)
+        let callee = Vector1.get exprs 0 in
+        let args = Vector.sub (Vector1.to_vector exprs) 1 (Vector1.length exprs - 1) in
+        typeof env {expr with v = AExpr.App (callee, args)}
+
     | AExpr.Ann (expr, typ) ->
         let typ = E.elaborate env typ in
         (* FIXME: Abstract type generation effect: *)
@@ -88,7 +115,7 @@ and check_pats env domain pats =
     let step (pats, env) (_, domain) pat =
         let (pat, env) = check_pat env domain pat in
         (pat :: pats, env) in
-    let (pats, env) = Vector.fold_left2 step ([], env) domain pats in
+    let (pats, env) = Vector.fold_left2 step ([], env) domain pats in (* FIXME: raises on length mismatch *)
     (Vector.of_list (List.rev pats), env)
 
 let deftype _ = failwith "TODO: deftype"
