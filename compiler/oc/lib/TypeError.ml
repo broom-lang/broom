@@ -42,7 +42,7 @@ let rec cause_to_doc s = function
             | Axioms (_, residual) | Skolems (_, residual) -> to_doc residual
             | Residuals (residual, residual') ->
                 to_doc residual ^/^ PPrint.string "and" ^/^ to_doc residual'
-            | Sub (typ, _, super, _) -> cause_to_doc s (SubType (typ, super))
+            | Sub (_, typ, _, super, _) -> cause_to_doc s (SubType (typ, super))
             | Unify (typ, typ', _) -> cause_to_doc s (Unify (typ, typ'))
         in to_doc residual
     | IncompleteImpl (uv, uv') ->
