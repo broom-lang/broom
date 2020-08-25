@@ -112,11 +112,11 @@ and Type : AstSigs.TYPE
             PPrint.infix 4 1 (PPrint.string "->") (Term.Expr.to_doc domain.v)
                 (PPrint.infix 4 1 PPrint.bang (to_doc eff.v) (to_doc codomain.v))
         | Record stmts ->
-            PPrint.surround_separate_map 4 0 (PPrint.braces (PPrint.bar ^^ PPrint.blank 1 ^^ PPrint.bar))
+            PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.bar)
                 (PPrint.lbrace ^^ PPrint.bar) (PPrint.semi ^^ PPrint.break 1) (PPrint.bar ^^ PPrint.rbrace)
                 Term.Stmt.to_doc (Vector.to_list stmts)
         | Row stmts ->
-            PPrint.surround_separate_map 4 0 (PPrint.parens (PPrint.bar ^^ PPrint.blank 1 ^^ PPrint.bar))
+            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.bar)
                 (PPrint.lparen ^^ PPrint.bar) (PPrint.semi ^^ PPrint.break 1) (PPrint.bar ^^ PPrint.rparen)
                 Term.Stmt.to_doc (Vector.to_list stmts)
         | Path expr -> Term.Expr.to_doc expr

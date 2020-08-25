@@ -41,9 +41,9 @@ let%test_unit "parse_record" =
     try_roundtrip "foo with {x = 23; y = 17}"
 
 let%test_unit "parse_record_type" =
-    try_roundtrip "{| |}";
-    try_roundtrip "{|x : int|}";
-    try_roundtrip "{|x : int; y : int|}";
-    try_roundtrip "foo with {|x : int|}";
-    try_roundtrip "foo with {|x : int; y : int|}"
+    try_roundtrip "{|}";
+    try_roundtrip "{|x : int}";
+    try_roundtrip "{|x : int; y : int}";
+    try_roundtrip "foo with {|x : int}";
+    try_roundtrip "foo with {|x : int; y : int}"
 
