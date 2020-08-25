@@ -1,37 +1,33 @@
-val State : interface
-    extends effect interface
-        val Get : pi s => {:} -> s
-        val Set : pi s => s -> {:}
-    end
+State : {|
+    extends effect {|
+        Get : s @ => s;
+        Set : s @ s => ();
+    };
 
-    val run : pi e s a => ({:} -> ! (e with State : t s) v) -> s -> ({:} -> ! e {state : s, value : v})
-    val eval : pi e s a => ({:} -> ! (e with State : t s) v) -> s -> ({:} -> ! e v)
-    val run : pi e s a => ({:} -> ! (e with State : t s) v) -> s -> ({:} -> ! e s)
-end = module
-    extends effect module
-        val Get : pi s => {:} -> s
-        val Set : pi s => s -> {:}
-    end
-    # = module
-    #     # type request v r = interface type response = r val request : v end
-    #     val Get : pi s => {:} -> interface type response = s val request : {:} end =
-    #         fn s => fn request -> 'Get {response = s, request} end end
-    #     val Set : pi s => s -> interface type response = {:} val request : s end =
-    #         fn s => fn state -> 'Set {response = {:}, request = state} end end
-    # end ?
+    run : (e, s, a @ () -> e with (|State : t s) ! v, s) -> (() -> e ! {state : s; value : v});
+    eval : (e, s, a @ () -> e with (|State : t s) ! v, s) -> (() -> e ! v);
+    exec : (e, s, a @ () -> e with (|State : t s) ! v, s) -> (() -> e ! s);
+} = {
+    extends effect {
+        Get : s @ => s;
+        Set : s @ s => {|};
+    };
+    # = {
+    #     # type request v r = {|type response = r; request : v};
+    #     Get : s @ => {|type response = s; request : {|}} =
+    #         [| s => [|request -> 'Get {response = s; request}]];
+    #     Set : s @ s => {|type response = {|}; request : s} =
+    #         [| s => [| state -> 'Set {response = {|}, request = state} ]];
+    # } ?
 
-    fun run thunk state ->
-        match thunk {}
-        | value ->
-            fn state -> {state, value} end
-        | effect ('State (Get {})) k ->
-            fn state -> k state state end
-        | effect ('State (Set state)) k ->
-            fn _ -> k {} state end
-        end
+    fun run thunk state = match (thunk @) [
+    | value -> [| state -> {state, value}]
+    | effect (`State 'Get) k -> [| state -> (k state) state]
+    | effect (`State ('Set state)) k -> [| _ -> (k @) state ]
+    ];
 
-    fun eval thunk state = (run thunk state).value
+    fun eval thunk state = (run thunk state).value;
 
-    fun exec thunk state = (run thunk state).state
-end
+    fun exec thunk state = (run thunk state).state;
+};
 

@@ -1,11 +1,11 @@
-type FN = interface
-    val id : pi a => a -> a
-    val const : pi a b => a -> (b -> a)
-end
+type FN = {|
+    id : a @ a => a;
+    const : (a, b @ a) -> (b -> a);
+};
 
-val Fn = module
-    fun id x = x
+Fn = {
+    fun id x = x;
 
-    fun const v = fn _ => v end
-end
+    fun const v = [| _ -> v];
+};
 

@@ -1,105 +1,101 @@
-type ARRAY = interface
-    type t elem
-    type size = __uint # TODO: Get this from its module
-    type key = __uint
+type ARRAY = {|
+    type t elem;
+    type size = __uint; # TODO: Get this from its module
+    type key = __uint;
 
-    val count : pi elem => t elem -> size
-    val get : pi elem => t elem -> key -> elem
-    val set : pi elem => t elem -> key -> elem -> t elem
-    val update : pi elem => t elem -> key -> (elem -> elem) -> t elem
+    count : elem @ t elem -> size;
+    get : (elem @ t elem, key) -> elem;
+    set : (elem @ t elem, key, elem) -> t elem;
+    update : (elem @ t elem, key, elem -> elem) -> t elem;
 
-    val unfoldl : pi elem state => size -> (state -> {elem : elem, state : state}) -> state
-        -> {array : t elem, state : state}
-    val unfoldr : pi elem state => size -> (state -> {elem : elem, state : state}) -> state
-        -> {array : t elem, state : state}
+    unfoldl : (elem, state @ size, state -> {elem : elem; state : state}, state)
+        -> {array : t elem; state : state};
+    unfoldr : (elem, state @ size, state -> {elem : elem; state : state}, state)
+        -> {array : t elem; state : state};
 
-    val foldl : pi elem state => (state -> elem -> state) -> state -> t elem -> state
-    val foldr : pi elem state => (elem -> state -> state) -> state -> t elem -> state
-end
+    foldl : (elem, state @ (state, elem) -> state, state, t elem) -> state;
+    foldr : (elem, state @ (elem, state) -> state, state, t elem) -> state;
+};
 
-val Array : ARRAY = module
-    type t elem = __array elem
-    type size = __uint
-    type key = __uint
+Array : ARRAY = {
+    type t elem = __array elem;
+    type size = __uint;
+    type key = __uint;
 
-    fun count arr = __arrayCount arr
+    fun count arr = __arrayCount arr;
 
-    fun get arr i = __arrayGet arr i
+    fun get arr i = __arrayGet arr i;
 
     fun set arr i v =
-        unfoldl (count arr) fn i' -> match i' == i
-                | True -> {elem = v, state = i' - 1}
-                | False -> {elem = get arr i', state = i' - 1}
-            end
-        end
+        unfoldl (count arr) [| i' -> match (i' == i) [
+                | True -> {elem = v; state = i' - 1}
+                | False -> {elem = get arr i'; state = i' - 1}
+            ]
+        ]
         (count arr - 1)
 
-    fun update arr = set arr i (f (get arr i))
+    fun update arr = set arr i (f (get arr i));
 
     # TODO: Add 'unsafe' effect to `set` and `build` when effect system appears:
-    val Builder : interface
-        type t elem
+    Builder : {|
+        type t elem;
 
-        val new : pi elem => size -> t elem
-        val set : pi elem => t elem -> key -> elem -> {:}
-        val build : pi elem => t elem -> Array.t elem
-    end = module
-        type t elem = __array elem
+        new : pi elem => size -> t elem;
+        set : pi elem => t elem -> key -> elem -> {|};
+        build : pi elem => t elem -> Array.t elem;
+    } = {|
+        type t elem = __array elem;
 
-        fun new len = __arrayNew len
-        fun set builder i v = __arrayUnsafeSet builder i v
-        val build = Fn.id
-    end
+        fun new len = __arrayNew len;
+        fun set builder i v = __arrayUnsafeSet builder i v;
+        build = Fn.id;
+    };
 
-    fun unfoldl len f state = begin
-        val builder = Builder.new len
-        fun loop state = fn i -> match i > 0
-                | True -> do
-                    val i = i - 1
-                    val es = f state
-                    ; Builder.set builder i es.elem
-                    ; loop es.state i
-                end
-                | False -> Builder.build builder
-            end
-        end
-        ; loop state len
-    end
+    fun unfoldl len f state = let {
+        builder = Builder.new len;
+        fun loop state i = match (i > 0) [
+            | True -> begin {
+                i = i - 1;
+                es = f state;
+                Builder.set builder i es.elem;
+                loop es.state i
+            }
+            | False -> Builder.build builder
+        ];
+        loop state len
+    };
 
-    fun unfoldr len f state = begin
-        val builder = Builder.new len
-        fun loop state = fn i -> match i < len
-                | True -> do
-                    val es = f state
-                    ; Builder.set builder i es.elem 
-                    ; loop es.state (i + 1)
-                end
-                | False -> Builder.build builder
-            end
-        end
-        ; loop state 0
-    end
+    fun unfoldr len f state = let {
+        builder = Builder.new len;
+        fun loop state i = match (i < len) [
+            | True -> begin {
+                es = f state;
+                Builder.set builder i es.elem;
+                loop es.state (i + 1)
+            }
+            | False -> Builder.build builder
+        ];
+        loop state 0
+    };
 
-    fun foldl f state arr = begin
-        val len = count arr
-        fun loop state = fn i -> match i < len
-                | True -> loop (f state (get arr i)) (i + 1)
-                | False -> state
-            end
-        end
-        ; loop state 0
-    end
+    fun foldl f state arr = let {
+        len = count arr;
+        fun loop state i = match (i < len) [
+            | True -> loop (f state (get arr i)) (i + 1)
+            | False -> state
+        ];
+        loop state 0
+    };
 
-    fun foldr f state arr = begin
-        fun loop state = fn i -> match i > 0
-                | True -> do
-                    val i = i - 1
-                    loop (f (get arr i) state) i
-                end
-                | False -> state
-            end
-        end
-        ; loop state (count arr)
-    end
-end
+    fun foldr f state arr = let {
+        fun loop state i = match (i > 0) [
+            | True -> begin {
+                i = i - 1;
+                loop (f (get arr i) state) i
+            }
+            | False -> state
+        ];
+        loop state (count arr)
+    };
+};
 

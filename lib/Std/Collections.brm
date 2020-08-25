@@ -1,4 +1,4 @@
-val Collections = module
-    @include "./Collections/Array"
-end
+Collections = {
+    include "./Collections/Array";
+};
 

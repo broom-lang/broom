@@ -1,48 +1,46 @@
-val Parsers : interface
-end = module
-    val Char = @require Std.Char
-    val String = @require Std.String
-    val State = @require Std.Eff.State
+Parsers : {|
+} = {
+    Char = require Std.Char;
+    String = require Std.String;
+    State = require Std.Eff.State;
 
-    val Error = enum
-        type t
+    Error = enum {
+        type t;
 
-        val EndOfInput : {:} -> t
-        val Expected : {expected : Char.t, actual : Char.t} -> t
-    end
+        EndOfInput : {|} -> t;
+        Expected : {|expected : Char.t; actual : Char.t} -> t;
+    };
 
-    type error = Error.t
+    type error = Error.t;
 
-    type t a = {} -> ! (State : State.t String.Slice.t, Error : error) a
+    type t a = () -> (|State : State.t String.Slice.t; Error : error) ! a;
 
-    val anyChar : t Char.t =
-        fn {} ->
-            match String.Slice.uncons (! ('State (State.Get {})))
-            | Some {first, rest} -> do
-                ; ! ('State (State.Set rest))
-                ; first
-            end
-            | None {} -> ! ('Error (Error.EndOfInput {}))
-            end
-        end
+    anyChar : t Char.t = [
+        match (String.Slice.uncons (! ('State (State.Get {})))) [
+        | Some {first; rest} -> begin {
+            ! ('State (State.Set rest));
+            first
+        }
+        | None {} -> ! ('Error (Error.EndOfInput {}))
+        ]
+    ];
 
-    val char : Char.t -> t Char.t =
-        fn expected {} ->
-            match anyChar {}
-            | actual when actual == expected -> actual
-            | actual -> ! ('Error (Error.Expected {expected, actual}))
-            end
-        end
+    char : Char.t => t Char.t = [| expected -> [
+        match (anyChar @) [
+        | actual when actual == expected -> actual
+        | actual -> ! ('Error (Error.Expected {expected, actual}))
+        ]
+    ]];
 
-    val (<|>) : t a -> t a -> t a =
-        fn parser parser' {} ->
-            match parser {}
-            | v -> v
-            | effect ('Error _) _ -> parser' {}
-            end
-        end
+    (<|>) : (t a, t a) => t a = [| parser parser' -> [
+        match (parser @) [
+        | v -> v
+        | effect ('Error _) _ -> parser' {}
+        ]
+    ]];
 
-    val build : t a -> String.t -> ! (Error : error) a =
-        fn parser cs -> State.eval parser (String.Slice.from cs) end
-end
+    build : (t a, String.t) -> (|Error : error) ! a = [| parser cs ->
+        State.eval parser (String.Slice.from cs)
+    ];
+};
 
