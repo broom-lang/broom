@@ -1,24 +1,24 @@
 ARRAY = {|
-    type t elem;
+    type t a;
     size = __uint; -- TODO: Get this from its module
     key = __uint;
 
-    count : elem @ t elem -> size;
-    get : (elem @ t elem, key) -> elem;
-    set : (elem @ t elem, key, elem) -> t elem;
-    update : (elem @ t elem, key, elem -> elem) -> t elem;
+    count : a => t a -> size;
+    get : a => (t a, key) -> a;
+    set : a => (t a, key, a) -> t a;
+    update : (a, e) => (t a, key, (a ~> e ! a)) ~> e ! t a;
 
-    unfoldl : (elem, state @ size, state -> {elem : elem; state : state}, state)
-        -> {array : t elem; state : state};
-    unfoldr : (elem, state @ size, state -> {elem : elem; state : state}, state)
-        -> {array : t elem; state : state};
+    unfoldl : (a, s, e) => (size, (s ~> e ! {a : a; s : s}), s)
+        ~> e ! {array : t a; s : s};
+    unfoldr : (a, s, e) => (size, (s ~> e ! {a : a; s : s}), s)
+        ~> e ! {array : t a; s : s};
 
-    foldl : (elem, state @ (state, elem) -> state, state, t elem) -> state;
-    foldr : (elem, state @ (elem, state) -> state, state, t elem) -> state;
+    foldl : (a, s, e) => (((s, a) ~> e ! s), s, t a) ~> e ! s;
+    foldr : (a, s, e) => (((a, s) ~> e ! s), s, t a) ~> e ! s;
 };
 
 Array : ARRAY = {
-    type t elem = __array elem;
+    type t a = __array a;
     size = __uint;
     key = __uint;
 
@@ -36,15 +36,15 @@ Array : ARRAY = {
 
     fun update arr = set arr i (f (get arr i));
 
-    -- TODO: Add 'unsafe' effect to `set` and `build` when effect system appears:
+    -- TODO: Add 'unsafe' effect to `set` and `build` when )effect system appears:
     Builder : {|
-        type t elem;
+        type t a;
 
-        new : pi elem => size -> t elem;
-        set : pi elem => t elem -> key -> elem -> {|};
-        build : pi elem => t elem -> Array.t elem;
+        new : a => size -> t a;
+        set : a => (t a, key, a) -> ();
+        build : a => t a -> Array.t a;
     } = {|
-        type t elem = __array elem;
+        type t a = __array a;
 
         fun new len = __arrayNew len;
         fun set builder i v = __arrayUnsafeSet builder i v;

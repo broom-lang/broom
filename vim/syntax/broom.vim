@@ -11,6 +11,8 @@ syntax match broomEq '='
 highlight default link broomEq Operator
 syntax match broomArrow "->"
 highlight default link broomArrow Operator
+syntax match broomEffow "\~>"
+highlight default link broomEffow Operator
 syntax match broomDArrow "=>"
 highlight default link broomDArrow Operator
 syntax match broomBang "!"

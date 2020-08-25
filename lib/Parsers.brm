@@ -13,7 +13,7 @@ Parsers : {|
 
     error = Error.t;
 
-    type t a = () -> (|State : State.t String.Slice.t; Error : error) ! a;
+    type t a = () ~> (|State : State.t String.Slice.t; Error : error) ! a;
 
     anyChar : t Char.t = [
         match (String.Slice.uncons (! ('State (State.Get {})))) [
@@ -25,21 +25,21 @@ Parsers : {|
         ]
     ];
 
-    char : Char.t => t Char.t = [| expected -> [
+    char : Char.t -> t Char.t = [| expected -> [
         match (anyChar @) [
         | actual when actual == expected -> actual
         | actual -> ! ('Error ('Error.Expected {expected; actual}))
         ]
     ]];
 
-    (<|>) : (t a, t a) => t a = [| parser parser' -> [
+    (<|>) : a => (t a, t a) -> t a = [| a @ parser parser' -> [
         match (parser @) [
         | v -> v
         | effect (`Error _) _ -> parser' {}
         ]
     ]];
 
-    build : (t a, String.t) -> (|Error : error) ! a = [| parser cs ->
+    build : a => (t a, String.t) ~> (|Error : error) ! a = [| a @ parser cs ->
         State.eval parser (String.Slice.from cs)
     ];
 };

@@ -1,6 +1,6 @@
 type FN = {|
-    id : a @ a => a;
-    const : (a, b @ a) -> (b -> a);
+    id : a => a -> a;
+    const : (a, b) => a -> (b -> a);
 };
 
 Fn = {

@@ -2,22 +2,22 @@ type OPTION = {|
     extends enum {|
         type t a;
 
-        Some : a @ a => t a;
-        None : a @ => t a;
+        Some : a => a -> t a;
+        None : a => t a;
     };
 
-    pure : a @ a => t a;
-    map :  (a, b @ a -> b, t a) -> t b;
-    apply : (a, b @ t (a -> b), t a) -> t b;
-    flatMap : (a, b @ a -> t b, t a) -> t b;
+    pure : a => a -> t a;
+    map :  (a, b, e) => ((a ~> e ! b), t a) ~> e ! t b;
+    apply : (a, b, e) => (t (a ~> e ! b), t a) ~> e ! t b;
+    flatMap : (a, b, e) => ((a ~> e ! t b), t a) ~> e ! t b;
 };
 
 Option : OPTION = {
     extends enum {
         type t a;
 
-        Some : a @ a => t a;
-        None : a @ => t a;
+        Some : a => a -> t a;
+        None : a => t a;
     };
 
     pure = Some;
