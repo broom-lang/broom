@@ -19,5 +19,51 @@ Currently can't run any useful programs, but this is what it will be like:
 * Row-typed records (and modules, since they are the same)
 * Row-based effect system à la Koka
 
+## (Abstract) Syntax
+
+```
+program ::= defs
+repl_input ::= stmts*
+
+stmt ::= def | expr
+stmts ::= stmt (";" stmt)*
+
+def ::= pat "=" expr
+defs ::= def (";" def)*
+
+expr ::=
+pat ::=
+type ::= 
+    | type "->" type "!" type
+    | type "=>" type
+
+    | expr ":" type
+    | expr "||" expr
+    | expr "&&" expr
+    | expr ("==" | "<" | "<=" | ">" | ">=") expr
+    | expr ("+" | "-") expr
+    | expr ("*" | "/" | "%") expr
+    | expr OTHER_INFIX expr
+    | expr expr+
+    | PREFIX expr
+    | expr POSTFIX
+    | expr "." ID
+
+    | "[" ("|" apat+ "->" expr)* "]" (* function literal *)
+    | "[" stmts "]" (* thunk *)
+    | "{" stmts? "}"
+    | "(" (expr ("," expr)*)? ")"
+    | "(" ( "||" | "&&"
+          | "==" | "<" | "<=" | ">" | ">="
+          | "+" | "-"
+          | "*" | "/" | "%" ) ")"
+    | "{" "|" stmts? "|" ")"
+    | "(" "|" stmts? "|" ")"
+
+    | ID
+    | "_"
+    | CONST
+```
+
 See [the intro](docs/source/introduction.rst) for a slightly more detailed exposition.
 

@@ -1,3 +1,5 @@
+module T = Fc.Type
+
 type uv = Fc.Uv.t
 
 type t
@@ -7,6 +9,8 @@ val eval : unit -> t
 
 val add : Name.t -> Fc.Type.t -> t -> t
 val find : Name.t -> t -> Fc.Type.t
+
+val generate : t -> T.binding -> T.binding * T.level
 
 (* HACK: *)
 val uv : t -> Name.t -> uv
