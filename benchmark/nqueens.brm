@@ -1,30 +1,34 @@
-val (::) = List.(::)
+(::) = List.(::);
 
-fun nqueens n = begin
-  fun iota1 n = begin
-    fun loop l = fn match
-     | 0 -> l
-     | i -> loop (i - 1) (i :: l)
-     end
+fun nqueens n = let {
+  fun iota1 n = let {
+    fun loop l = [
+    | 0 -> l
+    | i -> loop (i - 1) (i :: l)
+    ];
     
-    ; loop n List.Empty
-  end
+    loop n List.Empty
+  };
 
-  fun myTry List.Empty List.Empty _ = 1
-    | myTry List.Empty _ _ = 0
-    | myTry (x0 :: x') y z =
-      match isOk x0 1 z
-      | True -> myTry (List.concat x' y) List.empty (x0 :: z)
-      | False -> 0
-      end
-      + myTry x' (x0 :: y) z
+  fun myTry x y z = match x y z [
+  | List.Empty List.Empty _ -> 1
+  | List.Empty _ _ -> 0
+  | (x0 :: x') y z ->
+    match (isOk x0 1 z) [
+    | True -> myTry (List.concat x' y) List.empty (x0 :: z)
+    | False -> 0
+    ]
+    + myTry x' (x0 :: y) z
+  ];
 
-  fun isOk _ _ List.Empty = True
-    | isOk row dist (placed0 :: placed') =
-      not (placed0 == row + dist)
-      && not (placed0 == row - dist)
-      && isOk row (dist + 1) placed'
+  fun isOk row dist placed = match row dist placed [
+  |_ _ List.Empty -> True
+  | row dist (placed0 :: placed') ->
+    not (placed0 == row + dist)
+    && not (placed0 == row - dist)
+    && isOk row (dist + 1) placed';
+  ]
 
-  ; myTry (iota1 n) List.Empty List.Empty
-end
+  myTry (iota1 n) List.Empty List.Empty;
+};
 
