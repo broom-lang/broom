@@ -12,13 +12,13 @@ State : {|
         Get : s @ => s;
         Set : s @ s => {|};
     };
-    # = {
-    #     # type request v r = {|type response = r; request : v};
-    #     Get : s @ => {|type response = s; request : {|}} =
-    #         [| s => [|request -> 'Get {response = s; request}]];
-    #     Set : s @ s => {|type response = {|}; request : s} =
-    #         [| s => [| state -> 'Set {response = {|}, request = state} ]];
-    # } ?
+    -- = {
+    --     # type request v r = {|type response = r; request : v};
+    --     Get : s @ => {|type response = s; request : {|}} =
+    --         [| s => [|request -> 'Get {response = s; request}]];
+    --     Set : s @ s => {|type response = {|}; request : s} =
+    --         [| s => [| state -> 'Set {response = {|}, request = state} ]];
+    -- } ?
 
     fun run thunk state = match (thunk @) [
     | value -> [| state -> {state, value}]

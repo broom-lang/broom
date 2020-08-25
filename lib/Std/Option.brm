@@ -1,9 +1,9 @@
 type OPTION = {|
     extends enum {|
-        type t a
+        type t a;
 
-        val Some : a @ a => t a
-        val None : a @ => t a
+        Some : a @ a => t a;
+        None : a @ => t a;
     };
 
     pure : a @ a => t a;

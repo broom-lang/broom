@@ -7,11 +7,11 @@ Parsers : {|
     Error = enum {
         type t;
 
-        EndOfInput : {|} -> t;
-        Expected : {|expected : Char.t; actual : Char.t} -> t;
+        EndOfInput : t;
+        Expected : {|expected : Char.t; actual : Char.t} => t;
     };
 
-    type error = Error.t;
+    error = Error.t;
 
     type t a = () -> (|State : State.t String.Slice.t; Error : error) ! a;
 
@@ -21,21 +21,21 @@ Parsers : {|
             ! ('State (State.Set rest));
             first
         }
-        | None {} -> ! ('Error (Error.EndOfInput {}))
+        | None {} -> ! (`Error 'Error.EndOfInput)
         ]
     ];
 
     char : Char.t => t Char.t = [| expected -> [
         match (anyChar @) [
         | actual when actual == expected -> actual
-        | actual -> ! ('Error (Error.Expected {expected, actual}))
+        | actual -> ! ('Error ('Error.Expected {expected; actual}))
         ]
     ]];
 
     (<|>) : (t a, t a) => t a = [| parser parser' -> [
         match (parser @) [
         | v -> v
-        | effect ('Error _) _ -> parser' {}
+        | effect (`Error _) _ -> parser' {}
         ]
     ]];
 
