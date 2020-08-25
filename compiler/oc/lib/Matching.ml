@@ -199,7 +199,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
         | (_, Uv uv) ->
             (match Env.get_uv env uv with
             | Unassigned _ ->
-                if occ then occurs_check pos env uv super else ();
+                if occ then occurs_check pos env uv typ else ();
                 subtype pos false env typ locator (articulate pos occ env super typ)
             | Assigned _ -> failwith "unreachable: Assigned `super` in `subtype_whnf`")
 
