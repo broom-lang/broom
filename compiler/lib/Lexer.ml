@@ -29,7 +29,7 @@ let rec token ({SedlexMenhir.stream; _} as lexbuf) =
     | "&&" -> L.update lexbuf; CONJUNCTION (L.lexeme lexbuf)
     | "==" | '<' | '>' | "<=" | ">=" -> L.update lexbuf; COMPARISON (L.lexeme lexbuf)
     | '+' | '-' -> L.update lexbuf; ADDITIVE (L.lexeme lexbuf)
-    | '*' | '/' | '%' -> L.update lexbuf; MULTIPLICATIVE (L.lexeme lexbuf)
+    | '*' | '/' -> L.update lexbuf; MULTIPLICATIVE (L.lexeme lexbuf)
 
     | '='  -> L.update lexbuf; EQ
     | ':'  -> L.update lexbuf; COLON

@@ -42,7 +42,7 @@ type ::=
     | expr "&&" expr
     | expr ("==" | "<" | "<=" | ">" | ">=") expr
     | expr ("+" | "-") expr
-    | expr ("*" | "/" | "%") expr
+    | expr ("*" | "/") expr
     | expr OTHER_INFIX expr
     | expr expr+
     | PREFIX expr
