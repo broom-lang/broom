@@ -109,8 +109,8 @@ and Type : AstSigs.TYPE
 
     let rec to_doc = function
         | Pi (domain, eff, codomain) ->
-            PPrint.infix 4 1 (PPrint.string "->") (Term.Expr.to_doc domain.v)
-                (PPrint.infix 4 1 PPrint.bang (to_doc eff.v) (to_doc codomain.v))
+            PPrint.infix 4 1 (PPrint.string "-!") (Term.Expr.to_doc domain.v)
+                (PPrint.infix 4 1 (PPrint.string "->") (to_doc eff.v) (to_doc codomain.v))
         | Record stmts ->
             PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.bar)
                 (PPrint.lbrace ^^ PPrint.bar) (PPrint.semi ^^ PPrint.break 1) (PPrint.bar ^^ PPrint.rbrace)

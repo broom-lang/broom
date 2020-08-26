@@ -21,6 +21,7 @@ let rec token ({SedlexMenhir.stream; _} as lexbuf) =
     | "--", Star (Compl '\n') -> L.update lexbuf; token lexbuf
     | eof -> L.update lexbuf; Parser.EOF
 
+    | "-!" -> L.update lexbuf; EFFOW
     | "->" -> L.update lexbuf; ARROW
     | "<-" -> L.update lexbuf; LARROW
     | "=>" -> L.update lexbuf; DARROW

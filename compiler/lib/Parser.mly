@@ -16,7 +16,7 @@ let proxy = function
 %}
 
 %token
-    ARROW "->" LARROW "<-" DARROW "=>" EQ "="
+    EFFOW "-!" ARROW "->" LARROW "<-" DARROW "=>" EQ "="
     DOT "." COLON ":" COMMA "," SEMI ";"
     BAR "|" BANG "!" QMARK "?" AT "@" BACKSLASH
     LPAREN "(" RPAREN ")" LBRACKET "[" RBRACKET "]" LBRACE "{" RBRACE "}"
@@ -62,7 +62,7 @@ ann_expr :
     | explicitly { $1 }
 
 explicitly :
-    | binapp at_params { failwith "TODO" }
+    | binapp at_args { failwith "TODO" }
     | binapp { $1 }
 
 binapp :
@@ -101,7 +101,7 @@ binapp5 :
     | app { $1 }
 
 app :
-    | PRIMOP params? {
+    | PRIMOP args? {
         let args = match $2 with
             | Some args -> Vector1.to_vector args
             | None -> Vector.empty () in
@@ -109,7 +109,7 @@ app :
         | Some op -> {v = PrimApp (op, args); pos = $loc}
         | None -> failwith ("No such primop: __" ^ $1)
     }
-    | select params { {v = AppSequence (Vector1.append (Vector1.singleton $1) $2); pos = $loc} }
+    | select args { {v = AppSequence (Vector1.append (Vector1.singleton $1) $2); pos = $loc} }
     | select { $1 }
 
 select :
@@ -143,18 +143,20 @@ nestable_without_pos :
     | WILD { failwith "TODO" }
     | INT { Const (Int $1) }
 
-(* TODO: Use `at_params`: *)
-clause : "|" params? at_params? "->" expr {
-        let params = match $2 with
-            | Some params -> Vector1.to_vector params
-            | None -> Vector.empty () in
-        {pats = params; body = $5}
+(* TODO: Use `implicit_pats`: *)
+clause : "|" params "->" expr {
+        let (implicit_pats, pats) = $2 in
+        {pats; body = $4}
     }
 
-params : select+ { Vector1.of_list $1 |> Option.get }
+params :
+    | select+ "=>" select* { ($1 |> Vector.of_list, $3 |> Vector.of_list) }
+    | select* { (Vector.empty (), Vector.of_list $1) }
 
-at_params : "@" params? { match $2 with (* TODO: Implicit args need more design *)
-        | Some params -> Vector1.to_vector params
+args : select+ { Vector1.of_list $1 |> Option.get }
+
+at_args : "@" args? { match $2 with (* TODO: Implicit args need more design *)
+        | Some args -> Vector1.to_vector args
         | None -> Vector.empty ()
     }
 
@@ -163,7 +165,10 @@ at_params : "@" params? { match $2 with (* TODO: Implicit args need more design 
 typ : typ_without_pos { {v = $1; pos = $sloc} }
 
 typ_without_pos :
-    | explicitly "->" typ "!" typ { Pi ($1, $3, $5) }
-    | explicitly "=>" typ { Pi ($1, {v = Row (Vector.empty ()); pos = $loc($2)}, $3) }
+    | binapp "=>" binapp "-!" binapp "->" typ { failwith "TODO" }
+    | binapp "=>" binapp "->" typ { failwith "TODO" }
+    | binapp "=>" ann_expr { failwith "TODO" }
+    | binapp "-!" binapp "->" typ { Pi ($1, {$3 with v = path $3.v}, $5) }
+    | binapp "->" typ { Pi ($1, {v = Row (Vector.empty ()); pos = $loc($2)}, $3) }
     | ann_expr { path $1.v }
 
