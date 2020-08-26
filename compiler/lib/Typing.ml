@@ -90,7 +90,7 @@ and check_abs : Env.t -> T.abs -> AExpr.t with_pos -> FExpr.t with_pos typing
     else failwith "TODO: check_abs with existentials"
 
 and check : Env.t -> T.locator -> T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
-= fun env locator -> function
+= fun env locator typ -> match typ with
     | T.Pi (universals, domain, eff, codomain) -> (fun expr ->
         match expr.v with
         | AExpr.Fn clauses ->
@@ -104,9 +104,13 @@ and check : Env.t -> T.locator -> T.t -> AExpr.t with_pos -> FExpr.t with_pos ty
                 { term = {expr with v = Fn ((* FIXME: *) Vector.empty (), params, body)}
                 ; typ = Pi (universals, domain, eff, codomain)
                 ; eff }
-            | None -> failwith "TODO: check clauseless fn"))
+            | None -> failwith "TODO: check clauseless fn")
+        | _ -> (* TODO: DRY: *)
+            let {TyperSigs.term = expr; typ = expr_typ; eff} = typeof env expr in
+            let Cf coerce = M.solving_subtype expr.pos env expr_typ locator typ in
+            {term = coerce expr; typ; eff})
     | Record row -> failwith "TODO: check Record"
-    | typ -> (fun expr ->
+    | _ -> (fun expr ->
         let {TyperSigs.term = expr; typ = expr_typ; eff} = typeof env expr in
         let Cf coerce = M.solving_subtype expr.pos env expr_typ locator typ in
         {term = coerce expr; typ; eff})
