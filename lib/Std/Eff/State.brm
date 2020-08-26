@@ -4,9 +4,11 @@ State : {|
         Set : s => s -> ();
     };
 
-    run : (e, s, a) => ((() ~> e with (|State : t s) ! v), s) ~> e ! {state : s; value : v};
-    eval : (e, s, a) => ((() ~> e with (|State : t s) ! v), s) ~> e ! v;
-    exec : (e, s, a) => ((() ~> e with (|State : t s) ! v), s) ~> e ! s;
+    type eff s = (|State : t s);
+
+    run : (e, s, a) => ((() -! e with eff s -> v), s) -!e-> {state : s; value : v};
+    eval : (e, s, a) => ((() -! e with eff s -> v), s) -!e-> v;
+    exec : (e, s, a) => ((() -! e with eff s -> v), s) -!e-> s;
 } = {
     extends effect {
         Get : s => s;
@@ -20,10 +22,12 @@ State : {|
     --         [| s => [| state -> 'Set {response = {|}, request = state} ]];
     -- } ?
 
-    fun run thunk state = match (thunk @) [
+    type eff s = (|State : t s);
+
+    fun run thunk state = match thunk ! [
     | value -> [| state -> {state, value}]
     | effect (`State 'Get) k -> [| state -> (k state) state]
-    | effect (`State ('Set state)) k -> [| _ -> (k @) state ]
+    | effect (`State ('Set state)) k -> [| _ -> k ! state ]
     ];
 
     fun eval thunk state = (run thunk state).value;

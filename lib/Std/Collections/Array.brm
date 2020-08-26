@@ -1,26 +1,26 @@
 ARRAY = {|
     type t a;
-    size = __uint; -- TODO: Get this from its module
-    key = __uint;
+    type size = __uint; -- TODO: Get this from its module
+    type key = __uint;
 
     count : a => t a -> size;
     get : a => (t a, key) -> a;
     set : a => (t a, key, a) -> t a;
-    update : (a, e) => (t a, key, (a ~> e ! a)) ~> e ! t a;
+    update : (a, e) => (t a, key, a -!e-> a) -!e-> t a;
 
-    unfoldl : (a, s, e) => (size, (s ~> e ! {a : a; s : s}), s)
-        ~> e ! {array : t a; s : s};
-    unfoldr : (a, s, e) => (size, (s ~> e ! {a : a; s : s}), s)
-        ~> e ! {array : t a; s : s};
+    unfoldl : (a, s, e) => (size, (s -!e-> {a : a; s : s}), s)
+        -!e-> {array : t a; s : s};
+    unfoldr : (a, s, e) => (size, (s -!e-> {a : a; s : s}), s)
+        -!e-> {array : t a; s : s};
 
-    foldl : (a, s, e) => (((s, a) ~> e ! s), s, t a) ~> e ! s;
-    foldr : (a, s, e) => (((a, s) ~> e ! s), s, t a) ~> e ! s;
+    foldl : (a, s, e) => (((s, a) -!e-> s), s, t a) -!e-> s;
+    foldr : (a, s, e) => (((a, s) -!e-> s), s, t a) -!e-> s;
 };
 
 Array : ARRAY = {
     type t a = __array a;
-    size = __uint;
-    key = __uint;
+    type size = __uint;
+    type key = __uint;
 
     fun count arr = __arrayCount arr;
 
@@ -36,13 +36,12 @@ Array : ARRAY = {
 
     fun update arr = set arr i (f (get arr i));
 
-    -- TODO: Add 'unsafe' effect to `set` and `build` when )effect system appears:
     Builder : {|
         type t a;
 
         new : a => size -> t a;
-        set : a => (t a, key, a) -> ();
-        build : a => t a -> Array.t a;
+        set : a => (t a, key, a) -! unsafe -> ();
+        build : a => t a -! unsafe -> Array.t a;
     } = {|
         type t a = __array a;
 
