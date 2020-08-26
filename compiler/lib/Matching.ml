@@ -44,7 +44,7 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
             | Assigned _ -> failwith "unreachable: Assigned uv in `focalize`.")
         | _ ->
             (match template with
-            | PiL _ ->
+            | PiL _ -> (* TODO: arity check (or to `typeof`/`App`?) *)
                 (match typ with
                 | Pi _ -> (Cf Fun.id, typ)
                 | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
