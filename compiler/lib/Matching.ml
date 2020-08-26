@@ -15,6 +15,8 @@ type coercer = TyperSigs.coercer
 
 type 'a matching = {coercion : 'a; residual : Residual.t option}
 
+let sibling = Env.sibling
+
 (* # Focalization *)
 
 let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
@@ -24,11 +26,11 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
             (match Env.get_uv env uv with
             | Unassigned _ ->
                 let (uv, typ) = match template with
-                    (*| PiL _ ->
-                        (uv, Pi (Vector.of_list [], Hole, Uv (sibling uv), Impure, (to_abs (Uv (sibling uv)))))*)
-                    | T.TypeL _ -> (uv, T.Type (T.to_abs (Uv (Env.sibling env uv))))
-
-                    | RecordL _ -> raise (Err.TypeError (pos, RecordArticulationL template)) (* no can do without row typing *)
+                    | T.PiL (arity, _) ->
+                        (uv, T.Pi ( Vector.of_list []
+                                  , Vector.init arity (fun _ -> (T.Hole, T.Uv (sibling env uv)))
+                                  , Uv (sibling env uv), (T.to_abs (Uv (sibling env uv))) ))
+                    | TypeL _ -> (uv, T.Type (T.to_abs (Uv (sibling env uv))))
                     | Hole -> failwith "unreachable: Hole as template in `articulate_template`" in
                 Env.set_uv env uv (Assigned typ);
                 typ
@@ -172,10 +174,10 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                         else raise (Err.TypeError (pos, Escape ov))
 
                     (*| Pi _ ->
-                        (uv, Pi (Vector.of_list [], Hole, Uv (Env.sibling env uv), Impure, (to_abs (Uv (Env.sibling env uv)))))*)
-                    | Type _ -> (uv, Type (T.to_abs (Uv (Env.sibling env uv))))
+                        (uv, Pi (Vector.of_list [], Hole, Uv (sibling env uv), Impure, (to_abs (Uv (sibling env uv)))))*)
+                    | Type _ -> (uv, Type (T.to_abs (Uv (sibling env uv))))
                     | App (_, args) ->
-                        (uv, T.App (Uv (Env.sibling env uv), Vector1.map (fun _ -> T.Uv (Env.sibling env uv)) args))
+                        (uv, T.App (Uv (sibling env uv), Vector1.map (fun _ -> T.Uv (sibling env uv)) args))
                     | Prim pt -> (uv, Prim pt)
 
                     | Record _ -> raise (Err.TypeError (pos, RecordArticulation template)) (* no can do without row typing *)

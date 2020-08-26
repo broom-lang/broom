@@ -19,7 +19,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
         | Cons (clause, clauses') ->
             let (universals, domain, {TyperSigs.term = clause; typ = codomain; eff}) =
                 elaborate_clause env clause in
-            let clauses' = Seq.map (check_clause env domain eff codomain) clauses' in
+            let clauses' = Seq.map (check_clause env domain eff ((* HACK: *) T.to_abs codomain))
+                clauses' in
             let clauses = Vector.of_seq (fun () -> Seq.Cons (clause, clauses')) in
             let params = clause . FExpr.pats in (* HACK *)
             let param_uses =
@@ -76,9 +77,9 @@ and elaborate_clause env {pats; body} =
     let {TyperSigs.term = body; typ = codomain; eff} = typeof body_env body in
     (existentials, domain, {term = {FExpr.pats; body}; typ = codomain ; eff})
 
-and check_clause env domain codomain eff {pats; body} =
+and check_clause env domain eff codomain {pats; body} =
     let (pats, body_env) = check_pats env domain pats in
-    let {TyperSigs.term = body; typ = _; eff = body_eff} = typeof body_env body in
+    let {TyperSigs.term = body; typ = _; eff = body_eff} = check_abs body_env codomain body in
     ignore (M.solving_unify body.pos env body_eff eff);
     {pats; body}
 
@@ -90,7 +91,20 @@ and check_abs : Env.t -> T.abs -> AExpr.t with_pos -> FExpr.t with_pos typing
 
 and check : Env.t -> T.locator -> T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env locator -> function
-    | T.Pi (universals, domain, eff, codomain) -> failwith "TODO: check Pi"
+    | T.Pi (universals, domain, eff, codomain) -> (fun expr ->
+        match expr.v with
+        | AExpr.Fn clauses ->
+            (match Vector1.of_vector clauses with
+            | Some clauses ->
+                let clauses = Vector1.map (check_clause env domain eff codomain) clauses in
+                let params = (Vector1.get clauses 0) . FExpr.pats in (* HACK *)
+                let param_uses =
+                    Vector.map (fun {FExpr.name; _} -> {expr with v = FExpr.Use name}) params in
+                let body = {expr with v = FExpr.Match (param_uses, Vector1.to_vector clauses)} in
+                { term = {expr with v = Fn ((* FIXME: *) Vector.empty (), params, body)}
+                ; typ = Pi (universals, domain, eff, codomain)
+                ; eff }
+            | None -> failwith "TODO: check clauseless fn"))
     | Record row -> failwith "TODO: check Record"
     | typ -> (fun expr ->
         let {TyperSigs.term = expr; typ = expr_typ; eff} = typeof env expr in

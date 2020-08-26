@@ -6,6 +6,7 @@ let singleton v = Array.make 1 v
 let length = Array.length
 let get = Array.get
 
+let init = Array.init
 let of_list = Array.of_list
 let to_list = Array.to_list
 let of_seq = Array.of_seq

@@ -10,6 +10,7 @@ val singleton : 'a -> 'a t
 val length : 'a t -> int
 val get : 'a t -> int -> 'a
 
+val init : int -> (int -> 'a) -> 'a t
 val of_list : 'a list -> 'a t
 val to_list : 'a t -> 'a list
 val of_seq : 'a Seq.t -> 'a t
