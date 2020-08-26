@@ -6,9 +6,9 @@ State : {|
 
     type eff s = (|State : t s);
 
-    run : (e, s, a) => ((() -! e with eff s -> v), s) -!e-> {state : s; value : v};
-    eval : (e, s, a) => ((() -! e with eff s -> v), s) -!e-> v;
-    exec : (e, s, a) => ((() -! e with eff s -> v), s) -!e-> s;
+    run : (e \ State, s, a) => ((() -! e with eff s -> v), s) -!e-> {state : s; value : v};
+    eval : (e \ State, s, a) => ((() -! e with eff s -> v), s) -!e-> v;
+    exec : (e \ State, s, a) => ((() -! e with eff s -> v), s) -!e-> s;
 } = {
     extends effect {
         Get : s => s;
