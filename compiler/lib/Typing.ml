@@ -90,30 +90,24 @@ and check_abs : Env.t -> T.abs -> AExpr.t with_pos -> FExpr.t with_pos typing
     else failwith "TODO: check_abs with existentials"
 
 and check : Env.t -> T.locator -> T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
-= fun env locator typ -> match typ with
-    | T.Pi (universals, domain, eff, codomain) -> (fun expr ->
-        match expr.v with
-        | AExpr.Fn clauses ->
-            (match Vector1.of_vector clauses with
-            | Some clauses ->
-                let clauses = Vector1.map (check_clause env domain eff codomain) clauses in
-                let params = (Vector1.get clauses 0) . FExpr.pats in (* HACK *)
-                let param_uses =
-                    Vector.map (fun {FExpr.name; _} -> {expr with v = FExpr.Use name}) params in
-                let body = {expr with v = FExpr.Match (param_uses, Vector1.to_vector clauses)} in
-                { term = {expr with v = Fn ((* FIXME: *) Vector.empty (), params, body)}
-                ; typ = Pi (universals, domain, eff, codomain)
-                ; eff }
-            | None -> failwith "TODO: check clauseless fn")
-        | _ -> (* TODO: DRY: *)
-            let {TyperSigs.term = expr; typ = expr_typ; eff} = typeof env expr in
-            let Cf coerce = M.solving_subtype expr.pos env expr_typ locator typ in
-            {term = coerce expr; typ; eff})
-    | Record row -> failwith "TODO: check Record"
-    | _ -> (fun expr ->
+= fun env locator typ expr -> match (typ, expr.v) with
+    | (T.Pi (universals, domain, eff, codomain), AExpr.Fn clauses) ->
+        (match Vector1.of_vector clauses with
+        | Some clauses ->
+            let clauses = Vector1.map (check_clause env domain eff codomain) clauses in
+            let params = (Vector1.get clauses 0) . FExpr.pats in (* HACK *)
+            let param_uses =
+                Vector.map (fun {FExpr.name; _} -> {expr with v = FExpr.Use name}) params in
+            let body = {expr with v = FExpr.Match (param_uses, Vector1.to_vector clauses)} in
+            { term = {expr with v = Fn ((* FIXME: *) Vector.empty (), params, body)}
+            ; typ; eff }
+        | None -> failwith "TODO: check clauseless fn")
+    | (Record row, _) -> failwith "TODO: check Record"
+    | (Type row, _) -> failwith "TODO: check Type"
+    | _ ->
         let {TyperSigs.term = expr; typ = expr_typ; eff} = typeof env expr in
         let Cf coerce = M.solving_subtype expr.pos env expr_typ locator typ in
-        {term = coerce expr; typ; eff})
+        {term = coerce expr; typ; eff}
 
 and elaborate_pat : Env.t -> AExpr.pat with_pos -> FExpr.lvalue * T.abs * Env.t
 = fun env pat -> match pat.v with
