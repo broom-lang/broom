@@ -41,7 +41,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
         let {TyperSigs.term = callee; typ = callee_typ; eff = callee_eff} = typeof env callee in
         (match M.focalize callee.pos env callee_typ (PiL (Vector.length args, Hole)) with
         | (Cf coerce, Pi (universals, domain, app_eff, codomain)) ->
-            (* FIXME: Universal instantiation *)
+            let (uvs, domain, app_eff, codomain) =
+                Environmentals.instantiate_arrow env universals domain app_eff codomain in
             let _ = M.solving_unify expr.pos env app_eff callee_eff in
             let args = check_args env app_eff domain args in
             let Exists (existentials, codomain_locator, concr_codomain) = codomain in

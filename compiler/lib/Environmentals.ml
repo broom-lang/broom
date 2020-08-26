@@ -14,11 +14,14 @@ let instantiate_abs env (T.Exists (existentials, locator, body)) =
     , T.expose_locator (Env.uv_substr env) substitution locator
     , T.expose (Env.uv_substr env) substitution body )
 
-let instantiate_arrow env universals domain_locator domain eff codomain =
+let instantiate_arrow env universals domain eff codomain =
     let uvs = Vector.map (fun _ -> Env.uv env (Name.fresh())) universals in
     let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
     ( uvs
-    , T.expose_locator (Env.uv_substr env) substitution domain_locator
-    , T.expose (Env.uv_substr env) substitution domain, eff
+    , Vector.map (fun (locator, param) ->
+        ( T.expose_locator (Env.uv_substr env) substitution locator
+        , T.expose (Env.uv_substr env) substitution param ))
+        domain
+    , eff
     , T.expose_abs (Env.uv_substr env) substitution codomain )
 
