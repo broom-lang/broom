@@ -33,7 +33,7 @@ let rec cause_to_doc s = function
         | Hole -> failwith "unreachable: Unusable as Hole")
     | MissingField (typ, label) -> Fc.Type.to_doc s typ ^/^ PPrint.string "is missing field" ^/^ PPrint.string label
     | SubType (typ, super) -> Fc.Type.to_doc s typ ^/^ PPrint.string "is not a subtype of" ^/^ Fc.Type.to_doc s super
-    | Unify (typ, typ') -> Fc.Type.to_doc s typ ^/^ PPrint.string "does no unify with" ^/^ Fc.Type.to_doc s typ'
+    | Unify (typ, typ') -> Fc.Type.to_doc s typ ^/^ PPrint.string "does not unify with" ^/^ Fc.Type.to_doc s typ'
     | Unresolvable (path, impl) ->
         Fc.Type.to_doc s path ^/^ PPrint.string "cannot be resolved with the unresolved"
             ^/^ Fc.Type.to_doc s impl

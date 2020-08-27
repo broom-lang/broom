@@ -31,6 +31,12 @@ let add k v (env : t) = {env with bindings = Bindings.add k v env.bindings}
 
 let find k (env : t) = Bindings.find k env.bindings
 
+let push_existential (env : t) =
+    let bindings = ref [] in
+    let level = env.level + 1 in
+    ( {env with scopes = Hoisting (bindings, level) :: env.scopes; level}
+    , bindings )
+
 let generate env binding =
     let rec generate = function
         | Hoisting (bindings, level) :: _ ->

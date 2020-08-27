@@ -2,7 +2,7 @@ type t = Int | EmptyRow
 
 let to_string = function
     | Int -> "int"
-    | EmptyRow -> "(||)"
+    | EmptyRow -> "(|)"
 
 let to_doc pt = PPrint.string (to_string pt)
 

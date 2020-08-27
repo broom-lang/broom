@@ -10,6 +10,8 @@ val eval : unit -> t
 val add : Name.t -> Fc.Type.t -> t -> t
 val find : Name.t -> t -> Fc.Type.t
 
+val push_existential : t -> t * T.binding list ref
+
 val generate : t -> T.binding -> T.binding * T.level
 
 (* HACK: *)
