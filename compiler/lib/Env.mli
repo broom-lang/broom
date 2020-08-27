@@ -14,6 +14,8 @@ val push_existential : t -> t * T.binding list ref
 
 val generate : t -> T.binding -> T.binding * T.level
 
+val get_implementation : t -> T.ov -> (Name.t * T.ov * uv) option
+
 (* HACK: *)
 val uv : t -> Name.t -> uv
 val sibling : t -> uv -> uv

@@ -63,15 +63,13 @@ let elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
             (RecordL locators, Record decls)*)
 
         | AType.Path expr ->
-            (match C.typeof env {typ with v = expr} with
-            | {term = _; typ = proxy_typ; eff} ->
-                ( M.solving_unify typ.pos env eff (T.Prim Prim.EmptyRow)
-                ; match M.focalize typ.pos env proxy_typ (TypeL (Uv (Env.uv env (Name.fresh ())))) with
-                  | (_, Type typ) ->
-                      let (_, locator, typ) = reabstract env typ in
-                      (locator, typ)
-                  | _ -> failwith "unreachable" )
-            | _ -> raise (Err.TypeError (typ.pos, ImpureType expr)))
+            let {TyperSigs.term = _; typ = proxy_typ; eff} = C.typeof env {typ with v = expr} in
+            let _ = M.solving_unify typ.pos env eff (T.Prim Prim.EmptyRow) in
+            (match M.focalize typ.pos env proxy_typ (TypeL (Uv (Env.uv env (Name.fresh ())))) with
+            | (_, Type typ) ->
+                let (_, locator, typ) = reabstract env typ in
+                (locator, typ)
+            | _ -> failwith "unreachable")
 
         (*| AType.Singleton expr ->
             (match C.typeof env expr with
@@ -113,16 +111,16 @@ and eval env typ =
               | (None, Some co) -> Some co
               | (None, None) -> None )
         | Fn _ as typ -> Some (typ, None)
-        (*| Ov ov as typ ->
+        | Ov ov as typ ->
             (match Env.get_implementation env ov with
             | Some (axname, _, uv) ->
-                let typ = Uv uv in
-                eval typ |> Option.map (fun (typ, co) ->
+                let typ = T.Uv uv in
+                let+ (typ, co) = eval typ in
                 ( typ
                 , match co with
-                  | Some co -> Some (Trans (AUse axname, co))
-                  | None -> Some (AUse axname) ))
-            | None -> Some (typ, None))*)
+                  | Some co -> Some (T.Trans (AUse axname, co))
+                  | None -> Some (AUse axname) )
+            | None -> Some (typ, None))
         | Uv uv as typ ->
             (match Env.get_uv env uv with
             | Assigned typ -> eval typ

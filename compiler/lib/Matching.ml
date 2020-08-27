@@ -21,7 +21,7 @@ let sibling = Env.sibling
 
 let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
 = fun pos env typ template ->
-    let articulate_template pos uv_typ template = match uv_typ with
+    let articulate_template uv_typ template = match uv_typ with
         | T.Uv uv ->
             (match Env.get_uv env uv with
             | Unassigned _ ->
@@ -40,7 +40,7 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
     let focalize_whnf typ = match typ with
         | T.Uv uv ->
             (match Env.get_uv env uv with
-            | Unassigned _ -> (TyperSigs.Cf Fun.id, articulate_template pos typ template)
+            | Unassigned _ -> (TyperSigs.Cf Fun.id, articulate_template typ template)
             | Assigned _ -> failwith "unreachable: Assigned uv in `focalize`.")
         | _ ->
             (match template with
@@ -368,10 +368,10 @@ and occurs_check pos env uv typ =
         | Type carrie -> check_abs carrie
         | Fn body -> check body
         | App (callee, args) -> check callee; Vector1.iter check args
-        (*| Ov ((_, level') as ov) ->
+        | Ov ((_, level') as ov) ->
             (match Env.get_implementation env ov with
             | Some (_, _, uv') -> check (Uv uv')
-            | None -> ()*)
+            | None -> ())
         | Uv uv' ->
             (match Env.get_uv env uv' with
             | Unassigned (name, level') ->
@@ -493,13 +493,13 @@ and check_uv_assignee pos env uv level max_uv_level typ =
         | Type carrie -> check_abs carrie
         | Fn body -> check body
         | App (callee, args) -> check callee; Vector1.iter check args
-        (*| Ov ((_, level') as ov) ->
+        | Ov ((_, level') as ov) ->
             (match Env.get_implementation env ov with
             | Some (_, _, uv') -> check (Uv uv')
             | None ->
                 if level' <= level
                 then ()
-                else raise (TypeError (pos, Escape ov)))*)
+                else raise (Err.TypeError (pos, Escape ov)))
         | Uv uv' ->
             (match Env.get_uv env uv' with
             | Unassigned (name, level') ->

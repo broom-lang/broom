@@ -6,6 +6,7 @@ type uv = Fc.Uv.t
 
 type scope =
     | Hoisting of T.binding list ref * T.level
+    | Axiom of (Name.t * T.ov * uv) Name.Map.t
 
 type t =
     { bindings : Fc.Type.t Bindings.t
@@ -45,6 +46,16 @@ let generate env binding =
         | _ :: scopes' -> generate scopes'
         | [] -> failwith "Typer.Env.generate: missing root Hoisting scope"
     in generate env.scopes
+
+let get_implementation (env : t) (((name, _), _) : T.ov) =
+    let rec get = function
+        | Axiom kvs :: scopes ->
+            (match Name.Map.find_opt name kvs with
+            | Some axiom -> Some axiom
+            | None -> get scopes)
+        | _ :: scopes -> get scopes
+        | [] -> None
+    in get env.scopes
 
 let uv (env : t) name = Fc.Uv.make_r env.uv_subst (Unassigned (name, env.level))
 
