@@ -2,6 +2,7 @@ type typ = Fc.Type.t
 type abs = Fc.Type.abs
 
 type error =
+    | NonPattern of Ast.Term.Expr.t
     | Unbound of Name.t
     | Unusable of Fc.Type.locator * typ
     | MissingField of typ * string

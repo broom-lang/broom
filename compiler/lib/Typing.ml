@@ -5,6 +5,7 @@ module FExpr = Fc.Term.Expr
 module AStmt = Ast.Term.Stmt
 module FStmt = Fc.Term.Stmt
 module T = Fc.Type
+module Err = TypeError
 
 type 'a with_pos = 'a Util.with_pos
 type 'a typing = 'a TyperSigs.typing
@@ -158,6 +159,8 @@ and elaborate_pat : Env.t -> AExpr.pat with_pos -> FExpr.lvalue * T.locator * T.
         let typ = T.Uv (Env.uv env (Name.fresh ())) in
         ({name; typ}, Hole, typ, Env.push_val env  name typ)
 
+    | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
+
 and elaborate_pats env pats =
     let step (pats, typs, env) pat =
         let (pat, loc, typ, env) = elaborate_pat env pat in
@@ -174,10 +177,12 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.lvalue * Env.t
 
     | AExpr.Ann (pat', typ') ->
         let (_, locator, typ') = E.elaborate env typ' |> Environmentals.reabstract env in
-        let coercion = M.solving_unify pat.pos env typ typ' in
+        let coercion = M.solving_subtype pat.pos env typ locator typ' in (* FIXME: use coercion *)
         check_pat env typ' pat'
 
     | AExpr.Var name -> ({name; typ}, Env.push_val env name typ)
+
+    | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
 and check_pats env domain pats =
     let step (pats, env) (_, domain) pat =
