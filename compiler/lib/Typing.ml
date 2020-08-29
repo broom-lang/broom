@@ -72,8 +72,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
                 domain args in
 
         let (universals, domain, app_eff, codomain) = Primop.typeof op in
-        let (uvs, domain, app_eff, Exists ((* HACK: _ *) _, _, codomain)) =
-            Environmentals.instantiate_arrow env universals domain app_eff codomain in
+        let (uvs, domain, app_eff, Exists (_, _, codomain)) =
+            Environmentals.instantiate_arrow env universals domain app_eff (T.to_abs codomain) in
         let args = check_args env app_eff domain args in
         { term = {expr with v = PrimApp (op, Vector.map (fun uv -> T.Uv uv) uvs, args)}
         ; typ = codomain
