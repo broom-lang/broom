@@ -2,7 +2,7 @@ if exists('b:current_syntax')
     finish
 endif
 
-syntax keyword broomKeyword extends override exclude let begin end val fun type match when where with without effect perform
+syntax keyword broomKeyword extends override exclude let do end val fun type match when where with without effect perform
 highlight default link broomKeyword Keyword
 
 syntax match broomColon ":"

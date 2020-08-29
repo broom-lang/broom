@@ -17,7 +17,7 @@ Parsers : {|
 
     anyChar : t Char.t = [
         match (String.Slice.uncons (perform ('State (State.Get {})))) [
-        | Some {first; rest} -> begin {
+        | Some {first; rest} -> do {
             perform ('State (State.Set rest));
             first
         }

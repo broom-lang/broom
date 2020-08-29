@@ -53,7 +53,7 @@ Array : ARRAY = {
     fun unfoldl len f state = let {
         builder = Builder.new len;
         fun loop state i = match (i > 0) [
-            | True -> begin {
+            | True -> do {
                 i = i - 1;
                 es = f state;
                 Builder.set builder i es.elem;
@@ -67,7 +67,7 @@ Array : ARRAY = {
     fun unfoldr len f state = let {
         builder = Builder.new len;
         fun loop state i = match (i < len) [
-            | True -> begin {
+            | True -> do {
                 es = f state;
                 Builder.set builder i es.elem;
                 loop es.state (i + 1)
@@ -88,7 +88,7 @@ Array : ARRAY = {
 
     fun foldr f state arr = let {
         fun loop state i = match (i > 0) [
-            | True -> begin {
+            | True -> do {
                 i = i - 1;
                 loop (f (get arr i) state) i
             }
