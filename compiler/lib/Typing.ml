@@ -48,6 +48,13 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
             ; eff }
         | Nil -> failwith "TODO: clauseless fn")
 
+    | AExpr.Thunk stmts ->
+        let body = AExpr.App ( {expr with v = AExpr.Var (Name.of_string "do")}
+            , Vector.singleton {expr with v = AExpr.Record stmts} ) in
+        let clause = { AExpr.iparams = Vector.empty (); eparams = Vector.empty ()
+            ; body = {expr with v = body} } in
+        typeof env {expr with v = AExpr.Fn (Vector.singleton clause)}
+
     | AExpr.App (callee, args) ->
         let check_args env eff domain args =
             Vector.map2 (fun (locator, domain) ({v = _; pos} as arg : AExpr.t with_pos) ->
