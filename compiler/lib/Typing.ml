@@ -14,6 +14,11 @@ let const_typ c = T.Prim (match c with
 
 let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env expr -> match expr.v with
+    | AExpr.Values exprs ->
+        if Vector.length exprs = 1
+        then typeof env (Vector.get exprs 0)
+        else failwith "TODO: typeof multi-Values"
+
     | AExpr.Fn clauses ->
         (match Vector.to_seq clauses () with
         | Cons (clause, clauses') ->
@@ -121,7 +126,6 @@ and check : Env.t -> T.locator -> T.t -> AExpr.t with_pos -> FExpr.t with_pos ty
             ; typ; eff }
         | None -> failwith "TODO: check clauseless fn")
     | (Record row, _) -> failwith "TODO: check Record"
-    | (Type row, _) -> failwith "TODO: check Type"
     | _ ->
         let {TyperSigs.term = expr; typ = expr_typ; eff} = typeof env expr in
         let Cf coerce = M.solving_subtype expr.pos env expr_typ locator typ in
