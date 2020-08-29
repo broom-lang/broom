@@ -70,14 +70,6 @@ module type TYPE = sig
 
     val freshen : binding -> binding
     val sibling : subst ref -> uv -> uv
-
-    val expose_abs : subst ref -> t Vector.t -> abs -> abs
-    val expose : subst ref -> t Vector.t -> t -> t
-    val expose_locator : subst ref -> t Vector.t -> locator -> locator
-
-    val close_abs : subst ref -> int Name.Map.t -> abs -> abs
-    val close : subst ref -> int Name.Map.t -> t -> t
-    val close_locator : subst ref -> int Name.Map.t -> locator -> locator
 end
 
 module type UV = sig

@@ -93,8 +93,8 @@ let elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
         (i + 1, Name.Map.add name i substitution)
     ) (0, Name.Map.empty) (!params) in
     Exists ( Vector.map snd (Vector.of_list (!params))
-           , T.close_locator (Env.uv_substr env) substitution locator
-           , T.close (Env.uv_substr env) substitution typ )
+           , Environmentals.close_locator env substitution locator
+           , Environmentals.close env substitution typ )
 
 and eval env typ =
     let (let*) = Option.bind in
@@ -130,7 +130,7 @@ and eval env typ =
         | Use _ -> failwith "unreachable: `Use` in `whnf`"
 
     and apply callee args = match callee with
-        | T.Fn body -> eval (T.expose (Env.uv_substr env) (Vector1.to_vector args) body)
+        | T.Fn body -> eval (Environmentals.expose env (Vector1.to_vector args) body)
         | Ov _ | App _ -> Some (T.App (callee, args), None)
         | Uv uv ->
             (match Env.get_uv env uv with
