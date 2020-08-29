@@ -65,12 +65,12 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 
     | AExpr.Proxy typ ->
         let typ = E.elaborate env {v = typ; pos = expr.pos} in
-        {term = {expr with v = Proxy typ}; typ = Type typ; eff = Prim EmptyRow}
+        {term = {expr with v = Proxy typ}; typ = Type typ; eff = EmptyRow}
 
     | AExpr.Var name ->
-        {term = {expr with v = Use name}; typ = Env.find name env; eff = Prim EmptyRow}
+        {term = {expr with v = Use name}; typ = Env.find name env; eff = EmptyRow}
 
-    | AExpr.Const c -> {term = {expr with v = Const c}; typ = const_typ c; eff = Prim EmptyRow}
+    | AExpr.Const c -> {term = {expr with v = Const c}; typ = const_typ c; eff = EmptyRow}
 
 and elaborate_clause env {pats; body} =
     let (existentials, pats, domain, body_env) = elaborate_pats env pats in

@@ -52,13 +52,16 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                 (match typ with
                 | Type _ -> (Cf Fun.id, typ)
                 | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
-            | RecordL req_fields ->
+            | RecordL _ ->
                 (match typ with
-                | T.Record fields ->
-                    let {T.label; typ = _} = Vector.get req_fields 0 in
-                    (match Vector.find_opt (fun {T.label = label'; typ = _} -> label' = label) fields with
-                    | Some {T.label = _; typ = field_typ} -> (Cf (fun v -> v), Record (Vector.singleton {T.label; typ = field_typ}))
-                    | None -> raise (Err.TypeError (pos, MissingField (typ, label))))
+                | Record _ -> (Cf Fun.id, typ)
+                | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
+            | WithL {base = _; label; field = _} ->
+                (match typ with
+                | With {base = _; label = typ_label; field = _} ->
+                    if typ_label = label
+                    then (Cf Fun.id, typ)
+                    else failwith "TODO: focalize With label flip"
                 | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
             | Hole -> failwith "unreachable: Hole as template in `focalize`.") in
 
@@ -81,8 +84,14 @@ and focalize_locator : T.locator -> T.t -> T.locator
     | Record _ ->
         (match locator with
         | RecordL _ -> locator
-        | Hole -> RecordL (Vector.of_list [])
+        | Hole -> RecordL Hole
         | _ -> failwith "unreachable: `Record` locator")
+    | With {base = _; label; field = _} ->
+        (match locator with
+        | WithL {base = _; label = locator_label; field = _} when locator_label = label ->
+            locator
+        | Hole -> WithL {base = Hole; label; field = Hole}
+        | _ -> failwith "unreachable: `With` locator")
     | Type _ ->
         (match locator with
         | TypeL _ -> locator
@@ -239,29 +248,31 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                     | None -> arrows_residual) }
             | _ -> raise (TypeError (pos, SubType (typ, super))))*)
 
-        | (T.Record fields, _) -> (match super with
-            | T.Record super_fields ->
-                let locator_fields = match locator with
-                    | RecordL fields -> fields
+        | (Record row, _) -> (match super with
+            | Record super_row ->
+                let row_locator = match locator with
+                    | RecordL row_locator -> row_locator
                     | _ -> failwith "unreachable: record locator" in
-                let name = Name.fresh () in
-                let selectee = {E.name; typ = typ} in
-                let (fields, residual) = Vector.fold_left (fun (fields', residual) {T.label; typ = super} ->
-                    match Vector.find_opt (fun {T.label = label'; typ = _} -> label' = label) fields with
-                    | Some {label = _; typ} ->
-                        let locator =
-                            match Vector.find_opt (fun {T.label = label'; typ = _} -> label' = label) locator_fields with
-                            | Some {label = _; typ = locator} -> locator
-                            | None -> Hole in
-                        let {coercion = Cf coerce; residual = field_residual} = subtype pos occ env typ locator super in
-                        ( {E.label; expr = coerce {pos; v = Select ({pos; v = Use name}, label)}} :: fields'
-                        , combine residual field_residual )
-                    | None -> raise (Err.TypeError (pos, MissingField (typ, label)))
-                ) ([], empty) super_fields in
-                let fields = Vector.of_list (List.rev fields) in (* OPTIMIZE *)
-                { coercion =
-                    Cf (fun v -> {pos; v = Letrec (Vector1.singleton (pos, selectee, v), {pos; v = Record fields})})
-                ; residual }
+                subtype pos occ env row row_locator super_row (* FIXME *)
+            | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
+
+        | (With {base; label; field}, _) -> (match super with
+            | With {base = super_base; label = super_label; field = super_field} ->
+                let (base_locator, field_locator) = match locator with
+                    | WithL {base; label = locator_label; field} when locator_label = super_label ->
+                        (base, field)
+                    | _ -> failwith "unreachable: record locator" in
+                if label = super_label then begin
+                    let {coercion = _; residual = base_residual} =
+                        subtype pos occ env base base_locator super_base in
+                    let {coercion = _; residual = field_residual} =
+                        subtype pos occ env field field_locator super_field in
+                    { coercion = Cf Fun.id (* NOTE: Row types have no values so this will not get used *)
+                    ; residual = combine base_residual field_residual }
+                end else failwith "TODO: subtype With label flipping")
+
+        | (EmptyRow, _) -> (match super with
+            | EmptyRow -> {coercion = Cf Fun.id; residual = empty}
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (Type (Exists (existentials, _, carrie) as abs_carrie), _) -> (match super with
@@ -357,24 +368,26 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
         ; residual = Some (Sub (occ, typ, locator, super, patchable)) }
 
 and occurs_check pos env uv typ =
-    let rec check_abs (Exists (_, _, body) as typ : T.abs) = check body
+    let rec check_abs (Exists (_, _, body) : T.abs) = check body
 
     and check = function
         | Pi (_, domain, eff, codomain) ->
             Vector.iter (fun (_, dom) -> check dom) domain;
             check eff;
             check_abs codomain
-        | Record fields -> Vector.iter (fun {T.label = _; typ} -> check typ) fields
+        | Record row -> check row
+        | With {base; label = _; field} -> check base; check field
+        | EmptyRow -> ()
         | Type carrie -> check_abs carrie
         | Fn body -> check body
         | App (callee, args) -> check callee; Vector1.iter check args
-        | Ov ((_, level') as ov) ->
+        | Ov ov ->
             (match Env.get_implementation env ov with
             | Some (_, _, uv') -> check (Uv uv')
             | None -> ())
         | Uv uv' ->
             (match Env.get_uv env uv' with
-            | Unassigned (name, level') ->
+            | Unassigned _ ->
                 if uv = uv'
                 then raise (Err.TypeError (pos, Occurs (uv, typ)))
                 else ()
@@ -489,7 +502,9 @@ and check_uv_assignee pos env uv level max_uv_level typ =
                 check eff;
                 check_abs codomain
             end else raise (Err.TypeError (pos, Polytype (T.to_abs typ)))
-        | Record fields -> Vector.iter (fun {T.label = _; typ} -> check typ) fields
+        | Record row -> check row
+        | With {base; label = _; field} -> check base; check field
+        | EmptyRow -> ()
         | Type carrie -> check_abs carrie
         | Fn body -> check body
         | App (callee, args) -> check callee; Vector1.iter check args

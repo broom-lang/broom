@@ -54,7 +54,7 @@ let elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
 
         | Record decls ->
             if Vector.length decls = 0
-            then (T.Hole, T.Record (Vector.empty ()))
+            then (T.Hole, T.Record EmptyRow)
             else failwith "TODO: nonempty signature"
 
         (*| AType.Sig decls ->
@@ -64,7 +64,7 @@ let elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
 
         | AType.Path expr ->
             let {TyperSigs.term = _; typ = proxy_typ; eff} = C.typeof env {typ with v = expr} in
-            let _ = M.solving_unify typ.pos env eff (T.Prim Prim.EmptyRow) in
+            let _ = M.solving_unify typ.pos env eff EmptyRow in
             (match M.focalize typ.pos env proxy_typ (TypeL (Uv (Env.uv env (Name.fresh ())))) with
             | (_, Type typ) ->
                 let (_, locator, typ) = reabstract env typ in

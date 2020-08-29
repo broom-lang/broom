@@ -53,19 +53,22 @@ and Type : FcSigs.TYPE
 
     and t =
         | Pi of kind Vector.t * (locator * t) Vector.t * t * abs
-        | Record of t field Vector.t
+        | Record of t
+        | With of {base : t; label : Name.t; field : t}
+        | EmptyRow
         | Type of abs
         | Fn of t
         | App of t * t Vector1.t
         | Bv of bv
         | Use of binding
         | Ov of ov
-        | Uv of Uv.t
+        | Uv of uv
         | Prim of Prim.t
 
     and locator =
         | PiL of int * locator
-        | RecordL of locator field Vector.t
+        | RecordL of locator
+        | WithL of {base : locator; label : Name.t; field : locator}
         | TypeL of t
         | Hole
 
@@ -123,10 +126,11 @@ and Type : FcSigs.TYPE
                 (PPrint.group (PPrint.string "forall" ^/^ kinds_to_doc (Vector.to_list universals)))
                 (PPrint.dot ^^ PPrint.blank 1 ^^ unquantified_doc)
             else unquantified_doc
-        | Record fields ->
-            PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
-                PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
-                (field_to_doc s) (Vector.to_list fields)
+        | Record row -> PPrint.braces (to_doc s row)
+        | With {base; label; field} ->
+            PPrint.infix 4 1 (PPrint.string "with") (base_to_doc s base)
+                (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
+        | EmptyRow -> PPrint.parens (PPrint.bar ^^ PPrint.blank 1 ^^ PPrint.bar)
         | Type typ -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ abs_to_doc s typ)
         | Fn body ->
             PPrint.prefix 4 1
@@ -144,20 +148,28 @@ and Type : FcSigs.TYPE
 
     and domain_to_doc s (locator, domain) = locator_to_doc s locator ^^ PPrint.comma ^/^ to_doc s domain
 
+    and base_to_doc s = function
+        | (Pi _ | Fn _) as base -> PPrint.parens (to_doc s base)
+        | Uv uv ->
+            (match Uv.get s uv |> snd with
+            | Assigned typ -> base_to_doc s typ
+            | Unassigned _ -> uv_to_doc s uv)
+        | base -> to_doc s base
+
     and callee_to_doc s = function
         | (Pi _ | Fn _) as callee -> PPrint.parens (to_doc s callee)
-        (* FIXME: | Uv uv ->
-            (match !uv with
+        | Uv uv ->
+            (match Uv.get s uv |> snd with
             | Assigned typ -> callee_to_doc s typ
-            | Unassigned _ -> uv_to_doc s uv)*)
+            | Unassigned _ -> uv_to_doc s uv)
         | callee -> to_doc s callee
 
     and arg_to_doc s = function
         | (Pi _ | Fn _ (*| App _*)) as arg -> PPrint.parens (to_doc s arg)
-        (* FIXME: | Uv uv ->
-            (match !uv with
+        | Uv uv ->
+            (match Uv.get s uv |> snd with
             | Assigned typ -> arg_to_doc s typ
-            | Unassigned _ -> uv_to_doc s uv)*)
+            | Unassigned _ -> uv_to_doc s uv)
         | arg -> to_doc s arg
 
     and field_to_doc s {label; typ} =
@@ -171,13 +183,16 @@ and Type : FcSigs.TYPE
                     | arity -> loop (doc ^^ PPrint.comma ^/^ PPrint.underscore) (arity - 1) in
                 PPrint.parens (loop PPrint.empty arity) in
             PPrint.infix 4 1 (PPrint.string "->") domain_doc (locator_to_doc s codomain)
-        | RecordL fields ->
-            PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
-                PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
-                (fun {label; typ} -> PPrint.string label ^/^ PPrint.colon ^/^ locator_to_doc s typ)
-                (Vector.to_list fields)
+        | RecordL row -> PPrint.braces (locator_to_doc s row)
+        | WithL {base; label; field} ->
+            PPrint.infix 4 1 (PPrint.string "with") (basel_to_doc s base)
+                (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (locator_to_doc s field))
         | TypeL path -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ to_doc s path)
         | Hole -> PPrint.underscore
+
+    and basel_to_doc s = function
+        | PiL _ as locator -> PPrint.parens (locator_to_doc s locator)
+        | locator -> locator_to_doc s locator
 
     and binding_to_doc (name, kind) =
         PPrint.parens (Name.to_doc name ^/^ PPrint.colon ^/^ kind_to_doc kind)
@@ -247,9 +262,10 @@ and Type : FcSigs.TYPE
             let expose_domain sr (locator, domain) =
                 (expose_locator' sr depth substitution locator, expose' sr depth substitution domain) in
             Pi (params, Vector.map (expose_domain sr) domain, eff, expose_abs' sr depth substitution codomain)
-        | Record fields ->
-            Record (Vector.map (fun {label; typ} ->
-                                    {label; typ = expose' sr depth substitution typ}) fields)
+        | Record row -> Record (expose' sr depth substitution row)
+        | With {base; label; field} ->
+            With {base = expose' sr depth substitution base; label; field = expose' sr depth substitution field}
+        | EmptyRow -> EmptyRow
         | Type typ -> Type (expose_abs' sr depth substitution typ)
         | Fn body -> Fn (expose' sr (depth + 1) substitution body)
         | App (callee, args) ->
@@ -269,9 +285,10 @@ and Type : FcSigs.TYPE
 
     and expose_locator' sr depth substitution = function
         | PiL (arity, codomain) -> PiL (arity, expose_locator' sr depth substitution codomain)
-        | RecordL fields ->
-            RecordL (Vector.map (fun {label; typ} ->
-                                    {label; typ = expose_locator' sr depth substitution typ}) fields)
+        | RecordL row -> RecordL (expose_locator' sr depth substitution row)
+        | WithL {base; label; field} ->
+            WithL { base = expose_locator' sr depth substitution base
+                  ; label; field = expose_locator' sr depth substitution field }
         | TypeL path -> TypeL (expose' sr depth substitution path)
         | Hole -> Hole
 
@@ -291,9 +308,10 @@ and Type : FcSigs.TYPE
             let close_domain sr (locator, domain) =
                 (close_locator' sr depth substitution locator, close' sr depth substitution domain) in
             Pi (params, Vector.map (close_domain sr) domain, eff, close_abs' sr depth substitution codomain)
-        | Record fields ->
-            Record (Vector.map (fun {label; typ} ->
-                                    {label; typ = close' sr depth substitution typ}) fields)
+        | Record row -> Record (close' sr depth substitution row)
+        | With {base; label; field} ->
+            With {base = close' sr depth substitution base; label; field = close' sr depth substitution field}
+        | EmptyRow -> EmptyRow
         | Type typ -> Type (close_abs' sr depth substitution typ)
         | Fn body -> Fn (close' sr (depth + 1) substitution body)
         | App (callee, args) ->
@@ -312,9 +330,10 @@ and Type : FcSigs.TYPE
 
     and close_locator' sr depth substitution = function
         | PiL (arity, codomain) -> PiL (arity, close_locator' sr depth substitution codomain)
-        | RecordL fields ->
-            RecordL (Vector.map (fun {label; typ} ->
-                                    {label; typ = close_locator' sr depth substitution typ}) fields)
+        | RecordL row -> RecordL (close_locator' sr depth substitution row)
+        | WithL {base; label; field} ->
+            WithL { base = close_locator' sr depth substitution base
+                  ; label; field = close_locator' sr depth substitution field }
         | TypeL path -> TypeL (close' sr depth substitution path)
         | Hole -> Hole
 

@@ -24,7 +24,9 @@ module type TYPE = sig
 
     and t =
         | Pi of kind Vector.t * (locator * t) Vector.t * t * abs
-        | Record of t field Vector.t
+        | Record of t
+        | With of {base : t; label : Name.t; field : t}
+        | EmptyRow
         | Type of abs
         | Fn of t
         | App of t * t Vector1.t
@@ -36,7 +38,8 @@ module type TYPE = sig
 
     and locator =
         | PiL of int * locator
-        | RecordL of locator field Vector.t
+        | RecordL of locator
+        | WithL of {base : locator; label : Name.t; field : locator}
         | TypeL of t
         | Hole
 
