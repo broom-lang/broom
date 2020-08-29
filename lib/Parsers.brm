@@ -1,5 +1,5 @@
 Parsers : {|
-} = {
+|} = {
     Char = require Std.Char;
     String = require Std.String;
     State = require Std.Eff.State;
@@ -8,10 +8,10 @@ Parsers : {|
         type t;
 
         EndOfInput : t;
-        Expected : {|expected : Char.t; actual : Char.t} => t;
+        Expected : {|expected : Char.t; actual : Char.t|} => t;
     };
 
-    type error = (|Error : Error.t);
+    type error = (|Error : Error.t|);
 
     type t a = () -! State.eff String.Slice.t with error -> a;
 

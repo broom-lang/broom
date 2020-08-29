@@ -15,7 +15,7 @@ ARRAY = {|
 
     foldl : (a, s, e) => (((s, a) -!e-> s), s, t a) -!e-> s;
     foldr : (a, s, e) => (((a, s) -!e-> s), s, t a) -!e-> s;
-};
+|};
 
 Array : ARRAY = {
     type t a = __array a;
@@ -42,7 +42,7 @@ Array : ARRAY = {
         new : a => size -> t a;
         set : a => (t a, key, a) -! unsafe -> ();
         build : a => t a -! unsafe -> Array.t a;
-    } = {|
+    |} = {
         type t a = __array a;
 
         fun new len = __arrayNew len;

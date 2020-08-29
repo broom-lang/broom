@@ -1,7 +1,7 @@
 type FN = {|
     id : a => a -> a;
     const : (a, b) => a -> (b -> a);
-};
+|};
 
 Fn = {
     fun id x = x;

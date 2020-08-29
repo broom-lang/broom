@@ -10,7 +10,7 @@ type OPTION = {|
     map :  (a, b, e) => ((a -!e-> b), t a) -!e-> t b;
     apply : (a, b, e) => (t (a -!e-> b), t a) -!e-> t b;
     flatMap : (a, b, e) => ((a -!e-> t b), t a) -!e-> t b;
-};
+|};
 
 Option : OPTION = {
     extends enum {

@@ -131,14 +131,10 @@ nestable_without_pos :
     | "(" COMPARISON ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
     | "(" ADDITIVE ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
     | "(" MULTIPLICATIVE ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
-    | "(" "|" stmts? ")" { proxy (Row (match $3 with
-        | Some stmts -> Vector1.to_vector stmts
-        | None -> Vector.empty ()
-    )) }
-    | "{" "|" stmts? "}" { proxy (Record (match $3 with
-        | Some stmts -> Vector1.to_vector stmts
-        | None -> Vector.empty ()
-    )) }
+    | "(" "|" stmts "|" ")" { proxy (Row (Vector1.to_vector $3)) }
+    | "(" "|" ")" { proxy (Row (Vector.empty ())) }
+    | "{" "|" stmts "|" "}" { proxy (Record (Vector1.to_vector $3)) }
+    | "{" "|" "}" { proxy (Record (Vector.empty ())) }
     | ID { Var (Name.of_string $1) }
     | WILD { failwith "TODO" }
     | INT { Const (Int $1) }
