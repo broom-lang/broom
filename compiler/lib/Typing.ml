@@ -150,8 +150,7 @@ and elaborate_pat : Env.t -> AExpr.pat with_pos -> FExpr.lvalue * T.locator * T.
         else failwith "TODO: multi-value elaborate_pat"
 
     | AExpr.Ann (pat, typ) ->
-        let typ = E.elaborate env typ in
-        let (_, locator, typ) = Environmentals.reabstract env typ in
+        let (_, locator, typ) = E.elaborate env typ |> Environmentals.reabstract env in
         let (pat, env) = check_pat env typ pat in
         (pat, locator, typ, env)
 
@@ -168,6 +167,16 @@ and elaborate_pats env pats =
 
 and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.lvalue * Env.t
 = fun env typ pat -> match pat.v with
+    | AExpr.Values pats when Vector.length pats = 1 ->
+        if Vector.length pats = 1
+        then check_pat env typ (Vector.get pats 0)
+        else failwith "TODO: multi-value check_pat"
+
+    | AExpr.Ann (pat', typ') ->
+        let (_, locator, typ') = E.elaborate env typ' |> Environmentals.reabstract env in
+        let coercion = M.solving_unify pat.pos env typ typ' in
+        check_pat env typ' pat'
+
     | AExpr.Var name -> ({name; typ}, Env.push_val env name typ)
 
 and check_pats env domain pats =
