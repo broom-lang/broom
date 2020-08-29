@@ -1,4 +1,4 @@
-module rec Uv : FcSigs.UV
+module rec Uv : FcTypeSigs.UV
     with type typ = Type.t
     with type level = Type.level
 = struct
@@ -30,7 +30,7 @@ module rec Uv : FcSigs.UV
     let setr sr uv v = sr := set !sr uv v;
 end
 
-and Type : FcSigs.TYPE
+and Type : FcTypeSigs.TYPE
     with type uv = Uv.t
     with type subst = Uv.subst
 = struct
@@ -119,8 +119,8 @@ and Type : FcSigs.TYPE
                     (domain_to_doc s) (Vector.to_list domain) in
             let unquantified_doc =
                 PPrint.prefix 4 1 domain_doc
-                    (PPrint.string "->" ^^ PPrint.blank 1
-                        ^^ PPrint.infix 4 1 PPrint.bang (to_doc s eff) (abs_to_doc s codomain)) in
+                    (PPrint.string "-!" ^^ PPrint.blank 1
+                        ^^ PPrint.infix 4 1 (PPrint.string "->") (to_doc s eff) (abs_to_doc s codomain)) in
             if Vector.length universals > 0
             then PPrint.prefix 4 1
                 (PPrint.group (PPrint.string "forall" ^/^ kinds_to_doc (Vector.to_list universals)))

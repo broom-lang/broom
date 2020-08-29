@@ -4,7 +4,7 @@ module Make (Type : FcSigs.TYPE) : FcSigs.TERM
 
 module Type = Type
 
-type 'a with_pos = 'a Ast.with_pos
+type 'a with_pos = 'a Util.with_pos
 type abs = Type.abs
 type typ = Type.typ
 type coercion = Type.coercion
@@ -27,6 +27,7 @@ module rec Expr : FcSigs.EXPR
     type t
         = Fn of Type.binding Vector.t * lvalue Vector.t * t with_pos
         | App of t with_pos * typ Vector.t * t with_pos Vector.t
+        | PrimApp of Primop.t * Type.t Vector.t * t with_pos Vector.t
         | Let of def * t with_pos
         | Letrec of def Vector1.t * t with_pos
         | LetType of Type.binding Vector1.t * t with_pos
@@ -97,6 +98,15 @@ module rec Expr : FcSigs.EXPR
                           ^/^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                                 (to_doc s) (Vector.to_list args))
+        | PrimApp (op, targs, args) ->
+            PPrint.align (PPrint.string "__" ^^ Primop.to_doc op
+                          ^^ PPrint.surround_separate_map 4 0 PPrint.empty
+                                (PPrint.break 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
+                                (Type.to_doc s) (Vector.to_list targs)
+                          ^/^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
+                                PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+                                (to_doc s) (Vector.to_list args))
+
         | Axiom (axioms, body) ->
             PPrint.group(
                 PPrint.surround 4 1 (PPrint.string "axiom")

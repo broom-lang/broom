@@ -48,15 +48,31 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
             let args = check_args env app_eff domain args in
             let Exists (existentials, codomain_locator, concr_codomain) = codomain in
             (* FIXME: Use `existentials` *)
-            { term = {expr with v = App (coerce callee, (* FIXME: *) Vector.empty (), args)}
+            { term = {expr with v = App (coerce callee, Vector.map (fun uv -> T.Uv uv) uvs, args)}
             ; typ = concr_codomain
             ; eff = app_eff }
         | _ -> failwith "compiler bug: callee focalization returned non-function")
 
-    | AppSequence exprs -> (* TODO: in/pre/postfix parsing, special forms, macros *)
+    | AExpr.AppSequence exprs -> (* TODO: in/pre/postfix parsing, special forms, macros *)
         let callee = Vector1.get exprs 0 in
         let args = Vector.sub (Vector1.to_vector exprs) 1 (Vector1.length exprs - 1) in
         typeof env {expr with v = AExpr.App (callee, args)}
+
+    | AExpr.PrimApp (op, args) -> (* TODO: DRY: *)
+        let check_args env eff domain args =
+            Vector.map2 (fun (locator, domain) ({v = _; pos} as arg : AExpr.t with_pos) ->
+                let {TyperSigs.term = arg; typ = _; eff = arg_eff} = check env locator domain arg in
+                let _ = M.solving_unify pos env arg_eff eff in
+                arg)
+                domain args in
+
+        let (universals, domain, app_eff, codomain) = Primop.typeof op in
+        let (uvs, domain, app_eff, Exists ((* HACK: _ *) _, _, codomain)) =
+            Environmentals.instantiate_arrow env universals domain app_eff codomain in
+        let args = check_args env app_eff domain args in
+        { term = {expr with v = PrimApp (op, Vector.map (fun uv -> T.Uv uv) uvs, args)}
+        ; typ = codomain
+        ; eff = app_eff }
 
     | AExpr.Ann (expr, typ) ->
         let typ = E.elaborate env typ in

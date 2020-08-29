@@ -125,7 +125,7 @@ and eval env typ =
             (match Env.get_uv env uv with
             | Assigned typ -> eval typ
             | Unassigned _ -> Some (typ, None))
-        | (Pi _ | Record _ | Type _ | Prim _) as typ -> Some (typ, None)
+        | (Pi _ | Record _ | With _ | EmptyRow | Type _ | Prim _) as typ -> Some (typ, None)
         | Bv _ -> failwith "unreachable: `Bv` in `whnf`"
         | Use _ -> failwith "unreachable: `Use` in `whnf`"
 

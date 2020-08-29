@@ -439,6 +439,10 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             {coercion = None; residual = empty}
         | Assigned _ -> failwith "unreachable: Assigned `typ` in `unify_whnf`")
 
+    | (EmptyRow, _) -> (match typ' with
+        | EmptyRow -> {coercion = None; residual = empty}
+        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+
     | (Type carrie, _) -> (match typ' with
         | Type carrie' -> 
             let {coercion; residual} = unify_abs pos env carrie carrie' in
