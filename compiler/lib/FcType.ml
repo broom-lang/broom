@@ -130,7 +130,7 @@ and Type : FcTypeSigs.TYPE
         | With {base; label; field} ->
             PPrint.infix 4 1 (PPrint.string "with") (base_to_doc s base)
                 (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
-        | EmptyRow -> PPrint.parens (PPrint.bar ^^ PPrint.blank 1 ^^ PPrint.bar)
+        | EmptyRow -> PPrint.parens (PPrint.bar)
         | Type typ -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ abs_to_doc s typ)
         | Fn body ->
             PPrint.prefix 4 1

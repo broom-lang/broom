@@ -7,31 +7,35 @@ type uv = Fc.Uv.t
 type scope =
     | Hoisting of T.binding list ref * T.level
     | Rigid of T.ov Vector.t
+    | Val of Name.t * T.t
     | Axiom of (Name.t * T.ov * uv) Name.Map.t
 
 type t =
-    { bindings : Fc.Type.t Bindings.t
-    ; uv_subst : Fc.Uv.subst ref
+    { uv_subst : Fc.Uv.subst ref
     ; scopes : scope list
     ; level : Fc.Type.level }
 
 let initial_level = 1
 
 let interactive () =
-    { bindings = Bindings.empty
-    ; uv_subst = ref (Fc.Uv.new_subst ())
+    { uv_subst = ref (Fc.Uv.new_subst ())
     ; scopes = [Hoisting (ref [], initial_level)]
     ; level = initial_level }
 
 let eval () =
-    { bindings = Bindings.empty
-    ; uv_subst = ref (Fc.Uv.new_subst ())
+    { uv_subst = ref (Fc.Uv.new_subst ())
     ; scopes = [Hoisting (ref [], initial_level)]
     ; level = initial_level }
 
-let add k v (env : t) = {env with bindings = Bindings.add k v env.bindings}
+let find (env : t) pos name =
+    let rec find = function
+        | Val (name', typ) :: scopes -> if name' = name then typ else find scopes
+        | (Hoisting _ | Rigid _ | Axiom _) ::scopes -> find scopes
+        | [] -> raise (TypeError.TypeError (pos, Unbound name)) in
+    find env.scopes
 
-let find k (env : t) = Bindings.find k env.bindings
+let push_val (env : t) name typ =
+    {env with scopes = Val (name, typ) :: env.scopes}
 
 let push_existential (env : t) =
     let bindings = ref [] in
