@@ -11,6 +11,7 @@ val add : Name.t -> Fc.Type.t -> t -> t
 val find : Name.t -> t -> Fc.Type.t
 
 val push_existential : t -> t * T.binding list ref
+val push_skolems : t -> T.kind Vector.t -> t * T.ov Vector.t
 
 val generate : t -> T.binding -> T.binding * T.level
 

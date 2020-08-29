@@ -101,6 +101,11 @@ let reabstract env (T.Exists (params, locator, body)) =
     , expose_locator env substitution locator
     , expose env substitution body )
 
+let push_abs_skolems env (T.Exists (existentials, locator, body)) =
+    let (env, skolems) = Env.push_skolems env existentials in
+    let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
+    (env, skolems, expose env substitution body)
+
 let instantiate_abs env (T.Exists (existentials, locator, body)) =
     let uvs = Vector.map (fun _ -> Env.uv env (Name.fresh ())) existentials in
     let substitution = Vector.map (fun uv -> T.Uv uv) uvs in

@@ -124,13 +124,11 @@ let rec coercion : span -> bool -> Env.t -> T.t -> T.ov Vector.t * T.locator * T
 
 and subtype_abs : span -> bool -> Env.t -> T.abs -> T.locator -> T.abs -> coercer matching
 = fun pos occ env typ locator super ->
-    let Exists (sub_kinds, sub_locator, typ) = typ in
-    let (env, skolems, _, typ) = failwith "FIXME" (*Env.push_abs_skolems env (sub_kinds, sub_locator, typ)*) in
-    let Exists (existentials, super_locator, super) = super in
-    let (uvs, super_locator, super) = failwith "FIXME"
-        (*Env.instantiate_abs env (existentials, super_locator, super)*) in
+    let (env, skolems, typ) = Environmentals.push_abs_skolems env typ in
+    let (uvs, super_locator, super) = Environmentals.instantiate_abs env super in
     match Vector1.of_vector skolems with
     | Some skolems ->
+        let skolems = Vector1.map fst skolems in
         (match Vector1.of_vector uvs with
         | Some uvs ->
             let {coercion = Cf coerce; residual} = subtype pos occ env typ super_locator super in

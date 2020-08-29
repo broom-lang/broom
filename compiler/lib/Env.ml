@@ -6,6 +6,7 @@ type uv = Fc.Uv.t
 
 type scope =
     | Hoisting of T.binding list ref * T.level
+    | Rigid of T.ov Vector.t
     | Axiom of (Name.t * T.ov * uv) Name.Map.t
 
 type t =
@@ -37,6 +38,13 @@ let push_existential (env : t) =
     let level = env.level + 1 in
     ( {env with scopes = Hoisting (bindings, level) :: env.scopes; level}
     , bindings )
+
+let push_skolems (env : t) kinds =
+    let level = env.level + 1 in
+    let ebs = Vector.map (fun kind -> (Name.fresh (), kind)) kinds in
+    let skolems = Vector.map (fun binding -> (binding, level)) ebs in
+    ( {env with scopes = Rigid skolems :: env.scopes; level}
+    , skolems )
 
 let generate env binding =
     let rec generate = function
