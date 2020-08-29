@@ -22,7 +22,7 @@ exception TypeError of Util.span * error
 
 let (^/^) = PPrint.(^/^)
 
-let rec cause_to_doc s = function
+let rec cause_to_doc s pos = function
     | Unbound name -> PPrint.string "unbound name" ^/^ Name.to_doc name
     | Unusable (template, typ) ->
         Fc.Type.to_doc s typ ^/^
@@ -42,13 +42,13 @@ let rec cause_to_doc s = function
             | Axioms (_, residual) | Skolems (_, residual) -> to_doc residual
             | Residuals (residual, residual') ->
                 to_doc residual ^/^ PPrint.string "and" ^/^ to_doc residual'
-            | Sub (_, typ, _, super, _) -> cause_to_doc s (SubType (typ, super))
-            | Unify (typ, typ', _) -> cause_to_doc s (Unify (typ, typ'))
+            | Sub (_, typ, _, super, _) -> cause_to_doc s pos (SubType (typ, super))
+            | Unify (typ, typ', _) -> cause_to_doc s pos (Unify (typ, typ'))
         in to_doc residual
     | IncompleteImpl (uv, uv') ->
         Fc.Type.to_doc s (Uv uv) ^/^ PPrint.string "cannot be resolved with the underresolved"
             ^/^ Fc.Type.to_doc s (Uv uv')
-    | ImpureType expr -> PPrint.string "impure type expression" ^/^ Ast.Term.Expr.to_doc expr
+    | ImpureType expr -> PPrint.string "impure type expression" ^/^ Ast.Term.Expr.to_doc {v = expr; pos}
     | Escape ((name, _), _) -> Name.to_doc name ^/^ PPrint.string "would escape"
     | Occurs (uv, typ) -> Fc.Type.to_doc s (Uv uv) ^/^ PPrint.string "occurs in" ^/^ Fc.Type.to_doc s typ
     | Polytype typ -> Fc.Type.abs_to_doc s typ ^/^ PPrint.string "is not a monotype"
@@ -61,5 +61,5 @@ let rec cause_to_doc s = function
 let to_doc s (({pos_fname; _}, _) as span : Util.span) err =
     PPrint.prefix 4 1 (PPrint.string "Type error in" ^/^ PPrint.string pos_fname ^/^ PPrint.string "at"
         ^/^ PPrint.string (Util.span_to_string span) ^/^ PPrint.colon)
-        (cause_to_doc s err)
+        (cause_to_doc s span err)
 

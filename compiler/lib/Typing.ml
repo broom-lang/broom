@@ -72,13 +72,15 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 
     | AExpr.Const c -> {term = {expr with v = Const c}; typ = const_typ c; eff = EmptyRow}
 
-and elaborate_clause env {pats; body} =
-    let (existentials, pats, domain, body_env) = elaborate_pats env pats in
-    let {TyperSigs.term = body; typ = codomain; eff} = typeof body_env body in
-    (existentials, domain, {term = {FExpr.pats; body}; typ = codomain ; eff})
+and elaborate_clause env {iparams; eparams; body} =
+    let (iexistentials, iparams, edomain, env) = elaborate_pats env iparams in
+    let (eexistentials, eparams, idomain, env) = elaborate_pats env eparams in
+    let {TyperSigs.term = body; typ = codomain; eff} = typeof env body in
+    ( Vector.append eexistentials iexistentials, Vector.append edomain idomain
+    , {term = {FExpr.pats = Vector.append iparams eparams; body}; typ = codomain ; eff} )
 
-and check_clause env domain eff codomain {pats; body} =
-    let (pats, body_env) = check_pats env domain pats in
+and check_clause env domain eff codomain {iparams; eparams; body} =
+    let (pats, body_env) = check_pats env domain (Vector.append iparams eparams) in
     let {TyperSigs.term = body; typ = _; eff = body_eff} = check_abs body_env codomain body in
     ignore (M.solving_unify body.pos env body_eff eff);
     {pats; body}

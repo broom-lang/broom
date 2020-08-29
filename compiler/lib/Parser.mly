@@ -143,10 +143,9 @@ nestable_without_pos :
     | WILD { failwith "TODO" }
     | INT { Const (Int $1) }
 
-(* TODO: Use `implicit_pats`: *)
 clause : "|" params "->" expr {
-        let (implicit_pats, pats) = $2 in
-        {pats; body = $4}
+        let (iparams, eparams) = $2 in
+        {iparams; eparams; body = $4}
     }
 
 params :

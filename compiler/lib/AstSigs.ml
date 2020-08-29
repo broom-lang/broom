@@ -18,11 +18,14 @@ module type EXPR = sig
         | Var of Name.t
         | Const of Const.t
 
-    and clause = {pats : pat with_pos Vector.t; body : t with_pos}
+    and clause =
+        { iparams : pat with_pos Vector.t
+        ; eparams : pat with_pos Vector.t
+        ; body : t with_pos }
 
     and pat = t
 
-    val to_doc : t -> PPrint.document
+    val to_doc : t with_pos -> PPrint.document
 end
 
 module type STMT = sig
@@ -59,6 +62,6 @@ module type TYPE = sig
 
     and 'a decl = {name : 'a; typ : t with_pos}
 
-    val to_doc : t -> PPrint.document
+    val to_doc : t with_pos -> PPrint.document
 end
 
