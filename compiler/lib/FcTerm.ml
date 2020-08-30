@@ -36,7 +36,8 @@ module rec Expr : FcSigs.EXPR
         | Cast of t with_pos * coercion
         | Pack of typ Vector1.t * t with_pos
         | Unpack of Type.binding Vector1.t * lvalue * t with_pos * t with_pos
-        | Record of field Vector.t
+        | EmptyRecord
+        | With of {base : t with_pos; label : Name.t; field : t with_pos}
         | Select of t with_pos * string
         | Proxy of abs 
         | Use of Name.t
@@ -133,10 +134,10 @@ module rec Expr : FcSigs.EXPR
                     (to_doc s expr)
                     (PPrint.string "in")
                 ^/^ to_doc s body)
-        | Record defs ->
-            PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
-                PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
-                (field_to_doc s) (Vector.to_list defs)
+        | EmptyRecord -> PPrint.braces PPrint.empty
+        | With {base; label; field} ->
+            PPrint.infix 4 1 (PPrint.string "with") (base_to_doc s base)
+                (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
         | Select (record, label) ->
             PPrint.prefix 4 0 (selectee_to_doc s record) (PPrint.dot ^^ PPrint.string label)
         | Proxy typ -> PPrint.brackets (Type.abs_to_doc s typ)
@@ -166,6 +167,10 @@ module rec Expr : FcSigs.EXPR
     and castee_to_doc s (castee : t with_pos) = match castee.v with
         | Fn _ -> PPrint.parens (to_doc s castee)
         | _ -> to_doc s castee
+
+    and base_to_doc s (base : t with_pos) = match base.v with
+        | Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ -> PPrint.parens (to_doc s base)
+        | _ -> to_doc s base
 
     and selectee_to_doc s (selectee : t with_pos) = match selectee.v with
         | Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ | App _ -> PPrint.parens (to_doc s selectee)

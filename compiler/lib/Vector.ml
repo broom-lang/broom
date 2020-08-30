@@ -21,6 +21,12 @@ let mapi = Array.mapi
 let map2 = Array.map2
 let iter = Array.iter
 
+let map3 f xs ys zs =
+    let len = length xs in
+    if length ys = len && length zs = len
+    then mapi (fun i x -> f x (get ys i) (get zs i)) xs
+    else raise (Invalid_argument "Vector.map3: inequal lengths")
+
 let find_opt pred xs =
     let len = length xs in
     let rec loop i =

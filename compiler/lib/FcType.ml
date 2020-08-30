@@ -129,7 +129,7 @@ and Type : FcTypeSigs.TYPE
         | Record row -> PPrint.braces (to_doc s row)
         | With {base; label; field} ->
             PPrint.infix 4 1 (PPrint.string "with") (base_to_doc s base)
-                (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
+                (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (to_doc s field))
         | EmptyRow -> PPrint.parens (PPrint.bar)
         | Type typ -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ abs_to_doc s typ)
         | Fn body ->
@@ -186,7 +186,7 @@ and Type : FcTypeSigs.TYPE
         | RecordL row -> PPrint.braces (locator_to_doc s row)
         | WithL {base; label; field} ->
             PPrint.infix 4 1 (PPrint.string "with") (basel_to_doc s base)
-                (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (locator_to_doc s field))
+                (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (locator_to_doc s field))
         | TypeL path -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ to_doc s path)
         | Hole -> PPrint.underscore
 

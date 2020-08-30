@@ -75,6 +75,9 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
         ; typ = codomain
         ; eff = app_eff }
 
+
+    | AExpr.Record stmts -> typeof_record env expr.pos stmts
+
     | AExpr.Ann (expr, typ) ->
         let typ = E.elaborate env typ in
         (* FIXME: Abstract type generation effect *)
@@ -124,7 +127,16 @@ and elaborate_clause env {iparams; eparams; body} =
     ( Vector.append edomain idomain
     , {term = {FExpr.pats = Vector.append iparams eparams; body}; typ = codomain ; eff} )
 
-and elaborate_pat : Env.t -> AExpr.pat with_pos -> FExpr.lvalue * T.locator * T.t * Env.t
+and elaborate_pats env pats =
+    let step (pats, typs, env) pat =
+        let (pat, loc, typ, defs) = elaborate_pat env pat in
+        let env =
+            Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
+        (pat :: pats, (loc, typ) :: typs, env) in
+    let (pats, typs, env) = Vector.fold_left step ([], [], env) pats in
+    (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), env)
+
+and elaborate_pat : Env.t -> AExpr.pat with_pos -> FExpr.lvalue * T.locator * T.t * FExpr.lvalue Vector.t
 = fun env pat -> match pat.v with
     | AExpr.Values pats ->
         if Vector.length pats = 1
@@ -133,21 +145,51 @@ and elaborate_pat : Env.t -> AExpr.pat with_pos -> FExpr.lvalue * T.locator * T.
 
     | AExpr.Ann (pat, typ) ->
         let (_, locator, typ) = E.elaborate env typ |> Environmentals.reabstract env in
-        let (pat, env) = check_pat env typ pat in
-        (pat, locator, typ, env)
+        let (pat, defs) = check_pat env typ pat in
+        (pat, locator, typ, defs)
 
     | AExpr.Var name ->
         let typ = T.Uv (Env.uv env (Name.fresh ())) in
-        ({name; typ}, Hole, typ, Env.push_val env  name typ)
+        let lvalue = {FExpr.name; typ} in
+        (lvalue, Hole, typ, Vector.singleton lvalue)
 
     | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
-and elaborate_pats env pats =
-    let step (pats, typs, env) pat =
-        let (pat, loc, typ, env) = elaborate_pat env pat in
-        (pat :: pats, (loc, typ) :: typs, env) in
-    let (pats, typs, env) = Vector.fold_left step ([], [], env) pats in
-    (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), env)
+(* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
+and typeof_record env pos stmts =
+    let (env, existentials) = Env.push_existential env in
+    let (pats, pat_typs, defs) = Vector.fold_left (fun (pats, typs, defs) stmt ->
+        let (pat, loc, typ, defs') = analyze_field env stmt in
+        (pat :: pats, (loc, typ) :: typs, Vector.append defs defs'))
+        ([], [], Vector.empty ()) stmts in
+    let pats = Vector.of_list (List.rev pats) in
+    let pat_typs = Vector.of_list (List.rev pat_typs) in
+    let env = Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ)
+        env defs in
+    let stmts = Vector.map3 (elaborate_field env) pats pat_typs stmts in
+    let term = Vector.fold_left (fun base {FExpr.name; typ = _} ->
+        {Util.v = FExpr.With {base; label = name; field = {v = FExpr.Use name; pos}}; pos})
+        {v = EmptyRecord; pos} defs in
+    let term = match Vector1.of_vector stmts with
+        | Some stmts -> {Util.v = FExpr.Letrec (stmts, term); pos}
+        | None -> term in
+    let term = match Vector1.of_list !existentials with
+        | Some existentials -> {Util.v = FExpr.LetType (existentials, term); pos}
+        | None -> term in
+    let typ = Vector.fold_left (fun base {FExpr.name; typ} -> T.With {base; label = name; field = typ})
+        T.EmptyRow defs
+        |> (fun row -> T.Record row) in
+    let eff = T.EmptyRow in (* FIXME: Not true if !existentials != [] *)
+    {term; typ; eff}
+
+and analyze_field env = function
+    | AStmt.Def (_, pat, _) -> elaborate_pat env pat
+
+and elaborate_field env pat (loc, typ) = function
+    | AStmt.Def (pos, _, expr) ->
+        let {TyperSigs.term = expr; typ = _; eff} = check env loc typ expr in
+        let _ = M.solving_unify expr.pos env eff EmptyRow in
+        (pos, pat, expr)
 
 (* # Checking *)
 
@@ -189,7 +231,7 @@ and check_clause env domain eff codomain {iparams; eparams; body} =
     ignore (M.solving_unify body.pos env body_eff eff);
     {pats; body}
 
-and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.lvalue * Env.t
+and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.lvalue * FExpr.lvalue Vector.t
 = fun env typ pat -> match pat.v with
     | AExpr.Values pats when Vector.length pats = 1 ->
         if Vector.length pats = 1
@@ -201,13 +243,17 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.lvalue * Env.t
         let coercion = M.solving_subtype pat.pos env typ locator typ' in (* FIXME: use coercion *)
         check_pat env typ' pat'
 
-    | AExpr.Var name -> ({name; typ}, Env.push_val env name typ)
+    | AExpr.Var name ->
+        let lvalue = {FExpr.name; typ} in
+        (lvalue, Vector.singleton lvalue)
 
     | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
 and check_pats env domain pats =
     let step (pats, env) (_, domain) pat =
-        let (pat, env) = check_pat env domain pat in
+        let (pat, defs) = check_pat env domain pat in
+        let env =
+            Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
         (pat :: pats, env) in
     let (pats, env) = Vector.fold_left2 step ([], env) domain pats in (* FIXME: raises on length mismatch *)
     (Vector.of_list (List.rev pats), env)
@@ -220,7 +266,9 @@ let check_stmt : Env.t -> AStmt.t -> FStmt.t typing * Env.t
 = fun env -> function
     | AStmt.Def (pos, pat, expr) ->
         let {term = expr; typ; eff} : FExpr.t with_pos typing = typeof env expr in
-        let (pat, env) = check_pat env typ pat in
+        let (pat, defs) = check_pat env typ pat in
+        let env =
+            Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
         ({term = FStmt.Def (pos, pat, expr); typ; eff}, env)
 
     | AStmt.Expr expr ->

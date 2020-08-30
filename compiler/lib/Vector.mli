@@ -23,6 +23,7 @@ val exists : ('a -> bool) -> 'a t -> bool
 val map : ('a -> 'b) -> 'a t -> 'b t
 val mapi : (int -> 'a -> 'b) -> 'a t -> 'b t
 val map2 : ('a -> 'b -> 'c) -> 'a t -> 'b t -> 'c t
+val map3 : ('a -> 'b -> 'c -> 'd) -> 'a t -> 'b t -> 'c t -> 'd t
 val iter : ('a -> unit) -> 'a t -> unit
 val find_opt : ('a -> bool) -> 'a t -> 'a option
 val find : ('a -> bool) -> 'a t -> 'a
