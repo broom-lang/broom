@@ -156,15 +156,17 @@ and elaborate_pat env pat = match pat.v with
 
 (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
 and typeof_record env pos stmts =
-    let (pats, pat_typs, defs) = Vector.fold_left (fun (pats, semiabsen, defs) stmt ->
+    let (pats, pat_typs, defs, env) = Vector.fold_left (fun (pats, semiabsen, defs, env) stmt ->
         let (pat, semiabs, defs') = analyze_field env stmt in
-        (pat :: pats, semiabs :: semiabsen, Vector.append defs defs'))
-        ([], [], Vector.empty ()) stmts in
+        let env = Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ)
+            env defs' in
+        (pat :: pats, semiabs :: semiabsen, Vector.append defs defs', env))
+        ([], [], Vector.empty (), env) stmts in
     let pats = Vector.of_list (List.rev pats) in
     let pat_typs = Vector.of_list (List.rev pat_typs) in
-    let env = Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ)
-        env defs in
+
     let stmts = Vector.map3 (elaborate_field env) pats pat_typs stmts in
+
     let term = Vector.fold_left (fun base {FExpr.name; typ = _} ->
         {Util.v = FExpr.With {base; label = name; field = {v = FExpr.Use name; pos}}; pos})
         {v = EmptyRecord; pos} defs in
