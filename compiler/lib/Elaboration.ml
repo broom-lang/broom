@@ -76,10 +76,6 @@ let elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
             | {term = _; typ; eff = Pure} -> (Hole, typ)
             | _ -> raise (TypeError (typ.pos, ImpureType expr.v)))*)
 
-        (*| AType.Type ->
-            let ov = Env.generate env (Name.fresh (), TypeK) in
-            (TypeL (Ov ov), Type (to_abs (Ov ov)))*)
-
         | AType.Prim pt -> (T.Hole, T.Prim pt)
 
     (*and elab_decl env {name; typ} =
@@ -136,7 +132,7 @@ and eval env typ =
             (match Env.get_uv env uv with
             | Unassigned _ -> None
             | Assigned _ -> failwith "unreachable: Assigned in `apply`.")
-        | Pi _ | Record _ | Type _ | Prim _ -> failwith "unreachable: uncallable type in `whnf`"
+        | Pi _ | Record _ | With _ | EmptyRow | Type _ | Prim _ -> failwith "unreachable: uncallable type in `whnf`"
         | Bv _ -> failwith "unreachable: `Bv` in `whnf/apply`"
         | Use _ -> failwith "unreachable: `Use` in `whnf/apply`"
     in eval typ
