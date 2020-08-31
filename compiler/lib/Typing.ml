@@ -129,38 +129,36 @@ and elaborate_clause env {iparams; eparams; body} =
 
 and elaborate_pats env pats =
     let step (pats, typs, env) pat =
-        let (pat, loc, typ, defs) = elaborate_pat env pat in
+        let (pat, (_, loc, typ), defs) = elaborate_pat env pat in
         let env =
             Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
         (pat :: pats, (loc, typ) :: typs, env) in
     let (pats, typs, env) = Vector.fold_left step ([], [], env) pats in
     (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), env)
 
-and elaborate_pat : Env.t -> AExpr.pat with_pos -> FExpr.lvalue * T.locator * T.t * FExpr.lvalue Vector.t
-= fun env pat -> match pat.v with
+and elaborate_pat env pat = match pat.v with
     | AExpr.Values pats ->
         if Vector.length pats = 1
         then elaborate_pat env (Vector.get pats 0)
         else failwith "TODO: multi-value elaborate_pat"
 
     | AExpr.Ann (pat, typ) ->
-        let (_, locator, typ) = E.elaborate env typ |> Environmentals.reabstract env in
+        let (_, _, typ) as semiabs = E.elaborate env typ |> Environmentals.reabstract env in
         let (pat, defs) = check_pat env typ pat in
-        (pat, locator, typ, defs)
+        (pat, semiabs, defs)
 
     | AExpr.Var name ->
         let typ = T.Uv (Env.uv env (Name.fresh ())) in
         let lvalue = {FExpr.name; typ} in
-        (lvalue, Hole, typ, Vector.singleton lvalue)
+        (lvalue, (Vector.empty (), Hole, typ), Vector.singleton lvalue)
 
     | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
 (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
 and typeof_record env pos stmts =
-    let (env, existentials) = Env.push_existential env in
-    let (pats, pat_typs, defs) = Vector.fold_left (fun (pats, typs, defs) stmt ->
-        let (pat, loc, typ, defs') = analyze_field env stmt in
-        (pat :: pats, (loc, typ) :: typs, Vector.append defs defs'))
+    let (pats, pat_typs, defs) = Vector.fold_left (fun (pats, semiabsen, defs) stmt ->
+        let (pat, semiabs, defs') = analyze_field env stmt in
+        (pat :: pats, semiabs :: semiabsen, Vector.append defs defs'))
         ([], [], Vector.empty ()) stmts in
     let pats = Vector.of_list (List.rev pats) in
     let pat_typs = Vector.of_list (List.rev pat_typs) in
@@ -173,31 +171,44 @@ and typeof_record env pos stmts =
     let term = match Vector1.of_vector stmts with
         | Some stmts -> {Util.v = FExpr.Letrec (stmts, term); pos}
         | None -> term in
-    let term = match Vector1.of_list !existentials with
-        | Some existentials -> {Util.v = FExpr.LetType (existentials, term); pos}
-        | None -> term in
     let typ = Vector.fold_left (fun base {FExpr.name; typ} -> T.With {base; label = name; field = typ})
         T.EmptyRow defs
         |> (fun row -> T.Record row) in
-    let eff = T.EmptyRow in (* FIXME: Not true if !existentials != [] *)
+    let eff = T.EmptyRow in
     {term; typ; eff}
 
 and analyze_field env = function
     | AStmt.Def (_, pat, _) -> elaborate_pat env pat
 
-and elaborate_field env pat (loc, typ) = function
+and elaborate_field env pat semiabs = function
     | AStmt.Def (pos, _, expr) ->
-        let {TyperSigs.term = expr; typ = _; eff} = check env loc typ expr in
+        let {TyperSigs.term = expr; typ = _; eff} = implement env semiabs expr in
         let _ = M.solving_unify expr.pos env eff EmptyRow in
         (pos, pat, expr)
 
 (* # Checking *)
 
 and check_abs : Env.t -> T.abs -> AExpr.t with_pos -> FExpr.t with_pos typing
-= fun env (Exists (existentials, locator, body)) expr ->
-    if Vector.length existentials = 0
-    then check env locator body expr
-    else failwith "TODO: check_abs with existentials"
+= fun env typ expr -> implement env (Environmentals.reabstract env typ) expr
+
+and implement : Env.t -> T.ov Vector.t * T.locator * T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
+= fun env (existentials, locator, typ) expr ->
+    match Vector1.of_vector existentials with
+    | Some existentials ->
+        let axiom_bindings = Vector1.map (fun (((name, _), _) as param) ->
+            (Name.fresh (), param, Env.uv env name)
+        ) existentials in
+        let env = Env.push_axioms env axiom_bindings in
+        let {TyperSigs.term; typ = _; eff} = check env locator typ expr in
+        let axioms = Vector1.map (fun (axname, (((_, kind), _) as ov), impl) -> match kind with
+            | T.ArrowK (domain, _) ->
+                let args = Vector1.mapi (fun sibli _ -> T.Bv {depth = 0; sibli}) domain in
+                ( axname, Vector1.to_vector domain
+                , T.App (Ov ov, args), T.App (Uv impl, args) )
+            | TypeK -> (axname, Vector.of_list [], Ov ov, Uv impl)
+        ) axiom_bindings in
+        {term = {expr with v = Axiom (axioms, term)}; typ; eff}
+    | None -> check env locator typ expr
 
 and check : Env.t -> T.locator -> T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env locator typ expr -> match (typ, expr.v) with

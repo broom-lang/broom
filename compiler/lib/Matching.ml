@@ -104,7 +104,7 @@ and focalize_locator : T.locator -> T.t -> T.locator
 let rec coercion : span -> bool -> Env.t -> T.t -> T.ov Vector.t * T.locator * T.t -> coercer matching
 = fun pos occ env typ (existentials, super_locator, super) ->
     match Vector1.of_vector existentials with
-    (*| Some existentials ->
+    | Some existentials ->
         let axiom_bindings = Vector1.map (fun (((name, _), _) as param) ->
             (Name.fresh (), param, Env.uv env name)
         ) existentials in
@@ -112,14 +112,14 @@ let rec coercion : span -> bool -> Env.t -> T.t -> T.ov Vector.t * T.locator * T
         let {coercion = Cf coerce; residual} = subtype pos occ env typ super_locator super in
 
         let axioms = Vector1.map (fun (axname, (((_, kind), _) as ov), impl) -> match kind with
-            | ArrowK (domain, _) ->
-                let args = Vector1.mapi (fun sibli _ -> Bv {depth = 0; sibli}) domain in
+            | T.ArrowK (domain, _) ->
+                let args = Vector1.mapi (fun sibli _ -> T.Bv {depth = 0; sibli}) domain in
                 ( axname, Vector1.to_vector domain
                 , T.App (Ov ov, args), T.App (Uv impl, args) )
             | TypeK -> (axname, Vector.of_list [], Ov ov, Uv impl)
         ) axiom_bindings in
         { coercion = Cf (fun v -> {pos; v = Axiom (axioms, coerce v)})
-        ; residual = Option.map (fun residual -> Residual.Axioms (axiom_bindings, residual)) residual }*)
+        ; residual = Option.map (fun residual -> Residual.Axioms (axiom_bindings, residual)) residual }
     | None -> subtype pos occ env typ super_locator super
 
 and subtype_abs : span -> bool -> Env.t -> T.abs -> T.locator -> T.abs -> coercer matching
