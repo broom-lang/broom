@@ -46,7 +46,7 @@ type ::=
     | expr POSTFIX
     | expr "." ID
 
-    | "[" ("|" apat+ "->" expr)* "]" (* function literal *)
+    | "[" ("|" (pat+ "=>")? pat* "->" expr)* "]" (* function literal *)
     | "[" stmts "]" (* thunk *)
     | "{" stmts? "}"
     | "(" (expr ("," expr)*)? ")"
