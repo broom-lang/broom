@@ -1,23 +1,21 @@
-# Broom
+# 𓎝 Broom
 
-Effective, modular, functional programming language. WIP.
+A programming language with first-class modules and algebraic effects.  Still
+very much a work in progress.
 
-## Main Features
+## Characterization and Planned Features
 
-Currently can't run any useful programs, but this is what it will be like:
-
-* ML dialect
-    - Syntax should be more wieldy and mainstream
-    - No let-generalization
+* Functional-first
+* Strict evaluation (call by value)
+* Strong static typing
+    - Parametric, higher-rank and impredicative polymorphism
+    - Type inference (but no let-generalization)
+    - Modular implicits
+    - Generalized Algebraic DataTypes
 * ML-style module system
-    - Both 'generative' (SML) and 'applicative' (OCaml) functors
-* Remove ML limitations around recursion
-    - Recursive modules
-* First-class modules à la 1ML
-    - Also subsumes e.g. higher-ranked types
-* (Modular) implicits for ad-hoc polymorphism
-* Row-typed records (and modules, since they are the same)
-* Row-based effect system à la Koka
+    - Also supports recursive and first-class modules
+* Algebraic effects
+* The modules and effects are based on row types
 
 ## (Abstract) Syntax
 
@@ -34,8 +32,7 @@ defs ::= def (";" def)*
 expr ::=
 pat ::=
 type ::= 
-    | type "->" type "!" type
-    | type "=>" type
+    | (type "=>")? type ("-!" type)? "->" type
 
     | expr ":" type
     | expr "||" expr
@@ -57,13 +54,13 @@ type ::=
           | "==" | "<" | "<=" | ">" | ">="
           | "+" | "-"
           | "*" | "/" | "%" ) ")"
-    | "{" "|" stmts? ")"
-    | "(" "|" stmts? ")"
+    | "{" "|" stmts? "|" ")"
+    | "(" "|" stmts? "|" ")"
 
     | ID
     | "_"
     | CONST
 ```
 
-See [the intro](docs/source/introduction.rst) for a slightly more detailed exposition.
+<!-- See [the intro](docs/source/introduction.rst) for a slightly more detailed exposition. -->
 
