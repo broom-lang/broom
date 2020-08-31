@@ -1,7 +1,7 @@
 # 𓎝 Broom
 
 A programming language with first-class modules and algebraic effects.  Still
-very much a work in progress.
+very much a work in progress (i.e. not yet usable).
 
 ## Characterization and Planned Features
 
