@@ -16,8 +16,6 @@ type error =
     | Occurs of Fc.Type.uv * typ
     | Polytype of abs
     | PolytypeInference of abs
-    | RecordArticulation of typ
-    | RecordArticulationL of Fc.Type.locator
 
 exception TypeError of Util.span * error
 

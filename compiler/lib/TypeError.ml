@@ -16,8 +16,6 @@ type error =
     | Occurs of Fc.Type.uv * typ
     | Polytype of abs
     | PolytypeInference of abs
-    | RecordArticulation of typ
-    | RecordArticulationL of Fc.Type.locator
 
 exception TypeError of Util.span * error
 
@@ -55,10 +53,6 @@ let rec cause_to_doc s pos = function
     | Occurs (uv, typ) -> Fc.Type.to_doc s (Uv uv) ^/^ PPrint.string "occurs in" ^/^ Fc.Type.to_doc s typ
     | Polytype typ -> Fc.Type.abs_to_doc s typ ^/^ PPrint.string "is not a monotype"
     | PolytypeInference typ -> PPrint.string "tried to infer polytype" ^/^ Fc.Type.abs_to_doc s typ
-    | RecordArticulation typ ->
-        PPrint.string "tried to articulate record type" ^/^ Fc.Type.to_doc s typ
-    | RecordArticulationL typ ->
-        PPrint.string "tried to articulate record type" ^/^ Fc.Type.locator_to_doc s typ
 
 let to_doc s (({pos_fname; _}, _) as span : Util.span) err =
     PPrint.prefix 4 1 (PPrint.string "Type error in" ^/^ PPrint.string pos_fname ^/^ PPrint.string "at"

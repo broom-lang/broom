@@ -38,7 +38,7 @@ module rec Expr : FcSigs.EXPR
         | Unpack of Type.binding Vector1.t * lvalue * t with_pos * t with_pos
         | EmptyRecord
         | With of {base : t with_pos; label : Name.t; field : t with_pos}
-        | Select of t with_pos * string
+        | Select of t with_pos * Name.t
         | Proxy of abs 
         | Use of Name.t
         | Const of Const.t
@@ -139,7 +139,7 @@ module rec Expr : FcSigs.EXPR
             PPrint.infix 4 1 (PPrint.string "with") (base_to_doc s base)
                 (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
         | Select (record, label) ->
-            PPrint.prefix 4 0 (selectee_to_doc s record) (PPrint.dot ^^ PPrint.string label)
+            PPrint.prefix 4 0 (selectee_to_doc s record) (PPrint.dot ^^ Name.to_doc label)
         | Proxy typ -> PPrint.brackets (Type.abs_to_doc s typ)
         | Use name -> Name.to_doc name
         | Const c -> Const.to_doc c
