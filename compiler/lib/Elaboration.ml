@@ -2,6 +2,7 @@ module Make (C : TyperSigs.TYPING) (M : TyperSigs.MATCHING) : TyperSigs.ELABORAT
 
 module AType = Ast.Type
 module T = Fc.Type
+module AExpr = Ast.Term.Expr
 module AStmt = Ast.Term.Stmt
 module FExpr = Fc.Term.Expr
 module Err = TypeError
@@ -10,7 +11,7 @@ type 'a with_pos = 'a Util.with_pos
 
 let reabstract = Environmentals.reabstract
 
-let elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
+let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
     let rec elab env (typ : AType.t with_pos) =
         match typ.v with
         (*| AType.Pi ({name; typ = domain}, eff, codomain) ->
@@ -54,7 +55,13 @@ let elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
                 ( PiL (ukinds, eff, codomain_locator)
                 , Pi (ukinds, domain_locator, domain, eff, codomain) ))*)
 
-        | AType.Record decls -> elab_record env typ.pos decls
+        | Pi {idomain; edomain; eff; codomain} -> elab_pi env idomain edomain eff codomain
+
+        | AType.Record decls ->
+            let (loc, row) = elab_row env typ.pos decls in
+            (T.RecordL loc, T.Record row)
+
+        | AType.Row decls -> elab_row env typ.pos decls
 
         | Path expr ->
             let {TyperSigs.term = _; typ = proxy_typ; eff} = C.typeof env {typ with v = expr} in
@@ -72,7 +79,39 @@ let elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
 
         | Prim pt -> (T.Hole, T.Prim pt)
 
-    and elab_record env pos decls =
+    and elab_pi env idomain edomain eff codomain = (* TODO: Applicative functors: *)
+        let (env, universals) = Env.push_existential env in
+        let (idomain, env) = elab_domain env idomain in
+        let (edomain, env) = elab_domain env edomain in (* FIXME: make non-dependent (by default) *)
+        let Exists (effixtentials, eff_locator, eff) = elaborate env eff in
+        let codomain = elaborate env codomain in
+        let universals = Vector.of_list !universals in
+        let (_, substitution) = Vector.fold_left (fun (i, substitution) (name, _) ->
+            (i + 1, Name.Map.add name i substitution)
+        ) (0, Name.Map.empty) universals in
+        ( T.PiL (Vector.length universals, Hole)
+        , T.Pi ( Vector.map snd universals
+             , Vector.map (fun (locator, domain) ->
+                 ( Environmentals.close_locator env substitution locator
+                 , Environmentals.close env substitution domain ))
+                 (Vector.append idomain edomain)
+             , Environmentals.close env substitution eff
+             , Environmentals.close_abs env substitution codomain ) )
+
+    and elab_domain env (domain : AExpr.t with_pos) =
+        let domain = match domain.v with
+            | AExpr.Values domain -> domain
+            | _ -> Vector.singleton domain in
+        let (domain, env) = Vector.fold_left (fun (domain, env) pat ->
+            let (pat, (_, loc, typ), defs) = C.elaborate_pat env pat in
+            let env = Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ)
+                env defs in
+            ((loc, typ) :: domain, env)
+        ) ([], env) domain in
+        let domain = Vector.of_list (List.rev domain) in
+        (domain, env)
+
+    and elab_row env pos decls =
         let (pat_typs, defs, env) = Vector.fold_left (fun (semiabsen, defs, env) decl ->
             let (pat, semiabs, defs') = analyze_decl env decl in
             let env = Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ)
@@ -90,7 +129,7 @@ let elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
             T.With {base; label = name; field = typ}
         ) EmptyRow defs in
         ( Hole (* FIXME *)
-        , Record row )
+        , row )
 
     and analyze_decl env = function
         | AStmt.Expr {v = Ann (pat, _); pos = _} -> C.elaborate_pat env pat

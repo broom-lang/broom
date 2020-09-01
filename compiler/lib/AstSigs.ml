@@ -54,7 +54,7 @@ module type TYPE = sig
     type pat
 
     type t =
-        | Pi of { idomain : pat with_pos option; edomain : pat with_pos; eff : t with_pos
+        | Pi of { idomain : pat with_pos; edomain : pat with_pos; eff : t with_pos
             ; codomain : t with_pos }
         | Record of stmt Vector.t
         | Row of stmt Vector.t

@@ -161,20 +161,22 @@ typ : typ_without_pos { {v = $1; pos = $sloc} }
 
 typ_without_pos :
     | binapp "=>" binapp "-!" binapp "->" typ {
-        Pi {idomain = Some $1; edomain = $3; eff = {$5 with v = path $5.v}; codomain = $7}
+        Pi {idomain = $1; edomain = $3; eff = {$5 with v = path $5.v}; codomain = $7}
     }
     | binapp "=>" binapp "->" typ {
-        Pi {idomain = Some $1; edomain = $3; eff = {v = Row (Vector.empty ()); pos = $loc($4)}; codomain = $5}
+        Pi {idomain = $1; edomain = $3; eff = {v = Row (Vector.empty ()); pos = $loc($4)}; codomain = $5}
     }
     | binapp "=>" ann_expr {
-        Pi {idomain = Some $1; edomain = {v = Values (Vector.empty ()); pos = $loc($2)}
+        Pi {idomain = $1; edomain = {v = Values (Vector.empty ()); pos = $loc($2)}
             ; eff = {v = Row (Vector.empty ()); pos = $loc($2)}; codomain = {$3 with v = path $3.v}}
     }
     | binapp "-!" binapp "->" typ {
-        Pi {idomain = None; edomain = $1; eff = {$3 with v = path $3.v}; codomain = $5}
+        Pi { idomain = {v = Values (Vector.empty ()); pos = $loc($2)}; edomain = $1
+            ; eff = {$3 with v = path $3.v}; codomain = $5 }
     }
     | binapp "->" typ {
-        Pi {idomain = None; edomain = $1; eff = {v = Row (Vector.empty ()); pos = $loc($2)}; codomain = $3}
+        Pi { idomain = {v = Values (Vector.empty ()); pos = $loc($2)}; edomain = $1
+            ; eff = {v = Row (Vector.empty ()); pos = $loc($2)}; codomain = $3 }
     }
     | ann_expr { path $1.v }
 

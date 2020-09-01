@@ -100,7 +100,7 @@ and Type : AstSigs.TYPE
     type stmt = Term.Stmt.t
 
     type t =
-        | Pi of { idomain : pat with_pos option; edomain : pat with_pos; eff : t with_pos
+        | Pi of { idomain : pat with_pos; edomain : pat with_pos; eff : t with_pos
             ; codomain : t with_pos }
         | Record of stmt Vector.t
         | Row of stmt Vector.t
@@ -111,9 +111,7 @@ and Type : AstSigs.TYPE
         | Pi {idomain; edomain; eff; codomain} ->
             let doc = PPrint.infix 4 1 (PPrint.string "-!") (Term.Expr.to_doc edomain)
                 (PPrint.infix 4 1 (PPrint.string "->") (to_doc eff) (to_doc codomain)) in
-            (match idomain with
-            | Some idomain -> PPrint.infix 4 1 (PPrint.string "=>") (Term.Expr.to_doc idomain) doc
-            | None -> doc)
+            PPrint.infix 4 1 (PPrint.string "=>") (Term.Expr.to_doc idomain) doc
         | Record stmts ->
             PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.bar)
                 (PPrint.lbrace ^^ PPrint.bar) (PPrint.semi ^^ PPrint.break 1) (PPrint.bar ^^ PPrint.rbrace)
