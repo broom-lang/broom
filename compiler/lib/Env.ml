@@ -5,7 +5,7 @@ module Bindings = Map.Make(Name)
 type uv = Fc.Uv.t
 
 type scope =
-    | Hoisting of T.binding list ref * T.level
+    | Hoisting of T.ov list ref * T.level
     | Rigid of T.ov Vector.t
     | Val of Name.t * T.t
     | Axiom of (Name.t * T.ov * uv) Name.Map.t
@@ -59,8 +59,9 @@ let push_axioms (env : t) axioms =
 let generate env binding =
     let rec generate = function
         | Hoisting (bindings, level) :: _ ->
-            bindings := binding :: !bindings;
-            (binding, level)
+            let ov = (binding, level) in
+            bindings := ov :: !bindings;
+            ov
         | _ :: scopes' -> generate scopes'
         | [] -> failwith "Typer.Env.generate: missing root Hoisting scope"
     in generate env.scopes

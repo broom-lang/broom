@@ -112,7 +112,7 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t with_p
         let param_uses =
             Vector.map (fun {FExpr.name; _} -> {Util.v = FExpr.Use name; pos}) params in
         let body = {Util.v = FExpr.Match (param_uses, clauses); pos} in
-        let universals = Vector.of_list !universals in
+        let universals = Vector.map fst (Vector.of_list !universals) in
         let (_, substitution) = Vector.fold_left (fun (i, substitution) (name, _) ->
             (i + 1, Name.Map.add name i substitution)
         ) (0, Name.Map.empty) universals in

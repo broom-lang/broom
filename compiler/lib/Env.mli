@@ -10,7 +10,7 @@ val eval : unit -> t
 val find : t -> Util.span -> Name.t -> Fc.Type.t
 
 val push_val : t -> Name.t -> T.t -> t
-val push_existential : t -> t * T.binding list ref
+val push_existential : t -> t * T.ov list ref
 val push_skolems : t -> T.kind Vector.t -> t * T.ov Vector.t
 val push_axioms : t -> (Name.t * T.ov * uv) Vector1.t -> t
 

@@ -14,54 +14,13 @@ let reabstract = Environmentals.reabstract
 let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
     let rec elab env (typ : AType.t with_pos) =
         match typ.v with
-        (*| AType.Pi ({name; typ = domain}, eff, codomain) ->
-            let domain = kindcheck env domain in
-            let (env, universals, domain_locator, domain) = Env.push_domain_skolems env domain in
-            let name = match name with
-                | Some name -> name
-                | None -> Name.fresh () in
-            let env = Env.push_domain env {name; typ = domain} domain_locator in
-
-            let ubs = Vector.map fst universals in
-            let ukinds = Vector.map snd ubs in
-            let (codomain_locator, codomain) =
-                match (eff, kindcheck env codomain) with
-                | (Pure, Exists (existentials, codomain_locator, concr_codo)) ->
-                    let substitution = Vector.map (fun kind ->
-                        let kind = match Vector1.of_vector ukinds with
-                            | Some ukinds ->
-                                (match kind with (* TODO: Is this sufficient to ensure unique reprs?: *)
-                                | ArrowK (ukinds', kind) -> ArrowK (Vector1.append ukinds' ukinds, kind)
-                                | _ -> ArrowK (ukinds, kind))
-                            | None -> kind in
-                        let ov = Env.generate env (Name.freshen name, kind) in
-                        (match Vector1.of_vector universals with
-                        | Some universals -> App (Ov ov, Vector1.map (fun ov -> Ov ov) universals)
-                        | None -> Ov ov)
-                    ) existentials in
-                    ( expose_locator substitution codomain_locator
-                    , to_abs (expose substitution concr_codo) )
-                | (_, codomain) -> (Hole, codomain) in
-
-            (match Vector1.of_vector ubs with
-            | Some universals1 ->
-                let (_, substitution) = Vector1.fold_left (fun (i, substitution) (name, _) ->
-                    (i + 1, Name.Map.add name i substitution)
-                ) (0, Name.Map.empty) universals1 in
-                ( PiL (ukinds, eff, close_locator substitution codomain_locator)
-                , Pi ( ukinds, close_locator substitution domain_locator
-                     , close substitution domain, eff, close_abs substitution codomain ) )
-            | None ->
-                ( PiL (ukinds, eff, codomain_locator)
-                , Pi (ukinds, domain_locator, domain, eff, codomain) ))*)
-
         | Pi {idomain; edomain; eff; codomain} -> elab_pi env idomain edomain eff codomain
 
-        | AType.Record decls ->
+        | Record decls ->
             let (loc, row) = elab_row env typ.pos decls in
             (T.RecordL loc, T.Record row)
 
-        | AType.Row decls -> elab_row env typ.pos decls
+        | Row decls -> elab_row env typ.pos decls
 
         | Path expr ->
             let {TyperSigs.term = _; typ = proxy_typ; eff} = C.typeof env {typ with v = expr} in
@@ -77,20 +36,43 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
             | {term = _; typ; eff = Pure} -> (Hole, typ)
             | _ -> raise (TypeError (typ.pos, ImpureType expr.v)))*)
 
-        | Prim pt -> (T.Hole, T.Prim pt)
+        | Prim pt -> (Hole, Prim pt)
 
-    and elab_pi env idomain edomain eff codomain = (* TODO: Applicative functors: *)
-        let (env, universals) = Env.push_existential env in
+    and elab_pi env0 idomain edomain eff codomain = (* TODO: Applicative functors: *)
+        let (env, universals) = Env.push_existential env0 in
         let (idomain, env) = elab_domain env idomain in
         let (edomain, env) = elab_domain env edomain in (* FIXME: make non-dependent (by default) *)
         let Exists (effixtentials, eff_locator, eff) = elaborate env eff in
         let codomain = elaborate env codomain in
         let universals = Vector.of_list !universals in
+
+        let ubs = Vector.map fst universals in
+        let ukinds = Vector.map snd ubs in
+        let (codomain_locator, codomain) =
+            match (eff, codomain) with (* FIXME: eval `eff` *)
+            | (EmptyRow, Exists (existentials, codomain_locator, concr_codo)) ->
+                (* Hoist codomain existentials to make applicative functor (in the ML modules sense): *)
+                let substitution = Vector.map (fun kind ->
+                    let kind = match Vector1.of_vector ukinds with
+                        | Some ukinds ->
+                            (match kind with (* TODO: Is this sufficient to ensure unique reprs?: *)
+                            | T.ArrowK (ukinds', kind) -> T.ArrowK (Vector1.append ukinds' ukinds, kind)
+                            | _ -> T.ArrowK (ukinds, kind))
+                        | None -> kind in
+                    let ov = Env.generate env0 (Name.fresh (), kind) in
+                    (match Vector1.of_vector universals with
+                    | Some universals -> T.App (Ov ov, Vector1.map (fun ov -> T.Ov ov) universals)
+                    | None -> Ov ov)
+                ) existentials in
+                ( Environmentals.expose_locator env0 substitution codomain_locator
+                , T.to_abs (Environmentals.expose env0 substitution concr_codo) )
+            | (_, codomain) -> (T.Hole, codomain) in
+
         let (_, substitution) = Vector.fold_left (fun (i, substitution) (name, _) ->
             (i + 1, Name.Map.add name i substitution)
-        ) (0, Name.Map.empty) universals in
-        ( T.PiL (Vector.length universals, Hole)
-        , T.Pi ( Vector.map snd universals
+        ) (0, Name.Map.empty) ubs in
+        ( T.PiL (Vector.length universals, codomain_locator)
+        , T.Pi ( Vector.map snd ubs
              , Vector.map (fun (locator, domain) ->
                  ( Environmentals.close_locator env substitution locator
                  , Environmentals.close env substitution domain ))
@@ -139,10 +121,11 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
 
     let (env, params) = Env.push_existential env in
     let (locator, typ) = elab env typ in
-    let (_, substitution) = List.fold_left (fun (i, substitution) (name, _) ->
+    let params = !params |> Vector.of_list |> Vector.map fst in
+    let (_, substitution) = Vector.fold_left (fun (i, substitution) (name, _) ->
         (i + 1, Name.Map.add name i substitution)
-    ) (0, Name.Map.empty) (!params) in
-    Exists ( Vector.map snd (Vector.of_list (!params))
+    ) (0, Name.Map.empty) params in
+    Exists ( Vector.map snd params
            , Environmentals.close_locator env substitution locator
            , Environmentals.close env substitution typ )
 
