@@ -2,6 +2,8 @@ module Make (C : TyperSigs.TYPING) (M : TyperSigs.MATCHING) : TyperSigs.ELABORAT
 
 module AType = Ast.Type
 module T = Fc.Type
+module AStmt = Ast.Term.Stmt
+module FExpr = Fc.Term.Expr
 module Err = TypeError
 
 type 'a with_pos = 'a Util.with_pos
@@ -52,17 +54,9 @@ let elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
                 ( PiL (ukinds, eff, codomain_locator)
                 , Pi (ukinds, domain_locator, domain, eff, codomain) ))*)
 
-        | Record decls ->
-            if Vector.length decls = 0
-            then (T.Hole, T.Record EmptyRow)
-            else failwith "TODO: nonempty signature"
+        | AType.Record decls -> elab_record env typ.pos decls
 
-        (*| AType.Sig decls ->
-            let env = Env.push_sig env decls in
-            let (locators, decls) = Vector.split (Vector.map (elab_decl env) decls) in
-            (RecordL locators, Record decls)*)
-
-        | AType.Path expr ->
+        | Path expr ->
             let {TyperSigs.term = _; typ = proxy_typ; eff} = C.typeof env {typ with v = expr} in
             let _ = M.solving_unify typ.pos env eff EmptyRow in
             (match M.focalize typ.pos env proxy_typ (TypeL (Uv (Env.uv env (Name.fresh ())))) with
@@ -76,12 +70,33 @@ let elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
             | {term = _; typ; eff = Pure} -> (Hole, typ)
             | _ -> raise (TypeError (typ.pos, ImpureType expr.v)))*)
 
-        | AType.Prim pt -> (T.Hole, T.Prim pt)
+        | Prim pt -> (T.Hole, T.Prim pt)
 
-    (*and elab_decl env {name; typ} =
-        let (locator, {name; typ}) = C.lookup typ.pos env name in
-        let label = Name.to_string name in
-        ({label; typ = locator}, {label; typ}*) in
+    and elab_record env pos decls =
+        let (pat_typs, defs, env) = Vector.fold_left (fun (semiabsen, defs, env) decl ->
+            let (pat, semiabs, defs') = analyze_decl env decl in
+            let env = Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ)
+                env defs' in
+            (semiabs :: semiabsen, Vector.append defs defs', env))
+            ([], Vector.empty (), env) decls in
+        let pat_typs = Vector.of_list (List.rev pat_typs) in
+
+        Vector.iter2 (fun decl (_, super_loc, super) ->
+            let typ = elab_decl env decl in
+            ignore (M.solving_subtype pos env typ super_loc super)
+        ) decls pat_typs;
+
+        let row = Vector.fold_left (fun base {FExpr.name; typ} ->
+            T.With {base; label = name; field = typ}
+        ) EmptyRow defs in
+        ( Hole (* FIXME *)
+        , Record row )
+
+    and analyze_decl env = function
+        | AStmt.Expr {v = Ann (pat, _); pos = _} -> C.elaborate_pat env pat
+
+    and elab_decl env = function
+        | AStmt.Expr {v = Ann (_, typ); pos = _} -> snd (elab env typ) in
 
     let (env, params) = Env.push_existential env in
     let (locator, typ) = elab env typ in

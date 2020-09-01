@@ -23,6 +23,9 @@ module type TYPING = sig
     val typeof : Env.t -> Ast.Term.Expr.t with_pos -> Fc.Term.Expr.t with_pos typing
     val deftype : Env.t -> Ast.Term.Stmt.def -> Fc.Term.Expr.def typing
     val check_stmt : Env.t -> Ast.Term.Stmt.t -> Fc.Term.Stmt.t typing * Env.t
+    (* HACK: (?): *)
+    val elaborate_pat : Env.t -> Ast.Term.Expr.pat with_pos ->
+        Fc.Term.Expr.lvalue * (Fc.Type.ov Vector.t * Fc.Type.locator * Fc.Type.t) * Fc.Term.Expr.lvalue Vector.t
     val lookup : span -> Env.t -> Name.t -> locator * Fc.Term.Expr.lvalue
 end
 

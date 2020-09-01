@@ -20,6 +20,7 @@ val fold_left : ('a -> 'b -> 'a) -> 'a -> 'b t -> 'a
 val fold_right : ('b -> 'a -> 'a) -> 'b t -> 'a -> 'a
 val for_all : ('a -> bool) -> 'a t -> bool
 val exists : ('a -> bool) -> 'a t -> bool
+val iter2 : ('a -> 'b -> unit) -> 'a t -> 'b t -> unit
 val map : ('a -> 'b) -> 'a t -> 'b t
 val mapi : (int -> 'a -> 'b) -> 'a t -> 'b t
 val map2 : ('a -> 'b -> 'c) -> 'a t -> 'b t -> 'c t

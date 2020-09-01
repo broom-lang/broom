@@ -16,6 +16,7 @@ let fold_left = Array.fold_left
 let fold_right = Array.fold_right
 let for_all = Array.for_all
 let exists = Array.exists
+let iter2 = Array.iter2
 let map = Array.map
 let mapi = Array.mapi
 let map2 = Array.map2

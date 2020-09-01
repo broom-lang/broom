@@ -29,6 +29,7 @@ let rec cause_to_doc s pos = function
         (match template with
         | PiL _ -> PPrint.string "is uncallable"
         | RecordL _ -> PPrint.string "is not a record"
+        | WithL {base = _; label; field = _} -> PPrint.string "lacks the field" ^/^ Name.to_doc label
         | TypeL _ -> PPrint.string "is not a type"
         | Hole -> failwith "unreachable: Unusable as Hole")
     | MissingField (typ, label) -> Fc.Type.to_doc s typ ^/^ PPrint.string "is missing field" ^/^ PPrint.string label

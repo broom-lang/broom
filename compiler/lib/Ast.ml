@@ -106,8 +106,6 @@ and Type : AstSigs.TYPE
         | Path of expr
         | Prim of Prim.t
 
-    and 'a decl = {name : 'a; typ : t with_pos}
-
     let rec to_doc (typ : t with_pos) = match typ.v with
         | Pi (domain, eff, codomain) ->
             PPrint.infix 4 1 (PPrint.string "-!") (Term.Expr.to_doc domain)

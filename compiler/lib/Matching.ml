@@ -69,7 +69,7 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                             if typ_label = label
                             then (Cf Fun.id, typ)
                             else failwith "TODO: focalize Record With label flip"
-                        | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
+                        | _ -> raise (Err.TypeError (pos, Unusable (row_template, row))))
                     | _ -> failwith "compiler bug: invalid record template")
                 | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
             | WithL {base = _; label; field = _} ->

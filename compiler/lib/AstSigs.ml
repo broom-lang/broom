@@ -60,8 +60,6 @@ module type TYPE = sig
         | Path of expr
         | Prim of Prim.t
 
-    and 'a decl = {name : 'a; typ : t with_pos}
-
     val to_doc : t with_pos -> PPrint.document
 end
 
