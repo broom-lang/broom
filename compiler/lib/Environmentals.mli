@@ -10,6 +10,9 @@ val close_locator : Env.t -> int Name.Map.t -> T.locator -> T.locator
 
 val reabstract : Env.t -> T.abs -> T.ov Vector.t * T.locator * T.t
 val push_abs_skolems : Env.t -> T.abs -> Env.t * T.ov Vector.t * T.t
+val push_arrow_skolems : Env.t -> T.kind Vector.t -> (T.locator * T.t) Vector.t
+    -> T.t -> T.locator -> T.abs
+    -> Env.t * T.ov Vector.t * (T.locator * T.t) Vector.t * T.t * T.locator * T.abs
 val instantiate_abs : Env.t -> T.abs -> T.uv Vector.t * T.locator * T.t
 val instantiate_arrow : Env.t -> T.kind Vector.t -> (T.locator * T.t) Vector.t
     -> T.t -> T.abs -> T.uv Vector.t * (T.locator * T.t) Vector.t * T.t * T.abs

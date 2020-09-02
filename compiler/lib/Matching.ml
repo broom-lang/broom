@@ -234,35 +234,45 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                 subtype pos false env typ locator (articulate pos occ env super typ)
             | Assigned _ -> failwith "unreachable: Assigned `super` in `subtype_whnf`")
 
-        (*| (Pi (universals, domain_locator, domain, eff, codomain), _) -> (match super with
-            | Pi (universals', _, domain', eff', codomain') ->
+        | (Pi (universals, domain, eff, codomain), _) -> (match super with
+            | Pi (universals', domain', eff', codomain') ->
                 let codomain_locator = match locator with
-                    | PiL (_, _, codomain_locator) -> codomain_locator
+                    | PiL (_, codomain_locator) -> codomain_locator
                     | _ -> failwith "unreachable: function locator" in
                 let (env, universals', domain', eff', codomain_locator, codomain') =
-                    Env.push_arrow_skolems env universals' domain' eff' codomain_locator codomain' in
-                let (uvs, domain_locator, domain, eff, codomain) =
-                    Env.instantiate_arrow env universals domain_locator domain eff codomain in
+                    Environmentals.push_arrow_skolems env universals'
+                        domain' eff' codomain_locator codomain' in
+                let (uvs, domain, eff, codomain) =
+                    Environmentals.instantiate_arrow env universals domain eff codomain in
 
-                let {coercion = Cf coerce_domain; residual = domain_residual} =
-                    subtype pos occ env domain' domain_locator domain in
-                sub_eff pos eff eff';
+                (* FIXME: raises on arity mismatch: *)
+                let {coercion = domain_coercions; residual = domain_residual} =
+                    Vector.fold_left2 (fun {coercion = coercions; residual} (loc, domain) (_, domain') ->
+                        let {coercion; residual = residual'} = subtype pos occ env domain' loc domain in
+                        {coercion = coercion :: coercions; residual = combine residual residual'})
+                    {coercion = []; residual = empty} domain domain' in
+                let domain_coercions = domain_coercions |> List.rev |> Vector.of_list in
+                let {coercion = _; residual = eff_residual} = subtype pos occ env eff Hole eff' in
                 let {coercion = Cf coerce_codomain; residual = codomain_residual} =
-                    subtype_abs pos env codomain codomain_locator codomain' in
+                    subtype_abs pos occ env codomain codomain_locator codomain' in
 
-                let name = Name.fresh () in
-                let param = {name; typ = domain'} in
-                let arg = coerce_domain {pos; v = Use name} in
-                let arrows_residual = combine domain_residual codomain_residual in
-                { coercion =
-                    Cf (fun v ->
-                            let body = coerce_codomain {pos; v = App (v, Vector.map (fun uv -> Uv uv) uvs, arg)} in
-                            {pos; v = Fn (universals', param, body)})
+                let names = Vector.map (fun _ -> Name.fresh ()) domain in
+                let params = Vector.map2 (fun name (_, domain') -> {E.name; typ = domain'})
+                    names domain' in
+                let args = Vector.map2 (fun name (TyperSigs.Cf coerce_domain) ->
+                        coerce_domain {pos; v = E.Use name}
+                ) names domain_coercions in
+                let arrows_residual = codomain_residual
+                    |> combine eff_residual
+                    |> combine domain_residual in
+                { coercion = TyperSigs.Cf (fun v ->
+                    let body = coerce_codomain {pos; v = App (v, Vector.map (fun uv -> T.Uv uv) uvs, args)} in
+                    {pos; v = E.Fn (Vector.map fst universals', params, body)})
                 ; residual =
-                    (match Vector1.of_vector universals' with
+                    (match Vector1.of_vector (Vector.map fst universals') with
                     | Some skolems -> ResidualMonoid.skolemized skolems arrows_residual
                     | None -> arrows_residual) }
-            | _ -> raise (TypeError (pos, SubType (typ, super))))*)
+            | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (Record row, _) -> (match super with
             | Record super_row ->

@@ -106,6 +106,16 @@ let push_abs_skolems env (T.Exists (existentials, locator, body)) =
     let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
     (env, skolems, expose env substitution body)
 
+let push_arrow_skolems env universals domain eff codomain_locator codomain =
+    let (env, skolems) = Env.push_skolems env universals in
+    let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
+    ( env, skolems
+    , Vector.map (fun (loc, domain) ->
+            (expose_locator env substitution loc, expose env substitution domain))
+        domain
+    , expose env substitution eff
+    , expose_locator env substitution codomain_locator, expose_abs env substitution codomain )
+
 let instantiate_abs env (T.Exists (existentials, locator, body)) =
     let uvs = Vector.map (fun _ -> Env.uv env (Name.fresh ())) existentials in
     let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
