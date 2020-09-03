@@ -32,26 +32,29 @@ let proxy = function
 
 %%
 
+tail(separator, item, terminator) :
+    | separator item tail(separator, item, terminator) { $2 :: $3 }
+    | separator? terminator { [] }
+
+trail(separator, item, terminator) :
+    | item tail(separator, item, terminator) { Vector.of_list ($1 :: $2) }
+    | terminator { Vector.empty () }
+
+trailer(init, separator, item, terminator) : init trail(separator, item, terminator) { $2 }
+
 (* # Entry Points *)
 
-program : defs EOF { $1 }
+program : trail(";", def, EOF) { $1 }
 
-commands : stmts? EOF { match $1 with
-        | Some stmts -> Vector1.to_vector stmts
-        | None -> Vector.empty ()
-    }
+commands : trail(";", stmt, EOF) { $1 }
 
 (* # Definitions & Statements *)
 
 def : expr "=" expr { ($loc, $1, $3) }
 
-defs : separated_list(";", def) { Vector.of_list $1 }
-
 stmt :
     | def { Def $1 }
     | expr { Expr $1 }
-
-stmts : separated_nonempty_list(";", stmt) { Vector1.of_list $1 |> Option.get }
 
 (* # Expressions *)
 
@@ -119,21 +122,18 @@ select :
 nestable : nestable_without_pos { {v = $1; pos = $sloc} }
 
 nestable_without_pos :
-    | "{" stmts? "}" { match $2 with
-        | Some stmts -> Record (Vector1.to_vector stmts)
-        | None -> Record (Vector.empty ())
-    }
+    | trailer("{", ";", stmt, "}") { Record $1 }
     | "[" clause* "]" { Fn (Vector.of_list $2) }
-    | "[" stmts "]" { Thunk (Vector1.to_vector $2) }
-    | "(" separated_list(",", expr) ")" { Values (Vector.of_list $2) }
+    | "[" stmt tail(";", stmt, "]") { Thunk (Vector.of_list ($2 :: $3)) }
+    | trailer("(", ",", expr, ")") { Values $1 }
     | "(" "||" ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
     | "(" "&&" ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
     | "(" COMPARISON ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
     | "(" ADDITIVE ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
     | "(" MULTIPLICATIVE ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
-    | "(" "|" stmts "|" ")" { proxy (Row (Vector1.to_vector $3)) }
+    | "(" "|" stmt tail(";", stmt, "|") ")" { proxy (Row (Vector.of_list ($3 :: $4))) }
     | "(" "|" ")" { proxy (Row (Vector.empty ())) }
-    | "{" "|" stmts "|" "}" { proxy (Record (Vector1.to_vector $3)) }
+    | "{" "|" stmt tail(";", stmt, "|") "}" { proxy (Record (Vector.of_list ($3 :: $4))) }
     | "{" "|" "}" { proxy (Record (Vector.empty ())) }
     | ID { Var (Name.of_string $1) }
     | WILD { failwith "TODO" }

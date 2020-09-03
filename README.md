@@ -20,14 +20,14 @@ very much a work in progress (i.e. not yet usable).
 ## (Abstract) Syntax
 
 ```
-program ::= defs
-repl_input ::= stmts*
+program ::= defs?
+repl_input ::= stmts?
 
 stmt ::= def | expr
-stmts ::= stmt (";" stmt)*
+stmts ::= stmt (";" stmt)* ";"?
 
 def ::= pat "=" expr
-defs ::= def (";" def)*
+defs ::= def (";" def)* ";"?
 
 expr ::=
 pat ::=
@@ -49,7 +49,7 @@ type ::=
     | "[" ("|" (pat+ "=>")? pat* "->" expr)* "]" (* function literal *)
     | "[" stmts "]" (* thunk *)
     | "{" stmts? "}"
-    | "(" (expr ("," expr)*)? ")"
+    | "(" (expr ("," expr)*)? ","? ")"
     | "(" ( "||" | "&&"
           | "==" | "<" | "<=" | ">" | ">="
           | "+" | "-"
