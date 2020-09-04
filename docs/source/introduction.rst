@@ -9,7 +9,7 @@ Definitions
 
 Values can be named::
 
-    val answer: int = 42;
+    answer: int = 42;
 
 You probably think of these as variables, but that is a questionable term since
 name bindings are immutable and thus don't 'vary'.
@@ -140,11 +140,11 @@ Side-effecting expressions have non-empty effect rows, e.g. ``println``::
 
 Higher-order functions are often parametric in their effects::
 
-    Array : ARRAY = {
+    ARRAY = {|
         -- ...
 
         map : (a, b, e : row) => (a -!e-> b, t a) -!e-> t b
-    }
+    |};
 
 Obviously mapping a function over an array has no effects aside from those from
 calling the callback function, which depend on the particular function.
