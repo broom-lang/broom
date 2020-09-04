@@ -22,7 +22,7 @@ module rec Expr : FcSigs.EXPR
     type def = Stmt.def
     type stmt = Stmt.t
 
-    type lvalue = {name : Name.t; typ : typ}
+    type lvalue = {name : Name.t; typ : Type.t}
 
     type t
         = Fn of Type.binding Vector.t * lvalue Vector.t * t with_pos
@@ -44,14 +44,16 @@ module rec Expr : FcSigs.EXPR
         | Const of Const.t
         | Patchable of t with_pos ref
 
-    and clause = {pats : lvalue Vector.t; body : t with_pos}
+    and pat =
+        | AppP of t with_pos * pat with_pos Vector.t
+        | UseP of Name.t
+        | ConstP of Const.t
+
+    and clause = {pats : pat with_pos Vector.t; body : t with_pos}
 
     and field = {label : string; expr : t with_pos}
 
     let coercion_to_doc = Type.coercion_to_doc
-
-    let lvalue_to_doc s {name; typ} =
-        PPrint.infix 4 1 PPrint.colon (Name.to_doc name) (Type.to_doc s typ)
 
     let rec to_doc s {Util.v = expr; pos = _} = match expr with
         | Fn (universals, params, body) ->
@@ -160,7 +162,7 @@ module rec Expr : FcSigs.EXPR
     and clause_to_doc s {pats; body} =
         PPrint.bar ^^ PPrint.blank 1
         ^^ PPrint.infix 4 1 (PPrint.string "->")
-                (PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) (lvalue_to_doc s)
+                (PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) (pat_to_doc s)
                     (Vector.to_list pats))
                 (to_doc s body)
 
@@ -176,6 +178,18 @@ module rec Expr : FcSigs.EXPR
         | Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ | App _ -> PPrint.parens (to_doc s selectee)
         | _ -> to_doc s selectee
 
+    and lvalue_to_doc s {name; typ} =
+        PPrint.infix 4 1 PPrint.colon (Name.to_doc name) (Type.to_doc s typ)
+
+    and pat_to_doc s (pat : pat with_pos) = match pat.v with
+        | AppP (callee, args) ->
+            PPrint.align (to_doc s callee
+                ^/^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
+                    PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+                    (pat_to_doc s) (Vector.to_list args))
+        | UseP name -> Name.to_doc name
+        | ConstP c -> Const.to_doc c
+
     and field_to_doc s {label; expr} =
         PPrint.infix 4 1 PPrint.equals (PPrint.string label) (to_doc s expr)
 
@@ -186,22 +200,22 @@ end
 
 and Stmt : FcSigs.STMT
     with module Type = Type
-    with type lvalue = Expr.lvalue
+    with type pat = Expr.pat
     with type expr = Expr.t
 = struct
     module Type = Type
 
-    type lvalue = Expr.lvalue
     type expr = Expr.t
+    type pat = Expr.pat
 
-    type def = Util.span * lvalue * expr with_pos
+    type def = Util.span * pat with_pos * expr with_pos
 
     type t
         = Def of def
         | Expr of Expr.t with_pos
 
-    let def_to_doc s ((_, lvalue, expr) : def) =
-        PPrint.infix 4 1 PPrint.equals (Expr.lvalue_to_doc s lvalue) (Expr.to_doc s expr)
+    let def_to_doc s ((_, pat, expr) : def) =
+        PPrint.infix 4 1 PPrint.equals (Expr.pat_to_doc s pat) (Expr.to_doc s expr)
 
     let to_doc s = function
         | Def def -> def_to_doc s def

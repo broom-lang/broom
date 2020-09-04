@@ -30,11 +30,17 @@ module type EXPR = sig
         | Const of Const.t
         | Patchable of t with_pos ref
 
-    and clause = {pats : lvalue Vector.t; body : t with_pos}
+    and pat =
+        | AppP of t with_pos * pat with_pos Vector.t
+        | UseP of Name.t
+        | ConstP of Const.t
+
+    and clause = {pats : pat with_pos Vector.t; body : t with_pos}
 
     and field = {label : string; expr : t with_pos}
 
     val lvalue_to_doc : Type.subst -> lvalue -> PPrint.document
+    val pat_to_doc : Type.subst -> pat with_pos -> PPrint.document
     val to_doc : Type.subst -> t with_pos -> PPrint.document
 
     (* TODO: Add more of these: *)
@@ -44,10 +50,10 @@ end
 module type STMT = sig
     module Type : TYPE
 
-    type lvalue
     type expr
+    type pat
 
-    type def = Util.span * lvalue * expr with_pos
+    type def = Util.span * pat with_pos * expr with_pos
 
     type t
         = Def of def
@@ -68,6 +74,6 @@ module type TERM = sig
     and Stmt : (STMT
         with module Type = Type
         with type expr = Expr.t
-        with type lvalue = Expr.lvalue)
+        with type pat = Expr.pat)
 end
 

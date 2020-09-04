@@ -108,7 +108,7 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t with_p
         let clauses' = Seq.map (check_clause env domain eff ((* HACK: *) T.to_abs codomain))
             clauses' in
         let clauses = Vector.of_seq (fun () -> Seq.Cons (clause, clauses')) in
-        let params = clause . FExpr.pats in (* HACK *)
+        let params = Vector.map (fun (_, typ) -> {FExpr.name = Name.fresh (); typ}) domain in
         let param_uses =
             Vector.map (fun {FExpr.name; _} -> {Util.v = FExpr.Use name; pos}) params in
         let body = {Util.v = FExpr.Match (param_uses, clauses); pos} in
@@ -156,8 +156,7 @@ and elaborate_pat env pat = match pat.v with
 
     | AExpr.Var name ->
         let typ = T.Uv (Env.uv env (Name.fresh ())) in
-        let lvalue = {FExpr.name; typ} in
-        (lvalue, (Vector.empty (), Hole, typ), Vector.singleton lvalue)
+        ({pat with v = FExpr.UseP name}, (Vector.empty (), Hole, typ), Vector.singleton {FExpr.name; typ})
 
     | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
@@ -236,7 +235,8 @@ and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t wit
         (match Vector1.of_vector clauses with
         | Some clauses ->
             let clauses = Vector1.map (check_clause env domain eff codomain) clauses in
-            let params = (Vector1.get clauses 0) . FExpr.pats in (* HACK *)
+            let params =
+                Vector.map (fun (_, typ) -> {FExpr.name = Name.fresh (); typ}) domain in
             let param_uses =
                 Vector.map (fun {FExpr.name; _} -> {Util.v = FExpr.Use name; pos}) params in
             let body = {Util.v = FExpr.Match (param_uses, Vector1.to_vector clauses); pos} in
@@ -251,7 +251,7 @@ and check_clause env domain eff codomain {iparams; eparams; body} =
     ignore (M.solving_unify body.pos env body_eff eff);
     {pats; body}
 
-and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.lvalue * FExpr.lvalue Vector.t
+and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr.lvalue Vector.t
 = fun env typ pat -> match pat.v with
     | AExpr.Values pats when Vector.length pats = 1 ->
         if Vector.length pats = 1
@@ -264,8 +264,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.lvalue * FExpr.lvalu
         check_pat env typ' pat'
 
     | AExpr.Var name ->
-        let lvalue = {FExpr.name; typ} in
-        (lvalue, Vector.singleton lvalue)
+        ({pat with v = UseP name}, Vector.singleton {FExpr.name; typ})
 
     | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
