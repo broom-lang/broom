@@ -190,12 +190,16 @@ and typeof_record env pos stmts =
 
 and analyze_field env = function
     | AStmt.Def (_, pat, _) -> elaborate_pat env pat
+    | AStmt.Expr {v = Var _; pos = _} -> failwith "TODO: field punning"
+    | AStmt.Expr expr as field -> raise (Err.TypeError (expr.pos, Err.InvalidField field))
 
 and elaborate_field env pat semiabs = function
     | AStmt.Def (pos, _, expr) ->
         let {TyperSigs.term = expr; typ = _; eff} = implement env semiabs expr in
         let _ = M.solving_unify expr.pos env eff EmptyRow in
         (pos, pat, expr)
+    | AStmt.Expr {v = Var _; pos = _} -> failwith "TODO: field punning"
+    | AStmt.Expr expr as field -> raise (Err.TypeError (expr.pos, Err.InvalidField field))
 
 (* # Checking *)
 

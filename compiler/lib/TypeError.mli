@@ -4,6 +4,7 @@ type abs = Fc.Type.abs
 type error =
     | NonPattern of Ast.Term.Expr.t
     | InvalidDecl of Ast.Term.Stmt.t
+    | InvalidField of Ast.Term.Stmt.t
     | Unbound of Name.t
     | Unusable of Fc.Type.locator * typ
     | MissingField of typ * string
