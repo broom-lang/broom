@@ -114,10 +114,14 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
         , row )
 
     and analyze_decl env = function
+        | AStmt.Def (_, pat, _) -> C.elaborate_pat env pat
         | AStmt.Expr {v = Ann (pat, _); pos = _} -> C.elaborate_pat env pat
         | AStmt.Expr expr as decl -> raise (Err.TypeError (expr.pos, Err.InvalidDecl decl))
 
     and elab_decl env = function
+        | AStmt.Def (_, _, expr) ->
+            let expr' = AExpr.App ({expr with v = Var (Name.of_string "typeof")}, Vector.singleton expr) in
+            snd (elab env {expr with v = Path expr'})
         | AStmt.Expr {v = Ann (_, typ); pos = _} -> snd (elab env typ)
         | AStmt.Expr expr as decl -> raise (Err.TypeError (expr.pos, Err.InvalidDecl decl)) in
 
