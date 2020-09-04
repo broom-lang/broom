@@ -158,6 +158,10 @@ and elaborate_pat env pat = match pat.v with
         let typ = T.Uv (Env.uv env (Name.fresh ())) in
         ({pat with v = FExpr.UseP name}, (Vector.empty (), Hole, typ), Vector.singleton {FExpr.name; typ})
 
+    | AExpr.Proxy carrie ->
+        let carrie = E.elaborate env {pat with v = carrie} in
+        ({pat with v = ProxyP carrie}, (Vector.empty (), Hole, Type carrie), Vector.empty ())
+
     | AExpr.Const c ->
         ({pat with v = FExpr.ConstP c}, (Vector.empty (), Hole, const_typ c), Vector.empty ())
 
@@ -258,6 +262,7 @@ and check_clause env domain eff codomain {iparams; eparams; body} =
     ignore (M.solving_unify body.pos env body_eff eff);
     {pats; body}
 
+(* TODO: use coercions (and subtyping ?): *)
 and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr.lvalue Vector.t
 = fun env typ pat -> match pat.v with
     | AExpr.Values pats ->
@@ -267,10 +272,15 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr
 
     | AExpr.Ann (pat', typ') ->
         let (_, locator, typ') = E.elaborate env typ' |> Environmentals.reabstract env in
-        let _ = M.solving_unify pat.pos env typ typ' in (* TODO: use subtyping (?) *)
+        let _ = M.solving_unify pat.pos env typ typ' in
         check_pat env typ' pat'
 
     | AExpr.Var name -> ({pat with v = UseP name}, Vector.singleton {FExpr.name; typ})
+
+    | AExpr.Proxy carrie ->
+        let carrie = E.elaborate env {pat with v = carrie} in
+        let _ = M.solving_unify pat.pos env typ (Type carrie) in
+        ({pat with v = ProxyP carrie}, Vector.empty ())
 
     | AExpr.Const c ->
         let _ = M.solving_unify pat.pos env typ (const_typ c) in

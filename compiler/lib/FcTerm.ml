@@ -46,6 +46,7 @@ module rec Expr : FcSigs.EXPR
 
     and pat =
         | AppP of t with_pos * pat with_pos Vector.t
+        | ProxyP of Type.abs
         | UseP of Name.t
         | ConstP of Const.t
 
@@ -187,6 +188,7 @@ module rec Expr : FcSigs.EXPR
                 ^/^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                     PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                     (pat_to_doc s) (Vector.to_list args))
+        | ProxyP typ -> PPrint.brackets (Type.abs_to_doc s typ)
         | UseP name -> Name.to_doc name
         | ConstP c -> Const.to_doc c
 

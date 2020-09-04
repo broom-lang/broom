@@ -32,6 +32,7 @@ module type EXPR = sig
 
     and pat =
         | AppP of t with_pos * pat with_pos Vector.t
+        | ProxyP of Type.abs
         | UseP of Name.t
         | ConstP of Const.t
 
