@@ -295,7 +295,8 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                         subtype pos occ env field field_locator super_field in
                     { coercion = Cf Fun.id (* NOTE: Row types have no values so this will not get used *)
                     ; residual = combine base_residual field_residual }
-                end else failwith "TODO: subtype With label flipping")
+                end else failwith "TODO: subtype With label flipping"
+            | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (EmptyRow, _) -> (match super with
             | EmptyRow -> {coercion = Cf Fun.id; residual = empty}
