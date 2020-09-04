@@ -154,7 +154,7 @@ and subtype_abs : span -> bool -> Env.t -> T.abs -> T.locator -> T.abs -> coerce
             let uvs = Vector1.map (fun uv -> T.Uv uv) uvs in
             let body = {Util.pos; v = E.Pack (uvs, coerce {Util.pos; v = Use name})} in
             { coercion = Cf (fun v -> {pos; v = Unpack (skolems, impl, v, body)})
-            ; residual = ResidualMonoid.skolemized skolems residual }
+            ; residual = ResidualMonoid.skolemized (Vector1.map snd skolems) residual }
         | None ->
             let {coercion = Cf coerce; residual} = subtype pos occ env typ locator super in
 
@@ -162,7 +162,7 @@ and subtype_abs : span -> bool -> Env.t -> T.abs -> T.locator -> T.abs -> coerce
             let impl = {E.name; typ} in
             let body = coerce {Util.pos; v = Use name} in
             { coercion = Cf (fun v -> {pos; v = Unpack (skolems, impl, v, body)})
-            ; residual = ResidualMonoid.skolemized skolems residual })
+            ; residual = ResidualMonoid.skolemized (Vector1.map snd skolems) residual })
 
     | None ->
         (match Vector1.of_vector uvs with
@@ -270,7 +270,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                     {pos; v = E.Fn (Vector.map fst universals', params, body)})
                 ; residual =
                     (match Vector1.of_vector (Vector.map fst universals') with
-                    | Some skolems -> ResidualMonoid.skolemized skolems arrows_residual
+                    | Some skolems -> ResidualMonoid.skolemized (Vector1.map snd skolems) arrows_residual
                     | None -> arrows_residual) }
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
@@ -564,13 +564,13 @@ and check_uv_assignee pos env uv level max_uv_level typ =
 and solve pos env residual =
     let open Residual in
     let rec solve env = function
-        (*| Axioms (axiom_bindings, residual) ->
+        | Axioms (axiom_bindings, residual) ->
             let env = Env.push_axioms env axiom_bindings in
-            solve env residual*)
+            solve env residual
 
-        (*| Skolems (skolems, residual) ->
-            let env = Env.push_skolems env skolems in
-            solve env residual*)
+        | Skolems (skolems, residual) ->
+            let (env, _) = Env.push_skolems env (Vector1.to_vector skolems) in
+            solve env residual
 
         | Residuals (residual, residual') ->
             ResidualMonoid.combine (solve env residual) (solve env residual')
