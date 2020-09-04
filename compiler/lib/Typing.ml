@@ -158,6 +158,9 @@ and elaborate_pat env pat = match pat.v with
         let typ = T.Uv (Env.uv env (Name.fresh ())) in
         ({pat with v = FExpr.UseP name}, (Vector.empty (), Hole, typ), Vector.singleton {FExpr.name; typ})
 
+    | AExpr.Const c ->
+        ({pat with v = FExpr.ConstP c}, (Vector.empty (), Hole, const_typ c), Vector.empty ())
+
     | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
 (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
@@ -253,18 +256,21 @@ and check_clause env domain eff codomain {iparams; eparams; body} =
 
 and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr.lvalue Vector.t
 = fun env typ pat -> match pat.v with
-    | AExpr.Values pats when Vector.length pats = 1 ->
+    | AExpr.Values pats ->
         if Vector.length pats = 1
         then check_pat env typ (Vector.get pats 0)
         else failwith "TODO: multi-value check_pat"
 
     | AExpr.Ann (pat', typ') ->
         let (_, locator, typ') = E.elaborate env typ' |> Environmentals.reabstract env in
-        let coercion = M.solving_subtype pat.pos env typ locator typ' in (* FIXME: use coercion *)
+        let _ = M.solving_unify pat.pos env typ typ' in (* TODO: use subtyping (?) *)
         check_pat env typ' pat'
 
-    | AExpr.Var name ->
-        ({pat with v = UseP name}, Vector.singleton {FExpr.name; typ})
+    | AExpr.Var name -> ({pat with v = UseP name}, Vector.singleton {FExpr.name; typ})
+
+    | AExpr.Const c ->
+        let _ = M.solving_unify pat.pos env typ (const_typ c) in
+        ({pat with v = ConstP c}, Vector.empty ())
 
     | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
