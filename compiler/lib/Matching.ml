@@ -466,6 +466,24 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             {coercion = None; residual = empty}
         | Assigned _ -> failwith "unreachable: Assigned `typ` in `unify_whnf`")
 
+    | (Pi (universals, domain, eff, codomain), _) -> (match typ' with
+        | Pi (universals', domain', eff', codomain') -> failwith "TODO: unify Pi"
+        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+
+    | (Record row, _) -> (match typ' with
+        | Record row' -> failwith "TODO: unify Record"
+        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+
+    | (With {base; label; field}, _) -> (match typ' with
+        | With {base = base'; label = label'; field = field'} ->
+            if label = label' then begin
+                let {coercion = _; residual = base_residual} = unify pos env base base' in
+                let {coercion = _; residual = field_residual} = unify pos env field field' in
+                { coercion = None (* NOTE: Row types have no values so this will not get used *)
+                ; residual = combine base_residual field_residual }
+            end else failwith "TODO: unify With label flipping"
+        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+
     | (EmptyRow, _) -> (match typ' with
         | EmptyRow -> {coercion = None; residual = empty}
         | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
