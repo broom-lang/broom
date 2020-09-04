@@ -62,5 +62,5 @@ type ::=
     | CONST
 ```
 
-<!-- See [the intro](docs/source/introduction.rst) for a slightly more detailed exposition. -->
+See [the intro](https://broom.readthedocs.io/en/latest/introduction.html) for a slightly more detailed exposition.
 
