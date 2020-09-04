@@ -3,6 +3,7 @@ type abs = Fc.Type.abs
 
 type error =
     | NonPattern of Ast.Term.Expr.t
+    | InvalidDecl of Ast.Term.Stmt.t
     | Unbound of Name.t
     | Unusable of Fc.Type.locator * typ
     | MissingField of typ * string
@@ -23,6 +24,7 @@ let (^/^) = PPrint.(^/^)
 
 let rec cause_to_doc s pos = function
     | NonPattern expr -> PPrint.string "invalid pattern" ^/^ Ast.Term.Expr.to_doc {v = expr; pos}
+    | InvalidDecl decl -> PPrint.string "invalid declaration" ^/^ Ast.Term.Stmt.to_doc decl
     | Unbound name -> PPrint.string "unbound name" ^/^ Name.to_doc name
     | Unusable (template, typ) ->
         Fc.Type.to_doc s typ ^/^

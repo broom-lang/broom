@@ -115,9 +115,11 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
 
     and analyze_decl env = function
         | AStmt.Expr {v = Ann (pat, _); pos = _} -> C.elaborate_pat env pat
+        | AStmt.Expr expr as decl -> raise (Err.TypeError (expr.pos, Err.InvalidDecl decl))
 
     and elab_decl env = function
-        | AStmt.Expr {v = Ann (_, typ); pos = _} -> snd (elab env typ) in
+        | AStmt.Expr {v = Ann (_, typ); pos = _} -> snd (elab env typ)
+        | AStmt.Expr expr as decl -> raise (Err.TypeError (expr.pos, Err.InvalidDecl decl)) in
 
     let (env, params) = Env.push_existential env in
     let (locator, typ) = elab env typ in
