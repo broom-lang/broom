@@ -25,5 +25,4 @@ val get_uv : t -> uv -> Fc.Uv.v
 val set_uv : t -> uv -> Fc.Uv.v -> unit
 
 val current_uv_subst : t -> Fc.Uv.subst
-val uv_substr : t -> Fc.Uv.subst ref (* HACK *)
 

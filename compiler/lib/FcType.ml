@@ -5,7 +5,7 @@ module rec Uv : FcTypeSigs.UV
     type typ = Type.t
     type level = Type.level
 
-    include UnionFind.Make(UnionFind.StoreTransactionalRef)
+    include UnionFind.Make(TxRef)
 
     type v =
         | Unassigned of Name.t * Type.level
@@ -17,17 +17,11 @@ module rec Uv : FcTypeSigs.UV
 
     let new_subst = new_store
 
-    let make_r sr v =
-        let (s, uv) = make !sr v in
-        sr := s;
-        uv
+    let make sr v = make sr v |> snd
 
-    let getr sr uv =
-        let (s, v) = get !sr uv in
-        sr := s;
-        v
+    let get sr uv = get sr uv |> snd
 
-    let setr sr uv v = sr := set !sr uv v;
+    let set sr uv v = ignore (set sr uv v)
 end
 
 and Type : FcTypeSigs.TYPE
@@ -151,7 +145,7 @@ and Type : FcTypeSigs.TYPE
     and base_to_doc s = function
         | (Pi _ | Fn _) as base -> PPrint.parens (to_doc s base)
         | Uv uv ->
-            (match Uv.get s uv |> snd with
+            (match Uv.get s uv with
             | Assigned typ -> base_to_doc s typ
             | Unassigned _ -> uv_to_doc s uv)
         | base -> to_doc s base
@@ -159,7 +153,7 @@ and Type : FcTypeSigs.TYPE
     and callee_to_doc s = function
         | (Pi _ | Fn _) as callee -> PPrint.parens (to_doc s callee)
         | Uv uv ->
-            (match Uv.get s uv |> snd with
+            (match Uv.get s uv with
             | Assigned typ -> callee_to_doc s typ
             | Unassigned _ -> uv_to_doc s uv)
         | callee -> to_doc s callee
@@ -167,7 +161,7 @@ and Type : FcTypeSigs.TYPE
     and arg_to_doc s = function
         | (Pi _ | Fn _ (*| App _*)) as arg -> PPrint.parens (to_doc s arg)
         | Uv uv ->
-            (match Uv.get s uv |> snd with
+            (match Uv.get s uv with
             | Assigned typ -> arg_to_doc s typ
             | Unassigned _ -> uv_to_doc s uv)
         | arg -> to_doc s arg
@@ -202,8 +196,8 @@ and Type : FcTypeSigs.TYPE
             (PPrint.dot ^^ PPrint.blank 1 ^^ body)
 
     and uv_to_doc s uv = match Uv.get s uv with
-        | (_, Unassigned (name, _)) -> PPrint.qmark ^^ Name.to_doc name
-        | (s, Assigned t) -> to_doc s t
+        | Unassigned (name, _) -> PPrint.qmark ^^ Name.to_doc name
+        | Assigned t -> to_doc s t
 
     let rec coercion_to_doc s = function
         | Refl typ -> to_doc s typ
@@ -243,11 +237,8 @@ and Type : FcTypeSigs.TYPE
 
     let freshen (name, kind) = (Name.freshen name, kind)
 
-    let sibling sr uv = match Uv.getr sr uv with
-        | Unassigned (_, level) ->
-            let (s, uv') = Uv.make (!sr) (Unassigned (Name.fresh (), level)) in
-            sr := s;
-            uv'
+    let sibling sr uv = match Uv.get sr uv with
+        | Unassigned (_, level) -> Uv.make sr (Unassigned (Name.fresh (), level))
         | Assigned _ -> failwith "unreachable"
 end
 

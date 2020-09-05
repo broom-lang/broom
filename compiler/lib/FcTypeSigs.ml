@@ -67,7 +67,7 @@ module type TYPE = sig
     val to_abs : t -> abs
 
     val freshen : binding -> binding
-    val sibling : subst ref -> uv -> uv
+    val sibling : subst -> uv -> uv
 end
 
 module type UV = sig
@@ -84,11 +84,8 @@ module type UV = sig
 
     val new_subst : unit -> subst
    
-    val make : subst -> v -> subst * t
-    val make_r : subst ref -> v -> t
-    val get : subst -> t -> subst * v
-    val getr : subst ref -> t -> v
-    val set : subst -> t -> v -> subst
-    val setr : subst ref -> t -> v -> unit
+    val make : subst -> v -> t
+    val get : subst -> t -> v
+    val set : subst -> t -> v -> unit
 end
 

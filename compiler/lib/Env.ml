@@ -11,19 +11,19 @@ type scope =
     | Axiom of (Name.t * T.ov * uv) Name.Map.t
 
 type t =
-    { uv_subst : Fc.Uv.subst ref
+    { uv_subst : Fc.Uv.subst
     ; scopes : scope list
     ; level : Fc.Type.level }
 
 let initial_level = 1
 
 let interactive () =
-    { uv_subst = ref (Fc.Uv.new_subst ())
+    { uv_subst = Fc.Uv.new_subst ()
     ; scopes = [Hoisting (ref [], initial_level)]
     ; level = initial_level }
 
 let eval () =
-    { uv_subst = ref (Fc.Uv.new_subst ())
+    { uv_subst = Fc.Uv.new_subst ()
     ; scopes = [Hoisting (ref [], initial_level)]
     ; level = initial_level }
 
@@ -76,17 +76,15 @@ let get_implementation (env : t) (((name, _), _) : T.ov) =
         | [] -> None
     in get env.scopes
 
-let uv (env : t) name = Fc.Uv.make_r env.uv_subst (Unassigned (name, env.level))
+let uv (env : t) name = Fc.Uv.make env.uv_subst (Unassigned (name, env.level))
 
-let get_uv (env : t) uv = Fc.Uv.getr env.uv_subst uv
+let get_uv (env : t) uv = Fc.Uv.get env.uv_subst uv
 
-let set_uv (env : t) uv v = Fc.Uv.setr env.uv_subst uv v
+let set_uv (env : t) uv v = Fc.Uv.set env.uv_subst uv v
 
 let sibling (env : t) uv = match get_uv env uv with
-    | Unassigned (_, level) -> Fc.Uv.make_r env.uv_subst (Unassigned (Name.fresh (), level))
+    | Unassigned (_, level) -> Fc.Uv.make env.uv_subst (Unassigned (Name.fresh (), level))
     | Assigned _ -> failwith "unreachable"
 
-let uv_substr (env : t) = env.uv_subst
-
-let current_uv_subst (env : t) = ! (env.uv_subst)
+let current_uv_subst (env : t) = env.uv_subst
 
