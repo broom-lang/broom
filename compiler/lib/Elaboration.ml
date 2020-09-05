@@ -10,6 +10,7 @@ module Err = TypeError
 type 'a with_pos = 'a Util.with_pos
 
 let reabstract = Environmentals.reabstract
+let (!) = TxRef.(!)
 
 let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
     let rec elab env (typ : AType.t with_pos) =

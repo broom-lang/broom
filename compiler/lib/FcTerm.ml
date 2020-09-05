@@ -22,6 +22,8 @@ module rec Expr : FcSigs.EXPR
     type def = Stmt.def
     type stmt = Stmt.t
 
+    let (!) = TxRef.(!)
+
     type lvalue = {name : Name.t; typ : Type.t}
 
     type t
@@ -42,7 +44,7 @@ module rec Expr : FcSigs.EXPR
         | Proxy of abs 
         | Use of Name.t
         | Const of Const.t
-        | Patchable of t with_pos ref
+        | Patchable of t with_pos TxRef.rref
 
     and pat =
         | AppP of t with_pos * pat with_pos Vector.t
@@ -146,7 +148,7 @@ module rec Expr : FcSigs.EXPR
         | Proxy typ -> PPrint.brackets (Type.abs_to_doc s typ)
         | Use name -> Name.to_doc name
         | Const c -> Const.to_doc c
-        | Patchable {contents} -> to_doc s contents
+        | Patchable ref -> to_doc s !ref
 
     and axiom_to_doc s (name, universals, l, r) = match Vector.to_list universals with
         | _ :: _ ->

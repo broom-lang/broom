@@ -5,7 +5,7 @@ module rec Uv : FcTypeSigs.UV
     type typ = Type.t
     type level = Type.level
 
-    include UnionFind.Make(TxRef)
+    include UnionFind.Make(TxRef.Store)
 
     type v =
         | Unassigned of Name.t * Type.level
@@ -30,6 +30,8 @@ and Type : FcTypeSigs.TYPE
 = struct
     type uv = Uv.t
     type subst = Uv.subst
+
+    let (!) = TxRef.(!)
 
     type kind =
         | ArrowK of kind Vector1.t * kind
@@ -76,7 +78,7 @@ and Type : FcTypeSigs.TYPE
         | Inst of coercion * typ Vector1.t
         | AUse of Name.t
         | TypeCo of coercion
-        | Patchable of coercion ref
+        | Patchable of coercion TxRef.rref
 
     and typ = t
     and template = locator
@@ -213,7 +215,7 @@ and Type : FcTypeSigs.TYPE
                 (instantiee_to_doc s co) args
         | AUse name -> Name.to_doc name
         | TypeCo co -> PPrint.brackets (PPrint.equals ^^ PPrint.break 1 ^^ coercion_to_doc s co)
-        | Patchable {contents} -> coercion_to_doc s contents
+        | Patchable ref -> coercion_to_doc s !ref
 
     and andco_to_doc s = function
         | Trans _ as co -> PPrint.parens (coercion_to_doc s co)

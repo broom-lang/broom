@@ -49,25 +49,36 @@ module Log = struct
             raise exn
 end
 
-type 'a store = Log.t
+type log = Log.t
 
 type 'a rref = 'a ref
 
-let new_store = Log.log
+let log = Log.log
 let transaction = Log.transaction
 
-(* OPTIMIZE: Allocating tuples just to satisfy UnionFind.STORE: *)
+let ref = ref
 
-let make log v = (log, ref v)
-
-let get log ref = (log, !ref)
+let (!) = (!)
 
 let set (log : Log.t) ref v =
     if log.nesting > 0
     then Log.record log ref;
-    ref := v;
-    log
+    ref := v
 
-let eq : 'a store -> 'a rref -> 'a rref -> 'a store * bool
-= fun log ref ref' -> (log, ref == ref')
+let eq : 'a rref -> 'a rref -> bool = (==)
+
+(* OPTIMIZE: Allocating tuples just to satisfy UnionFind.STORE: *)
+module Store = struct
+    type 'a store = log
+
+    type 'a rrref = 'a rref
+    type 'a rref = 'a rrref
+
+    let new_store = log
+
+    let make log v = (log, ref v)
+    let get log ref = (log, !ref)
+    let set log ref v = set log ref v; log
+    let eq log ref ref' = (log, eq ref ref')
+end
 

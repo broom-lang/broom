@@ -15,6 +15,8 @@ type coercer = TyperSigs.coercer
 
 type 'a matching = {coercion : 'a; residual : Residual.t option}
 
+let ref = TxRef.ref
+let (!) = TxRef.(!)
 let sibling = Env.sibling
 
 (* # Focalization *)
@@ -390,7 +392,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
     | None ->
         let patchable = ref {Util.pos; v = E.Const (Int 0)} in
         { coercion = Cf (fun v ->
-            patchable := v;
+            TxRef.set (Env.tx_log env) patchable v;
             {pos; v = Patchable patchable})
         ; residual = Some (Sub (occ, typ, locator, super, patchable)) }
 
@@ -596,12 +598,13 @@ and solve pos env residual =
 
         | Sub (occ, typ, locator, super, patchable) ->
             let {coercion = Cf coerce; residual} = subtype pos occ env typ locator super in
-            patchable := coerce (!patchable);
+            TxRef.set (Env.tx_log env) patchable (coerce !patchable);
             residual
 
         | Unify (typ, typ', patchable) ->
             let {coercion; residual} = unify pos env typ typ' in
-            Option.iter (fun coercion -> patchable := coercion) coercion;
+            Option.iter (fun coercion -> TxRef.set (Env.tx_log env) patchable coercion)
+                coercion;
             residual
     in
     (match Option.bind residual (solve env) with

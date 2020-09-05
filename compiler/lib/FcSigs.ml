@@ -28,7 +28,7 @@ module type EXPR = sig
         | Proxy of Type.abs 
         | Use of Name.t
         | Const of Const.t
-        | Patchable of t with_pos ref
+        | Patchable of t with_pos TxRef.rref
 
     and pat =
         | AppP of t with_pos * pat with_pos Vector.t

@@ -10,6 +10,8 @@ module Err = TypeError
 type 'a with_pos = 'a Util.with_pos
 type 'a typing = 'a TyperSigs.typing
 
+let (!) = TxRef.(!)
+
 (* # Synthesis *)
 
 let const_typ c = T.Prim (match c with

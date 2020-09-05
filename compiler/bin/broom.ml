@@ -11,7 +11,7 @@ let prompt = name ^ "> "
 let ep tenv stmt =
     (try begin
         let ({term; typ; eff}, tenv) : Fc.Term.Stmt.t Typer.typing * _ = Typer.check_stmt tenv stmt in
-        let s = Typer.Env.current_uv_subst tenv in
+        let s = Typer.Env.tx_log tenv in
         let doc = Fc.Term.Stmt.to_doc s term ^^ PPrint.semi
             ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ Fc.Type.to_doc s typ
             ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ Fc.Type.to_doc s eff
@@ -21,7 +21,7 @@ let ep tenv stmt =
     | Typer.TypeError.TypeError (pos, err) ->
         flush stdout;
         PPrint.ToChannel.pretty 1.0 80 stderr
-            (PPrint.hardline ^^ Typer.TypeError.to_doc (Typer.Env.current_uv_subst tenv) pos err ^^ PPrint.hardline);
+            (PPrint.hardline ^^ Typer.TypeError.to_doc (Typer.Env.tx_log tenv) pos err ^^ PPrint.hardline);
         flush stderr);
     tenv
 

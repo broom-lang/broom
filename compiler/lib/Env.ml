@@ -4,26 +4,29 @@ module Bindings = Map.Make(Name)
 
 type uv = Fc.Uv.t
 
+let ref = TxRef.ref
+let (!) = TxRef.(!)
+
 type scope =
-    | Hoisting of T.ov list ref * T.level
+    | Hoisting of T.ov list TxRef.rref * T.level
     | Rigid of T.ov Vector.t
     | Val of Name.t * T.t
     | Axiom of (Name.t * T.ov * uv) Name.Map.t
 
 type t =
-    { uv_subst : Fc.Uv.subst
+    { tx_log : Fc.Uv.subst
     ; scopes : scope list
     ; level : Fc.Type.level }
 
 let initial_level = 1
 
 let interactive () =
-    { uv_subst = Fc.Uv.new_subst ()
+    { tx_log = Fc.Uv.new_subst ()
     ; scopes = [Hoisting (ref [], initial_level)]
     ; level = initial_level }
 
 let eval () =
-    { uv_subst = Fc.Uv.new_subst ()
+    { tx_log = Fc.Uv.new_subst ()
     ; scopes = [Hoisting (ref [], initial_level)]
     ; level = initial_level }
 
@@ -60,7 +63,7 @@ let generate env binding =
     let rec generate = function
         | Hoisting (bindings, level) :: _ ->
             let ov = (binding, level) in
-            bindings := ov :: !bindings;
+            TxRef.set env.tx_log bindings (ov :: !bindings);
             ov
         | _ :: scopes' -> generate scopes'
         | [] -> failwith "Typer.Env.generate: missing root Hoisting scope"
@@ -76,15 +79,15 @@ let get_implementation (env : t) (((name, _), _) : T.ov) =
         | [] -> None
     in get env.scopes
 
-let uv (env : t) name = Fc.Uv.make env.uv_subst (Unassigned (name, env.level))
+let uv (env : t) name = Fc.Uv.make env.tx_log (Unassigned (name, env.level))
 
-let get_uv (env : t) uv = Fc.Uv.get env.uv_subst uv
+let get_uv (env : t) uv = Fc.Uv.get env.tx_log uv
 
-let set_uv (env : t) uv v = Fc.Uv.set env.uv_subst uv v
+let set_uv (env : t) uv v = Fc.Uv.set env.tx_log uv v
 
 let sibling (env : t) uv = match get_uv env uv with
-    | Unassigned (_, level) -> Fc.Uv.make env.uv_subst (Unassigned (Name.fresh (), level))
+    | Unassigned (_, level) -> Fc.Uv.make env.tx_log (Unassigned (Name.fresh (), level))
     | Assigned _ -> failwith "unreachable"
 
-let current_uv_subst (env : t) = env.uv_subst
+let tx_log (env : t) = env.tx_log
 

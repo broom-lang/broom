@@ -51,7 +51,7 @@ module type TYPE = sig
         | Inst of coercion * typ Vector1.t
         | AUse of Name.t
         | TypeCo of coercion
-        | Patchable of coercion ref
+        | Patchable of coercion TxRef.rref
 
     and typ = t
     and template = locator
@@ -74,7 +74,7 @@ module type UV = sig
     type typ
     type level
 
-    type subst
+    type subst = TxRef.log
     
     type t
 
