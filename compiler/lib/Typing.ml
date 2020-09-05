@@ -15,6 +15,20 @@ type 'a typing = 'a TyperSigs.typing
 let const_typ c = T.Prim (match c with
     | Const.Int _ -> Prim.Int)
 
+let primop_typ =
+    let open Primop in
+    function
+    | IAdd | ISub | IMul ->
+        ( Vector.empty (), Vector.of_list [(T.Hole, T.Prim Prim.Int); (T.Hole, T.Prim Prim.Int)]
+        , T.EmptyRow, T.Prim Prim.Int )
+    | Int ->
+        (Vector.empty (), Vector.empty (), T.EmptyRow, T.Type (T.to_abs (Prim Prim.Int)))
+    | Type ->
+        ( Vector.empty (), Vector.empty (), T.EmptyRow
+        , T.Type (T.Exists ( Vector.singleton T.TypeK
+                           , TypeL (Bv {depth = 0; sibli = 0})
+                           , Type (T.to_abs (Bv {depth = 1; sibli = 0})) )) )
+
 let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env expr -> match expr.v with
     | AExpr.Values exprs ->
@@ -67,7 +81,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
                 arg)
                 domain args in
 
-        let (universals, domain, app_eff, codomain) = Primop.typeof op in
+        let (universals, domain, app_eff, codomain) = primop_typ op in
         let (uvs, domain, app_eff, Exists (_, _, codomain)) =
             Environmentals.instantiate_arrow env universals domain app_eff (T.to_abs codomain) in
         let args = check_args env app_eff domain args in

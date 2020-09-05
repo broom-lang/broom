@@ -24,15 +24,3 @@ let to_string op =
 
 let to_doc op = PPrint.string (to_string op)
 
-let typeof = function
-    | IAdd | ISub | IMul ->
-        ( Vector.empty (), Vector.of_list [(T.Hole, T.Prim Prim.Int); (T.Hole, T.Prim Prim.Int)]
-        , T.EmptyRow, T.Prim Prim.Int )
-    | Int ->
-        (Vector.empty (), Vector.empty (), T.EmptyRow, T.Type (T.to_abs (Prim Prim.Int)))
-    | Type ->
-        ( Vector.empty (), Vector.empty (), T.EmptyRow
-        , T.Type (T.Exists ( Vector.singleton T.TypeK
-                           , TypeL (Bv {depth = 0; sibli = 0})
-                           , Type (T.to_abs (Bv {depth = 1; sibli = 0})) )) )
-
