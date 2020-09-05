@@ -1,11 +1,14 @@
 module Log = struct
+    type undo = Undo : 'a ref * 'a -> undo
+
+    (* OPTIMIZE: Struct of Arrays?: *)
     type t =
         { mutable nesting : int
-        ; undos : (Obj.t ref * Obj.t) CCVector.vector }
+        ; undos : undo CCVector.vector }
 
     let log () = {nesting = 0; undos = CCVector.create ()}
 
-    let record log ref v = CCVector.push log.undos (ref, v)
+    let record log ref v = CCVector.push log.undos (Undo (ref, v))
 
     let memento log = CCVector.length log.undos
 
@@ -13,7 +16,7 @@ module Log = struct
         let rec loop undos memento i =
             if i >= memento
             then begin
-                let (ref, v) = CCVector.get undos i in
+                let Undo (ref, v) = CCVector.get undos i in
                 ref := v;
                 loop undos memento (i - 1)
             end in
@@ -48,13 +51,13 @@ let transaction = Log.transaction
 
 (* OPTIMIZE: Allocating tuples just to satisfy UnionFind.STORE: *)
 
-let make : 'a store -> 'a -> 'a store * 'a rref = fun log v -> (log, ref v)
+let make log v = (log, ref v)
 
 let get log ref = (log, !ref)
 
-let set : 'a store -> 'a ref -> 'a -> 'a store = fun log ref v ->
+let set (log : Log.t) ref v =
     if log.nesting > 0
-    then Log.record log (Obj.magic ref) (Obj.repr !ref);
+    then Log.record log ref !ref;
     ref := v;
     log
 
