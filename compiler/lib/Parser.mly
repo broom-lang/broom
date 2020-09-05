@@ -38,7 +38,7 @@ tail(separator, item, terminator) :
 
 trail(separator, item, terminator) :
     | item tail(separator, item, terminator) { Vector.of_list ($1 :: $2) }
-    | terminator { Vector.empty () }
+    | terminator { Vector.empty }
 
 trailer(init, separator, item, terminator) : init trail(separator, item, terminator) { $2 }
 
@@ -107,7 +107,7 @@ app :
     | PRIMOP args? {
         let args = match $2 with
             | Some args -> Vector1.to_vector args
-            | None -> Vector.empty () in
+            | None -> Vector.empty in
         match Primop.of_string $1 with
         | Some op -> {v = PrimApp (op, args); pos = $loc}
         | None -> failwith ("No such primop: __" ^ $1)
@@ -132,9 +132,9 @@ nestable_without_pos :
     | "(" ADDITIVE ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
     | "(" MULTIPLICATIVE ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
     | "(" "|" stmt tail(";", stmt, "|") ")" { proxy (Row (Vector.of_list ($3 :: $4))) }
-    | "(" "|" ")" { proxy (Row (Vector.empty ())) }
+    | "(" "|" ")" { proxy (Row Vector.empty) }
     | "{" "|" stmt tail(";", stmt, "|") "}" { proxy (Record (Vector.of_list ($3 :: $4))) }
-    | "{" "|" "}" { proxy (Record (Vector.empty ())) }
+    | "{" "|" "}" { proxy (Record Vector.empty) }
     | ID { Var (Name.of_string $1) }
     | WILD { failwith "TODO" }
     | INT { Const (Int $1) }
@@ -146,13 +146,13 @@ clause : "|" params "->" expr {
 
 params :
     | select+ "=>" select* { ($1 |> Vector.of_list, $3 |> Vector.of_list) }
-    | select* { (Vector.empty (), Vector.of_list $1) }
+    | select* { (Vector.empty, Vector.of_list $1) }
 
 args : select+ { Vector1.of_list $1 |> Option.get }
 
 at_args : "@" args? { match $2 with (* TODO: Implicit args need more design *)
         | Some args -> Vector1.to_vector args
-        | None -> Vector.empty ()
+        | None -> Vector.empty
     }
 
 (* # Types *)
@@ -164,19 +164,19 @@ typ_without_pos :
         Pi {idomain = $1; edomain = $3; eff = {$5 with v = path $5.v}; codomain = $7}
     }
     | binapp "=>" binapp "->" typ {
-        Pi {idomain = $1; edomain = $3; eff = {v = Row (Vector.empty ()); pos = $loc($4)}; codomain = $5}
+        Pi {idomain = $1; edomain = $3; eff = {v = Row Vector.empty; pos = $loc($4)}; codomain = $5}
     }
     | binapp "=>" ann_expr {
-        Pi {idomain = $1; edomain = {v = Values (Vector.empty ()); pos = $loc($2)}
-            ; eff = {v = Row (Vector.empty ()); pos = $loc($2)}; codomain = {$3 with v = path $3.v}}
+        Pi {idomain = $1; edomain = {v = Values Vector.empty; pos = $loc($2)}
+            ; eff = {v = Row Vector.empty; pos = $loc($2)}; codomain = {$3 with v = path $3.v}}
     }
     | binapp "-!" binapp "->" typ {
-        Pi { idomain = {v = Values (Vector.empty ()); pos = $loc($2)}; edomain = $1
+        Pi { idomain = {v = Values Vector.empty; pos = $loc($2)}; edomain = $1
             ; eff = {$3 with v = path $3.v}; codomain = $5 }
     }
     | binapp "->" typ {
-        Pi { idomain = {v = Values (Vector.empty ()); pos = $loc($2)}; edomain = $1
-            ; eff = {v = Row (Vector.empty ()); pos = $loc($2)}; codomain = $3 }
+        Pi { idomain = {v = Values Vector.empty; pos = $loc($2)}; edomain = $1
+            ; eff = {v = Row Vector.empty; pos = $loc($2)}; codomain = $3 }
     }
     | ann_expr { path $1.v }
 

@@ -33,7 +33,7 @@ let rep tenv input =
         PPrint.ToChannel.pretty 1.0 80 stdout doc;
         print_newline ();
 
-        let tenv = Vector.fold_left ep tenv stmts in
+        let tenv = Vector.fold ep tenv stmts in
         print_newline ();
         tenv
     with

@@ -54,7 +54,7 @@ let push_skolems (env : t) kinds =
     , skolems )
 
 let push_axioms (env : t) axioms =
-    let bindings = Vector1.fold_left (fun bindings ((_, ((k, _), _), _) as v) ->
+    let bindings = Vector1.fold (fun bindings ((_, ((k, _), _), _) as v) ->
         Name.Map.add k v bindings
     ) Name.Map.empty axioms in
     {env with scopes = Axiom bindings :: env.scopes}

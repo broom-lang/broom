@@ -211,7 +211,7 @@ and Type : FcTypeSigs.TYPE
             PPrint.prefix 4 1 (ctorco_to_doc s ctor_co)
                 (PPrint.separate_map (PPrint.break 1) (argco_to_doc s) (Vector1.to_list arg_cos))
         | Inst (co, args) ->
-            Vector1.fold_left (fun doc arg -> PPrint.infix 4 1 PPrint.at doc (to_doc s arg))
+            Vector1.fold (fun doc arg -> PPrint.infix 4 1 PPrint.at doc (to_doc s arg))
                 (instantiee_to_doc s co) args
         | AUse name -> Name.to_doc name
         | TypeCo co -> PPrint.brackets (PPrint.equals ^^ PPrint.break 1 ^^ coercion_to_doc s co)

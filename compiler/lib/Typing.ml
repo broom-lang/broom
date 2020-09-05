@@ -21,12 +21,12 @@ let primop_typ =
     let open Primop in
     function
     | IAdd | ISub | IMul ->
-        ( Vector.empty (), Vector.of_list [(T.Hole, T.Prim Prim.Int); (T.Hole, T.Prim Prim.Int)]
+        ( Vector.empty, Vector.of_list [(T.Hole, T.Prim Prim.Int); (T.Hole, T.Prim Prim.Int)]
         , T.EmptyRow, T.Prim Prim.Int )
     | Int ->
-        (Vector.empty (), Vector.empty (), T.EmptyRow, T.Type (T.to_abs (Prim Prim.Int)))
+        (Vector.empty, Vector.empty, T.EmptyRow, T.Type (T.to_abs (Prim Prim.Int)))
     | Type ->
-        ( Vector.empty (), Vector.empty (), T.EmptyRow
+        ( Vector.empty, Vector.empty, T.EmptyRow
         , T.Type (T.Exists ( Vector.singleton T.TypeK
                            , TypeL (Bv {depth = 0; sibli = 0})
                            , Type (T.to_abs (Bv {depth = 1; sibli = 0})) )) )
@@ -44,8 +44,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
         let body = AExpr.App ( {expr with v = AExpr.Var (Name.of_string "do")}
             , Vector.singleton {expr with v = AExpr.Record stmts} ) in
         let {TyperSigs.term = body; typ = codomain; eff} = typeof env {expr with v = body} in
-        { term = {expr with v = FExpr.Fn (Vector.empty (), Vector.empty (), body)}
-        ; typ = Pi (Vector.empty (), Vector.empty (), eff, T.to_abs codomain)
+        { term = {expr with v = FExpr.Fn (Vector.empty, Vector.empty, body)}
+        ; typ = Pi (Vector.empty, Vector.empty, eff, T.to_abs codomain)
         ; eff = EmptyRow }
 
     | AExpr.App (callee, args) ->
@@ -129,7 +129,7 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t with_p
             Vector.map (fun {FExpr.name; _} -> {Util.v = FExpr.Use name; pos}) params in
         let body = {Util.v = FExpr.Match (param_uses, clauses); pos} in
         let universals = Vector.map fst (Vector.of_list !universals) in
-        let (_, substitution) = Vector.fold_left (fun (i, substitution) (name, _) ->
+        let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
             (i + 1, Name.Map.add name i substitution)
         ) (0, Name.Map.empty) universals in
         { TyperSigs.term = {Util.v = FExpr.Fn (universals, params, body); pos}
@@ -154,9 +154,9 @@ and elaborate_pats env pats =
     let step (pats, typs, env) pat =
         let (pat, (_, loc, typ), defs) = elaborate_pat env pat in
         let env =
-            Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
+            Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
         (pat :: pats, (loc, typ) :: typs, env) in
-    let (pats, typs, env) = Vector.fold_left step ([], [], env) pats in
+    let (pats, typs, env) = Vector.fold step ([], [], env) pats in
     (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), env)
 
 and elaborate_pat env pat = match pat.v with
@@ -172,37 +172,37 @@ and elaborate_pat env pat = match pat.v with
 
     | AExpr.Var name ->
         let typ = T.Uv (Env.uv env (Name.fresh ())) in
-        ({pat with v = FExpr.UseP name}, (Vector.empty (), Hole, typ), Vector.singleton {FExpr.name; typ})
+        ({pat with v = FExpr.UseP name}, (Vector.empty, Hole, typ), Vector.singleton {FExpr.name; typ})
 
     | AExpr.Proxy carrie ->
         let carrie = E.elaborate env {pat with v = carrie} in
-        ({pat with v = ProxyP carrie}, (Vector.empty (), Hole, Type carrie), Vector.empty ())
+        ({pat with v = ProxyP carrie}, (Vector.empty, Hole, Type carrie), Vector.empty)
 
     | AExpr.Const c ->
-        ({pat with v = FExpr.ConstP c}, (Vector.empty (), Hole, const_typ c), Vector.empty ())
+        ({pat with v = FExpr.ConstP c}, (Vector.empty, Hole, const_typ c), Vector.empty)
 
     | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
 (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
 and typeof_record env pos stmts =
-    let (pats, pat_typs, defs, env) = Vector.fold_left (fun (pats, semiabsen, defs, env) stmt ->
+    let (pats, pat_typs, defs, env) = Vector.fold (fun (pats, semiabsen, defs, env) stmt ->
         let (pat, semiabs, defs') = analyze_field env stmt in
-        let env = Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ)
+        let env = Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ)
             env defs' in
         (pat :: pats, semiabs :: semiabsen, Vector.append defs defs', env))
-        ([], [], Vector.empty (), env) stmts in
+        ([], [], Vector.empty, env) stmts in
     let pats = Vector.of_list (List.rev pats) in
     let pat_typs = Vector.of_list (List.rev pat_typs) in
 
     let stmts = Vector.map3 (elaborate_field env) pats pat_typs stmts in
 
-    let term = Vector.fold_left (fun base {FExpr.name; typ = _} ->
+    let term = Vector.fold (fun base {FExpr.name; typ = _} ->
         {Util.v = FExpr.With {base; label = name; field = {v = FExpr.Use name; pos}}; pos})
         {v = EmptyRecord; pos} defs in
     let term = match Vector1.of_vector stmts with
         | Some stmts -> {Util.v = FExpr.Letrec (stmts, term); pos}
         | None -> term in
-    let typ = Vector.fold_left (fun base {FExpr.name; typ} -> T.With {base; label = name; field = typ})
+    let typ = Vector.fold (fun base {FExpr.name; typ} -> T.With {base; label = name; field = typ})
         T.EmptyRow defs
         |> (fun row -> T.Record row) in
     let eff = T.EmptyRow in
@@ -267,7 +267,7 @@ and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t wit
             let param_uses =
                 Vector.map (fun {FExpr.name; _} -> {Util.v = FExpr.Use name; pos}) params in
             let body = {Util.v = FExpr.Match (param_uses, Vector1.to_vector clauses); pos} in
-            { term = {v = Fn ((* FIXME: *) Vector.empty (), params, body); pos}
+            { term = {v = Fn ((* FIXME: *) Vector.empty, params, body); pos}
             ; typ; eff }
         | None -> failwith "TODO: check clauseless fn")
     | _ -> failwith "unreachable: non-Pi `typ` in `check_fn`"
@@ -296,11 +296,11 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr
     | AExpr.Proxy carrie ->
         let carrie = E.elaborate env {pat with v = carrie} in
         let _ = M.solving_unify pat.pos env typ (Type carrie) in
-        ({pat with v = ProxyP carrie}, Vector.empty ())
+        ({pat with v = ProxyP carrie}, Vector.empty)
 
     | AExpr.Const c ->
         let _ = M.solving_unify pat.pos env typ (const_typ c) in
-        ({pat with v = ConstP c}, Vector.empty ())
+        ({pat with v = ConstP c}, Vector.empty)
 
     | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
@@ -308,9 +308,9 @@ and check_pats env domain pats =
     let step (pats, env) (_, domain) pat =
         let (pat, defs) = check_pat env domain pat in
         let env =
-            Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
+            Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
         (pat :: pats, env) in
-    let (pats, env) = Vector.fold_left2 step ([], env) domain pats in (* FIXME: raises on length mismatch *)
+    let (pats, env) = Vector.fold2 step ([], env) domain pats in (* FIXME: raises on length mismatch *)
     (Vector.of_list (List.rev pats), env)
 
 (* # Statement Typing *)
@@ -323,7 +323,7 @@ let check_stmt : Env.t -> AStmt.t -> FStmt.t typing * Env.t
         let {term = expr; typ; eff} : FExpr.t with_pos typing = typeof env expr in
         let (pat, defs) = check_pat env typ pat in
         let env =
-            Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
+            Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
         ({term = FStmt.Def (pos, pat, expr); typ; eff}, env)
 
     | AStmt.Expr expr ->

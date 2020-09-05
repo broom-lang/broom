@@ -20,7 +20,7 @@ let to_list = Vector.to_list
 
 let append = Vector.append
 
-let fold_left = Vector.fold_left
+let fold = Vector.fold
 let for_all = Vector.for_all
 let exists = Vector.exists
 let map = Vector.map
@@ -28,5 +28,5 @@ let mapi = Vector.mapi
 let map2 = Vector.map2
 let iter = Vector.iter
 
-let fold_left2 = Vector.fold_left2
+let fold2 = Vector.fold2
 

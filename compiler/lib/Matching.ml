@@ -249,7 +249,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
 
                 (* FIXME: raises on arity mismatch: *)
                 let {coercion = domain_coercions; residual = domain_residual} =
-                    Vector.fold_left2 (fun {coercion = coercions; residual} (loc, domain) (_, domain') ->
+                    Vector.fold2 (fun {coercion = coercions; residual} (loc, domain) (_, domain') ->
                         let {coercion; residual = residual'} = subtype pos occ env domain' loc domain in
                         {coercion = coercion :: coercions; residual = combine residual residual'})
                     {coercion = []; residual = empty} domain domain' in
@@ -517,7 +517,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
                         | None -> T.Refl arg'
                     ) matchings args'))
                     else None)
-            ; residual = Vector1.fold_left (fun residual {coercion = _; residual = residual'} ->
+            ; residual = Vector1.fold (fun residual {coercion = _; residual = residual'} ->
                     combine residual residual'
                 ) residual matchings }
         | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))

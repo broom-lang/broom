@@ -69,7 +69,7 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
                 , T.to_abs (Environmentals.expose env0 substitution concr_codo) )
             | (_, codomain) -> (T.Hole, codomain) in
 
-        let (_, substitution) = Vector.fold_left (fun (i, substitution) (name, _) ->
+        let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
             (i + 1, Name.Map.add name i substitution)
         ) (0, Name.Map.empty) ubs in
         ( T.PiL (Vector.length universals, codomain_locator)
@@ -85,9 +85,9 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
         let domain = match domain.v with
             | AExpr.Values domain -> domain
             | _ -> Vector.singleton domain in
-        let (domain, env) = Vector.fold_left (fun (domain, env) pat ->
+        let (domain, env) = Vector.fold (fun (domain, env) pat ->
             let (pat, (_, loc, typ), defs) = C.elaborate_pat env pat in
-            let env = Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ)
+            let env = Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ)
                 env defs in
             ((loc, typ) :: domain, env)
         ) ([], env) domain in
@@ -95,12 +95,12 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
         (domain, env)
 
     and elab_row env pos decls =
-        let (pat_typs, defs, env) = Vector.fold_left (fun (semiabsen, defs, env) decl ->
+        let (pat_typs, defs, env) = Vector.fold (fun (semiabsen, defs, env) decl ->
             let (pat, semiabs, defs') = analyze_decl env decl in
-            let env = Vector.fold_left (fun env {FExpr.name; typ} -> Env.push_val env name typ)
+            let env = Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ)
                 env defs' in
             (semiabs :: semiabsen, Vector.append defs defs', env))
-            ([], Vector.empty (), env) decls in
+            ([], Vector.empty, env) decls in
         let pat_typs = Vector.of_list (List.rev pat_typs) in
 
         Vector.iter2 (fun decl (_, super_loc, super) ->
@@ -108,7 +108,7 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
             ignore (M.solving_subtype pos env typ super_loc super)
         ) decls pat_typs;
 
-        let row = Vector.fold_left (fun base {FExpr.name; typ} ->
+        let row = Vector.fold (fun base {FExpr.name; typ} ->
             T.With {base; label = name; field = typ}
         ) EmptyRow defs in
         ( Hole (* FIXME *)
@@ -129,7 +129,7 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
     let (env, params) = Env.push_existential env in
     let (locator, typ) = elab env typ in
     let params = !params |> Vector.of_list |> Vector.map fst in
-    let (_, substitution) = Vector.fold_left (fun (i, substitution) (name, _) ->
+    let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
         (i + 1, Name.Map.add name i substitution)
     ) (0, Name.Map.empty) params in
     Exists ( Vector.map snd params
