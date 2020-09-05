@@ -39,18 +39,25 @@ module Log = struct
             raise exn
 end
 
-type log = Log.t
+type 'a store = Log.t
 
-type 'a std_ref = 'a ref
-type 'a ref = 'a std_ref
+type 'a rref = 'a ref
 
-let log = Log.log
+let new_store = Log.log
 let transaction = Log.transaction
 
-let ref = ref
-let get = (!)
-let set : log -> 'a ref -> 'a -> unit = fun log ref v ->
+(* OPTIMIZE: Allocating tuples just to satisfy UnionFind.STORE: *)
+
+let make : 'a store -> 'a -> 'a store * 'a rref = fun log v -> (log, ref v)
+
+let get log ref = (log, !ref)
+
+let set : 'a store -> 'a ref -> 'a -> 'a store = fun log ref v ->
     if log.nesting > 0
     then Log.record log (Obj.magic ref) (Obj.repr !ref);
-    ref := v
+    ref := v;
+    log
+
+let eq : 'a store -> 'a rref -> 'a rref -> 'a store * bool
+= fun log ref ref' -> (log, ref == ref')
 
