@@ -1,6 +1,6 @@
 (library
   (public_name broom_lib)
-  (libraries menhirLib pprint unionFind)
+  (libraries containers menhirLib pprint unionFind)
   (preprocess (pps sedlex.ppx)))
 
 (menhir
