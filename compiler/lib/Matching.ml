@@ -275,7 +275,40 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                 let row_locator = match locator with
                     | RecordL row_locator -> row_locator
                     | _ -> failwith "unreachable: record locator" in
-                subtype pos occ env row row_locator super_row (* FIXME *)
+                (match Elab.eval env super_row with
+                | Some (With {base = super_base; label = super_label; field = super_field}, eval_co) ->
+                    let rec pull typ = match Elab.eval env typ with
+                        | Some (With {base; label; field}, eval_co) ->
+                            if label = super_label
+                            then (base, field)
+                            else begin
+                                let (base, field'') = pull base in
+                                (With {base; label; field}, field'')
+                            end in
+                    let (base_locator, field_locator) = match row_locator with
+                        | WithL {base; label; field} -> assert (label = super_label); (base, field)
+                        | _ -> failwith "unreachable: record locator" in
+                    let (base, field) = pull row in
+                    let {coercion = Cf base_co; residual = base_residual} =
+                        subtype pos occ env base base_locator super_base in
+                    let {coercion = Cf field_co; residual = field_residual} =
+                        subtype pos occ env field field_locator super_field in
+                    { coercion = Cf (fun v ->
+                        let name = Name.fresh () in
+                        let def = {v with v = E.UseP name} in
+                        let use = {v with v = E.Use name} in
+                        let fname = Name.fresh () in
+                        let fdef = {v with v = E.UseP fname} in
+                        let fuse = {v with v = E.Use fname} in
+                        let field = field_co {v with v = E.Select (use, super_label)} in
+                        {v with v = E.Let ( (v.pos, def, base_co v)
+                            , {v with v = Let ( (v.pos, fdef, field)
+                                , {v with v = With {base = use; label = super_label; field = fuse}} )} )})
+                    ; residual = combine base_residual field_residual }
+                | Some (EmptyRow, eval_co) -> (* FIXME: should drop remaining fields from value: *)
+                    {coercion = Cf Fun.id; residual = empty}
+                | Some _ -> failwith "TODO: Record <: Some"
+                | None -> failwith "TODO: Record <: None")
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (With _, _) -> (match super with
@@ -292,9 +325,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                     | WithL {base; label; field} -> assert (label = super_label); (base, field)
                     | _ -> failwith "unreachable: record locator" in
                 let (base, field) = pull typ in
-                let {coercion = base_co; residual = base_residual} =
+                let {coercion = _; residual = base_residual} =
                     subtype pos occ env base base_locator super_base in
-                let {coercion = field_co; residual = field_residual} =
+                let {coercion = _; residual = field_residual} =
                     subtype pos occ env field field_locator super_field in
                 { coercion = Cf Fun.id (* NOTE: Row types have no values so this will not get used *)
                 ; residual = combine base_residual field_residual }
