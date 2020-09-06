@@ -77,6 +77,8 @@ and Type : FcTypeSigs.TYPE
         | Comp of coercion * coercion Vector1.t
         | Inst of coercion * typ Vector1.t
         | AUse of Name.t
+        | RecordCo of coercion
+        | WithCo of {base : coercion; label : Name.t; field : coercion}
         | TypeCo of coercion
         | Patchable of coercion TxRef.rref
 
@@ -214,6 +216,10 @@ and Type : FcTypeSigs.TYPE
             Vector1.fold (fun doc arg -> PPrint.infix 4 1 PPrint.at doc (to_doc s arg))
                 (instantiee_to_doc s co) args
         | AUse name -> Name.to_doc name
+        | RecordCo row_co -> PPrint.braces (coercion_to_doc s row_co)
+        | WithCo {base; label; field} ->
+            PPrint.infix 4 1 (PPrint.string "with") (base_co_to_doc s base)
+                (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (coercion_to_doc s field))
         | TypeCo co -> PPrint.brackets (PPrint.equals ^^ PPrint.break 1 ^^ coercion_to_doc s co)
         | Patchable ref -> coercion_to_doc s !ref
 
@@ -231,6 +237,10 @@ and Type : FcTypeSigs.TYPE
 
     and instantiee_to_doc s = function
         | (Symm _ | Trans _) as co -> PPrint.parens (coercion_to_doc s co)
+        | co -> coercion_to_doc s co
+
+    and base_co_to_doc s = function
+        | (Trans _ | Comp _ | Inst _) as co -> PPrint.parens (coercion_to_doc s co)
         | co -> coercion_to_doc s co
 
     (* --- *)

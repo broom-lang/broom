@@ -467,17 +467,30 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
         | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
 
     | (Record row, _) -> (match typ' with
-        | Record row' -> failwith "TODO: unify Record"
+        | Record row' ->
+            let {coercion = row_coercion; residual} = unify pos env row row' in
+            {coercion = Option.map (fun co -> T.RecordCo co) row_coercion; residual}
         | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
 
-    | (With {base; label; field}, _) -> (match typ' with
+    | (With _, _) -> (match typ' with
         | With {base = base'; label = label'; field = field'} ->
-            if label = label' then begin
-                let {coercion = _; residual = base_residual} = unify pos env base base' in
-                let {coercion = _; residual = field_residual} = unify pos env field field' in
-                { coercion = None (* NOTE: Row types have no values so this will not get used *)
-                ; residual = combine base_residual field_residual }
-            end else failwith "TODO: unify With label flipping"
+            let rec pull typ = match Elab.eval env typ with
+                | Some (With {base; label; field}, eval_co) ->
+                    if label = label'
+                    then (base, field)
+                    else begin
+                        let (base, field'') = pull base in
+                        (With {base; label; field}, field'')
+                    end in
+            let (base, field) = pull typ in
+            let {coercion = base_co; residual = base_residual} = unify pos env base base' in
+            let {coercion = field_co; residual = field_residual} = unify pos env field field' in
+            { coercion = (match (base_co, field_co) with
+                | (Some base, Some field) -> Some (WithCo {base; label = label'; field})
+                | (Some base, None) -> Some (WithCo {base; label = label'; field = Refl field'})
+                | (None, Some field) -> Some (WithCo {base = Refl base'; label = label'; field})
+                | (None, None) -> None)
+            ; residual = combine base_residual field_residual }
         | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
 
     | (EmptyRow, _) -> (match typ' with
@@ -487,11 +500,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
     | (Type carrie, _) -> (match typ' with
         | Type carrie' -> 
             let {coercion; residual} = unify_abs pos env carrie carrie' in
-            { coercion =
-                (match coercion with
-                | Some co -> Some (TypeCo co)
-                | None -> None)
-            ; residual }
+            {coercion = Option.map (fun co -> T.TypeCo co) coercion; residual}
         | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
 
     | (T.App (callee, args), _) -> (match typ' with
