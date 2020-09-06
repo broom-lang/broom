@@ -251,7 +251,7 @@ and check : Env.t -> T.locator -> T.t -> AExpr.t with_pos -> FExpr.t with_pos ty
 = fun env locator typ expr -> match (typ, expr.v) with
     | (T.Pi _, AExpr.Fn clauses) -> check_fn env typ expr.pos clauses
 
-    | (Record row, _) -> failwith "TODO: check Record"
+    | (Record row, AExpr.Record stmts) -> failwith "TODO: check Record"
 
     | _ ->
         let {TyperSigs.term = expr; typ = expr_typ; eff} = typeof env expr in
