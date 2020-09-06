@@ -278,20 +278,26 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                 subtype pos occ env row row_locator super_row (* FIXME *)
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
-        | (With {base; label; field}, _) -> (match super with
+        | (With _, _) -> (match super with
             | With {base = super_base; label = super_label; field = super_field} ->
+                let rec pull typ = match Elab.eval env typ with
+                    | Some (With {base; label; field}, eval_co) ->
+                        if label = super_label
+                        then (base, field)
+                        else begin
+                            let (base, field'') = pull base in
+                            (With {base; label; field}, field'')
+                        end in
                 let (base_locator, field_locator) = match locator with
-                    | WithL {base; label = locator_label; field} when locator_label = super_label ->
-                        (base, field)
+                    | WithL {base; label; field} -> assert (label = super_label); (base, field)
                     | _ -> failwith "unreachable: record locator" in
-                if label = super_label then begin
-                    let {coercion = _; residual = base_residual} =
-                        subtype pos occ env base base_locator super_base in
-                    let {coercion = _; residual = field_residual} =
-                        subtype pos occ env field field_locator super_field in
-                    { coercion = Cf Fun.id (* NOTE: Row types have no values so this will not get used *)
-                    ; residual = combine base_residual field_residual }
-                end else failwith "TODO: subtype With label flipping"
+                let (base, field) = pull typ in
+                let {coercion = base_co; residual = base_residual} =
+                    subtype pos occ env base base_locator super_base in
+                let {coercion = field_co; residual = field_residual} =
+                    subtype pos occ env field field_locator super_field in
+                { coercion = Cf Fun.id (* NOTE: Row types have no values so this will not get used *)
+                ; residual = combine base_residual field_residual }
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (EmptyRow, _) -> (match super with
