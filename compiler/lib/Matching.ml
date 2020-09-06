@@ -33,11 +33,7 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                                   , Vector.init arity (fun _ -> (T.Hole, T.Uv (sibling env uv)))
                                   , Uv (sibling env uv), T.to_abs (Uv (sibling env uv)) ))
                     | TypeL _ -> (uv, T.Type (T.to_abs (Uv (sibling env uv))))
-                    | RecordL row_template ->
-                        (match row_template with
-                        | WithL {base = _; label; field = _} ->
-                            (uv, Record (With {base = Uv (sibling env uv); label; field = Uv (sibling env uv)}))
-                        | _ -> failwith "compiler bug: invalid record template")
+                    | RecordL row_template -> (uv, Record (Uv (sibling env uv)))
                     | WithL {base = _; label; field = _} ->
                         (uv, (With {base = Uv (sibling env uv); label; field = Uv (sibling env uv)}))
                     | Hole -> failwith "unreachable: Hole as template in `articulate_template`" in
@@ -61,25 +57,23 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                 (match typ with
                 | Type _ -> (Cf Fun.id, typ)
                 | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
-            | RecordL row_template ->
+            | RecordL _ ->
                 (match typ with
-                | Record row ->
-                    (match row_template with
-                    | WithL {base = _; label; field = _} ->
-                        (match row with (* FIXME: eval row *)
-                        | With {base; label = typ_label; field} ->
-                            if typ_label = label
-                            then (Cf Fun.id, typ)
-                            else failwith "TODO: focalize Record With label flip"
-                        | _ -> raise (Err.TypeError (pos, Unusable (row_template, row))))
-                    | _ -> failwith "compiler bug: invalid record template")
+                | Record _ -> (Cf Fun.id, typ)
                 | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
             | WithL {base = _; label; field = _} ->
                 (match typ with
-                | With {base; label = typ_label; field} ->
-                    if typ_label = label
+                | With {base; label = label'; field = field'} ->
+                    if label' = label
                     then (Cf Fun.id, typ)
-                    else failwith "TODO: focalize With label flip"
+                    else begin
+                        let (coercion, typ) = focalize pos env base template in
+                        match typ with
+                        | With {base; label = _; field} ->
+                            let base = T.With {base; label = label'; field = field'} in
+                            (coercion, With {base; label; field})
+                        | _ -> failwith "unreachable: WithL focalization produced non-With."
+                    end
                 | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
             | Hole -> failwith "unreachable: Hole as template in `focalize`.") in
 
