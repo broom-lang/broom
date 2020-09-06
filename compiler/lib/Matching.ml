@@ -276,7 +276,18 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                     | RecordL row_locator -> row_locator
                     | _ -> failwith "unreachable: record locator" in
                 (match Elab.eval env super_row with
-                | Some (With {base = super_base; label = super_label; field = super_field}, eval_co) ->
+                (* HACK: *)
+                | Some (Uv uv, eval_co) -> (match row with
+                    | Uv uv' when uv = uv' -> {coercion = Cf Fun.id; residual = None}
+                    | _ ->
+                        (match Env.get_uv env uv with
+                        | Unassigned _ ->
+                            if occ then occurs_check pos env uv row else ();
+                            articulate pos occ env super_row row;
+                            subtype pos false env typ locator super
+                        | Assigned _ -> failwith "unreachable: Assigned `super` in `subtype_whnf`"))
+
+                | Some (With {base = super_base; label = super_label; field = super_field} as super_row, eval_co) ->
                     let rec pull typ = match Elab.eval env typ with
                         | Some (With {base; label; field}, eval_co) ->
                             if label = super_label
@@ -285,9 +296,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                                 let (base, field'') = pull base in
                                 (With {base; label; field}, field'')
                             end in
-                    let (base_locator, field_locator) = match row_locator with
+                    let (base_locator, field_locator) = match focalize_locator row_locator super_row with
                         | WithL {base; label; field} -> assert (label = super_label); (base, field)
-                        | _ -> failwith "unreachable: record locator" in
+                        | row_locator -> failwith "unreachable: record With locator" in
                     let (base, field) = pull row in
                     let {coercion = Cf base_co; residual = base_residual} =
                         subtype pos occ env base base_locator super_base in
@@ -306,9 +317,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                                 , {v with v = With {base = use; label = super_label; field = fuse}} )} )})
                     ; residual = combine base_residual field_residual }
                 | Some (EmptyRow, eval_co) -> (* FIXME: should drop remaining fields from value: *)
-                    {coercion = Cf Fun.id; residual = empty}
-                | Some _ -> failwith "TODO: Record <: Some"
-                | None -> failwith "TODO: Record <: None")
+                    {coercion = Cf Fun.id; residual = empty})
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (With _, _) -> (match super with
