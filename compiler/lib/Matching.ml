@@ -19,6 +19,54 @@ let ref = TxRef.ref
 let (!) = TxRef.(!)
 let sibling = Env.sibling
 
+let trans_with =
+    let (let*) = Option.bind in
+    let (let+) = Fun.flip Option.map in
+fun co base label field ->
+    let* co = co in
+    let+ base = base in
+    T.Trans (co, WithCo {base; label; field = Refl field})
+
+(* Massage `typ` into a `With`, returning `(coercion, base, field_t)`: *)
+let pull_row pos env label' typ : T.coercion option * T.t * T.t =
+    let rec pull typ = match Elab.eval env typ with
+        | Some (With {base; label; field}, co) when label = label' -> (co, base, field)
+        | Some (With {base; label; field}, co) ->
+            let (base_co, base, field'') = pull base in
+            ( trans_with co base_co label field
+            , T.With {base; label; field}, field'' )
+        | Some (Uv uv, co) -> (* FIXME: 'scopedlabels' termination check: *)
+            let base = T.Uv (sibling env uv) in
+            let field = T.Uv (sibling env uv) in
+            Env.set_uv env uv (Assigned (With {base; label = label'; field}));
+            (co, base, field)
+        | Some _ ->
+            let template = T.WithL {base = Hole; label = label'; field = Hole} in
+            raise (Err.TypeError (pos, Unusable (template, typ)))
+        | None -> failwith "TODO: pull_row None" in
+    pull typ
+
+let rec match_rows : Util.span -> Env.t -> T.t -> T.t
+    -> T.coercion option * T.t * (T.t, CCVector.ro) CCVector.t
+    * T.t * (T.t, CCVector.ro) CCVector.t * T.coercion option
+= fun pos env row row' ->
+    let fields = CCVector.create () in
+    let fields' = CCVector.create () in
+    let rec matchem row row' = match Elab.eval env row' with
+        | Some (With {base = base'; label = label'; field = field'}, co') ->
+            (* OPTIMIZE: computing `co` n times is probably redundant: *)
+            let (co, base, field) = pull_row pos env label' row in
+            let (base_co, base, base', base_co') = matchem base base' in (* OPTIMIZE: nontail *)
+            CCVector.push fields field;
+            CCVector.push fields' field';
+            ( trans_with co base_co label' field, base
+            , base', trans_with co' base_co' label' field' )
+        | Some (base', co') -> (None, row, base', co')
+        | None -> failwith "TODO: match_rows None" in
+    let (co, base, base', co') = matchem row row' in
+    ( co, base, CCVector.freeze fields
+    , base', CCVector.freeze fields', Option.map (fun co' -> T.Symm co') co')
+
 (* # Focalization *)
 
 let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
