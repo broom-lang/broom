@@ -6,6 +6,7 @@ In-progress Design Documents
    :maxdepth: 2
    :caption: Contents:
 
+   typing
    layout
    data_inlining
    register_allocation
