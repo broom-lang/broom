@@ -110,19 +110,11 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                 | Record _ -> (Cf Fun.id, typ)
                 | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
             | WithL {base = _; label; field = _} ->
-                (match typ with
-                | With {base; label = label'; field = field'} ->
-                    if label' = label
-                    then (Cf Fun.id, typ)
-                    else begin
-                        let (coercion, typ) = focalize pos env base template in
-                        match typ with
-                        | With {base; label = _; field} ->
-                            let base = T.With {base; label = label'; field = field'} in
-                            (coercion, With {base; label; field})
-                        | _ -> failwith "unreachable: WithL focalization produced non-With."
-                    end
-                | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
+                let (co, base, field) = pull_row pos env label typ in
+                let cof = match co with
+                    | Some co -> (fun v -> {Util.v = E.Cast (v, co); pos})
+                    | None -> Fun.id in
+                (Cf cof, With {base; label; field})
             | Hole -> failwith "unreachable: Hole as template in `focalize`.") in
 
     match Elab.eval env typ with
