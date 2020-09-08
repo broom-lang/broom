@@ -46,10 +46,11 @@ let pull_row pos env label' typ : T.coercion option * T.t * T.t =
         | None -> failwith "TODO: pull_row None" in
     pull typ
 
-let rec match_rows : Util.span -> Env.t -> T.t -> T.t
-    -> T.coercion option * T.t * (T.t, CCVector.ro) CCVector.t
-    * T.t * (T.t, CCVector.ro) CCVector.t * T.coercion option
+let rec match_rows : Util.span -> Env.t -> T.t -> T.t -> Name.t CCVector.ro_vector
+    * T.coercion option * T.t * T.t CCVector.ro_vector
+    * T.t * T.t CCVector.ro_vector * T.coercion option
 = fun pos env row row' ->
+    let labels = CCVector.create () in
     let fields = CCVector.create () in
     let fields' = CCVector.create () in
     let rec matchem row row' = match Elab.eval env row' with
@@ -57,6 +58,7 @@ let rec match_rows : Util.span -> Env.t -> T.t -> T.t
             (* OPTIMIZE: computing `co` n times is probably redundant: *)
             let (co, base, field) = pull_row pos env label' row in
             let (base_co, base, base', base_co') = matchem base base' in (* OPTIMIZE: nontail *)
+            CCVector.push labels label';
             CCVector.push fields field;
             CCVector.push fields' field';
             ( trans_with co base_co label' field, base
@@ -64,7 +66,8 @@ let rec match_rows : Util.span -> Env.t -> T.t -> T.t
         | Some (base', co') -> (None, row, base', co')
         | None -> failwith "TODO: match_rows None" in
     let (co, base, base', co') = matchem row row' in
-    ( co, base, CCVector.freeze fields
+    ( CCVector.freeze labels
+    , co, base, CCVector.freeze fields
     , base', CCVector.freeze fields', Option.map (fun co' -> T.Symm co') co')
 
 (* # Focalization *)
@@ -562,23 +565,47 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
 
     | (With _, _) -> (match typ' with
         | With {base = base'; label = label'; field = field'} ->
-            let rec pull typ = match Elab.eval env typ with
-                | Some (With {base; label; field}, eval_co) ->
-                    if label = label'
-                    then (base, field)
-                    else begin
-                        let (base, field'') = pull base in
-                        (With {base; label; field}, field'')
-                    end in
-            let (base, field) = pull typ in
-            let {coercion = base_co; residual = base_residual} = unify pos env base base' in
-            let {coercion = field_co; residual = field_residual} = unify pos env field field' in
-            { coercion = (match (base_co, field_co) with
-                | (Some base, Some field) -> Some (WithCo {base; label = label'; field})
-                | (Some base, None) -> Some (WithCo {base; label = label'; field = Refl field'})
-                | (None, Some field) -> Some (WithCo {base = Refl base'; label = label'; field})
-                | (None, None) -> None)
-            ; residual = combine base_residual field_residual }
+            let (labels, co, base, fields, base', fields', co') = match_rows pos env typ typ' in
+
+            let fields_len = CCVector.length labels in
+            let {coercion = base_co; residual} = unify pos env base base' in
+            let field_cos = CCVector.create_with ~capacity: fields_len base_co in
+            let (residual, noop_fieldcos) =
+                let rec loop residual noop_fieldcos i =
+                    if i < fields_len
+                    then begin
+                        let {coercion = field_co; residual = residual'} =
+                            unify pos env (CCVector.get fields i) (CCVector.get fields' i) in
+                        CCVector.push field_cos field_co;
+                        let noop_fieldcos = noop_fieldcos && Option.is_none field_co in
+                        loop (combine residual residual') noop_fieldcos (i + 1)
+                    end else (residual, noop_fieldcos) in
+                loop residual true 0 in
+            
+            let rec build_coercion base i =
+                if i < fields_len
+                then build_coercion (T.WithCo {base
+                    ; label = CCVector.get labels i
+                    ; field = match CCVector.get field_cos i with
+                        | Some field -> field
+                        | None -> Refl (CCVector.get fields' i)})
+                    (i + 1)
+                else base in
+            let co'' = match (base_co, noop_fieldcos) with
+                | (Some base_co, _) -> Some (build_coercion base_co 0)
+                | (None, false) -> Some (build_coercion (Refl base) 0)
+                | (None, true) -> None in
+
+            let coercion = match (co, co'', co') with
+                | (Some co, Some co', Some co'') -> Some (T.Trans (Trans (co, co'), Symm co''))
+                | (Some co, Some co', None) -> Some (Trans (co, co'))
+                | (Some co, None, Some co'') -> Some (Trans (co, Symm co''))
+                | (Some co, None, None) -> Some co
+                | (None, Some co', Some co'') -> Some (Trans (co', Symm co''))
+                | (None, Some co', None) -> Some co'
+                | (None, None, Some co'') -> Some (Symm co'')
+                | (None, None, None) -> None in
+            {coercion; residual}
         | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
 
     | (EmptyRow, _) -> (match typ' with
