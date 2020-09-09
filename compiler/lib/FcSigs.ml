@@ -22,7 +22,8 @@ module type EXPR = sig
         | Cast of t with_pos * Type.coercion
         | Pack of Type.t Vector1.t * t with_pos
         | Unpack of Type.binding Vector1.t * lvalue * t with_pos * t with_pos
-        | EmptyRecord
+        | Record of (Name.t * t with_pos) Vector.t
+        | Where of t with_pos * (Name.t * t with_pos) Vector1.t
         | With of {base : t with_pos; label : Name.t; field : t with_pos}
         | Select of t with_pos * Name.t
         | Proxy of Type.abs 

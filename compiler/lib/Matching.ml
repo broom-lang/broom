@@ -280,44 +280,57 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
         | (Record row, _) -> (match super with
             | Record super_row ->
-                (match Elab.eval env super_row with
-                (* HACK: *)
-                | Some (Uv uv, eval_co) -> (match row with
-                    | Uv uv' when uv = uv' -> {coercion = Cf Fun.id; residual = None}
-                    | _ ->
-                        (match Env.get_uv env uv with
-                        | Unassigned _ ->
-                            if occ then occurs_check pos env uv row else ();
-                            articulate pos occ env super_row row;
-                            subtype pos false env typ super
-                        | Assigned _ -> failwith "unreachable: Assigned `super` in `subtype_whnf`"))
+                let (labels, co, base, fields, super_base, super_fields, super_co) =
+                    match_rows pos env row super_row in
 
-                | Some (With {base = super_base; label = super_label; field = super_field} as super_row, eval_co) ->
-                    let rec pull typ = match Elab.eval env typ with
-                        | Some (With {base; label; field}, eval_co) ->
-                            if label = super_label
-                            then (base, field)
-                            else begin
-                                let (base, field'') = pull base in
-                                (With {base; label; field}, field'')
-                            end in
-                    let (base, field) = pull row in
-                    let {coercion = Cf base_co; residual = base_residual} = subtype pos occ env base super_base in
-                    let {coercion = Cf field_co; residual = field_residual} = subtype pos occ env field super_field in
-                    { coercion = Cf (fun v ->
-                        let name = Name.fresh () in
-                        let def = {v with v = E.UseP name} in
-                        let use = {v with v = E.Use name} in
-                        let fname = Name.fresh () in
-                        let fdef = {v with v = E.UseP fname} in
-                        let fuse = {v with v = E.Use fname} in
-                        let field = field_co {v with v = E.Select (use, super_label)} in
-                        {v with v = E.Let ( (v.pos, def, base_co v)
-                            , {v with v = Let ( (v.pos, fdef, field)
-                                , {v with v = With {base = use; label = super_label; field = fuse}} )} )})
-                    ; residual = combine base_residual field_residual }
-                | Some (EmptyRow, eval_co) -> (* FIXME: should drop remaining fields from value: *)
-                    {coercion = Cf Fun.id; residual = empty})
+                let fields_len = CCVector.length labels in
+                let {coercion = _; residual} = subtype pos occ env base super_base in
+                let field_cos = CCVector.create_with ~capacity: fields_len (TyperSigs.Cf Fun.id) in
+                let residual = (* OPTIMIZE: `noop_fieldcos` as in unification *)
+                    let rec loop residual i =
+                        if i < fields_len
+                        then begin
+                            let {coercion = field_co; residual = residual'} =
+                                subtype pos occ env (CCVector.get fields i) (CCVector.get super_fields i) in
+                            CCVector.push field_cos field_co;
+                            loop (combine residual residual') (i + 1)
+                        end else residual in
+                    loop residual 0 in
+
+                let coerce = match super_base with
+                | EmptyRow -> (fun expr ->
+                    let name = Name.fresh () in
+                    let def = {Util.v = E.UseP name; pos} in
+                    let use = {Util.v = E.Use name; pos} in
+                    let field i =
+                        let label = CCVector.get labels i in
+                        let Cf coerce = CCVector.get field_cos i in
+                        let selection = {Util.v = E.Select (use, label); pos} in
+                        (label, coerce selection) in
+                    let body = {Util.v = E.Record (Vector.init fields_len field); pos} in
+                    {Util.v = E.Let ((pos, def, expr), body); pos})
+                | _ -> (fun expr ->
+                    let name = Name.fresh () in
+                    let def = {Util.v = E.UseP name; pos} in
+                    let use = {Util.v = E.Use name; pos} in
+                    let field i =
+                        let label = CCVector.get labels i in
+                        let Cf coerce = CCVector.get field_cos i in
+                        let selection = {Util.v = E.Select (use, label); pos} in
+                        (label, coerce selection) in
+                    (match Vector1.of_vector (Vector.init fields_len field) with
+                    | Some fields ->
+                        let body = {Util.v = E.Where (use, fields); pos} in
+                        {Util.v = E.Let ((pos, def, expr), body); pos}
+                    | None -> expr)) in
+
+                { coercion = (match (co, super_co) with
+                    | (Some co, Some super_co) ->
+                        TyperSigs.Cf (fun v -> {pos; v = Cast (coerce {pos; v = Cast (v, co)}, Symm super_co)})
+                    | (Some co, None) -> Cf (fun v -> coerce {pos; v = Cast (v, co)})
+                    | (None, Some co') -> Cf (fun v -> {pos; v = Cast (coerce v, Symm co')})
+                    | (None, None) -> Cf coerce)
+                ; residual }
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (With _, _) -> (match super with

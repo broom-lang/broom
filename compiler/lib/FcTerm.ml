@@ -38,7 +38,8 @@ module rec Expr : FcSigs.EXPR
         | Cast of t with_pos * coercion
         | Pack of typ Vector1.t * t with_pos
         | Unpack of Type.binding Vector1.t * lvalue * t with_pos * t with_pos
-        | EmptyRecord
+        | Record of (Name.t * t with_pos) Vector.t
+        | Where of t with_pos * (Name.t * t with_pos) Vector1.t
         | With of {base : t with_pos; label : Name.t; field : t with_pos}
         | Select of t with_pos * Name.t
         | Proxy of abs 
@@ -139,7 +140,18 @@ module rec Expr : FcSigs.EXPR
                     (to_doc s expr)
                     (PPrint.string "in")
                 ^/^ to_doc s body)
-        | EmptyRecord -> PPrint.braces PPrint.empty
+        | Record fields ->
+            PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
+                PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
+                (fun (label, field) -> PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
+                (Vector.to_list fields)
+        | Where (base, fields) ->
+            PPrint.infix 4 1 (PPrint.string "where")
+                (to_doc s base)
+                (PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
+                    PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
+                    (fun (label, field) -> PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
+                    (Vector1.to_list fields))
         | With {base; label; field} ->
             PPrint.infix 4 1 (PPrint.string "with") (base_to_doc s base)
                 (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
@@ -178,7 +190,8 @@ module rec Expr : FcSigs.EXPR
         | _ -> to_doc s base
 
     and selectee_to_doc s (selectee : t with_pos) = match selectee.v with
-        | Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ | App _ -> PPrint.parens (to_doc s selectee)
+        | Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ | App _ | Where _ | With _ ->
+            PPrint.parens (to_doc s selectee)
         | _ -> to_doc s selectee
 
     and lvalue_to_doc s {name; typ} =

@@ -189,9 +189,9 @@ and typeof_record env pos stmts =
 
     let stmts = Vector.map3 (elaborate_field env) pats pat_typs stmts in
 
-    let term = Vector.fold (fun base {FExpr.name; typ = _} ->
-        {Util.v = FExpr.With {base; label = name; field = {v = FExpr.Use name; pos}}; pos})
-        {v = EmptyRecord; pos} defs in
+    let term = {Util.v = FExpr.Record (Vector.map (fun {FExpr.name; typ = _} ->
+        (name, {Util.v = FExpr.Use name; pos})
+    ) defs); pos} in
     let term = match Vector1.of_vector stmts with
         | Some stmts -> {Util.v = FExpr.Letrec (stmts, term); pos}
         | None -> term in
