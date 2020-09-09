@@ -18,10 +18,10 @@ module type TYPE = sig
 
     type ov = binding * level
 
-    and abs = Exists of kind Vector.t * locator * t
+    and abs = Exists of kind Vector.t * t
 
     and t =
-        | Pi of kind Vector.t * (locator * t) Vector.t * t * abs
+        | Pi of kind Vector.t * t Vector.t * t * abs
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
@@ -34,10 +34,10 @@ module type TYPE = sig
         | Uv of uv
         | Prim of Prim.t
 
-    and locator =
-        | PiL of int * locator
-        | RecordL of locator
-        | WithL of {base : locator; label : Name.t; field : locator}
+    and template =
+        | PiL of int * template
+        | RecordL of template
+        | WithL of {base : template; label : Name.t; field : template}
         | TypeL of t
         | Hole
 
@@ -56,7 +56,6 @@ module type TYPE = sig
         | Patchable of coercion TxRef.rref
 
     and typ = t
-    and template = locator
 
     val kind_to_doc : kind -> PPrint.document
     val binding_to_doc : binding -> PPrint.document
@@ -64,7 +63,7 @@ module type TYPE = sig
     val universal_to_doc : kind Vector.t -> PPrint.document -> PPrint.document
     val to_doc : subst -> t -> PPrint.document
     val coercion_to_doc : subst -> coercion -> PPrint.document
-    val locator_to_doc : subst -> locator -> PPrint.document
+    val template_to_doc : subst -> template -> PPrint.document
 
     val to_abs : t -> abs
 

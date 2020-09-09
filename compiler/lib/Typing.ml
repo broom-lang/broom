@@ -21,15 +21,13 @@ let primop_typ =
     let open Primop in
     function
     | IAdd | ISub | IMul ->
-        ( Vector.empty, Vector.of_list [(T.Hole, T.Prim Prim.Int); (T.Hole, T.Prim Prim.Int)]
+        ( Vector.empty, Vector.of_list [T.Prim Prim.Int; T.Prim Prim.Int]
         , T.EmptyRow, T.Prim Prim.Int )
     | Int ->
         (Vector.empty, Vector.empty, T.EmptyRow, T.Type (T.to_abs (Prim Prim.Int)))
     | Type ->
         ( Vector.empty, Vector.empty, T.EmptyRow
-        , T.Type (T.Exists ( Vector.singleton T.TypeK
-                           , TypeL (Bv {depth = 0; sibli = 0})
-                           , Type (T.to_abs (Bv {depth = 1; sibli = 0})) )) )
+        , T.Type (T.Exists (Vector.singleton T.TypeK, Type (T.to_abs (Bv {depth = 1; sibli = 0})))) )
 
 let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env expr -> match expr.v with
@@ -50,8 +48,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 
     | AExpr.App (callee, args) ->
         let check_args env eff domain args =
-            Vector.map2 (fun (locator, domain) ({v = _; pos} as arg : AExpr.t with_pos) ->
-                let {TyperSigs.term = arg; typ = _; eff = arg_eff} = check env locator domain arg in
+            Vector.map2 (fun domain ({v = _; pos} as arg : AExpr.t with_pos) ->
+                let {TyperSigs.term = arg; typ = _; eff = arg_eff} = check env domain arg in
                 let _ = M.solving_unify pos env arg_eff eff in
                 arg)
                 domain args in
@@ -63,7 +61,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
                 Environmentals.instantiate_arrow env universals domain app_eff codomain in
             let _ = M.solving_unify expr.pos env app_eff callee_eff in
             let args = check_args env app_eff domain args in
-            let Exists (existentials, codomain_locator, concr_codomain) = codomain in
+            let Exists (existentials, concr_codomain) = codomain in
             (* FIXME: Use `existentials` *)
             { term = {expr with v = App (coerce callee, Vector.map (fun uv -> T.Uv uv) uvs, args)}
             ; typ = concr_codomain
@@ -77,14 +75,14 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 
     | AExpr.PrimApp (op, args) -> (* TODO: DRY: *)
         let check_args env eff domain args =
-            Vector.map2 (fun (locator, domain) ({v = _; pos} as arg : AExpr.t with_pos) ->
-                let {TyperSigs.term = arg; typ = _; eff = arg_eff} = check env locator domain arg in
+            Vector.map2 (fun domain ({v = _; pos} as arg : AExpr.t with_pos) ->
+                let {TyperSigs.term = arg; typ = _; eff = arg_eff} = check env domain arg in
                 let _ = M.solving_unify pos env arg_eff eff in
                 arg)
                 domain args in
 
         let (universals, domain, app_eff, codomain) = primop_typ op in
-        let (uvs, domain, app_eff, Exists (_, _, codomain)) =
+        let (uvs, domain, app_eff, Exists (_, codomain)) =
             Environmentals.instantiate_arrow env universals domain app_eff (T.to_abs codomain) in
         let args = check_args env app_eff domain args in
         { term = {expr with v = PrimApp (op, Vector.map (fun uv -> T.Uv uv) uvs, args)}
@@ -126,7 +124,7 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t with_p
         let clauses' = Seq.map (check_clause env domain eff ((* HACK: *) T.to_abs codomain))
             clauses' in
         let clauses = Vector.of_seq (fun () -> Seq.Cons (clause, clauses')) in
-        let params = Vector.map (fun (_, typ) -> {FExpr.name = Name.fresh (); typ}) domain in
+        let params = Vector.map (fun typ -> {FExpr.name = Name.fresh (); typ}) domain in
         let param_uses =
             Vector.map (fun {FExpr.name; _} -> {Util.v = FExpr.Use name; pos}) params in
         let body = {Util.v = FExpr.Match (param_uses, clauses); pos} in
@@ -136,10 +134,7 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t with_p
         ) (0, Name.Map.empty) universals in
         { TyperSigs.term = {Util.v = FExpr.Fn (universals, params, body); pos}
         ; typ = Pi ( Vector.map snd universals
-                   , Vector.map (fun (locator, domain) ->
-                       ( Environmentals.close_locator env substitution locator
-                       , Environmentals.close env substitution domain ))
-                       domain
+                   , Vector.map (Environmentals.close env substitution) domain
                    , Environmentals.close env substitution eff
                    , Environmentals.close_abs env substitution (T.to_abs codomain) )
         ; eff = EmptyRow }
@@ -154,10 +149,10 @@ and elaborate_clause env {iparams; eparams; body} =
 
 and elaborate_pats env pats =
     let step (pats, typs, env) pat =
-        let (pat, (_, loc, typ), defs) = elaborate_pat env pat in
+        let (pat, (_, typ), defs) = elaborate_pat env pat in
         let env =
             Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
-        (pat :: pats, (loc, typ) :: typs, env) in
+        (pat :: pats, typ :: typs, env) in
     let (pats, typs, env) = Vector.fold step ([], [], env) pats in
     (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), env)
 
@@ -168,20 +163,20 @@ and elaborate_pat env pat = match pat.v with
         else failwith "TODO: multi-value elaborate_pat"
 
     | AExpr.Ann (pat, typ) ->
-        let (_, _, typ) as semiabs = E.elaborate env typ |> Environmentals.reabstract env in
+        let (_, typ) as semiabs = E.elaborate env typ |> Environmentals.reabstract env in
         let (pat, defs) = check_pat env typ pat in
         (pat, semiabs, defs)
 
     | AExpr.Var name ->
         let typ = T.Uv (Env.uv env (Name.fresh ())) in
-        ({pat with v = FExpr.UseP name}, (Vector.empty, Hole, typ), Vector.singleton {FExpr.name; typ})
+        ({pat with v = FExpr.UseP name}, (Vector.empty, typ), Vector.singleton {FExpr.name; typ})
 
     | AExpr.Proxy carrie ->
         let carrie = E.elaborate env {pat with v = carrie} in
-        ({pat with v = ProxyP carrie}, (Vector.empty, Hole, Type carrie), Vector.empty)
+        ({pat with v = ProxyP carrie}, (Vector.empty, Type carrie), Vector.empty)
 
     | AExpr.Const c ->
-        ({pat with v = FExpr.ConstP c}, (Vector.empty, Hole, const_typ c), Vector.empty)
+        ({pat with v = FExpr.ConstP c}, (Vector.empty, const_typ c), Vector.empty)
 
     | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
@@ -228,15 +223,15 @@ and elaborate_field env pat semiabs = function
 and check_abs : Env.t -> T.abs -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env typ expr -> implement env (Environmentals.reabstract env typ) expr
 
-and implement : Env.t -> T.ov Vector.t * T.locator * T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
-= fun env (existentials, locator, typ) expr ->
+and implement : Env.t -> T.ov Vector.t * T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
+= fun env (existentials, typ) expr ->
     match Vector1.of_vector existentials with
     | Some existentials ->
         let axiom_bindings = Vector1.map (fun (((name, _), _) as param) ->
             (Name.fresh (), param, Env.uv env name)
         ) existentials in
         let env = Env.push_axioms env axiom_bindings in
-        let {TyperSigs.term; typ = _; eff} = check env locator typ expr in
+        let {TyperSigs.term; typ = _; eff} = check env typ expr in
         let axioms = Vector1.map (fun (axname, (((_, kind), _) as ov), impl) -> match kind with
             | T.ArrowK (domain, _) ->
                 let args = Vector1.mapi (fun sibli _ -> T.Bv {depth = 0; sibli}) domain in
@@ -245,17 +240,17 @@ and implement : Env.t -> T.ov Vector.t * T.locator * T.t -> AExpr.t with_pos -> 
             | TypeK -> (axname, Vector.of_list [], Ov ov, Uv impl)
         ) axiom_bindings in
         {term = {expr with v = Axiom (axioms, term)}; typ; eff}
-    | None -> check env locator typ expr
+    | None -> check env typ expr
 
-and check : Env.t -> T.locator -> T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
-= fun env locator typ expr -> match (typ, expr.v) with
+and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
+= fun env typ expr -> match (typ, expr.v) with
     | (T.Pi _, AExpr.Fn clauses) -> check_fn env typ expr.pos clauses
 
     | (Record row, AExpr.Record stmts) -> failwith "TODO: check Record"
 
     | _ ->
         let {TyperSigs.term = expr; typ = expr_typ; eff} = typeof env expr in
-        let Cf coerce = M.solving_subtype expr.pos env expr_typ locator typ in
+        let Cf coerce = M.solving_subtype expr.pos env expr_typ typ in
         {term = coerce expr; typ; eff}
 
 and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t with_pos typing
@@ -265,7 +260,7 @@ and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t wit
         | Some clauses ->
             let clauses = Vector1.map (check_clause env domain eff codomain) clauses in
             let params =
-                Vector.map (fun (_, typ) -> {FExpr.name = Name.fresh (); typ}) domain in
+                Vector.map (fun typ -> {FExpr.name = Name.fresh (); typ}) domain in
             let param_uses =
                 Vector.map (fun {FExpr.name; _} -> {Util.v = FExpr.Use name; pos}) params in
             let body = {Util.v = FExpr.Match (param_uses, Vector1.to_vector clauses); pos} in
@@ -289,7 +284,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr
         else failwith "TODO: multi-value check_pat"
 
     | AExpr.Ann (pat', typ') ->
-        let (_, locator, typ') = E.elaborate env typ' |> Environmentals.reabstract env in
+        let (_, typ') = E.elaborate env typ' |> Environmentals.reabstract env in
         let _ = M.solving_unify pat.pos env typ typ' in
         check_pat env typ' pat'
 
@@ -307,7 +302,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr
     | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
 and check_pats env domain pats =
-    let step (pats, env) (_, domain) pat =
+    let step (pats, env) domain pat =
         let (pat, defs) = check_pat env domain pat in
         let env =
             Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in

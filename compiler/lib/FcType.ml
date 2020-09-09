@@ -45,10 +45,10 @@ and Type : FcTypeSigs.TYPE
 
     type ov = binding * level
 
-    and abs = Exists of kind Vector.t * locator * t
+    and abs = Exists of kind Vector.t * t
 
     and t =
-        | Pi of kind Vector.t * (locator * t) Vector.t * t * abs (* FIXME: Separate implicit domain *)
+        | Pi of kind Vector.t * t Vector.t * t * abs (* FIXME: Separate implicit domain *)
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
@@ -61,10 +61,10 @@ and Type : FcTypeSigs.TYPE
         | Uv of uv
         | Prim of Prim.t
 
-    and locator =
-        | PiL of int * locator
-        | RecordL of locator
-        | WithL of {base : locator; label : Name.t; field : locator}
+    and template =
+        | PiL of int * template
+        | RecordL of template
+        | WithL of {base : template; label : Name.t; field : template}
         | TypeL of t
         | Hole
 
@@ -83,7 +83,6 @@ and Type : FcTypeSigs.TYPE
         | Patchable of coercion TxRef.rref
 
     and typ = t
-    and template = locator
 
     let (^^) = PPrint.(^^)
     let (^/^) = PPrint.(^/^)
@@ -102,11 +101,10 @@ and Type : FcTypeSigs.TYPE
 
     let kinds_to_doc kinds = PPrint.separate_map (PPrint.break 1) kind_to_doc kinds
 
-    let rec abs_to_doc s (Exists (params, locator, body)) =
+    let rec abs_to_doc s (Exists (params, body)) =
         if Vector.length params > 0 then
             PPrint.prefix 4 1 (PPrint.group (PPrint.string "exists" ^/^ kinds_to_doc (Vector.to_list params)))
-                (PPrint.dot ^^ PPrint.blank 1
-                    ^^ PPrint.parens (locator_to_doc s locator ^^ PPrint.comma ^/^ to_doc s body))
+                (PPrint.dot ^^ PPrint.blank 1 ^^ to_doc s body)
         else to_doc s body
 
     and to_doc s = function
@@ -114,7 +112,7 @@ and Type : FcTypeSigs.TYPE
             let domain_doc =
                 PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                     PPrint.lparen (PPrint.semi ^^ PPrint.break 1) PPrint.rparen
-                    (domain_to_doc s) (Vector.to_list domain) in
+                    (to_doc s) (Vector.to_list domain) in
             let unquantified_doc =
                 PPrint.prefix 4 1 domain_doc
                     (PPrint.string "-!" ^^ PPrint.blank 1
@@ -144,8 +142,6 @@ and Type : FcTypeSigs.TYPE
         | Uv uv -> uv_to_doc s uv
         | Prim pt -> PPrint.string "__" ^^ Prim.to_doc pt
 
-    and domain_to_doc s (locator, domain) = locator_to_doc s locator ^^ PPrint.comma ^/^ to_doc s domain
-
     and base_to_doc s = function
         | (Pi _ | Fn _) as base -> PPrint.parens (to_doc s base)
         | Uv uv ->
@@ -173,24 +169,24 @@ and Type : FcTypeSigs.TYPE
     and field_to_doc s {label; typ} =
         PPrint.string label ^/^ PPrint.colon ^/^ to_doc s typ
 
-    and locator_to_doc s = function
+    and template_to_doc s = function
         | PiL (arity, codomain) ->
             let domain_doc =
                 let rec loop doc = function
                     | 0 -> doc
                     | arity -> loop (doc ^^ PPrint.comma ^/^ PPrint.underscore) (arity - 1) in
                 PPrint.parens (loop PPrint.empty arity) in
-            PPrint.infix 4 1 (PPrint.string "->") domain_doc (locator_to_doc s codomain)
-        | RecordL row -> PPrint.braces (locator_to_doc s row)
+            PPrint.infix 4 1 (PPrint.string "->") domain_doc (template_to_doc s codomain)
+        | RecordL row -> PPrint.braces (template_to_doc s row)
         | WithL {base; label; field} ->
             PPrint.infix 4 1 (PPrint.string "with") (basel_to_doc s base)
-                (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (locator_to_doc s field))
+                (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (template_to_doc s field))
         | TypeL path -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ to_doc s path)
         | Hole -> PPrint.underscore
 
     and basel_to_doc s = function
-        | PiL _ as locator -> PPrint.parens (locator_to_doc s locator)
-        | locator -> locator_to_doc s locator
+        | PiL _ as template -> PPrint.parens (template_to_doc s template)
+        | template -> template_to_doc s template
 
     and binding_to_doc (name, kind) =
         PPrint.parens (Name.to_doc name ^/^ PPrint.colon ^/^ kind_to_doc kind)
@@ -245,7 +241,7 @@ and Type : FcTypeSigs.TYPE
 
     (* --- *)
 
-    let to_abs typ = Exists (Vector.of_list [], Hole, typ)
+    let to_abs typ = Exists (Vector.of_list [], typ)
 
     let freshen (name, kind) = (Name.freshen name, kind)
 

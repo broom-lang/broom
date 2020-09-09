@@ -81,7 +81,7 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                 let (uv, typ) = match template with
                     | T.PiL (arity, _) ->
                         (uv, T.Pi ( Vector.of_list []
-                                  , Vector.init arity (fun _ -> (T.Hole, T.Uv (sibling env uv)))
+                                 , Vector.init arity (fun _ -> T.Uv (sibling env uv))
                                   , Uv (sibling env uv), T.to_abs (Uv (sibling env uv)) ))
                     | TypeL _ -> (uv, T.Type (T.to_abs (Uv (sibling env uv))))
                     | RecordL row_template -> (uv, Record (Uv (sibling env uv)))
@@ -129,42 +129,17 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
         , typ )
     | None -> failwith "unreachable: `whnf` failed in `focalize`."
 
-and focalize_locator : T.locator -> T.t -> T.locator 
-= fun locator -> function
-    | T.Pi (_, domain, _, _) ->
-        (match locator with
-        | PiL _ -> locator
-        | Hole -> PiL (Vector.length domain, Hole)
-        | _ -> failwith "unreachable: `Pi` locator")
-    | Record _ ->
-        (match locator with
-        | RecordL _ -> locator
-        | Hole -> RecordL Hole
-        | _ -> failwith "unreachable: `Record` locator")
-    | With {base = _; label; field = _} ->
-        (match locator with
-        | WithL {base = _; label = locator_label; field = _} when locator_label = label ->
-            locator
-        | Hole -> WithL {base = Hole; label; field = Hole}
-        | _ -> failwith "unreachable: `With` locator")
-    | Type _ ->
-        (match locator with
-        | TypeL _ -> locator
-        | Hole -> TypeL (Prim Int) (* HACK *)
-        | _ -> failwith "unreachable: `Type` locator")
-    | _ -> locator (* HACK? *)
-
 (* # Subtyping *)
 
-let rec coercion : span -> bool -> Env.t -> T.t -> T.ov Vector.t * T.locator * T.t -> coercer matching
-= fun pos occ env typ (existentials, super_locator, super) ->
+let rec coercion : span -> bool -> Env.t -> T.t -> T.ov Vector.t * T.t -> coercer matching
+= fun pos occ env typ (existentials, super) ->
     match Vector1.of_vector existentials with
     | Some existentials ->
         let axiom_bindings = Vector1.map (fun (((name, _), _) as param) ->
             (Name.fresh (), param, Env.uv env name)
         ) existentials in
         let env = Env.push_axioms env axiom_bindings in
-        let {coercion = Cf coerce; residual} = subtype pos occ env typ super_locator super in
+        let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
 
         let axioms = Vector1.map (fun (axname, (((_, kind), _) as ov), impl) -> match kind with
             | T.ArrowK (domain, _) ->
@@ -175,18 +150,18 @@ let rec coercion : span -> bool -> Env.t -> T.t -> T.ov Vector.t * T.locator * T
         ) axiom_bindings in
         { coercion = Cf (fun v -> {pos; v = Axiom (axioms, coerce v)})
         ; residual = Option.map (fun residual -> Residual.Axioms (axiom_bindings, residual)) residual }
-    | None -> subtype pos occ env typ super_locator super
+    | None -> subtype pos occ env typ super
 
-and subtype_abs : span -> bool -> Env.t -> T.abs -> T.locator -> T.abs -> coercer matching
-= fun pos occ env typ locator super ->
+and subtype_abs : span -> bool -> Env.t -> T.abs -> T.abs -> coercer matching
+= fun pos occ env typ super ->
     let (env, skolems, typ) = Environmentals.push_abs_skolems env typ in
-    let (uvs, super_locator, super) = Environmentals.instantiate_abs env super in
+    let (uvs, super) = Environmentals.instantiate_abs env super in
     match Vector1.of_vector skolems with
     | Some skolems ->
         let skolems = Vector1.map fst skolems in
         (match Vector1.of_vector uvs with
         | Some uvs ->
-            let {coercion = Cf coerce; residual} = subtype pos occ env typ super_locator super in
+            let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
 
             let name = Name.fresh () in
             let impl = {E.name; typ} in
@@ -195,7 +170,7 @@ and subtype_abs : span -> bool -> Env.t -> T.abs -> T.locator -> T.abs -> coerce
             { coercion = Cf (fun v -> {pos; v = Unpack (skolems, impl, v, body)})
             ; residual = ResidualMonoid.skolemized (Vector1.map snd skolems) residual }
         | None ->
-            let {coercion = Cf coerce; residual} = subtype pos occ env typ locator super in
+            let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
 
             let name = Name.fresh () in 
             let impl = {E.name; typ} in
@@ -206,14 +181,14 @@ and subtype_abs : span -> bool -> Env.t -> T.abs -> T.locator -> T.abs -> coerce
     | None ->
         (match Vector1.of_vector uvs with
         | Some uvs ->
-            let {coercion = Cf coerce; residual} = subtype pos occ env typ super_locator super in
+            let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
 
             let uvs = Vector1.map (fun uv -> T.Uv uv) uvs in
             {coercion = Cf (fun v -> {pos; v = Pack (uvs, coerce v)}); residual}
-        | None -> subtype pos occ env typ locator super)
+        | None -> subtype pos occ env typ super)
 
-and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matching
-= fun pos occ env typ locator super ->
+and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
+= fun pos occ env typ super ->
     let empty = ResidualMonoid.empty in
     let combine = ResidualMonoid.combine in
 
@@ -237,7 +212,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
 
                     | Pi (_, domain, _, _) ->
                         (uv, Pi ( Vector.of_list []
-                                , Vector.map (fun _ -> (T.Hole, T.Uv (sibling env uv))) domain
+                                , Vector.map (fun _ -> T.Uv (sibling env uv)) domain
                                 , Uv (sibling env uv)
                                 , T.to_abs (Uv (sibling env uv)) ))
                     | Record _ -> (uv, Record (Uv (sibling env uv)))
@@ -257,47 +232,42 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
             | Assigned _ -> failwith "unreachable: `articulate` on assigned uv")
         | _ -> failwith "unreachable: `articulate` on non-uv" in
 
-    let subtype_whnf : bool -> T.t -> T.locator -> T.t -> coercer matching
-    = fun occ typ locator super -> match (typ, super) with
+    let subtype_whnf : bool -> T.t -> T.t -> coercer matching
+    = fun occ typ super -> match (typ, super) with
         | (Uv uv, Uv uv') when uv = uv' -> {coercion = Cf Fun.id; residual = None}
         | (Uv uv, _) ->
             (match Env.get_uv env uv with
             | Unassigned _ ->
                 if occ then occurs_check pos env uv super else ();
-                subtype pos false env (articulate pos occ env typ super) locator super
+                subtype pos false env (articulate pos occ env typ super) super
             | Assigned _ -> failwith "unreachable: Assigned `typ` in `subtype_whnf`")
         | (_, Uv uv) ->
             (match Env.get_uv env uv with
             | Unassigned _ ->
                 if occ then occurs_check pos env uv typ else ();
-                subtype pos false env typ locator (articulate pos occ env super typ)
+                subtype pos false env typ (articulate pos occ env super typ)
             | Assigned _ -> failwith "unreachable: Assigned `super` in `subtype_whnf`")
 
         | (Pi (universals, domain, eff, codomain), _) -> (match super with
             | Pi (universals', domain', eff', codomain') ->
-                let codomain_locator = match locator with
-                    | PiL (_, codomain_locator) -> codomain_locator
-                    | _ -> failwith "unreachable: function locator" in
-                let (env, universals', domain', eff', codomain_locator, codomain') =
-                    Environmentals.push_arrow_skolems env universals'
-                        domain' eff' codomain_locator codomain' in
+                let (env, universals', domain', eff', codomain') =
+                    Environmentals.push_arrow_skolems env universals' domain' eff' codomain' in
                 let (uvs, domain, eff, codomain) =
                     Environmentals.instantiate_arrow env universals domain eff codomain in
 
                 (* FIXME: raises on arity mismatch: *)
                 let {coercion = domain_coercions; residual = domain_residual} =
-                    Vector.fold2 (fun {coercion = coercions; residual} (loc, domain) (_, domain') ->
-                        let {coercion; residual = residual'} = subtype pos occ env domain' loc domain in
+                    Vector.fold2 (fun {coercion = coercions; residual} domain domain' ->
+                        let {coercion; residual = residual'} = subtype pos occ env domain' domain in
                         {coercion = coercion :: coercions; residual = combine residual residual'})
                     {coercion = []; residual = empty} domain domain' in
                 let domain_coercions = domain_coercions |> List.rev |> Vector.of_list in
-                let {coercion = _; residual = eff_residual} = subtype pos occ env eff Hole eff' in
+                let {coercion = _; residual = eff_residual} = subtype pos occ env eff eff' in
                 let {coercion = Cf coerce_codomain; residual = codomain_residual} =
-                    subtype_abs pos occ env codomain codomain_locator codomain' in
+                    subtype_abs pos occ env codomain codomain' in
 
                 let names = Vector.map (fun _ -> Name.fresh ()) domain in
-                let params = Vector.map2 (fun name (_, domain') -> {E.name; typ = domain'})
-                    names domain' in
+                let params = Vector.map2 (fun name domain' -> {E.name; typ = domain'}) names domain' in
                 let args = Vector.map2 (fun name (TyperSigs.Cf coerce_domain) ->
                         coerce_domain {pos; v = E.Use name}
                 ) names domain_coercions in
@@ -315,9 +285,6 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
 
         | (Record row, _) -> (match super with
             | Record super_row ->
-                let row_locator = match locator with
-                    | RecordL row_locator -> row_locator
-                    | _ -> failwith "unreachable: record locator" in
                 (match Elab.eval env super_row with
                 (* HACK: *)
                 | Some (Uv uv, eval_co) -> (match row with
@@ -327,7 +294,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                         | Unassigned _ ->
                             if occ then occurs_check pos env uv row else ();
                             articulate pos occ env super_row row;
-                            subtype pos false env typ locator super
+                            subtype pos false env typ super
                         | Assigned _ -> failwith "unreachable: Assigned `super` in `subtype_whnf`"))
 
                 | Some (With {base = super_base; label = super_label; field = super_field} as super_row, eval_co) ->
@@ -339,14 +306,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                                 let (base, field'') = pull base in
                                 (With {base; label; field}, field'')
                             end in
-                    let (base_locator, field_locator) = match focalize_locator row_locator super_row with
-                        | WithL {base; label; field} -> assert (label = super_label); (base, field)
-                        | row_locator -> failwith "unreachable: record With locator" in
                     let (base, field) = pull row in
-                    let {coercion = Cf base_co; residual = base_residual} =
-                        subtype pos occ env base base_locator super_base in
-                    let {coercion = Cf field_co; residual = field_residual} =
-                        subtype pos occ env field field_locator super_field in
+                    let {coercion = Cf base_co; residual = base_residual} = subtype pos occ env base super_base in
+                    let {coercion = Cf field_co; residual = field_residual} = subtype pos occ env field super_field in
                     { coercion = Cf (fun v ->
                         let name = Name.fresh () in
                         let def = {v with v = E.UseP name} in
@@ -373,14 +335,11 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
                             let (base, field'') = pull base in
                             (With {base; label; field}, field'')
                         end in
-                let (base_locator, field_locator) = match locator with
-                    | WithL {base; label; field} -> assert (label = super_label); (base, field)
-                    | _ -> failwith "unreachable: record locator" in
                 let (base, field) = pull typ in
                 let {coercion = _; residual = base_residual} =
-                    subtype pos occ env base base_locator super_base in
+                    subtype pos occ env base super_base in
                 let {coercion = _; residual = field_residual} =
-                    subtype pos occ env field field_locator super_field in
+                    subtype pos occ env field super_field in
                 { coercion = Cf Fun.id (* NOTE: Row types have no values so this will not get used *)
                 ; residual = combine base_residual field_residual }
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
@@ -389,9 +348,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
             | EmptyRow -> {coercion = Cf Fun.id; residual = empty}
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
-        | (Type (Exists (existentials, _, carrie) as abs_carrie), _) -> (match super with
+        | (Type (Exists (existentials, carrie) as abs_carrie), _) -> (match super with
             | Type abs_carrie' ->
-                (match locator with
+                (*match locator with
                 | TypeL (App (callee, args)) ->
                     (match Elab.eval env callee with
                     (*| Some (Uv ({contents = Unassigned (_, level)} as uv), _) ->
@@ -413,21 +372,19 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
 
                     | _ -> (* TODO: Use unification (?) *)
                         let {coercion = _; residual} =
-                            subtype_abs pos occ env abs_carrie Hole abs_carrie' in
+                            subtype_abs pos occ env abs_carrie abs_carrie' in
                         let {coercion = _; residual = residual'} =
-                            subtype_abs pos occ env abs_carrie' Hole abs_carrie in
+                            subtype_abs pos occ env abs_carrie' abs_carrie in
                         { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
-                        ; residual = combine residual residual' })
+                        ; residual = combine residual residual' })*)
 
-                | TypeL _ -> (* TODO: Use unification (?) *)
-                    let {coercion = _; residual} =
-                        subtype_abs pos occ env abs_carrie Hole abs_carrie' in
-                    let {coercion = _; residual = residual'} =
-                        subtype_abs pos occ env abs_carrie' Hole abs_carrie in
-                    { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
-                    ; residual = combine residual residual' }
-
-                | _ -> failwith "unreachable: `Type` locator")
+                (* TODO: Use unification (?) *)
+                let {coercion = _; residual} =
+                    subtype_abs pos occ env abs_carrie abs_carrie' in
+                let {coercion = _; residual = residual'} =
+                    subtype_abs pos occ env abs_carrie' abs_carrie in
+                { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
+                ; residual = combine residual residual' }
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (App _, _) -> (match super with
@@ -462,8 +419,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
     let res =
         Elab.eval env typ >>= fun (typ', co) ->
         Elab.eval env super |> Option.map (fun (super', co') ->
-            let locator = focalize_locator locator super' in
-            let {coercion = Cf coerce; residual} = subtype_whnf occ typ' locator super' in
+            let {coercion = Cf coerce; residual} = subtype_whnf occ typ' super' in
             { coercion =
                 (match (co, co') with
                 | (Some co, Some co') ->
@@ -479,14 +435,14 @@ and subtype : span -> bool -> Env.t -> T.t -> T.locator -> T.t -> coercer matchi
         { coercion = Cf (fun v ->
             TxRef.set (Env.tx_log env) patchable v;
             {pos; v = Patchable patchable})
-        ; residual = Some (Sub (occ, typ, locator, super, patchable)) }
+        ; residual = Some (Sub (occ, typ, super, patchable)) }
 
 and occurs_check pos env uv typ =
-    let rec check_abs (Exists (_, _, body) : T.abs) = check body
+    let rec check_abs (Exists (_, body) : T.abs) = check body
 
     and check = function
         | Pi (_, domain, eff, codomain) ->
-            Vector.iter (fun (_, dom) -> check dom) domain;
+            Vector.iter check domain;
             check eff;
             check_abs codomain
         | Record row -> check row
@@ -512,7 +468,7 @@ and occurs_check pos env uv typ =
 (* # Unification *)
 
 and unify_abs : span -> Env.t -> T.abs -> T.abs -> T.coercion option matching
-= fun pos env (Exists (existentials, locator, body)) (Exists (existentials', locator', body')) ->
+= fun pos env (Exists (existentials, body)) (Exists (existentials', body')) ->
     if Vector.length existentials = 0 && Vector.length existentials' = 0
     then unify pos env body body'
     else failwith "todo"
@@ -658,7 +614,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
 (* Monotype check, occurs check, ov escape check, HKT capturability check and uv level updates.
    Complected for speed. *)
 and check_uv_assignee pos env uv level max_uv_level typ =
-    let rec check_abs (Exists (existentials, _, body) as typ : T.abs) =
+    let rec check_abs (Exists (existentials, body) as typ : T.abs) =
         if Vector.length existentials = 0
         then check body
         else raise (Err.TypeError (pos, Polytype typ))
@@ -667,7 +623,7 @@ and check_uv_assignee pos env uv level max_uv_level typ =
         | Pi (universals, domain, eff, codomain) ->
             if Vector.length universals = 0
             then begin
-                Vector.iter (fun (_, dom) -> check dom) domain;
+                Vector.iter check domain;
                 check eff;
                 check_abs codomain
             end else raise (Err.TypeError (pos, Polytype (T.to_abs typ)))
@@ -714,8 +670,8 @@ and solve pos env residual =
         | Residuals (residual, residual') ->
             ResidualMonoid.combine (solve env residual) (solve env residual')
 
-        | Sub (occ, typ, locator, super, patchable) ->
-            let {coercion = Cf coerce; residual} = subtype pos occ env typ locator super in
+        | Sub (occ, typ, super, patchable) ->
+            let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
             TxRef.set (Env.tx_log env) patchable (coerce !patchable);
             residual
 
@@ -736,8 +692,8 @@ let solving_coercion pos env typ super =
     solve pos env residual;
     coercion
 
-let solving_subtype pos env typ locator super =
-    let {coercion; residual} = subtype pos true env typ locator super in
+let solving_subtype pos env typ super =
+    let {coercion; residual} = subtype pos true env typ super in
     solve pos env residual;
     coercion
 

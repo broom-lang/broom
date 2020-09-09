@@ -6,7 +6,7 @@ type error =
     | InvalidDecl of Ast.Term.Stmt.t
     | InvalidField of Ast.Term.Stmt.t
     | Unbound of Name.t
-    | Unusable of Fc.Type.locator * typ
+    | Unusable of Fc.Type.template * typ
     | MissingField of typ * string
     | SubType of typ * typ
     | Unify of typ * typ
@@ -47,7 +47,7 @@ let rec cause_to_doc s pos = function
             | Axioms (_, residual) | Skolems (_, residual) -> to_doc residual
             | Residuals (residual, residual') ->
                 to_doc residual ^/^ PPrint.string "and" ^/^ to_doc residual'
-            | Sub (_, typ, _, super, _) -> cause_to_doc s pos (SubType (typ, super))
+            | Sub (_, typ, super, _) -> cause_to_doc s pos (SubType (typ, super))
             | Unify (typ, typ', _) -> cause_to_doc s pos (Unify (typ, typ'))
         in to_doc residual
     | IncompleteImpl (uv, uv') ->

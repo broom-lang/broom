@@ -6,7 +6,7 @@ type error =
     | InvalidDecl of Ast.Term.Stmt.t
     | InvalidField of Ast.Term.Stmt.t
     | Unbound of Name.t
-    | Unusable of Fc.Type.locator * typ
+    | Unusable of Fc.Type.template * typ
     | MissingField of typ * string
     | SubType of typ * typ
     | Unify of typ * typ
