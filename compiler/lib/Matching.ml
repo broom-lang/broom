@@ -84,7 +84,6 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                                  , Vector.init arity (fun _ -> T.Uv (sibling env uv))
                                   , Uv (sibling env uv), T.to_abs (Uv (sibling env uv)) ))
                     | TypeL _ -> (uv, T.Type (T.to_abs (Uv (sibling env uv))))
-                    | RecordL row_template -> (uv, Record (Uv (sibling env uv)))
                     | WithL {base = _; label; field = _} ->
                         (uv, (With {base = Uv (sibling env uv); label; field = Uv (sibling env uv)}))
                     | Hole -> failwith "unreachable: Hole as template in `articulate_template`" in
@@ -107,10 +106,6 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
             | TypeL _ ->
                 (match typ with
                 | Type _ -> (Cf Fun.id, typ)
-                | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
-            | RecordL _ ->
-                (match typ with
-                | Record _ -> (Cf Fun.id, typ)
                 | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
             | WithL {base = _; label; field = _} ->
                 let (co, base, field) = pull_row pos env label typ in

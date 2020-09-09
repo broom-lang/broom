@@ -35,7 +35,6 @@ and expose' env depth substitution = function
 
 and expose_template' env depth substitution = function
     | T.PiL (arity, codomain) -> T.PiL (arity, expose_template' env depth substitution codomain)
-    | RecordL row -> RecordL (expose_template' env depth substitution row)
     | WithL {base; label; field} ->
         WithL { base = expose_template' env depth substitution base
               ; label; field = expose_template' env depth substitution field }
@@ -79,7 +78,6 @@ and close' env depth substitution = function
 
 and close_template' env depth substitution = function
     | T.PiL (arity, codomain) -> T.PiL (arity, close_template' env depth substitution codomain)
-    | RecordL row -> RecordL (close_template' env depth substitution row)
     | WithL {base; label; field} ->
         WithL { base = close_template' env depth substitution base
               ; label; field = close_template' env depth substitution field }

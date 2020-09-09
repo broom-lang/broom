@@ -36,7 +36,6 @@ module type TYPE = sig
 
     and template =
         | PiL of int * template
-        | RecordL of template
         | WithL of {base : template; label : Name.t; field : template}
         | TypeL of t
         | Hole

@@ -92,14 +92,10 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
     | AExpr.Record stmts -> typeof_record env expr.pos stmts
 
     | AExpr.Select (record, label) -> (* TODO: lacks-constraint: *)
-        let {TyperSigs.term = record; typ = record_typ; eff} = typeof env record in
-        (match M.focalize record.pos env record_typ (RecordL Hole) with
-        | (Cf coerce, Record row) ->
-            (match M.focalize record.pos env row (WithL {base = Hole; label; field = Hole}) with
-            | (_, With {base = _; label = _; field = typ}) ->
-                {term = {expr with v = Select (coerce record, label)}; typ; eff}
-            | _ -> failwith "compiler bug: With focalization returned non-With")
-        | _ -> failwith "compiler bug: selectee focalization returned non-record")
+        let field : T.t = Uv (Env.uv env (Name.fresh ())) in
+        let typ : T.t = Record (With {base = Uv (Env.uv env (Name.fresh ())); label; field}) in
+        let {TyperSigs.term = record; typ = record_typ; eff} = check env typ record in
+        {TyperSigs.term = {expr with v = Select (record, label)}; typ = field; eff}
 
     | AExpr.Ann (expr, typ) ->
         let typ = E.elaborate env typ in

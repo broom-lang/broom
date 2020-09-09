@@ -63,7 +63,6 @@ and Type : FcTypeSigs.TYPE
 
     and template =
         | PiL of int * template
-        | RecordL of template
         | WithL of {base : template; label : Name.t; field : template}
         | TypeL of t
         | Hole
@@ -177,7 +176,6 @@ and Type : FcTypeSigs.TYPE
                     | arity -> loop (doc ^^ PPrint.comma ^/^ PPrint.underscore) (arity - 1) in
                 PPrint.parens (loop PPrint.empty arity) in
             PPrint.infix 4 1 (PPrint.string "->") domain_doc (template_to_doc s codomain)
-        | RecordL row -> PPrint.braces (template_to_doc s row)
         | WithL {base; label; field} ->
             PPrint.infix 4 1 (PPrint.string "with") (basel_to_doc s base)
                 (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (template_to_doc s field))
