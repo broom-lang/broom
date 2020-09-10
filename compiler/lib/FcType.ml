@@ -109,13 +109,13 @@ and Type : FcTypeSigs.TYPE
 
     and to_doc s = function
         | Values typs ->
-            PPrint.surround_separate_map 4 1 (PPrint.parens PPrint.empty)
+            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 (to_doc s) (Vector.to_list typs)
         | Pi (universals, domain, eff, codomain) ->
             let domain_doc =
                 PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
-                    PPrint.lparen (PPrint.semi ^^ PPrint.break 1) PPrint.rparen
+                    PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                     (to_doc s) (Vector.to_list domain) in
             let unquantified_doc =
                 PPrint.prefix 4 1 domain_doc
@@ -192,7 +192,7 @@ and Type : FcTypeSigs.TYPE
         | template -> template_to_doc s template
 
     and binding_to_doc (name, kind) =
-        PPrint.parens (Name.to_doc name ^/^ PPrint.colon ^/^ kind_to_doc kind)
+        Name.to_doc name ^/^ PPrint.colon ^/^ kind_to_doc kind
 
     and universal_to_doc universals body =
         PPrint.prefix 4 1 (PPrint.group (PPrint.string "forall" ^/^ kinds_to_doc (Vector.to_list universals)))
