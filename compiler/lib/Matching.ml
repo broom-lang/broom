@@ -334,22 +334,23 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (With _, _) -> (match super with
-            | With {base = super_base; label = super_label; field = super_field} ->
-                let rec pull typ = match Elab.eval env typ with
-                    | Some (With {base; label; field}, eval_co) ->
-                        if label = super_label
-                        then (base, field)
-                        else begin
-                            let (base, field'') = pull base in
-                            (With {base; label; field}, field'')
-                        end in
-                let (base, field) = pull typ in
-                let {coercion = _; residual = base_residual} =
-                    subtype pos occ env base super_base in
-                let {coercion = _; residual = field_residual} =
-                    subtype pos occ env field super_field in
+            | With _ ->
+                let (labels, _, base, fields, super_base, super_fields, _) =
+                    match_rows pos env typ super in
+
+                let fields_len = CCVector.length labels in
+                let {coercion = _; residual} = subtype pos occ env base super_base in
+                let residual =
+                    let rec loop residual i =
+                        if i < fields_len
+                        then begin
+                            let {coercion = _; residual = residual'} =
+                                subtype pos occ env (CCVector.get fields i) (CCVector.get super_fields i) in
+                            loop (combine residual residual') (i + 1)
+                        end else residual in
+                    loop residual 0 in
                 { coercion = Cf Fun.id (* NOTE: Row types have no values so this will not get used *)
-                ; residual = combine base_residual field_residual }
+                ; residual }
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (EmptyRow, _) -> (match super with
