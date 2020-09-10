@@ -137,26 +137,27 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t with_p
     | Nil -> failwith "TODO: clauseless fn"
 
 and elaborate_clause env {iparams; eparams; body} =
-    let (iparams, edomain, env) = elaborate_pats env iparams in
-    let (eparams, idomain, env) = elaborate_pats env eparams in
+    let (iparams, edomain, edefs, env) = elaborate_pats env iparams in
+    let (eparams, idomain, idefs, env) = elaborate_pats env eparams in
     let {TyperSigs.term = body; typ = codomain; eff} = typeof env body in
     ( Vector.append edomain idomain
     , {term = {FExpr.pats = Vector.append iparams eparams; body}; typ = codomain ; eff} )
 
 and elaborate_pats env pats =
-    let step (pats, typs, env) pat =
-        let (pat, (_, typ), defs) = elaborate_pat env pat in
+    let step (pats, typs, defs, env) pat =
+        let (pat, (_, typ), defs') = elaborate_pat env pat in
         let env =
-            Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
-        (pat :: pats, typ :: typs, env) in
-    let (pats, typs, env) = Vector.fold step ([], [], env) pats in
-    (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), env)
+            Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs' in
+        (pat :: pats, typ :: typs, Vector.append defs defs', env) in
+    let (pats, typs, defs, env) = Vector.fold step ([], [], Vector.empty, env) pats in
+    (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), defs, env)
 
 and elaborate_pat env pat = match pat.v with
+    | AExpr.Values pats when Vector.length pats = 1 -> elaborate_pat env (Vector.get pats 0)
+
     | AExpr.Values pats ->
-        if Vector.length pats = 1
-        then elaborate_pat env (Vector.get pats 0)
-        else failwith "TODO: multi-value elaborate_pat"
+        let (pats, typs, defs, env) = elaborate_pats env pats in
+        ({pat with v = FExpr.ValuesP pats}, (Vector.empty, Values typs), defs)
 
     | AExpr.Ann (pat, typ) ->
         let (_, typ) as semiabs = E.elaborate env typ |> Environmentals.reabstract env in
@@ -277,10 +278,9 @@ and check_clause env domain eff codomain {iparams; eparams; body} =
 (* TODO: use coercions (and subtyping ?): *)
 and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr.lvalue Vector.t
 = fun env typ pat -> match pat.v with
-    | AExpr.Values pats ->
-        if Vector.length pats = 1
-        then check_pat env typ (Vector.get pats 0)
-        else failwith "TODO: multi-value check_pat"
+    | AExpr.Values pats when Vector.length pats = 1 -> check_pat env typ (Vector.get pats 0)
+
+    | AExpr.Values pats -> failwith "TODO: multi-values in check_pat"
 
     | AExpr.Ann (pat', typ') ->
         let (_, typ') = E.elaborate env typ' |> Environmentals.reabstract env in

@@ -32,6 +32,7 @@ module type EXPR = sig
         | Patchable of t with_pos TxRef.rref
 
     and pat =
+        | ValuesP of pat with_pos Vector.t
         | AppP of t with_pos * pat with_pos Vector.t
         | ProxyP of Type.abs
         | UseP of Name.t

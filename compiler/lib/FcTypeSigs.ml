@@ -21,6 +21,7 @@ module type TYPE = sig
     and abs = Exists of kind Vector.t * t
 
     and t =
+        | Values of t Vector.t
         | Pi of kind Vector.t * t Vector.t * t * abs
         | Record of t
         | With of {base : t; label : Name.t; field : t}

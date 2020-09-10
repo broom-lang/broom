@@ -8,6 +8,7 @@ let rec expose_abs' env depth substitution (Exists (params, body) : T.abs) : T.a
     Exists (params, expose' env depth substitution body)
 
 and expose' env depth substitution = function
+    | Values typs -> Values (Vector.map (expose' env depth substitution) typs)
     | Pi (params, domain, eff, codomain) ->
         let depth = depth + 1 in
         Pi ( params, Vector.map (expose' env depth substitution) domain, eff
@@ -52,6 +53,7 @@ let rec close_abs' env depth substitution (Exists (params, body) : T.abs) : T.ab
     Exists (params, close' env depth substitution body)
 
 and close' env depth substitution = function
+    | Values typs -> Values (Vector.map (close' env depth substitution) typs)
     | Pi (params, domain, eff, codomain) ->
         let depth = depth + 1 in
         Pi ( params, Vector.map (close' env depth substitution) domain, eff

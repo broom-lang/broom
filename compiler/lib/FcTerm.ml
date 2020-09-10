@@ -48,6 +48,7 @@ module rec Expr : FcSigs.EXPR
         | Patchable of t with_pos TxRef.rref
 
     and pat =
+        | ValuesP of pat with_pos Vector.t
         | AppP of t with_pos * pat with_pos Vector.t
         | ProxyP of Type.abs
         | UseP of Name.t
@@ -198,6 +199,10 @@ module rec Expr : FcSigs.EXPR
         PPrint.infix 4 1 PPrint.colon (Name.to_doc name) (Type.to_doc s typ)
 
     and pat_to_doc s (pat : pat with_pos) = match pat.v with
+        | ValuesP pats ->
+            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
+                PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+                (pat_to_doc s) (Vector.to_list pats)
         | AppP (callee, args) ->
             PPrint.align (to_doc s callee
                 ^/^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)

@@ -48,6 +48,7 @@ and Type : FcTypeSigs.TYPE
     and abs = Exists of kind Vector.t * t
 
     and t =
+        | Values of t Vector.t
         | Pi of kind Vector.t * t Vector.t * t * abs (* FIXME: Separate implicit domain *)
         | Record of t
         | With of {base : t; label : Name.t; field : t}
@@ -107,6 +108,10 @@ and Type : FcTypeSigs.TYPE
         else to_doc s body
 
     and to_doc s = function
+        | Values typs ->
+            PPrint.surround_separate_map 4 1 (PPrint.parens PPrint.empty)
+                PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+                (to_doc s) (Vector.to_list typs)
         | Pi (universals, domain, eff, codomain) ->
             let domain_doc =
                 PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
