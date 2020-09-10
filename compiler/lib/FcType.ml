@@ -49,6 +49,7 @@ and Type : FcTypeSigs.TYPE
 
     and t =
         | Values of t Vector.t
+        (* TODO: Remove multiargs since they can be implemented with unboxed tuples (`Values`): *)
         | Pi of kind Vector.t * t Vector.t * t * abs (* FIXME: Separate implicit domain *)
         | Record of t
         | With of {base : t; label : Name.t; field : t}
