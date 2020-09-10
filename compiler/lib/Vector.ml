@@ -31,3 +31,5 @@ let to_seq xs =
 
 let of_seq seq = of_array_unsafe (Array.of_seq seq)
 
+let build vec = of_array_unsafe (CCVector.to_array vec)
+

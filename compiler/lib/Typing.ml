@@ -31,10 +31,21 @@ let primop_typ =
 
 let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env expr -> match expr.v with
+    | AExpr.Values exprs when Vector.length exprs = 1 -> typeof env (Vector.get exprs 0)
+
     | AExpr.Values exprs ->
-        if Vector.length exprs = 1
-        then typeof env (Vector.get exprs 0)
-        else failwith "TODO: typeof multi-Values"
+        let exprs' = CCVector.create () in
+        let typs = CCVector.create () in
+        let eff : T.t = Uv (Env.uv env (Name.fresh ())) in
+        exprs |> Vector.iter (fun expr ->
+            let {TyperSigs.term = expr; typ; eff = eff'} = typeof env expr in
+            CCVector.push exprs' expr;
+            CCVector.push typs typ;
+            ignore (M.solving_unify expr.pos env eff' eff)
+        );
+        { term = {expr with v = Values (Vector.build exprs')}
+        ; typ = Values (Vector.build typs)
+        ; eff }
 
     | AExpr.Fn clauses -> elaborate_fn env expr.pos clauses
 
@@ -244,7 +255,22 @@ and implement : Env.t -> T.ov Vector.t * T.t -> AExpr.t with_pos -> FExpr.t with
 
 and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env typ expr -> match (typ, expr.v) with
-    | (T.Pi _, AExpr.Fn clauses) -> check_fn env typ expr.pos clauses
+    | (T.Values typs, AExpr.Values exprs) ->
+        let exprs' = CCVector.create () in
+        let typs' = CCVector.create () in
+        let eff : T.t = Uv (Env.uv env (Name.fresh ())) in
+        (* FIXME: raises on length mismatch: *)
+        Vector.iter2 (fun typ expr ->
+            let {TyperSigs.term = expr; typ; eff = eff'} = check env typ expr in
+            CCVector.push exprs' expr;
+            CCVector.push typs' typ;
+            ignore (M.solving_unify expr.pos env eff' eff)
+        ) typs exprs;
+        { term = {expr with v = Values (Vector.build exprs')}
+        ; typ = Values (Vector.build typs')
+        ; eff }
+
+    | (Pi _, AExpr.Fn clauses) -> check_fn env typ expr.pos clauses
 
     | (Record row, AExpr.Record stmts) -> failwith "TODO: check Record"
 

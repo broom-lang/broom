@@ -26,8 +26,9 @@ module rec Expr : FcSigs.EXPR
 
     type lvalue = {name : Name.t; typ : Type.t}
 
-    type t
-        = Fn of Type.binding Vector.t * lvalue Vector.t * t with_pos
+    type t =
+        | Values of t with_pos Vector.t
+        | Fn of Type.binding Vector.t * lvalue Vector.t * t with_pos
         | App of t with_pos * typ Vector.t * t with_pos Vector.t
         | PrimApp of Primop.t * Type.t Vector.t * t with_pos Vector.t
         | Let of def * t with_pos
@@ -61,6 +62,10 @@ module rec Expr : FcSigs.EXPR
     let coercion_to_doc = Type.coercion_to_doc
 
     let rec to_doc s {Util.v = expr; pos = _} = match expr with
+        | Values exprs ->
+            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
+                PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+                (to_doc s) (Vector.to_list exprs)
         | Fn (universals, params, body) ->
             PPrint.prefix 4 1
                 (PPrint.string "fun"

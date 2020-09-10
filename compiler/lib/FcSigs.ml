@@ -10,8 +10,9 @@ module type EXPR = sig
 
     type lvalue = {name : Name.t; typ : Type.t}
 
-    type t
-        = Fn of Type.binding Vector.t * lvalue Vector.t * t with_pos
+    type t =
+        | Values of t with_pos Vector.t
+        | Fn of Type.binding Vector.t * lvalue Vector.t * t with_pos
         | App of t with_pos * Type.t Vector.t * t with_pos Vector.t
         | PrimApp of Primop.t * Type.t Vector.t * t with_pos Vector.t
         | Let of def * t with_pos
