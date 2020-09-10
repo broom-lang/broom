@@ -174,6 +174,9 @@ and elaborate_pat env pat = match pat.v with
     | AExpr.Const c ->
         ({pat with v = FExpr.ConstP c}, (Vector.empty, const_typ c), Vector.empty)
 
+    | AExpr.AppSequence _ | AExpr.App _ | AExpr.PrimApp _ | AExpr.Select _ | AExpr.Record _ ->
+        failwith "TODO in elaborate_pat"
+
     | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
 (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
@@ -294,6 +297,9 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr
     | AExpr.Const c ->
         let _ = M.solving_unify pat.pos env typ (const_typ c) in
         ({pat with v = ConstP c}, Vector.empty)
+
+    | AExpr.AppSequence _ | AExpr.App _ | AExpr.PrimApp _ | AExpr.Select _ | AExpr.Record _ ->
+        failwith "TODO in check_pat"
 
     | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
 
