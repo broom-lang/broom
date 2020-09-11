@@ -12,6 +12,7 @@ module type EXPR = sig
 
     type t =
         | Values of t with_pos Vector.t
+        | Focus of t with_pos * int
         | Fn of Type.binding Vector.t * lvalue Vector.t * t with_pos
         | App of t with_pos * Type.t Vector.t * t with_pos Vector.t
         | PrimApp of Primop.t * Type.t Vector.t * t with_pos Vector.t

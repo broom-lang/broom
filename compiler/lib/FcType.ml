@@ -78,6 +78,7 @@ and Type : FcTypeSigs.TYPE
         | Comp of coercion * coercion Vector1.t
         | Inst of coercion * typ Vector1.t
         | AUse of Name.t
+        | ValuesCo of coercion Vector.t
         | RecordCo of coercion
         | WithCo of {base : coercion; label : Name.t; field : coercion}
         | TypeCo of coercion
@@ -216,6 +217,10 @@ and Type : FcTypeSigs.TYPE
             Vector1.fold (fun doc arg -> PPrint.infix 4 1 PPrint.at doc (to_doc s arg))
                 (instantiee_to_doc s co) args
         | AUse name -> Name.to_doc name
+        | ValuesCo coercions ->
+            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
+                PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+                (coercion_to_doc s) (Vector.to_list coercions)
         | RecordCo row_co -> PPrint.braces (coercion_to_doc s row_co)
         | WithCo {base; label; field} ->
             PPrint.infix 4 1 (PPrint.string "with") (base_co_to_doc s base)

@@ -205,6 +205,8 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         then (uv, Ov ov)
                         else raise (Err.TypeError (pos, Escape ov))
 
+                    | Values typs ->
+                        (uv, Values (Vector.map (fun _ -> T.Uv (sibling env uv)) typs))
                     | Pi (_, domain, _, _) ->
                         (uv, Pi ( Vector.of_list []
                                 , Vector.map (fun _ -> T.Uv (sibling env uv)) domain
@@ -242,6 +244,28 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 if occ then occurs_check pos env uv typ else ();
                 subtype pos false env typ (articulate pos occ env super typ)
             | Assigned _ -> failwith "unreachable: Assigned `super` in `subtype_whnf`")
+
+        | (Values typs, _) -> (match super with
+            | Values super_typs ->
+                if Vector.length typs = Vector.length super_typs then begin
+                    let coercions = CCVector.create () in
+                    (* OPTIMIZE: `noop` as in unification: *)
+                    let residual = Vector.fold2 (fun residual typ super ->
+                        let {coercion = Cf coercion; residual = residual'} =
+                            subtype pos occ env typ super in
+                        CCVector.push coercions coercion;
+                        combine residual residual'
+                    ) empty typs super_typs in
+                    { coercion = Cf (fun expr ->
+                        let name = Name.fresh () in
+                        let use = {Util.pos; v = E.Use name} in
+                        let body = {Util.pos; v = E.Values (coercions |> CCVector.mapi (fun i coerce ->
+                            coerce {Util.pos; v = E.Focus (use, i)}
+                        ) |> Vector.build)} in
+                        {pos; v = Let ((pos, {pos; v = UseP name}, expr), body)})
+                    ; residual }
+                end else failwith "<: tuple lengths"
+            | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (Pi (universals, domain, eff, codomain), _) -> (match super with
             | Pi (universals', domain', eff', codomain') ->
@@ -450,6 +474,7 @@ and occurs_check pos env uv typ =
     let rec check_abs (Exists (_, body) : T.abs) = check body
 
     and check = function
+        | Values typs -> Vector.iter check typs
         | Pi (_, domain, eff, codomain) ->
             Vector.iter check domain;
             check eff;
@@ -517,6 +542,25 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             Env.set_uv env uv (Assigned typ');
             {coercion = None; residual = empty}
         | Assigned _ -> failwith "unreachable: Assigned `typ` in `unify_whnf`")
+
+    | (Values typs, _) -> (match typ' with
+        | Values typs' ->
+            if Vector.length typs = Vector.length typs' then begin
+                let coercions = CCVector.create () in
+                let (residual, noop) = Vector.fold2 (fun (residual, noop) typ typ' ->
+                    let {coercion; residual = residual'} = unify pos env typ typ' in
+                    CCVector.push coercions coercion;
+                    (combine residual residual, noop && Option.is_none coercion)
+                ) (empty, true) typs typs' in
+                { coercion = if noop
+                    then Some (ValuesCo (coercions |> CCVector.mapi (fun i -> function
+                        | Some coercion -> coercion
+                        | None -> T.Refl (Vector.get typs' i)
+                    ) |> Vector.build))
+                    else None
+                ; residual }
+            end else failwith "~ tuple lengths"
+        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
 
     | (Pi (universals, domain, eff, codomain), _) -> (match typ' with
         | Pi (universals', domain', eff', codomain') -> failwith "TODO: unify Pi"
@@ -629,6 +673,7 @@ and check_uv_assignee pos env uv level max_uv_level typ =
         else raise (Err.TypeError (pos, Polytype typ))
 
     and check = function
+        | Values typs -> Vector.iter check typs
         | Pi (universals, domain, eff, codomain) ->
             if Vector.length universals = 0
             then begin

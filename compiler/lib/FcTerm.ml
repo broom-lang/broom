@@ -28,6 +28,7 @@ module rec Expr : FcSigs.EXPR
 
     type t =
         | Values of t with_pos Vector.t
+        | Focus of t with_pos * int
         | Fn of Type.binding Vector.t * lvalue Vector.t * t with_pos
         | App of t with_pos * typ Vector.t * t with_pos Vector.t
         | PrimApp of Primop.t * Type.t Vector.t * t with_pos Vector.t
@@ -66,6 +67,7 @@ module rec Expr : FcSigs.EXPR
             PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 (to_doc s) (Vector.to_list exprs)
+        | Focus (expr, i) -> selectee_to_doc s expr ^^ PPrint.dot ^^ PPrint.string (Int.to_string i)
         | Fn (universals, params, body) ->
             PPrint.prefix 4 1
                 (PPrint.string "fun"
