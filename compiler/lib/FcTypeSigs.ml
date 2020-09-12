@@ -5,6 +5,7 @@ module type TYPE = sig
     type kind
         = ArrowK of kind Vector1.t * kind
         | TypeK
+        | RowK
 
     type bv = {depth : int; sibli : int}
 

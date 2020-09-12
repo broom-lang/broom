@@ -8,16 +8,28 @@ module FExpr = Fc.Term.Expr
 module Err = TypeError
 
 type 'a with_pos = 'a Util.with_pos
+type 'a kinding = 'a TyperSigs.kinding
 
 let reabstract = Environmentals.reabstract
 let (!) = TxRef.(!)
 
-let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
-    let rec elab env (typ : AType.t with_pos) =
+let kindof_prim : Prim.t -> T.kind = function
+    | Int -> TypeK
+
+let rec kindof_F env : T.t -> T.kind = function
+    | Pi _ | Record _ | Proxy _ -> TypeK
+    | With _ | EmptyRow -> RowK
+    | Ov ((_, kind), _) -> kind
+    | Prim pt -> kindof_prim pt
+
+let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
+    let rec elab env (typ : AType.t with_pos) : T.t kinding =
         match typ.v with
         | Pi {idomain; edomain; eff; codomain} -> elab_pi env idomain edomain eff codomain
 
-        | Record decls -> T.Record (elab_row env typ.pos decls)
+        | Record decls ->
+            let {TyperSigs.typ = row; kind = row_kind} = elab_row env typ.pos decls in
+            {typ = T.Record row; kind = TypeK}
 
         | Row decls -> elab_row env typ.pos decls
 
@@ -27,7 +39,7 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
             (match M.focalize typ.pos env proxy_typ (ProxyL (Uv (Env.uv env (Name.fresh ())))) with
             | (_, Proxy typ) ->
                 let (_, typ) = reabstract env typ in
-                typ
+                {typ; kind = kindof_F env typ}
             | _ -> failwith "unreachable")
 
         (*| AType.Singleton expr ->
@@ -35,14 +47,14 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
             | {term = _; typ; eff = Pure} -> (Hole, typ)
             | _ -> raise (TypeError (typ.pos, ImpureType expr.v)))*)
 
-        | Prim pt -> Prim pt
+        | Prim pt -> {typ = Prim pt; kind = kindof_prim pt}
 
     and elab_pi env0 idomain edomain eff codomain = (* TODO: Applicative functors: *)
         let (env, universals) = Env.push_existential env0 in
         let (idomain, env) = elab_domain env idomain in
         let (edomain, env) = elab_domain env edomain in (* FIXME: make non-dependent (by default) *)
-        let Exists (effixtentials, eff) = elaborate env eff in
-        let codomain = elaborate env codomain in
+        let {typ = Exists (effixtentials, eff); kind = eff_kind} = kindof env eff in
+        let {TyperSigs.typ = codomain; kind = codomain_kind} = kindof env codomain in
         let universals = Vector.of_list !universals in
 
         let ubs = Vector.map fst universals in
@@ -69,10 +81,11 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
         let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
             (i + 1, Name.Map.add name i substitution)
         ) (0, Name.Map.empty) ubs in
-        T.Pi ( Vector.map snd ubs
+        { TyperSigs.typ = T.Pi ( Vector.map snd ubs
              , Vector.map (Environmentals.close env substitution) (Vector.append idomain edomain)
              , Environmentals.close env substitution eff
              , Environmentals.close_abs env substitution codomain )
+        ; kind = TypeK }
 
     and elab_domain env (domain : AExpr.t with_pos) =
         let domain = match domain.v with
@@ -97,14 +110,14 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
         let pat_typs = Vector.of_list (List.rev pat_typs) in
 
         Vector.iter2 (fun decl (_, super) ->
-            let typ = elab_decl env decl in
+            let {TyperSigs.typ; kind} = elab_decl env decl in
             ignore (M.solving_subtype pos env typ super)
         ) decls pat_typs;
 
         let row = Vector.fold (fun base {FExpr.name; typ} ->
             T.With {base; label = name; field = typ}
         ) EmptyRow defs in
-        row
+        {typ = row; kind = RowK}
 
     and analyze_decl env = function
         | AStmt.Def (_, pat, _) -> C.elaborate_pat env pat
@@ -119,12 +132,13 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
         | AStmt.Expr expr as decl -> raise (Err.TypeError (expr.pos, Err.InvalidDecl decl)) in
 
     let (env, params) = Env.push_existential env in
-    let typ = elab env typ in
+    let {TyperSigs.typ; kind} = elab env typ in
     let params = !params |> Vector.of_list |> Vector.map fst in
     let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
         (i + 1, Name.Map.add name i substitution)
     ) (0, Name.Map.empty) params in
-    Exists (Vector.map snd params, Environmentals.close env substitution typ)
+    { typ = Exists (Vector.map snd params, Environmentals.close env substitution typ)
+    ; kind }
 
 and eval env typ =
     let (let*) = Option.bind in

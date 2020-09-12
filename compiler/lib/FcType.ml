@@ -36,6 +36,7 @@ and Type : FcTypeSigs.TYPE
     type kind =
         | ArrowK of kind Vector1.t * kind
         | TypeK
+        | RowK
 
     type bv = {depth : int; sibli : int}
 
@@ -96,6 +97,7 @@ and Type : FcTypeSigs.TYPE
             PPrint.prefix 4 1 (PPrint.separate_map PPrint.space domain_kind_to_doc (Vector1.to_list domain))
                 (PPrint.string "->" ^^ PPrint.blank 1 ^^ kind_to_doc codomain)
         | TypeK -> PPrint.star
+        | RowK -> PPrint.string "row"
 
     and domain_kind_to_doc domain = match domain with
         | ArrowK _ -> PPrint.parens (kind_to_doc domain)

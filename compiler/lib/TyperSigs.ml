@@ -7,6 +7,7 @@ type typ = Fc.Type.t
 type abs = Fc.Type.abs
 
 type 'a typing = {term : 'a; typ : typ; eff : typ}
+type 'a kinding = {typ : 'a; kind : Fc.Type.kind}
 
 (* Newtype to allow ignoring subtyping coercions without partial application warning: *)
 (* TODO: triv_expr with_pos -> expr with_pos to avoid bugs that would delay side effects
@@ -14,7 +15,7 @@ type 'a typing = {term : 'a; typ : typ; eff : typ}
 type coercer = Cf of (Fc.Term.Expr.t with_pos -> Fc.Term.Expr.t with_pos)
 
 module type KINDING = sig
-    val elaborate : Env.t -> Ast.Type.t with_pos -> abs
+    val kindof : Env.t -> Ast.Type.t with_pos -> abs kinding
     val eval : Env.t -> typ -> (typ * Fc.Type.coercion option) option
 end
 
