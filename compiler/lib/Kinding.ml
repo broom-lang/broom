@@ -179,7 +179,6 @@ and eval env typ =
             | Unassigned _ -> Some (typ, None))
         | (Values _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _) as typ -> Some (typ, None)
         | Bv _ -> failwith "unreachable: `Bv` in `whnf`"
-        | Use _ -> failwith "unreachable: `Use` in `whnf`"
 
     and apply callee args = match callee with
         | T.Fn (params, body) -> (* FIXME: Check arg kinds *)
@@ -192,7 +191,6 @@ and eval env typ =
         | Values _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ->
             failwith "unreachable: uncallable type in `whnf`"
         | Bv _ -> failwith "unreachable: `Bv` in `whnf/apply`"
-        | Use _ -> failwith "unreachable: `Use` in `whnf/apply`"
     in eval typ
 end
 

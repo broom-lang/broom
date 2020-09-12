@@ -31,7 +31,6 @@ module type TYPE = sig
         | Fn of kind Vector1.t * t
         | App of t * t Vector1.t
         | Bv of bv
-        | Use of binding
         | Ov of ov
         | Uv of uv
         | Prim of Prim.t

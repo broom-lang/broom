@@ -59,7 +59,6 @@ and Type : FcTypeSigs.TYPE
         | Fn of kind Vector1.t * t
         | App of t * t Vector1.t
         | Bv of bv
-        | Use of binding
         | Ov of ov
         | Uv of uv
         | Prim of Prim.t
@@ -146,7 +145,7 @@ and Type : FcTypeSigs.TYPE
         | Bv {depth; sibli} ->
             PPrint.caret ^^ PPrint.string (Int.to_string depth) ^^ PPrint.slash
                 ^^ PPrint.string (Int.to_string sibli)
-        | Use (name, _) | Ov ((name, _), _) -> Name.to_doc name
+        | Ov ((name, _), _) -> Name.to_doc name
         | Uv uv -> uv_to_doc s uv
         | Prim pt -> PPrint.string "__" ^^ Prim.to_doc pt
 

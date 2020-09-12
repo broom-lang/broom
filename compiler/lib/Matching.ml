@@ -201,8 +201,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     | Prim pt -> (uv, Prim pt)
 
                     | Fn _ -> failwith "unreachable: `Fn` as template of `articulate`"
-                    | Bv _ -> failwith "unreachable: `Bv` as template of `articulate`"
-                    | Use _ -> failwith "unreachable: `Use` as template of `articulate`" in
+                    | Bv _ -> failwith "unreachable: `Bv` as template of `articulate`" in
                 Env.set_uv env uv (Assigned typ);
                 typ
             | Assigned _ -> failwith "unreachable: `articulate` on assigned uv")
@@ -428,8 +427,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (Fn _, _) -> failwith "unreachable: Fn in subtype_whnf"
-        | (Bv _, _) -> failwith "unreachable: Bv in subtype_whnf"
-        | (Use _, _) -> failwith "unreachable: Use in subtype_whnf" in
+        | (Bv _, _) -> failwith "unreachable: Bv in subtype_whnf" in
 
     let (>>=) = Option.bind in
     let res =
@@ -479,7 +477,7 @@ and occurs_check pos env uv typ =
                 then raise (Err.TypeError (pos, Occurs (uv, typ)))
                 else ()
             | Assigned typ -> check typ)
-        | Bv _ | Use _ | Prim _ -> () in
+        | Bv _ | Prim _ -> () in
     check typ
 
 (* # Unification *)
@@ -645,7 +643,6 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
 
     | (Fn _, _) -> failwith "unreachable: Fn in unify_whnf"
     | (Bv _, _) -> failwith "unreachable: Bv in unify_whnf"
-    | (Use _, _) -> failwith "unreachable: Use in unify_whnf"
 
 (* Monotype check, occurs check, ov escape check, HKT capturability check and uv level updates.
    Complected for speed. *)
@@ -688,7 +685,7 @@ and check_uv_assignee pos env uv level max_uv_level typ =
                 then Env.set_uv env uv' (Unassigned (name, level)) (* hoist *)
                 else raise (Err.TypeError (pos, IncompleteImpl (uv, uv')))
             | Assigned typ -> check typ)
-        | Bv _ | Use _ | Prim _ -> () in
+        | Bv _ | Prim _ -> () in
     check typ
 
 (* # Constraint Solving *)

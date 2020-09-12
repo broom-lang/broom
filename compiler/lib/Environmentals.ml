@@ -32,7 +32,7 @@ and expose' env depth substitution = function
         (match Env.get_uv env uv with
         | Assigned typ -> expose' env depth substitution typ
         | Unassigned _ -> typ)
-    | (Use _ | Ov _ | Prim _) as typ -> typ
+    | (Ov _ | Prim _) as typ -> typ
 
 and expose_template' env depth substitution = function
     | T.PiL (arity, codomain) -> T.PiL (arity, expose_template' env depth substitution codomain)
@@ -76,7 +76,7 @@ and close' env depth substitution = function
         (match Env.get_uv env uv with
         | Assigned typ -> close' env depth substitution typ
         | Unassigned _ -> typ)
-    | (Use _ | Bv _ | Prim _) as typ -> typ
+    | (Bv _ | Prim _) as typ -> typ
 
 and close_template' env depth substitution = function
     | T.PiL (arity, codomain) -> T.PiL (arity, close_template' env depth substitution codomain)
