@@ -16,6 +16,7 @@ type coercer = Cf of (Fc.Term.Expr.t with_pos -> Fc.Term.Expr.t with_pos)
 
 module type KINDING = sig
     val kindof : Env.t -> Ast.Type.t with_pos -> abs kinding
+    val check : Env.t -> Fc.Type.kind -> Ast.Type.t with_pos -> abs
     val eval : Env.t -> typ -> (typ * Fc.Type.coercion option) option
 end
 

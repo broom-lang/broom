@@ -1,4 +1,6 @@
-module Make (C : TyperSigs.TYPING) (M : TyperSigs.MATCHING) : TyperSigs.KINDING = struct
+module TS = TyperSigs
+
+module Make (C : TS.TYPING) (M : TS.MATCHING) : TS.KINDING = struct
 
 module AType = Ast.Type
 module T = Fc.Type
@@ -8,7 +10,7 @@ module FExpr = Fc.Term.Expr
 module Err = TypeError
 
 type 'a with_pos = 'a Util.with_pos
-type 'a kinding = 'a TyperSigs.kinding
+type 'a kinding = 'a TS.kinding
 
 let reabstract = Environmentals.reabstract
 let (!) = TxRef.(!)
@@ -28,13 +30,13 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
         | Pi {idomain; edomain; eff; codomain} -> elab_pi env idomain edomain eff codomain
 
         | Record decls ->
-            let {TyperSigs.typ = row; kind = row_kind} = elab_row env typ.pos decls in
+            let {TS.typ = row; kind = row_kind} = elab_row env typ.pos decls in
             {typ = T.Record row; kind = TypeK}
 
         | Row decls -> elab_row env typ.pos decls
 
         | Path expr ->
-            let {TyperSigs.term = _; typ = proxy_typ; eff} = C.typeof env {typ with v = expr} in
+            let {TS.term = _; typ = proxy_typ; eff} = C.typeof env {typ with v = expr} in
             let _ = M.solving_unify typ.pos env eff EmptyRow in
             (match M.focalize typ.pos env proxy_typ (ProxyL (Uv (Env.uv env (Name.fresh ())))) with
             | (_, Proxy typ) ->
@@ -49,12 +51,12 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
 
         | Prim pt -> {typ = Prim pt; kind = kindof_prim pt}
 
-    and elab_pi env0 idomain edomain eff codomain = (* TODO: Applicative functors: *)
+    and elab_pi env0 idomain edomain eff codomain =
         let (env, universals) = Env.push_existential env0 in
         let (idomain, env) = elab_domain env idomain in
         let (edomain, env) = elab_domain env edomain in (* FIXME: make non-dependent (by default) *)
-        let {typ = Exists (effixtentials, eff); kind = eff_kind} = kindof env eff in
-        let {TyperSigs.typ = codomain; kind = codomain_kind} = kindof env codomain in
+        let T.Exists (effixtentials, eff) = check env T.RowK eff in
+        let codomain = check env T.TypeK codomain in
         let universals = Vector.of_list !universals in
 
         let ubs = Vector.map fst universals in
@@ -81,7 +83,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
         let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
             (i + 1, Name.Map.add name i substitution)
         ) (0, Name.Map.empty) ubs in
-        { TyperSigs.typ = T.Pi ( Vector.map snd ubs
+        { TS.typ = T.Pi ( Vector.map snd ubs
              , Vector.map (Environmentals.close env substitution) (Vector.append idomain edomain)
              , Environmentals.close env substitution eff
              , Environmentals.close_abs env substitution codomain )
@@ -110,7 +112,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
         let pat_typs = Vector.of_list (List.rev pat_typs) in
 
         Vector.iter2 (fun decl (_, super) ->
-            let {TyperSigs.typ; kind} = elab_decl env decl in
+            let {TS.typ; kind} = elab_decl env decl in
             ignore (M.solving_subtype pos env typ super)
         ) decls pat_typs;
 
@@ -132,13 +134,19 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
         | AStmt.Expr expr as decl -> raise (Err.TypeError (expr.pos, Err.InvalidDecl decl)) in
 
     let (env, params) = Env.push_existential env in
-    let {TyperSigs.typ; kind} = elab env typ in
+    let {TS.typ; kind} = elab env typ in
     let params = !params |> Vector.of_list |> Vector.map fst in
     let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
         (i + 1, Name.Map.add name i substitution)
     ) (0, Name.Map.empty) params in
     { typ = Exists (Vector.map snd params, Environmentals.close env substitution typ)
     ; kind }
+
+and check env kind typ =
+    let {TS.typ; kind = kind'} = kindof env typ in
+    if kind' = kind (* HACK *)
+    then typ
+    else failwith "inequal kinds"
 
 and eval env typ =
     let (let*) = Option.bind in

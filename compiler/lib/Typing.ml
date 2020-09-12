@@ -111,7 +111,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
         {TS.term = {expr with v = Select (record, label)}; typ = field; eff}
 
     | AExpr.Ann (expr, typ) ->
-        let {TS.typ; kind} = K.kindof env typ in
+        let typ = K.check env TypeK typ in
         (* FIXME: Abstract type generation effect *)
         check_abs env typ expr
 
@@ -173,7 +173,7 @@ and elaborate_pat env pat = match pat.v with
         ({pat with v = FExpr.ValuesP pats}, (Vector.empty, Values typs), defs)
 
     | AExpr.Ann (pat, typ) ->
-        let {TS.typ; kind} = K.kindof env typ in
+        let typ = K.check env TypeK typ in
         let (_, typ) as semiabs = Environmentals.reabstract env typ in
         let (pat, defs) = check_pat env typ pat in
         (pat, semiabs, defs)
@@ -312,7 +312,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr
     | AExpr.Values pats -> failwith "TODO: multi-values in check_pat"
 
     | AExpr.Ann (pat', typ') ->
-        let {TS.typ = typ'; kind} = K.kindof env typ' in
+        let typ' = K.check env TypeK typ' in
         let (_, typ') = Environmentals.reabstract env typ' in
         let _ = M.solving_unify pat.pos env typ typ' in
         check_pat env typ' pat'
