@@ -21,8 +21,20 @@ let kindof_prim : Prim.t -> T.kind = function
 let rec kindof_F env : T.t -> T.kind = function
     | Pi _ | Record _ | Proxy _ -> TypeK
     | With _ | EmptyRow -> RowK
+    | Fn (domain, body) -> ArrowK (domain, kindof_F env body)
+    | App (callee, args) ->
+        (match kindof_F env callee with
+        | T.ArrowK (domain, codomain) ->
+            Vector1.iter2 (fun domain arg -> check_F env domain arg) domain args;
+            codomain)
     | Ov ((_, kind), _) -> kind
     | Prim pt -> kindof_prim pt
+
+and check_F env kind typ =
+    let kind' = kindof_F env typ in
+    if kind' = kind (* HACK *)
+    then ()
+    else failwith "check_F: inequal kinds"
 
 let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
     let rec elab env (typ : AType.t with_pos) : T.t kinding =

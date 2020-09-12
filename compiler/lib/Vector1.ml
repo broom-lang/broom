@@ -28,6 +28,7 @@ let map = Vector.map
 let mapi = Vector.mapi
 let map2 = Vector.map2
 let iter = Vector.iter
+let iter2 = Vector.iter2
 
 let fold2 = Vector.fold2
 
