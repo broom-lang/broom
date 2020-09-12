@@ -388,12 +388,15 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 | Some (Uv uv, _) ->
                     (match Env.get_uv env uv with
                     | Unassigned (_, level) ->
-                        let (_, substitution) = Vector1.fold (fun (i, substitution) arg ->
-                            match arg with
-                            | T.Ov ((name, _), _) -> (i + 1, Name.Map.add name i substitution)
+                        let substitution = Vector1.foldi (fun substitution i -> function
+                            | T.Ov ((name, _), _) -> Name.Map.add name i substitution
                             | _ -> failwith "unreachable: non-ov path arg in path locator"
-                        ) (0, Name.Map.empty) args in
-                        let impl = T.Fn (Environmentals.close env substitution carrie) in
+                        ) Name.Map.empty args in
+                        let params = Vector1.map (function
+                            | T.Ov ((_, kind), _) -> kind
+                            | _ -> failwith "unreachable: non-ov path arg in path locator"
+                        ) args in
+                        let impl = T.Fn (params, Environmentals.close env substitution carrie) in
                         let max_uv_level = match Vector1.get args 0 with
                             | Ov (_, level') -> level' - 1
                             | _ -> failwith "unreachable: non-ov path arg in path locator" in
@@ -484,7 +487,7 @@ and occurs_check pos env uv typ =
         | With {base; label = _; field} -> check base; check field
         | EmptyRow -> ()
         | Proxy carrie -> check_abs carrie
-        | Fn body -> check body
+        | Fn (_, body) -> check body
         | App (callee, args) -> check callee; Vector1.iter check args
         | Ov ov ->
             (match Env.get_implementation env ov with
@@ -686,7 +689,7 @@ and check_uv_assignee pos env uv level max_uv_level typ =
         | With {base; label = _; field} -> check base; check field
         | EmptyRow -> ()
         | Proxy carrie -> check_abs carrie
-        | Fn body -> check body
+        | Fn (_, body) -> check body
         | App (callee, args) -> check callee; Vector1.iter check args
         | Ov ((_, level') as ov) ->
             (match Env.get_implementation env ov with

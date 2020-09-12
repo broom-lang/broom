@@ -18,7 +18,7 @@ and expose' env depth substitution = function
         With {base = expose' env depth substitution base; label; field = expose' env depth substitution field}
     | EmptyRow -> EmptyRow
     | Proxy typ -> Proxy (expose_abs' env depth substitution typ)
-    | Fn body -> Fn (expose' env (depth + 1) substitution body)
+    | Fn (params, body) -> Fn (params, expose' env (depth + 1) substitution body)
     | App (callee, args) ->
         let args = Vector1.map (expose' env depth substitution) args in
         (match expose' env depth substitution callee with
@@ -63,7 +63,7 @@ and close' env depth substitution = function
         With {base = close' env depth substitution base; label; field = close' env depth substitution field}
     | EmptyRow -> EmptyRow
     | Proxy typ -> Proxy (close_abs' env depth substitution typ)
-    | Fn body -> Fn (close' env (depth + 1) substitution body)
+    | Fn (params, body) -> Fn (params, close' env (depth + 1) substitution body)
     | App (callee, args) ->
         let args = Vector1.map (close' env depth substitution) args in
         (match close' env depth substitution callee with

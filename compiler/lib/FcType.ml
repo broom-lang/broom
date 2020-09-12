@@ -55,7 +55,7 @@ and Type : FcTypeSigs.TYPE
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
         | Proxy of abs
-        | Fn of t
+        | Fn of kind Vector1.t * t
         | App of t * t Vector1.t
         | Bv of bv
         | Use of binding
@@ -134,10 +134,10 @@ and Type : FcTypeSigs.TYPE
                 (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (to_doc s field))
         | EmptyRow -> PPrint.parens (PPrint.bar)
         | Proxy typ -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ abs_to_doc s typ)
-        | Fn body ->
+        | Fn (params, body) ->
             PPrint.prefix 4 1
-                (PPrint.string "fun" ^^ PPrint.blank 1 ^^ PPrint.dot)
-                (to_doc s body)
+                (PPrint.string "fun" ^^ PPrint.blank 1 ^^ kinds_to_doc (Vector1.to_list params))
+                (PPrint.dot ^^ PPrint.blank 1 ^^ to_doc s body)
         | App (callee, args) ->
             callee_to_doc s callee ^/^ PPrint.separate_map PPrint.space (arg_to_doc s)
                 (Vector1.to_list args)

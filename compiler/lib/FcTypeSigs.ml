@@ -27,7 +27,7 @@ module type TYPE = sig
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
         | Proxy of abs
-        | Fn of t
+        | Fn of kind Vector1.t * t
         | App of t * t Vector1.t
         | Bv of bv
         | Use of binding

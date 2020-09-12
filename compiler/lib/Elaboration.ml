@@ -160,7 +160,8 @@ and eval env typ =
         | Use _ -> failwith "unreachable: `Use` in `whnf`"
 
     and apply callee args = match callee with
-        | T.Fn body -> eval (Environmentals.expose env (Vector1.to_vector args) body)
+        | T.Fn (params, body) -> (* FIXME: Check arg kinds *)
+            eval (Environmentals.expose env (Vector1.to_vector args) body)
         | Ov _ | App _ -> Some (T.App (callee, args), None)
         | Uv uv ->
             (match Env.get_uv env uv with

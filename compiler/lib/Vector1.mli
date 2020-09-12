@@ -13,6 +13,7 @@ val to_list : 'a t -> 'a list
 val append : 'a t -> 'a t -> 'a t
 
 val fold : ('a -> 'b -> 'a) -> 'a -> 'b t -> 'a
+val foldi : ('a -> int -> 'b -> 'a) -> 'a -> 'b t -> 'a
 val exists : ('a -> bool) -> 'a t -> bool
 val map : ('a -> 'b) -> 'a t -> 'b t
 val mapi : (int -> 'a -> 'b) -> 'a t -> 'b t
