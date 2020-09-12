@@ -26,7 +26,7 @@ module type TYPE = sig
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
-        | Type of abs
+        | Proxy of abs
         | Fn of t
         | App of t * t Vector1.t
         | Bv of bv
@@ -38,7 +38,7 @@ module type TYPE = sig
     and template =
         | PiL of int * template
         | WithL of {base : template; label : Name.t; field : template}
-        | TypeL of t
+        | ProxyL of t
         | Hole
 
     and 'a field = {label : string; typ : 'a}
@@ -53,7 +53,7 @@ module type TYPE = sig
         | ValuesCo of coercion Vector.t
         | RecordCo of coercion
         | WithCo of {base : coercion; label : Name.t; field : coercion}
-        | TypeCo of coercion
+        | ProxyCo of coercion
         | Patchable of coercion TxRef.rref
 
     and typ = t

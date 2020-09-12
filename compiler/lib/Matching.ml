@@ -83,7 +83,7 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                         (uv, T.Pi ( Vector.of_list []
                                  , Vector.init arity (fun _ -> T.Uv (sibling env uv))
                                   , Uv (sibling env uv), T.to_abs (Uv (sibling env uv)) ))
-                    | TypeL _ -> (uv, T.Type (T.to_abs (Uv (sibling env uv))))
+                    | ProxyL _ -> (uv, T.Proxy (T.to_abs (Uv (sibling env uv))))
                     | WithL {base = _; label; field = _} ->
                         (uv, (With {base = Uv (sibling env uv); label; field = Uv (sibling env uv)}))
                     | Hole -> failwith "unreachable: Hole as template in `articulate_template`" in
@@ -103,9 +103,9 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                 (match typ with
                 | Pi _ -> (Cf Fun.id, typ)
                 | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
-            | TypeL _ ->
+            | ProxyL _ ->
                 (match typ with
-                | Type _ -> (Cf Fun.id, typ)
+                | Proxy _ -> (Cf Fun.id, typ)
                 | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
             | WithL {base = _; label; field = _} ->
                 let (co, base, field) = pull_row pos env label typ in
@@ -216,7 +216,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     | With {base = _; label; field = _} ->
                         (uv, With {base = Uv (sibling env uv); label; field = Uv (sibling env uv)})
                     | EmptyRow -> (uv, EmptyRow)
-                    | Type _ -> (uv, Type (T.to_abs (Uv (sibling env uv))))
+                    | Proxy _ -> (uv, Proxy (T.to_abs (Uv (sibling env uv))))
                     | App (_, args) ->
                         (uv, T.App (Uv (sibling env uv), Vector1.map (fun _ -> T.Uv (sibling env uv)) args))
                     | Prim pt -> (uv, Prim pt)
@@ -381,10 +381,10 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
             | EmptyRow -> {coercion = Cf Fun.id; residual = empty}
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
-        | (Type (Exists (existentials, carrie) as abs_carrie), _) -> (match super with
-            | Type abs_carrie' ->
+        | (Proxy (Exists (existentials, carrie) as abs_carrie), _) -> (match super with
+            | Proxy abs_carrie' ->
                 (*match locator with
-                | TypeL (App (callee, args)) ->
+                | ProxyL (App (callee, args)) ->
                     (match Elab.eval env callee with
                     (*| Some (Uv ({contents = Unassigned (_, level)} as uv), _) ->
                         if Vector.length existentials = 0 then begin
@@ -482,7 +482,7 @@ and occurs_check pos env uv typ =
         | Record row -> check row
         | With {base; label = _; field} -> check base; check field
         | EmptyRow -> ()
-        | Type carrie -> check_abs carrie
+        | Proxy carrie -> check_abs carrie
         | Fn body -> check body
         | App (callee, args) -> check callee; Vector1.iter check args
         | Ov ov ->
@@ -621,10 +621,10 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
         | EmptyRow -> {coercion = None; residual = empty}
         | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
 
-    | (Type carrie, _) -> (match typ' with
-        | Type carrie' -> 
+    | (Proxy carrie, _) -> (match typ' with
+        | Proxy carrie' -> 
             let {coercion; residual} = unify_abs pos env carrie carrie' in
-            {coercion = Option.map (fun co -> T.TypeCo co) coercion; residual}
+            {coercion = Option.map (fun co -> T.ProxyCo co) coercion; residual}
         | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
 
     | (T.App (callee, args), _) -> (match typ' with
@@ -684,7 +684,7 @@ and check_uv_assignee pos env uv level max_uv_level typ =
         | Record row -> check row
         | With {base; label = _; field} -> check base; check field
         | EmptyRow -> ()
-        | Type carrie -> check_abs carrie
+        | Proxy carrie -> check_abs carrie
         | Fn body -> check body
         | App (callee, args) -> check callee; Vector1.iter check args
         | Ov ((_, level') as ov) ->

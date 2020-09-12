@@ -54,7 +54,7 @@ and Type : FcTypeSigs.TYPE
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
-        | Type of abs
+        | Proxy of abs
         | Fn of t
         | App of t * t Vector1.t
         | Bv of bv
@@ -66,7 +66,7 @@ and Type : FcTypeSigs.TYPE
     and template =
         | PiL of int * template
         | WithL of {base : template; label : Name.t; field : template}
-        | TypeL of t
+        | ProxyL of t
         | Hole
 
     and 'a field = {label : string; typ : 'a}
@@ -81,7 +81,7 @@ and Type : FcTypeSigs.TYPE
         | ValuesCo of coercion Vector.t
         | RecordCo of coercion
         | WithCo of {base : coercion; label : Name.t; field : coercion}
-        | TypeCo of coercion
+        | ProxyCo of coercion
         | Patchable of coercion TxRef.rref
 
     and typ = t
@@ -133,7 +133,7 @@ and Type : FcTypeSigs.TYPE
             PPrint.infix 4 1 (PPrint.string "with") (base_to_doc s base)
                 (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (to_doc s field))
         | EmptyRow -> PPrint.parens (PPrint.bar)
-        | Type typ -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ abs_to_doc s typ)
+        | Proxy typ -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ abs_to_doc s typ)
         | Fn body ->
             PPrint.prefix 4 1
                 (PPrint.string "fun" ^^ PPrint.blank 1 ^^ PPrint.dot)
@@ -186,7 +186,7 @@ and Type : FcTypeSigs.TYPE
         | WithL {base; label; field} ->
             PPrint.infix 4 1 (PPrint.string "with") (basel_to_doc s base)
                 (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (template_to_doc s field))
-        | TypeL path -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ to_doc s path)
+        | ProxyL path -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ to_doc s path)
         | Hole -> PPrint.underscore
 
     and basel_to_doc s = function
@@ -225,7 +225,7 @@ and Type : FcTypeSigs.TYPE
         | WithCo {base; label; field} ->
             PPrint.infix 4 1 (PPrint.string "with") (base_co_to_doc s base)
                 (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (coercion_to_doc s field))
-        | TypeCo co -> PPrint.brackets (PPrint.equals ^^ PPrint.break 1 ^^ coercion_to_doc s co)
+        | ProxyCo co -> PPrint.brackets (PPrint.equals ^^ PPrint.break 1 ^^ coercion_to_doc s co)
         | Patchable ref -> coercion_to_doc s !ref
 
     and andco_to_doc s = function

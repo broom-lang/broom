@@ -24,10 +24,10 @@ let primop_typ =
         ( Vector.empty, Vector.of_list [T.Prim Prim.Int; T.Prim Prim.Int]
         , T.EmptyRow, T.Prim Prim.Int )
     | Int ->
-        (Vector.empty, Vector.empty, T.EmptyRow, T.Type (T.to_abs (Prim Prim.Int)))
+        (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (T.to_abs (Prim Prim.Int)))
     | Type ->
         ( Vector.empty, Vector.empty, T.EmptyRow
-        , T.Type (T.Exists (Vector.singleton T.TypeK, Type (T.to_abs (Bv {depth = 1; sibli = 0})))) )
+        , T.Proxy (T.Exists (Vector.singleton T.TypeK, Proxy (T.to_abs (Bv {depth = 1; sibli = 0})))) )
 
 let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env expr -> match expr.v with
@@ -115,7 +115,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 
     | AExpr.Proxy typ ->
         let typ = E.elaborate env {v = typ; pos = expr.pos} in
-        {term = {expr with v = Proxy typ}; typ = Type typ; eff = EmptyRow}
+        {term = {expr with v = Proxy typ}; typ = Proxy typ; eff = EmptyRow}
 
     | AExpr.Var name ->
         {term = {expr with v = Use name}; typ = Env.find env expr.pos name; eff = EmptyRow}
@@ -181,7 +181,7 @@ and elaborate_pat env pat = match pat.v with
 
     | AExpr.Proxy carrie ->
         let carrie = E.elaborate env {pat with v = carrie} in
-        ({pat with v = ProxyP carrie}, (Vector.empty, Type carrie), Vector.empty)
+        ({pat with v = ProxyP carrie}, (Vector.empty, Proxy carrie), Vector.empty)
 
     | AExpr.Const c ->
         ({pat with v = FExpr.ConstP c}, (Vector.empty, const_typ c), Vector.empty)
@@ -317,7 +317,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr
 
     | AExpr.Proxy carrie ->
         let carrie = E.elaborate env {pat with v = carrie} in
-        let _ = M.solving_unify pat.pos env typ (Type carrie) in
+        let _ = M.solving_unify pat.pos env typ (Proxy carrie) in
         ({pat with v = ProxyP carrie}, Vector.empty)
 
     | AExpr.Const c ->

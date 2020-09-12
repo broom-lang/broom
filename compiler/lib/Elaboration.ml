@@ -24,8 +24,8 @@ let rec elaborate : Env.t -> AType.t with_pos -> T.abs = fun env typ ->
         | Path expr ->
             let {TyperSigs.term = _; typ = proxy_typ; eff} = C.typeof env {typ with v = expr} in
             let _ = M.solving_unify typ.pos env eff EmptyRow in
-            (match M.focalize typ.pos env proxy_typ (TypeL (Uv (Env.uv env (Name.fresh ())))) with
-            | (_, Type typ) ->
+            (match M.focalize typ.pos env proxy_typ (ProxyL (Uv (Env.uv env (Name.fresh ())))) with
+            | (_, Proxy typ) ->
                 let (_, typ) = reabstract env typ in
                 typ
             | _ -> failwith "unreachable")
@@ -155,7 +155,7 @@ and eval env typ =
             (match Env.get_uv env uv with
             | Assigned typ -> eval typ
             | Unassigned _ -> Some (typ, None))
-        | (Values _ | Pi _ | Record _ | With _ | EmptyRow | Type _ | Prim _) as typ -> Some (typ, None)
+        | (Values _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _) as typ -> Some (typ, None)
         | Bv _ -> failwith "unreachable: `Bv` in `whnf`"
         | Use _ -> failwith "unreachable: `Use` in `whnf`"
 
@@ -166,7 +166,7 @@ and eval env typ =
             (match Env.get_uv env uv with
             | Unassigned _ -> None
             | Assigned _ -> failwith "unreachable: Assigned in `apply`.")
-        | Values _ | Pi _ | Record _ | With _ | EmptyRow | Type _ | Prim _ ->
+        | Values _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ->
             failwith "unreachable: uncallable type in `whnf`"
         | Bv _ -> failwith "unreachable: `Bv` in `whnf/apply`"
         | Use _ -> failwith "unreachable: `Use` in `whnf/apply`"

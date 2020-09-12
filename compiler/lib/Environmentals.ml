@@ -17,7 +17,7 @@ and expose' env depth substitution = function
     | With {base; label; field} ->
         With {base = expose' env depth substitution base; label; field = expose' env depth substitution field}
     | EmptyRow -> EmptyRow
-    | Type typ -> Type (expose_abs' env depth substitution typ)
+    | Proxy typ -> Proxy (expose_abs' env depth substitution typ)
     | Fn body -> Fn (expose' env (depth + 1) substitution body)
     | App (callee, args) ->
         let args = Vector1.map (expose' env depth substitution) args in
@@ -39,7 +39,7 @@ and expose_template' env depth substitution = function
     | WithL {base; label; field} ->
         WithL { base = expose_template' env depth substitution base
               ; label; field = expose_template' env depth substitution field }
-    | TypeL path -> TypeL (expose' env depth substitution path)
+    | ProxyL path -> ProxyL (expose' env depth substitution path)
     | Hole -> Hole
 
 let expose_abs env = expose_abs' env 0
@@ -62,7 +62,7 @@ and close' env depth substitution = function
     | With {base; label; field} ->
         With {base = close' env depth substitution base; label; field = close' env depth substitution field}
     | EmptyRow -> EmptyRow
-    | Type typ -> Type (close_abs' env depth substitution typ)
+    | Proxy typ -> Proxy (close_abs' env depth substitution typ)
     | Fn body -> Fn (close' env (depth + 1) substitution body)
     | App (callee, args) ->
         let args = Vector1.map (close' env depth substitution) args in
@@ -83,7 +83,7 @@ and close_template' env depth substitution = function
     | WithL {base; label; field} ->
         WithL { base = close_template' env depth substitution base
               ; label; field = close_template' env depth substitution field }
-    | TypeL path -> TypeL (close' env depth substitution path)
+    | ProxyL path -> ProxyL (close' env depth substitution path)
     | Hole -> Hole
 
 let close env = close' env 0
