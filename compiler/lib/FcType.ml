@@ -35,18 +35,13 @@ and Type : FcTypeSigs.TYPE
 
     let (!) = TxRef.(!)
 
-    type kind =
-        | ArrowK of kind Vector1.t * kind
-        | TypeK
-        | RowK
+    type level = int
 
     type bv = {depth : int; sibli : int; kind : kind}
 
-    type level = int
+    and binding = Name.t * kind
 
-    type binding = Name.t * kind
-
-    type ov = binding * level
+    and ov = binding * level
 
     and abs = Exists of kind Vector.t * t
 
@@ -88,27 +83,20 @@ and Type : FcTypeSigs.TYPE
 
     and typ = t
 
+    and kind = t
+
     let (^^) = PPrint.(^^)
     let (^/^) = PPrint.(^/^)
 
     (* --- *)
 
-    let rec kind_to_doc = function
-        | ArrowK (domain, codomain) ->
-            PPrint.prefix 4 1 (PPrint.separate_map PPrint.space domain_kind_to_doc (Vector1.to_list domain))
-                (PPrint.string "->" ^^ PPrint.blank 1 ^^ kind_to_doc codomain)
-        | TypeK -> PPrint.star
-        | RowK -> PPrint.string "row"
+    let rec kind_to_doc s kind = to_doc s kind
 
-    and domain_kind_to_doc domain = match domain with
-        | ArrowK _ -> PPrint.parens (kind_to_doc domain)
-        | _ -> kind_to_doc domain
+    and kinds_to_doc s kinds = PPrint.separate_map (PPrint.break 1) (kind_to_doc s) kinds
 
-    let kinds_to_doc kinds = PPrint.separate_map (PPrint.break 1) kind_to_doc kinds
-
-    let rec abs_to_doc s (Exists (params, body)) =
+    and abs_to_doc s (Exists (params, body)) =
         if Vector.length params > 0 then
-            PPrint.prefix 4 1 (PPrint.group (PPrint.string "exists" ^/^ kinds_to_doc (Vector.to_list params)))
+            PPrint.prefix 4 1 (PPrint.group (PPrint.string "exists" ^/^ (kinds_to_doc s) (Vector.to_list params)))
                 (PPrint.dot ^^ PPrint.blank 1 ^^ to_doc s body)
         else to_doc s body
 
@@ -128,7 +116,7 @@ and Type : FcTypeSigs.TYPE
                         ^^ PPrint.infix 4 1 (PPrint.string "->") (to_doc s eff) (abs_to_doc s codomain)) in
             if Vector.length universals > 0
             then PPrint.prefix 4 1
-                (PPrint.group (PPrint.string "forall" ^/^ kinds_to_doc (Vector.to_list universals)))
+                (PPrint.group (PPrint.string "forall" ^/^ (kinds_to_doc s) (Vector.to_list universals)))
                 (PPrint.dot ^^ PPrint.blank 1 ^^ unquantified_doc)
             else unquantified_doc
         | Record row -> PPrint.braces (to_doc s row)
@@ -139,7 +127,7 @@ and Type : FcTypeSigs.TYPE
         | Proxy typ -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ abs_to_doc s typ)
         | Fn (params, body) ->
             PPrint.prefix 4 1
-                (PPrint.string "fun" ^^ PPrint.blank 1 ^^ kinds_to_doc (Vector1.to_list params))
+                (PPrint.string "fun" ^^ PPrint.blank 1 ^^ (kinds_to_doc s) (Vector1.to_list params))
                 (PPrint.dot ^^ PPrint.blank 1 ^^ to_doc s body)
         | App (callee, args) ->
             callee_to_doc s callee ^/^ PPrint.separate_map PPrint.space (arg_to_doc s)
@@ -196,11 +184,11 @@ and Type : FcTypeSigs.TYPE
         | PiL _ as template -> PPrint.parens (template_to_doc s template)
         | template -> template_to_doc s template
 
-    and binding_to_doc (name, kind) =
-        Name.to_doc name ^/^ PPrint.colon ^/^ kind_to_doc kind
+    and binding_to_doc s (name, kind) =
+        Name.to_doc name ^/^ PPrint.colon ^/^ kind_to_doc s kind
 
-    and universal_to_doc universals body =
-        PPrint.prefix 4 1 (PPrint.group (PPrint.string "forall" ^/^ kinds_to_doc (Vector.to_list universals)))
+    and universal_to_doc s universals body =
+        PPrint.prefix 4 1 (PPrint.group (PPrint.string "forall" ^/^ (kinds_to_doc s) (Vector.to_list universals)))
             (PPrint.dot ^^ PPrint.blank 1 ^^ body)
 
     and uv_to_doc s uv = match Uv.get s uv with

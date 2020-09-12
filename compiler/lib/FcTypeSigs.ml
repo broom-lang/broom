@@ -2,22 +2,17 @@ module type TYPE = sig
     type uv
     type subst
 
-    type kind
-        = ArrowK of kind Vector1.t * kind
-        | TypeK
-        | RowK
-
-    type bv = {depth : int; sibli : int; kind : kind}
-
     (* The level of a type variable is the number of skolem-binding scopes in the
        typing environment at its creation site. Kind of like syntactic closures, but
        type inference is (scoping-wise) much simpler than hygienic macroexpansion so
        the required information can be compressed to this one small integer. *)
     type level = int
 
-    type binding = Name.t * kind
+    type bv = {depth : int; sibli : int; kind : kind}
 
-    type ov = binding * level
+    and binding = Name.t * kind
+
+    and ov = binding * level
 
     and abs = Exists of kind Vector.t * t
 
@@ -58,10 +53,12 @@ module type TYPE = sig
 
     and typ = t
 
-    val kind_to_doc : kind -> PPrint.document
-    val binding_to_doc : binding -> PPrint.document
+    and kind = t
+
+    val kind_to_doc : subst -> kind -> PPrint.document
+    val binding_to_doc : subst -> binding -> PPrint.document
     val abs_to_doc : subst -> abs -> PPrint.document
-    val universal_to_doc : kind Vector.t -> PPrint.document -> PPrint.document
+    val universal_to_doc : subst -> kind Vector.t -> PPrint.document -> PPrint.document
     val to_doc : subst -> t -> PPrint.document
     val coercion_to_doc : subst -> coercion -> PPrint.document
     val template_to_doc : subst -> template -> PPrint.document

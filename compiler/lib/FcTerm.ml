@@ -73,7 +73,7 @@ module rec Expr : FcSigs.EXPR
                 (PPrint.string "fun"
                      ^^ (PPrint.surround_separate_map 4 0 PPrint.empty
                              (PPrint.blank 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
-                             Type.binding_to_doc (Vector.to_list universals)
+                             (Type.binding_to_doc s) (Vector.to_list universals)
                          ^^ PPrint.blank 1
                          ^^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                             PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
@@ -94,7 +94,7 @@ module rec Expr : FcSigs.EXPR
             PPrint.group(
                 PPrint.surround 4 1 (PPrint.string "let type")
                     (PPrint.align (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1)
-                                        Type.binding_to_doc (Vector1.to_list bindings)))
+                                        (Type.binding_to_doc s) (Vector1.to_list bindings)))
                     (PPrint.string "in")
                 ^/^ to_doc s body)
         | Match (matchees, clauses) ->
@@ -142,7 +142,7 @@ module rec Expr : FcSigs.EXPR
                     (PPrint.string "unpack" ^^ PPrint.blank 1
                         ^^ PPrint.surround_separate 4 0 PPrint.empty
                             PPrint.langle (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
-                            (Vector1.to_list (Vector1.map Type.binding_to_doc existentials)
+                            (Vector1.to_list (Vector1.map (Type.binding_to_doc s) existentials)
                                 @ [lvalue_to_doc s lvalue])
                         ^^ PPrint.blank 1 ^^ PPrint.equals)
                     (to_doc s expr)
@@ -174,8 +174,8 @@ module rec Expr : FcSigs.EXPR
         | _ :: _ ->
             PPrint.infix 4 1 PPrint.colon (Name.to_doc name)
                 (PPrint.infix 4 1 PPrint.tilde
-                    (Type.universal_to_doc universals (Type.to_doc s l))
-                    (Type.universal_to_doc universals (Type.to_doc s r)))
+                    (Type.universal_to_doc s universals (Type.to_doc s l))
+                    (Type.universal_to_doc s universals (Type.to_doc s r)))
         | [] ->
             PPrint.infix 4 1 PPrint.colon (Name.to_doc name)
                 (PPrint.infix 4 1 PPrint.tilde

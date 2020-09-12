@@ -16,16 +16,19 @@ let reabstract = Environmentals.reabstract
 let (!) = TxRef.(!)
 
 let kindof_prim : Prim.t -> T.kind = function
-    | Int -> TypeK
+    | Int -> Prim Type
+    | Type | Row -> Prim Type
 
 let rec kindof_F env : T.t -> T.kind = function
-    | Pi _ | Record _ | Proxy _ -> TypeK
-    | With _ | EmptyRow -> RowK
-    | Fn (domain, body) -> ArrowK (domain, kindof_F env body)
+    | Pi _ | Record _ | Proxy _ -> Prim Type
+    | With _ | EmptyRow -> Prim Row
+    | Fn (domain, body) ->
+        Pi (Vector.empty, Vector1.to_vector domain, EmptyRow, T.to_abs (kindof_F env body))
     | App (callee, args) ->
         (match kindof_F env callee with
-        | T.ArrowK (domain, codomain) ->
-            Vector1.iter2 (fun domain arg -> check_F env domain arg) domain args;
+        | Pi (universals, domain, eff, Exists (existentials, codomain)) ->
+            Vector.iter2 (fun domain arg -> check_F env domain arg)
+                domain (Vector1.to_vector args);
             codomain)
     | Ov ((_, kind), _) -> kind
     | Bv {kind; _} -> kind
@@ -47,14 +50,15 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
 
         | Record decls ->
             let {TS.typ = row; kind = row_kind} = elab_row env typ.pos decls in
-            {typ = T.Record row; kind = TypeK}
+            {typ = T.Record row; kind = Prim Type}
 
         | Row decls -> elab_row env typ.pos decls
 
         | Path expr ->
             let {TS.term = _; typ = proxy_typ; eff} = C.typeof env {typ with v = expr} in
             let _ = M.solving_unify typ.pos env eff EmptyRow in
-            (match M.focalize typ.pos env proxy_typ (ProxyL (Uv (Env.uv env (failwith "TODO: polykinds") (Name.fresh ())))) with
+            (* FIXME: does not accept e.g. `row`: *)
+            (match M.focalize typ.pos env proxy_typ (ProxyL (Uv (Env.uv env (Prim Type) (Name.fresh ())))) with
             | (_, Proxy typ) ->
                 let (_, typ) = reabstract env typ in
                 {typ; kind = kindof_F env typ}
@@ -71,8 +75,8 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
         let (env, universals) = Env.push_existential env0 in
         let (idomain, env) = elab_domain env idomain in
         let (edomain, env) = elab_domain env edomain in (* FIXME: make non-dependent (by default) *)
-        let T.Exists (effixtentials, eff) = check env T.RowK eff in
-        let codomain = check env T.TypeK codomain in
+        let T.Exists (effixtentials, eff) = check env (T.Prim Row) eff in
+        let codomain = check env (T.Prim Type) codomain in
         let universals = Vector.of_list !universals in
 
         let ubs = Vector.map fst universals in
@@ -85,8 +89,9 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
                     let kind = match Vector1.of_vector ukinds with
                         | Some ukinds ->
                             (match kind with (* TODO: Is this sufficient to ensure unique reprs?: *)
-                            | T.ArrowK (ukinds', kind) -> T.ArrowK (Vector1.append ukinds' ukinds, kind)
-                            | _ -> T.ArrowK (ukinds, kind))
+                            | T.Pi (universals, ukinds', eff, kind) ->
+                                T.Pi (universals, Vector.append ukinds' (Vector1.to_vector ukinds), eff, kind)
+                            | _ -> T.Pi (Vector.empty, Vector1.to_vector ukinds, EmptyRow, T.to_abs kind))
                         | None -> kind in
                     let ov = Env.generate env0 (Name.fresh (), kind) in
                     (match Vector1.of_vector universals with
@@ -103,7 +108,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
              , Vector.map (Environmentals.close env substitution) (Vector.append idomain edomain)
              , Environmentals.close env substitution eff
              , Environmentals.close_abs env substitution codomain )
-        ; kind = TypeK }
+        ; kind = Prim Type }
 
     and elab_domain env (domain : AExpr.t with_pos) =
         let domain = match domain.v with
@@ -135,7 +140,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
         let row = Vector.fold (fun base {FExpr.name; typ} ->
             T.With {base; label = name; field = typ}
         ) EmptyRow defs in
-        {typ = row; kind = RowK}
+        {typ = row; kind = Prim Row}
 
     and analyze_decl env = function
         | AStmt.Def (_, pat, _) -> C.elaborate_pat env pat

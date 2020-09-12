@@ -1,4 +1,6 @@
-type t = Int
+type t =
+    | Int
+    | Type | Row
 
 val to_doc : t -> PPrint.document
 

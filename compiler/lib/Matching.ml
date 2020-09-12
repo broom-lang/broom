@@ -36,8 +36,8 @@ let pull_row pos env label' typ : T.coercion option * T.t * T.t =
             ( trans_with co base_co label field
             , T.With {base; label; field}, field'' )
         | Some (Uv uv, co) -> (* FIXME: 'scopedlabels' termination check: *)
-            let base = T.Uv (sibling env RowK uv) in
-            let field = T.Uv (sibling env TypeK uv) in
+            let base = T.Uv (sibling env (Prim Row) uv) in
+            let field = T.Uv (sibling env (Prim Type) uv) in
             Env.set_uv env uv (Assigned (With {base; label = label'; field}));
             (co, base, field)
         | Some _ ->
@@ -81,11 +81,12 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                 let (uv, typ) = match template with
                     | T.PiL (arity, _) ->
                         (uv, T.Pi ( Vector.of_list []
-                                  , Vector.init arity (fun _ -> T.Uv (sibling env TypeK uv))
-                                  , Uv (sibling env TypeK uv), T.to_abs (Uv (sibling env TypeK uv)) ))
-                    | ProxyL _ -> (uv, T.Proxy (T.to_abs (Uv (sibling env TypeK uv))))
+                                  , Vector.init arity (fun _ -> T.Uv (sibling env (Prim Type) uv))
+                                  , Uv (sibling env (Prim Type) uv), T.to_abs (Uv (sibling env (Prim Type) uv)) ))
+                    | ProxyL _ -> (uv, T.Proxy (T.to_abs (Uv (sibling env (Prim Type) uv))))
                     | WithL {base = _; label; field = _} ->
-                        (uv, (With {base = Uv (sibling env RowK uv); label; field = Uv (sibling env TypeK uv)}))
+                        (uv, (With {base = Uv (sibling env (Prim Row) uv)
+                            ; label; field = Uv (sibling env (Prim Type) uv)}))
                     | Hole -> failwith "unreachable: Hole as template in `articulate_template`" in
                 Env.set_uv env uv (Assigned typ);
                 typ
@@ -190,12 +191,12 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         ) typs))
                     | Pi (_, domain, _, _) ->
                         (uv, Pi ( Vector.of_list []
-                                , Vector.map (fun _ -> T.Uv (sibling env TypeK uv)) domain
-                                , Uv (sibling env RowK uv)
-                                , T.to_abs (Uv (sibling env TypeK uv)) ))
-                    | Record _ -> (uv, Record (Uv (sibling env RowK uv)))
+                                , Vector.map (fun _ -> T.Uv (sibling env (Prim Type) uv)) domain
+                                , Uv (sibling env (Prim Row) uv)
+                                , T.to_abs (Uv (sibling env (Prim Type) uv)) ))
+                    | Record _ -> (uv, Record (Uv (sibling env (Prim Row) uv)))
                     | With {base = _; label; field = _} ->
-                        (uv, With {base = Uv (sibling env RowK uv); label; field = Uv (sibling env TypeK uv)})
+                        (uv, With {base = Uv (sibling env (Prim Row) uv); label; field = Uv (sibling env (Prim Type) uv)})
                     | EmptyRow -> (uv, EmptyRow)
                     | Proxy _ -> (uv, Proxy (T.to_abs (Uv (sibling env (failwith "TODO") uv))))
                     | App (callee, args) ->
