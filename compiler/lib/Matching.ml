@@ -126,28 +126,7 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
 
 (* # Subtyping *)
 
-let rec coercion : span -> bool -> Env.t -> T.t -> T.ov Vector.t * T.t -> coercer matching
-= fun pos occ env typ (existentials, super) ->
-    match Vector1.of_vector existentials with
-    | Some existentials ->
-        let axiom_bindings = Vector1.map (fun (((name, _), _) as param) ->
-            (Name.fresh (), param, Env.uv env name)
-        ) existentials in
-        let env = Env.push_axioms env axiom_bindings in
-        let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
-
-        let axioms = Vector1.map (fun (axname, (((_, kind), _) as ov), impl) -> match kind with
-            | T.ArrowK (domain, _) ->
-                let args = Vector1.mapi (fun sibli _ -> T.Bv {depth = 0; sibli}) domain in
-                ( axname, Vector1.to_vector domain
-                , T.App (Ov ov, args), T.App (Uv impl, args) )
-            | TypeK -> (axname, Vector.of_list [], Ov ov, Uv impl)
-        ) axiom_bindings in
-        { coercion = Cf (fun v -> {pos; v = Axiom (axioms, coerce v)})
-        ; residual = Option.map (fun residual -> Residual.Axioms (axiom_bindings, residual)) residual }
-    | None -> subtype pos occ env typ super
-
-and subtype_abs : span -> bool -> Env.t -> T.abs -> T.abs -> coercer matching
+let rec subtype_abs : span -> bool -> Env.t -> T.abs -> T.abs -> coercer matching
 = fun pos occ env typ super ->
     let (env, skolems, typ) = Environmentals.push_abs_skolems env typ in
     let (uvs, super) = Environmentals.instantiate_abs env super in
@@ -744,11 +723,6 @@ and solve pos env residual =
     | Some residual -> raise (Err.TypeError (pos, Unsolvable residual)))
 
 (* Public API *)
-
-let solving_coercion pos env typ super =
-    let {coercion; residual} = coercion pos true env typ super in
-    solve pos env residual;
-    coercion
 
 let solving_subtype pos env typ super =
     let {coercion; residual} = subtype pos true env typ super in

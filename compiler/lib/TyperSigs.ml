@@ -30,7 +30,6 @@ end
 
 module type MATCHING = sig
     val focalize : span -> Env.t -> typ -> Fc.Type.template -> coercer * typ
-    val solving_coercion : span -> Env.t -> typ -> Fc.Type.ov Vector.t * typ -> coercer
     val solving_subtype : span -> Env.t -> typ -> typ -> coercer
     val solving_unify : span -> Env.t -> typ -> typ -> Fc.Type.coercion option
 end
