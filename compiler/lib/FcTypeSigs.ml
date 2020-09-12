@@ -7,7 +7,7 @@ module type TYPE = sig
         | TypeK
         | RowK
 
-    type bv = {depth : int; sibli : int}
+    type bv = {depth : int; sibli : int; kind : kind}
 
     (* The level of a type variable is the number of skolem-binding scopes in the
        typing environment at its creation site. Kind of like syntactic closures, but

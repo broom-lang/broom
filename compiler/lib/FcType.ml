@@ -40,7 +40,7 @@ and Type : FcTypeSigs.TYPE
         | TypeK
         | RowK
 
-    type bv = {depth : int; sibli : int}
+    type bv = {depth : int; sibli : int; kind : kind}
 
     type level = int
 

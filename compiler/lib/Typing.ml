@@ -29,7 +29,8 @@ let primop_typ =
         (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (T.to_abs (Prim Prim.Int)))
     | Type ->
         ( Vector.empty, Vector.empty, T.EmptyRow
-        , T.Proxy (T.Exists (Vector.singleton T.TypeK, Proxy (T.to_abs (Bv {depth = 1; sibli = 0})))) )
+        , T.Proxy (T.Exists (Vector.singleton T.TypeK
+            , Proxy (T.to_abs (Bv {depth = 1; sibli = 0; kind = TypeK})))) )
 
 let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env expr -> match expr.v with
@@ -248,7 +249,7 @@ and implement : Env.t -> T.ov Vector.t * T.t -> AExpr.t with_pos -> FExpr.t with
         let {TS.term; typ = _; eff} = check env typ expr in
         let axioms = Vector1.map (fun (axname, (((_, kind), _) as ov), impl) -> match kind with
             | T.ArrowK (domain, _) ->
-                let args = Vector1.mapi (fun sibli _ -> T.Bv {depth = 0; sibli}) domain in
+                let args = Vector1.mapi (fun sibli kind -> T.Bv {depth = 0; sibli; kind}) domain in
                 ( axname, Vector1.to_vector domain
                 , T.App (Ov ov, args), T.App (Uv impl, args) )
             | TypeK | RowK -> (axname, Vector.of_list [], Ov ov, Uv impl)

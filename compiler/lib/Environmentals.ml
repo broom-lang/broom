@@ -69,9 +69,9 @@ and close' env depth substitution = function
         (match close' env depth substitution callee with
         | App (callee, args') -> App (callee, Vector1.append args' args) (* TODO: is this sufficient? *)
         | callee -> App (callee, args))
-    | Ov ((name, _), _) as path ->
+    | Ov ((name, kind), _) as path ->
         Name.Map.find_opt name substitution
-            |> Option.fold ~some: (fun sibli -> Bv {depth; sibli}) ~none: path
+            |> Option.fold ~some: (fun sibli -> Bv {depth; sibli; kind}) ~none: path
     | Uv uv as typ ->
         (match Env.get_uv env uv with
         | Assigned typ -> close' env depth substitution typ

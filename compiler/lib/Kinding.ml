@@ -28,6 +28,7 @@ let rec kindof_F env : T.t -> T.kind = function
             Vector1.iter2 (fun domain arg -> check_F env domain arg) domain args;
             codomain)
     | Ov ((_, kind), _) -> kind
+    | Bv {kind; _} -> kind
     | Uv uv -> (match Env.get_uv env uv with
         | Unassigned (_, kind, _) -> kind
         | Assigned typ -> kindof_F env typ)
