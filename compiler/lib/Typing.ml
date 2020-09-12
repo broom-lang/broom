@@ -1,4 +1,4 @@
-module Make (E : TyperSigs.ELABORATION) (M : TyperSigs.MATCHING) : TyperSigs.TYPING = struct
+module Make (K : TyperSigs.KINDING) (M : TyperSigs.MATCHING) : TyperSigs.TYPING = struct
 
 module AExpr = Ast.Term.Expr
 module FExpr = Fc.Term.Expr
@@ -109,12 +109,12 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
         {TyperSigs.term = {expr with v = Select (record, label)}; typ = field; eff}
 
     | AExpr.Ann (expr, typ) ->
-        let typ = E.elaborate env typ in
+        let typ = K.elaborate env typ in
         (* FIXME: Abstract type generation effect *)
         check_abs env typ expr
 
     | AExpr.Proxy typ ->
-        let typ = E.elaborate env {v = typ; pos = expr.pos} in
+        let typ = K.elaborate env {v = typ; pos = expr.pos} in
         {term = {expr with v = Proxy typ}; typ = Proxy typ; eff = EmptyRow}
 
     | AExpr.Var name ->
@@ -171,7 +171,7 @@ and elaborate_pat env pat = match pat.v with
         ({pat with v = FExpr.ValuesP pats}, (Vector.empty, Values typs), defs)
 
     | AExpr.Ann (pat, typ) ->
-        let (_, typ) as semiabs = E.elaborate env typ |> Environmentals.reabstract env in
+        let (_, typ) as semiabs = K.elaborate env typ |> Environmentals.reabstract env in
         let (pat, defs) = check_pat env typ pat in
         (pat, semiabs, defs)
 
@@ -180,7 +180,7 @@ and elaborate_pat env pat = match pat.v with
         ({pat with v = FExpr.UseP name}, (Vector.empty, typ), Vector.singleton {FExpr.name; typ})
 
     | AExpr.Proxy carrie ->
-        let carrie = E.elaborate env {pat with v = carrie} in
+        let carrie = K.elaborate env {pat with v = carrie} in
         ({pat with v = ProxyP carrie}, (Vector.empty, Proxy carrie), Vector.empty)
 
     | AExpr.Const c ->
@@ -309,14 +309,14 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr
     | AExpr.Values pats -> failwith "TODO: multi-values in check_pat"
 
     | AExpr.Ann (pat', typ') ->
-        let (_, typ') = E.elaborate env typ' |> Environmentals.reabstract env in
+        let (_, typ') = K.elaborate env typ' |> Environmentals.reabstract env in
         let _ = M.solving_unify pat.pos env typ typ' in
         check_pat env typ' pat'
 
     | AExpr.Var name -> ({pat with v = UseP name}, Vector.singleton {FExpr.name; typ})
 
     | AExpr.Proxy carrie ->
-        let carrie = E.elaborate env {pat with v = carrie} in
+        let carrie = K.elaborate env {pat with v = carrie} in
         let _ = M.solving_unify pat.pos env typ (Proxy carrie) in
         ({pat with v = ProxyP carrie}, Vector.empty)
 

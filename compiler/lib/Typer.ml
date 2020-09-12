@@ -2,7 +2,7 @@ module TypeError = TypeError
 
 module Env = Env
 
-module rec E : TyperSigs.ELABORATION = Elaboration.Make(T)(M)
+module rec E : TyperSigs.KINDING = Kinding.Make(T)(M)
 and T : TyperSigs.TYPING = Typing.Make(E)(M)
 and M : TyperSigs.MATCHING = Matching.Make(E)
 

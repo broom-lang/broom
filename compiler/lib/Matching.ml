@@ -4,7 +4,7 @@ module ResidualMonoid = struct
     let skolemized skolems m = Option.map (fun r -> Residual.Skolems (skolems, r)) m
 end
 
-module Make (Elab : TyperSigs.ELABORATION) : TyperSigs.MATCHING = struct
+module Make (K : TyperSigs.KINDING) : TyperSigs.MATCHING = struct
 
 module T = Fc.Type
 module E = Fc.Term.Expr
@@ -29,7 +29,7 @@ fun co base label field ->
 
 (* Massage `typ` into a `With`, returning `(coercion, base, field_t)`: *)
 let pull_row pos env label' typ : T.coercion option * T.t * T.t =
-    let rec pull typ = match Elab.eval env typ with
+    let rec pull typ = match K.eval env typ with
         | Some (With {base; label; field}, co) when label = label' -> (co, base, field)
         | Some (With {base; label; field}, co) ->
             let (base_co, base, field'') = pull base in
@@ -53,7 +53,7 @@ let rec match_rows : Util.span -> Env.t -> T.t -> T.t -> Name.t CCVector.ro_vect
     let labels = CCVector.create () in
     let fields = CCVector.create () in
     let fields' = CCVector.create () in
-    let rec matchem row row' = match Elab.eval env row' with
+    let rec matchem row row' = match K.eval env row' with
         | Some (With {base = base'; label = label'; field = field'}, co') ->
             (* OPTIMIZE: computing `co` n times is probably redundant: *)
             let (co, base, field) = pull_row pos env label' row in
@@ -115,7 +115,7 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                 (Cf cof, With {base; label; field})
             | Hole -> failwith "unreachable: Hole as template in `focalize`.") in
 
-    match Elab.eval env typ with
+    match K.eval env typ with
     | Some (typ, coercion) ->
         let (Cf cf as coercer, typ) = focalize_whnf typ in
         ( (match coercion with
@@ -363,7 +363,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
         (* TODO: DRY: *)
         | (Proxy (Exists (existentials, carrie) as abs_carrie), _) -> (match super with
             | Proxy (Exists (existentials', App (callee, args)) as abs_carrie') when Vector.length existentials' = 0 ->
-                (match Elab.eval env callee with
+                (match K.eval env callee with
                 | Some (Uv uv, _) ->
                     (match Env.get_uv env uv with
                     | Unassigned (_, level) ->
@@ -433,8 +433,8 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
     let (>>=) = Option.bind in
     let res =
-        Elab.eval env typ >>= fun (typ', co) ->
-        Elab.eval env super |> Option.map (fun (super', co') ->
+        K.eval env typ >>= fun (typ', co) ->
+        K.eval env super |> Option.map (fun (super', co') ->
             let {coercion = Cf coerce; residual} = subtype_whnf occ typ' super' in
             { coercion =
                 (match (co, co') with
@@ -493,8 +493,8 @@ and unify_abs : span -> Env.t -> T.abs -> T.abs -> T.coercion option matching
 and unify pos env typ typ' : T.coercion option matching =
     let (>>=) = Option.bind in
     let res =
-        Elab.eval env typ >>= fun (typ, co) ->
-        Elab.eval env typ' |> Option.map (fun (typ', co'') ->
+        K.eval env typ >>= fun (typ, co) ->
+        K.eval env typ' |> Option.map (fun (typ', co'') ->
         let {coercion = co'; residual} = unify_whnf pos env typ typ' in
         { coercion =
             (match (co, co', co'') with

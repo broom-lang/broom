@@ -1,4 +1,4 @@
-module Make (C : TyperSigs.TYPING) (M : TyperSigs.MATCHING) : TyperSigs.ELABORATION = struct
+module Make (C : TyperSigs.TYPING) (M : TyperSigs.MATCHING) : TyperSigs.KINDING = struct
 
 module AType = Ast.Type
 module T = Fc.Type

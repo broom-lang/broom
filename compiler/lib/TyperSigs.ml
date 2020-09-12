@@ -13,7 +13,7 @@ type 'a typing = {term : 'a; typ : typ; eff : typ}
          or that duplicate large/nontrivial terms: *)
 type coercer = Cf of (Fc.Term.Expr.t with_pos -> Fc.Term.Expr.t with_pos)
 
-module type ELABORATION = sig
+module type KINDING = sig
     val elaborate : Env.t -> Ast.Type.t with_pos -> abs
     val eval : Env.t -> typ -> (typ * Fc.Type.coercion option) option
 end
