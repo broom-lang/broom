@@ -381,43 +381,44 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
             | EmptyRow -> {coercion = Cf Fun.id; residual = empty}
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
+        (* TODO: DRY: *)
         | (Proxy (Exists (existentials, carrie) as abs_carrie), _) -> (match super with
-            | Proxy abs_carrie' ->
-                (*match locator with
-                | ProxyL (App (callee, args)) ->
-                    (match Elab.eval env callee with
-                    (*| Some (Uv ({contents = Unassigned (_, level)} as uv), _) ->
-                        if Vector.length existentials = 0 then begin
-                            let (_, substitution) = Vector1.fold_left (fun (i, substitution) arg ->
-                                match arg with
-                                | Ov ((name, _), _) -> (i + 1, Name.Map.add name i substitution)
-                                | _ -> failwith "unreachable: non-ov path arg in path locator"
-                            ) (0, Name.Map.empty) args in
-                            let impl = T.Fn (close substitution carrie) in
-                            let max_uv_level = match Vector1.get args 0 with
-                                | Ov (_, level') -> level' - 1
-                                | _ -> failwith "unreachable: non-ov path arg in path locator" in
-                            check_uv_assignee pos env uv level max_uv_level impl;
-                            uv := Assigned impl;
-                            { coercion = TyperSigs.Cf (fun _ -> {v = Proxy abs_carrie'; pos})
-                            ; residual = empty }
-                        end else raise (TypeError (pos, Polytype abs_carrie))*)
+            | Proxy (Exists (existentials', App (callee, args)) as abs_carrie') when Vector.length existentials' = 0 ->
+                (match Elab.eval env callee with
+                | Some (Uv uv, _) ->
+                    (match Env.get_uv env uv with
+                    | Unassigned (_, level) ->
+                        let (_, substitution) = Vector1.fold (fun (i, substitution) arg ->
+                            match arg with
+                            | T.Ov ((name, _), _) -> (i + 1, Name.Map.add name i substitution)
+                            | _ -> failwith "unreachable: non-ov path arg in path locator"
+                        ) (0, Name.Map.empty) args in
+                        let impl = T.Fn (Environmentals.close env substitution carrie) in
+                        let max_uv_level = match Vector1.get args 0 with
+                            | Ov (_, level') -> level' - 1
+                            | _ -> failwith "unreachable: non-ov path arg in path locator" in
+                        check_uv_assignee pos env uv level max_uv_level impl;
+                        Env.set_uv env uv (Assigned impl);
+                        { coercion = TyperSigs.Cf (fun _ -> {v = Proxy abs_carrie'; pos})
+                        ; residual = empty }
+                    | _ -> failwith "unreachable: Assigned uv in Proxy <:")
 
-                    | _ -> (* TODO: Use unification (?) *)
-                        let {coercion = _; residual} =
-                            subtype_abs pos occ env abs_carrie abs_carrie' in
-                        let {coercion = _; residual = residual'} =
-                            subtype_abs pos occ env abs_carrie' abs_carrie in
-                        { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
-                        ; residual = combine residual residual' })*)
+                | _ -> (* TODO: Use unification (?) *)
+                    let {coercion = _; residual} =
+                        subtype_abs pos occ env abs_carrie abs_carrie' in
+                    let {coercion = _; residual = residual'} =
+                        subtype_abs pos occ env abs_carrie' abs_carrie in
+                    { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
+                    ; residual = combine residual residual' })
 
-                (* TODO: Use unification (?) *)
+            | Proxy abs_carrie' -> (* TODO: Use unification (?) *)
                 let {coercion = _; residual} =
                     subtype_abs pos occ env abs_carrie abs_carrie' in
                 let {coercion = _; residual = residual'} =
                     subtype_abs pos occ env abs_carrie' abs_carrie in
                 { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
                 ; residual = combine residual residual' }
+
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (App _, _) -> (match super with
