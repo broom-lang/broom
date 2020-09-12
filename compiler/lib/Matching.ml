@@ -36,8 +36,8 @@ let pull_row pos env label' typ : T.coercion option * T.t * T.t =
             ( trans_with co base_co label field
             , T.With {base; label; field}, field'' )
         | Some (Uv uv, co) -> (* FIXME: 'scopedlabels' termination check: *)
-            let base = T.Uv (sibling env uv) in
-            let field = T.Uv (sibling env uv) in
+            let base = T.Uv (sibling env RowK uv) in
+            let field = T.Uv (sibling env TypeK uv) in
             Env.set_uv env uv (Assigned (With {base; label = label'; field}));
             (co, base, field)
         | Some _ ->
@@ -81,11 +81,11 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                 let (uv, typ) = match template with
                     | T.PiL (arity, _) ->
                         (uv, T.Pi ( Vector.of_list []
-                                 , Vector.init arity (fun _ -> T.Uv (sibling env uv))
-                                  , Uv (sibling env uv), T.to_abs (Uv (sibling env uv)) ))
-                    | ProxyL _ -> (uv, T.Proxy (T.to_abs (Uv (sibling env uv))))
+                                  , Vector.init arity (fun _ -> T.Uv (sibling env TypeK uv))
+                                  , Uv (sibling env TypeK uv), T.to_abs (Uv (sibling env TypeK uv)) ))
+                    | ProxyL _ -> (uv, T.Proxy (T.to_abs (Uv (sibling env TypeK uv))))
                     | WithL {base = _; label; field = _} ->
-                        (uv, (With {base = Uv (sibling env uv); label; field = Uv (sibling env uv)}))
+                        (uv, (With {base = Uv (sibling env RowK uv); label; field = Uv (sibling env TypeK uv)}))
                     | Hole -> failwith "unreachable: Hole as template in `articulate_template`" in
                 Env.set_uv env uv (Assigned typ);
                 typ
@@ -169,11 +169,11 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
     let articulate pos occ env uv_typ template = match uv_typ with
         | T.Uv uv ->
             (match Env.get_uv env uv with
-            | Unassigned (_, level) ->
+            | Unassigned (_, kind, level) ->
                 let (uv, typ) = match template with
                     | T.Uv uv' ->
                         (match Env.get_uv env uv' with
-                        | Unassigned (_, level') ->
+                        | Unassigned (_, kind', level') ->
                             if level' <= level
                             then (uv, template)
                             else (uv', uv_typ)
@@ -185,19 +185,22 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         else raise (Err.TypeError (pos, Escape ov))
 
                     | Values typs ->
-                        (uv, Values (Vector.map (fun _ -> T.Uv (sibling env uv)) typs))
+                        (uv, Values (Vector.map (fun typ ->
+                            T.Uv (sibling env (K.kindof_F env typ) uv)
+                        ) typs))
                     | Pi (_, domain, _, _) ->
                         (uv, Pi ( Vector.of_list []
-                                , Vector.map (fun _ -> T.Uv (sibling env uv)) domain
-                                , Uv (sibling env uv)
-                                , T.to_abs (Uv (sibling env uv)) ))
-                    | Record _ -> (uv, Record (Uv (sibling env uv)))
+                                , Vector.map (fun _ -> T.Uv (sibling env TypeK uv)) domain
+                                , Uv (sibling env RowK uv)
+                                , T.to_abs (Uv (sibling env TypeK uv)) ))
+                    | Record _ -> (uv, Record (Uv (sibling env RowK uv)))
                     | With {base = _; label; field = _} ->
-                        (uv, With {base = Uv (sibling env uv); label; field = Uv (sibling env uv)})
+                        (uv, With {base = Uv (sibling env RowK uv); label; field = Uv (sibling env TypeK uv)})
                     | EmptyRow -> (uv, EmptyRow)
-                    | Proxy _ -> (uv, Proxy (T.to_abs (Uv (sibling env uv))))
-                    | App (_, args) ->
-                        (uv, T.App (Uv (sibling env uv), Vector1.map (fun _ -> T.Uv (sibling env uv)) args))
+                    | Proxy _ -> (uv, Proxy (T.to_abs (Uv (sibling env (failwith "TODO") uv))))
+                    | App (callee, args) ->
+                        ( uv, T.App (Uv (sibling env (K.kindof_F env callee) uv)
+                        , Vector1.map (fun arg -> T.Uv (sibling env (K.kindof_F env arg) uv)) args) )
                     | Prim pt -> (uv, Prim pt)
 
                     | Fn _ -> failwith "unreachable: `Fn` as template of `articulate`"
@@ -365,7 +368,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 (match K.eval env callee with
                 | Some (Uv uv, _) ->
                     (match Env.get_uv env uv with
-                    | Unassigned (_, level) ->
+                    | Unassigned (_, kind, level) ->
                         let substitution = Vector1.foldi (fun substitution i -> function
                             | T.Ov ((name, _), _) -> Name.Map.add name i substitution
                             | _ -> failwith "unreachable: non-ov path arg in path locator"
@@ -518,7 +521,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
     match (typ, typ') with
     | (Uv uv, typ') | (typ', Uv uv) ->
         (match Env.get_uv env uv with
-        | Unassigned (_, level) ->
+        | Unassigned (_, kind, level) ->
             check_uv_assignee pos env uv level Int.max_int typ';
             Env.set_uv env uv (Assigned typ');
             {coercion = None; residual = empty}
@@ -676,13 +679,13 @@ and check_uv_assignee pos env uv level max_uv_level typ =
                 else raise (Err.TypeError (pos, Escape ov)))
         | Uv uv' ->
             (match Env.get_uv env uv' with
-            | Unassigned (name, level') ->
+            | Unassigned (name, kind, level') ->
                 if uv = uv'
                 then raise (Err.TypeError (pos, Occurs (uv, typ)))
                 else if level' <= level
                 then ()
                 else if level' <= max_uv_level
-                then Env.set_uv env uv' (Unassigned (name, level)) (* hoist *)
+                then Env.set_uv env uv' (Unassigned (name, kind, level)) (* hoist *)
                 else raise (Err.TypeError (pos, IncompleteImpl (uv, uv')))
             | Assigned typ -> check typ)
         | Bv _ | Prim _ -> () in

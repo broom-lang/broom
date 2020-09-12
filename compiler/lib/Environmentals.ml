@@ -111,12 +111,12 @@ let push_arrow_skolems env universals domain eff codomain =
     , expose_abs env substitution codomain )
 
 let instantiate_abs env (T.Exists (existentials, body)) =
-    let uvs = Vector.map (fun _ -> Env.uv env (Name.fresh ())) existentials in
+    let uvs = Vector.map (fun kind -> Env.uv env kind (Name.fresh ())) existentials in
     let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
     (uvs, expose env substitution body)
 
 let instantiate_arrow env universals domain eff codomain =
-    let uvs = Vector.map (fun _ -> Env.uv env (Name.fresh())) universals in
+    let uvs = Vector.map (fun kind -> Env.uv env kind (Name.fresh())) universals in
     let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
     ( uvs
     , Vector.map (expose env substitution) domain

@@ -69,10 +69,11 @@ module type TYPE = sig
     val to_abs : t -> abs
 
     val freshen : binding -> binding
-    val sibling : subst -> uv -> uv
+    val sibling : subst -> kind -> uv -> uv
 end
 
 module type UV = sig
+    type kind
     type typ
     type level
 
@@ -81,7 +82,7 @@ module type UV = sig
     type t
 
     type v =
-        | Unassigned of Name.t * level
+        | Unassigned of Name.t * kind * level
         | Assigned of typ
 
     val new_subst : unit -> subst

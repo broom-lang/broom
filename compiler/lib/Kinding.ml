@@ -28,6 +28,9 @@ let rec kindof_F env : T.t -> T.kind = function
             Vector1.iter2 (fun domain arg -> check_F env domain arg) domain args;
             codomain)
     | Ov ((_, kind), _) -> kind
+    | Uv uv -> (match Env.get_uv env uv with
+        | Unassigned (_, kind, _) -> kind
+        | Assigned typ -> kindof_F env typ)
     | Prim pt -> kindof_prim pt
 
 and check_F env kind typ =
@@ -50,7 +53,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
         | Path expr ->
             let {TS.term = _; typ = proxy_typ; eff} = C.typeof env {typ with v = expr} in
             let _ = M.solving_unify typ.pos env eff EmptyRow in
-            (match M.focalize typ.pos env proxy_typ (ProxyL (Uv (Env.uv env (Name.fresh ())))) with
+            (match M.focalize typ.pos env proxy_typ (ProxyL (Uv (Env.uv env (failwith "TODO: polykinds") (Name.fresh ())))) with
             | (_, Proxy typ) ->
                 let (_, typ) = reabstract env typ in
                 {typ; kind = kindof_F env typ}

@@ -79,14 +79,14 @@ let get_implementation (env : t) (((name, _), _) : T.ov) =
         | [] -> None
     in get env.scopes
 
-let uv (env : t) name = Fc.Uv.make env.tx_log (Unassigned (name, env.level))
+let uv (env : t) kind name = Fc.Uv.make env.tx_log (Unassigned (name, kind, env.level))
 
 let get_uv (env : t) uv = Fc.Uv.get env.tx_log uv
 
 let set_uv (env : t) uv v = Fc.Uv.set env.tx_log uv v
 
-let sibling (env : t) uv = match get_uv env uv with
-    | Unassigned (_, level) -> Fc.Uv.make env.tx_log (Unassigned (Name.fresh (), level))
+let sibling (env : t) kind uv = match get_uv env uv with
+    | Unassigned (_, _, level) -> Fc.Uv.make env.tx_log (Unassigned (Name.fresh (), kind, level))
     | Assigned _ -> failwith "unreachable"
 
 let tx_log (env : t) = env.tx_log

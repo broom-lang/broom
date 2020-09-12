@@ -19,8 +19,8 @@ val generate : t -> T.binding -> T.binding * T.level
 val get_implementation : t -> T.ov -> (Name.t * T.ov * uv) option
 
 (* HACK: *)
-val uv : t -> Name.t -> uv
-val sibling : t -> uv -> uv
+val uv : t -> T.kind -> Name.t -> uv
+val sibling : t -> T.kind -> uv -> uv
 val get_uv : t -> uv -> Fc.Uv.v
 val set_uv : t -> uv -> Fc.Uv.v -> unit
 

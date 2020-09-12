@@ -1,14 +1,16 @@
 module rec Uv : FcTypeSigs.UV
+    with type kind = Type.kind
     with type typ = Type.t
     with type level = Type.level
 = struct
+    type kind = Type.kind
     type typ = Type.t
     type level = Type.level
 
     include UnionFind.Make(TxRef.Store)
 
     type v =
-        | Unassigned of Name.t * Type.level
+        | Unassigned of Name.t * kind * Type.level
         | Assigned of typ
 
     type subst = v store
@@ -202,7 +204,7 @@ and Type : FcTypeSigs.TYPE
             (PPrint.dot ^^ PPrint.blank 1 ^^ body)
 
     and uv_to_doc s uv = match Uv.get s uv with
-        | Unassigned (name, _) -> PPrint.qmark ^^ Name.to_doc name
+        | Unassigned (name, _, _) -> PPrint.qmark ^^ Name.to_doc name
         | Assigned t -> to_doc s t
 
     let rec coercion_to_doc s = function
@@ -255,8 +257,8 @@ and Type : FcTypeSigs.TYPE
 
     let freshen (name, kind) = (Name.freshen name, kind)
 
-    let sibling sr uv = match Uv.get sr uv with
-        | Unassigned (_, level) -> Uv.make sr (Unassigned (Name.fresh (), level))
+    let sibling sr kind uv = match Uv.get sr uv with
+        | Unassigned (_, _, level) -> Uv.make sr (Unassigned (Name.fresh (), kind, level))
         | Assigned _ -> failwith "unreachable"
 end
 

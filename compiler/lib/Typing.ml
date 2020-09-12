@@ -38,7 +38,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
     | AExpr.Values exprs ->
         let exprs' = CCVector.create () in
         let typs = CCVector.create () in
-        let eff : T.t = Uv (Env.uv env (Name.fresh ())) in
+        let eff : T.t = Uv (Env.uv env RowK (Name.fresh ())) in
         exprs |> Vector.iter (fun expr ->
             let {TS.term = expr; typ; eff = eff'} = typeof env expr in
             CCVector.push exprs' expr;
@@ -105,8 +105,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
     | AExpr.Record stmts -> typeof_record env expr.pos stmts
 
     | AExpr.Select (record, label) -> (* TODO: lacks-constraint: *)
-        let field : T.t = Uv (Env.uv env (Name.fresh ())) in
-        let typ : T.t = Record (With {base = Uv (Env.uv env (Name.fresh ())); label; field}) in
+        let field : T.t = Uv (Env.uv env TypeK (Name.fresh ())) in
+        let typ : T.t = Record (With {base = Uv (Env.uv env RowK (Name.fresh ())); label; field}) in
         let {TS.term = record; typ = record_typ; eff} = check env typ record in
         {TS.term = {expr with v = Select (record, label)}; typ = field; eff}
 
@@ -179,7 +179,7 @@ and elaborate_pat env pat = match pat.v with
         (pat, semiabs, defs)
 
     | AExpr.Var name ->
-        let typ = T.Uv (Env.uv env (Name.fresh ())) in
+        let typ = T.Uv (Env.uv env TypeK (Name.fresh ())) in
         ({pat with v = FExpr.UseP name}, (Vector.empty, typ), Vector.singleton {FExpr.name; typ})
 
     | AExpr.Proxy carrie ->
@@ -241,8 +241,8 @@ and implement : Env.t -> T.ov Vector.t * T.t -> AExpr.t with_pos -> FExpr.t with
 = fun env (existentials, typ) expr ->
     match Vector1.of_vector existentials with
     | Some existentials ->
-        let axiom_bindings = Vector1.map (fun (((name, _), _) as param) ->
-            (Name.fresh (), param, Env.uv env name)
+        let axiom_bindings = Vector1.map (fun (((name, kind), _) as param) ->
+            (Name.fresh (), param, Env.uv env kind name)
         ) existentials in
         let env = Env.push_axioms env axiom_bindings in
         let {TS.term; typ = _; eff} = check env typ expr in
@@ -261,7 +261,7 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
     | (T.Values typs, AExpr.Values exprs) ->
         let exprs' = CCVector.create () in
         let typs' = CCVector.create () in
-        let eff : T.t = Uv (Env.uv env (Name.fresh ())) in
+        let eff : T.t = Uv (Env.uv env RowK (Name.fresh ())) in
         (* FIXME: raises on length mismatch: *)
         Vector.iter2 (fun typ expr ->
             let {TS.term = expr; typ; eff = eff'} = check env typ expr in
