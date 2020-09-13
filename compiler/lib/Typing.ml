@@ -1,6 +1,11 @@
 module TS = TyperSigs
 
-module Make (K : TS.KINDING) (M : TS.MATCHING) : TS.TYPING = struct
+module Make
+    (Env : TS.ENV)
+    (K : TS.KINDING with type env = Env.t)
+    (M : TS.MATCHING with type env = Env.t)
+: TS.TYPING with type env = Env.t
+= struct
 
 module AExpr = Ast.Term.Expr
 module FExpr = Fc.Term.Expr
@@ -9,6 +14,7 @@ module FStmt = Fc.Term.Stmt
 module T = Fc.Type
 module Err = TypeError
 
+type env = Env.t
 type 'a with_pos = 'a Util.with_pos
 type 'a typing = 'a TS.typing
 
@@ -72,7 +78,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
         (match M.focalize callee.pos env callee_typ (PiL (Vector.length args, Hole)) with
         | (Cf coerce, Pi (universals, domain, app_eff, codomain)) ->
             let (uvs, domain, app_eff, codomain) =
-                Environmentals.instantiate_arrow env universals domain app_eff codomain in
+                Env.instantiate_arrow env universals domain app_eff codomain in
             let _ = M.solving_unify expr.pos env app_eff callee_eff in
             let args = check_args env app_eff domain args in
             let Exists (existentials, concr_codomain) = codomain in
@@ -97,7 +103,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 
         let (universals, domain, app_eff, codomain) = primop_typ op in
         let (uvs, domain, app_eff, Exists (_, codomain)) =
-            Environmentals.instantiate_arrow env universals domain app_eff (T.to_abs codomain) in
+            Env.instantiate_arrow env universals domain app_eff (T.to_abs codomain) in
         let args = check_args env app_eff domain args in
         { term = {expr with v = PrimApp (op, Vector.map (fun uv -> T.Uv uv) uvs, args)}
         ; typ = codomain
@@ -144,9 +150,9 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t with_p
         ) (0, Name.Map.empty) universals in
         { TS.term = {Util.v = FExpr.Fn (universals, params, body); pos}
         ; typ = Pi ( Vector.map snd universals
-                   , Vector.map (Environmentals.close env substitution) domain
-                   , Environmentals.close env substitution eff
-                   , Environmentals.close_abs env substitution (T.to_abs codomain) )
+                   , Vector.map (Env.close env substitution) domain
+                   , Env.close env substitution eff
+                   , Env.close_abs env substitution (T.to_abs codomain) )
         ; eff = EmptyRow }
     | Nil -> failwith "TODO: clauseless fn"
 
@@ -175,7 +181,7 @@ and elaborate_pat env pat = match pat.v with
 
     | AExpr.Ann (pat, typ) ->
         let typ = K.check env (Prim Type) typ in
-        let (_, typ) as semiabs = Environmentals.reabstract env typ in
+        let (_, typ) as semiabs = Env.reabstract env typ in
         let (pat, defs) = check_pat env typ pat in
         (pat, semiabs, defs)
 
@@ -236,7 +242,7 @@ and elaborate_field env pat semiabs = function
 (* # Checking *)
 
 and check_abs : Env.t -> T.abs -> AExpr.t with_pos -> FExpr.t with_pos typing
-= fun env typ expr -> implement env (Environmentals.reabstract env typ) expr
+= fun env typ expr -> implement env (Env.reabstract env typ) expr
 
 and implement : Env.t -> T.ov Vector.t * T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env (existentials, typ) expr ->
@@ -314,7 +320,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr
 
     | AExpr.Ann (pat', typ') ->
         let typ' = K.check env (Prim Type) typ' in
-        let (_, typ') = Environmentals.reabstract env typ' in
+        let (_, typ') = Env.reabstract env typ' in
         let _ = M.solving_unify pat.pos env typ typ' in
         check_pat env typ' pat'
 

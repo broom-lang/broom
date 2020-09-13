@@ -1,10 +1,11 @@
 module TypeError = TypeError
 
-module Env = Env
+module MakeEnv = Env.Make
 
-module rec E : TyperSigs.KINDING = Kinding.Make(T)(M)
-and T : TyperSigs.TYPING = Typing.Make(E)(M)
-and M : TyperSigs.MATCHING = Matching.Make(E)
+module rec Env : TyperSigs.ENV = MakeEnv(T)
+and E : TyperSigs.KINDING with type env = Env.t = Kinding.Make(Env)(T)(M)
+and T : TyperSigs.TYPING with type env = Env.t  = Typing.Make(Env)(E)(M)
+and M : TyperSigs.MATCHING with type env = Env.t  = Matching.Make(Env)(E)
 
 type 'a typing = 'a TyperSigs.typing
 

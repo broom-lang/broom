@@ -4,12 +4,17 @@ module ResidualMonoid = struct
     let skolemized skolems m = Option.map (fun r -> Residual.Skolems (skolems, r)) m
 end
 
-module Make (K : TyperSigs.KINDING) : TyperSigs.MATCHING = struct
+module Make
+    (Env : TyperSigs.ENV)
+    (K : TyperSigs.KINDING with type env = Env.t)
+: TyperSigs.MATCHING with type env = Env.t
+= struct
 
 module T = Fc.Type
 module E = Fc.Term.Expr
 module Err = TypeError
 
+type env = Env.t
 type span = Util.span
 type coercer = TyperSigs.coercer
 
@@ -129,8 +134,8 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
 
 let rec subtype_abs : span -> bool -> Env.t -> T.abs -> T.abs -> coercer matching
 = fun pos occ env typ super ->
-    let (env, skolems, typ) = Environmentals.push_abs_skolems env typ in
-    let (uvs, super) = Environmentals.instantiate_abs env super in
+    let (env, skolems, typ) = Env.push_abs_skolems env typ in
+    let (uvs, super) = Env.instantiate_abs env super in
     match Vector1.of_vector skolems with
     | Some skolems ->
         let skolems = Vector1.map fst skolems in
@@ -252,9 +257,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
         | (Pi (universals, domain, eff, codomain), _) -> (match super with
             | Pi (universals', domain', eff', codomain') ->
                 let (env, universals', domain', eff', codomain') =
-                    Environmentals.push_arrow_skolems env universals' domain' eff' codomain' in
+                    Env.push_arrow_skolems env universals' domain' eff' codomain' in
                 let (uvs, domain, eff, codomain) =
-                    Environmentals.instantiate_arrow env universals domain eff codomain in
+                    Env.instantiate_arrow env universals domain eff codomain in
 
                 (* FIXME: raises on arity mismatch: *)
                 let {coercion = domain_coercions; residual = domain_residual} =
@@ -378,7 +383,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                             | T.Ov ((_, kind), _) -> kind
                             | _ -> failwith "unreachable: non-ov path arg in path locator"
                         ) args in
-                        let impl = T.Fn (params, Environmentals.close env substitution carrie) in
+                        let impl = T.Fn (params, Env.close env substitution carrie) in
                         let max_uv_level = match Vector1.get args 0 with
                             | Ov (_, level') -> level' - 1
                             | _ -> failwith "unreachable: non-ov path arg in path locator" in

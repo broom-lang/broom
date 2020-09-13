@@ -1,6 +1,10 @@
 module TS = TyperSigs
 
-module Make (C : TS.TYPING) (M : TS.MATCHING) : TS.KINDING = struct
+module Make (Env : TS.ENV)
+    (C : TS.TYPING with type env = Env.t)
+    (M : TS.MATCHING with type env = Env.t)
+: TS.KINDING with type env = Env.t
+= struct
 
 module AType = Ast.Type
 module T = Fc.Type
@@ -9,10 +13,11 @@ module AStmt = Ast.Term.Stmt
 module FExpr = Fc.Term.Expr
 module Err = TypeError
 
+type env = Env.t
 type 'a with_pos = 'a Util.with_pos
 type 'a kinding = 'a TS.kinding
 
-let reabstract = Environmentals.reabstract
+let reabstract = Env.reabstract
 let (!) = TxRef.(!)
 
 let kindof_prim : Prim.t -> T.kind = function
@@ -98,16 +103,16 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
                     | Some universals -> T.App (Ov ov, Vector1.map (fun ov -> T.Ov ov) universals)
                     | None -> Ov ov)
                 ) existentials in
-                T.to_abs (Environmentals.expose env0 substitution concr_codo)
+                T.to_abs (Env.expose env0 substitution concr_codo)
             | (_, codomain) -> codomain in
 
         let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
             (i + 1, Name.Map.add name i substitution)
         ) (0, Name.Map.empty) ubs in
         { TS.typ = T.Pi ( Vector.map snd ubs
-             , Vector.map (Environmentals.close env substitution) (Vector.append idomain edomain)
-             , Environmentals.close env substitution eff
-             , Environmentals.close_abs env substitution codomain )
+             , Vector.map (Env.close env substitution) (Vector.append idomain edomain)
+             , Env.close env substitution eff
+             , Env.close_abs env substitution codomain )
         ; kind = Prim Type }
 
     and elab_domain env (domain : AExpr.t with_pos) =
@@ -160,7 +165,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
     let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
         (i + 1, Name.Map.add name i substitution)
     ) (0, Name.Map.empty) params in
-    { typ = Exists (Vector.map snd params, Environmentals.close env substitution typ)
+    { typ = Exists (Vector.map snd params, Env.close env substitution typ)
     ; kind }
 
 and check env kind typ =
@@ -203,7 +208,7 @@ and eval env typ =
 
     and apply callee args = match callee with
         | T.Fn (params, body) -> (* FIXME: Check arg kinds *)
-            eval (Environmentals.expose env (Vector1.to_vector args) body)
+            eval (Env.expose env (Vector1.to_vector args) body)
         | Ov _ | App _ -> Some (T.App (callee, args), None)
         | Uv uv ->
             (match Env.get_uv env uv with
