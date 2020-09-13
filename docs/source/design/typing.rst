@@ -40,3 +40,30 @@ Type System
 .. math::
     \frac{}{\Gamma \vdash n \Rightarrow_\pure \mathsf{\_\_int} \dashv \Gamma}
 
+-------
+Kinding
+-------
+
+``:`` is 'of type' and ``::`` is 'of kind'
+
+There are builtin kinds (types) ``typeIn``, ``row`` and ``array``.
+
+axioms:
+
+.. math::
+    \begin{align*}
+        \mathsf{singleRep} &= \mathsf{boxed} \; | \; \mathsf{word\{8, 16, 32, 64\}} \; | \;
+            \mathsf{float\{32, 64\}} \\
+        \mathsf{rep} &= \mathsf{array} \; \mathsf{singleRep} \\
+        \mathsf{typeIn} &:: \mathsf{rep} \rightarrow \mathsf{type} \\
+        \mathsf{row} &:: \mathsf{type} \\
+        \mathsf{type} &= \mathsf{typeIn} \; [\mathsf{boxed}] \\
+        [= \_] &:: \mathsf{type} \rightarrow \mathsf{typeIn} \; [] \\
+        (\overline{e,}) &: (\overline{\mathsf{typeof} \; e,}) \\
+        (\overline{T,}) &:: \mathsf{typeIn} [\overline{\mathsf{repof} \; T,}] \\
+        (\overline{\_,}) &:: \forall \overline{(r : \mathsf{rep})} . (\overline{\mathsf{typeIn} \; r,})
+            \rightarrow \mathsf{typeIn} \; [\overline{\mathsf{typeIn} \; r,}] \\
+        (\_ \, -! \, \_ \rightarrow \_) &:: \forall (r1 : \mathsf{rep}) (r2 : \mathsf{rep})
+            . (\mathsf{typeIn} \; r1, \mathsf{row}, \mathsf{typeIn} \; r2) \rightarrow \mathsf{type}
+    \end{align*}
+
