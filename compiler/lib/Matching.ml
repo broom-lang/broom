@@ -456,7 +456,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
     | None ->
         let patchable = ref {Util.pos; v = E.Const (Int 0)} in
         { coercion = Cf (fun v ->
-            TxRef.set (Env.tx_log env) patchable v;
+            Env.set_expr env patchable v;
             {pos; v = Patchable patchable})
         ; residual = Some (Sub (occ, typ, super, patchable)) }
 
@@ -715,13 +715,12 @@ and solve pos env residual =
 
         | Sub (occ, typ, super, patchable) ->
             let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
-            TxRef.set (Env.tx_log env) patchable (coerce !patchable);
+            Env.set_expr env patchable (coerce !patchable);
             residual
 
         | Unify (typ, typ', patchable) ->
             let {coercion; residual} = unify pos env typ typ' in
-            Option.iter (fun coercion -> TxRef.set (Env.tx_log env) patchable coercion)
-                coercion;
+            Option.iter (Env.set_coercion env patchable) coercion;
             residual
     in
     (match Option.bind residual (solve env) with

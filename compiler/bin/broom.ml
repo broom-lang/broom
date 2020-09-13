@@ -1,4 +1,5 @@
 open Broom_lib
+module Env = Typer.Env
 module C = Cmdliner
 
 let (^^) = PPrint.(^^)
@@ -11,17 +12,16 @@ let prompt = name ^ "> "
 let ep tenv stmt =
     (try begin
         let ({term; typ; eff}, tenv) : Fc.Term.Stmt.t Typer.typing * _ = Typer.check_stmt tenv stmt in
-        let s = Typer.Env.tx_log tenv in
-        let doc = Fc.Term.Stmt.to_doc s term ^^ PPrint.semi
-            ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ Fc.Type.to_doc s typ
-            ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ Fc.Type.to_doc s eff
+        let doc = Env.document tenv Fc.Term.Stmt.to_doc term ^^ PPrint.semi
+            ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc typ
+            ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
             |> PPrint.group in
         PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc);
     end with
     | Typer.TypeError.TypeError (pos, err) ->
         flush stdout;
         PPrint.ToChannel.pretty 1.0 80 stderr
-            (PPrint.hardline ^^ Typer.TypeError.to_doc (Typer.Env.tx_log tenv) pos err ^^ PPrint.hardline);
+            (PPrint.hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ PPrint.hardline);
         flush stderr);
     tenv
 

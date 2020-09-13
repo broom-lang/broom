@@ -95,7 +95,10 @@ let sibling (env : t) kind uv = match get_uv env uv with
     | Unassigned (_, _, level) -> Fc.Uv.make env.tx_log (Unassigned (Name.fresh (), kind, level))
     | Assigned _ -> failwith "unreachable"
 
-let tx_log (env : t) = env.tx_log
+let set_expr (env : t) ref expr = TxRef.set env.tx_log ref expr
+let set_coercion (env : t) ref coercion = TxRef.set env.tx_log ref coercion
+
+let document (env : t) to_doc v = to_doc env.tx_log v
 
 let rec expose_abs' env depth substitution (Exists (params, body) : T.abs) : T.abs =
     let depth = depth + 1 in

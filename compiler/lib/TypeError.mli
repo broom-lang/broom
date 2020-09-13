@@ -21,5 +21,5 @@ type error =
 
 exception TypeError of Util.span * error
 
-val to_doc : Fc.Uv.subst -> Util.span -> error -> PPrint.document
+val to_doc : Util.span -> Fc.Uv.subst -> error -> PPrint.document
 

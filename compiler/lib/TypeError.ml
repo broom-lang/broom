@@ -58,7 +58,7 @@ let rec cause_to_doc s pos = function
     | Polytype typ -> Fc.Type.abs_to_doc s typ ^/^ PPrint.string "is not a monotype"
     | PolytypeInference typ -> PPrint.string "tried to infer polytype" ^/^ Fc.Type.abs_to_doc s typ
 
-let to_doc s (({pos_fname; _}, _) as span : Util.span) err =
+let to_doc (({pos_fname; _}, _) as span : Util.span) s err =
     PPrint.prefix 4 1 (PPrint.string "Type error in" ^/^ PPrint.string pos_fname ^/^ PPrint.string "at"
         ^/^ PPrint.string (Util.span_to_string span) ^/^ PPrint.colon)
         (cause_to_doc s span err)

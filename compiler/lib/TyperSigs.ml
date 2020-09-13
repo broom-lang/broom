@@ -64,13 +64,15 @@ module type ENV = sig
 
     val get_implementation : t -> T.ov -> (Name.t * T.ov * uv) option
 
-    (* HACK: *)
     val uv : t -> T.kind -> Name.t -> uv
     val sibling : t -> T.kind -> uv -> uv
     val get_uv : t -> uv -> Fc.Uv.v
     val set_uv : t -> uv -> Fc.Uv.v -> unit
 
-    val tx_log : t -> TxRef.log
+    val set_expr : t -> Fc.Term.Expr.t with_pos TxRef.rref -> Fc.Term.Expr.t with_pos -> unit
+    val set_coercion : t -> T.coercion TxRef.rref -> T.coercion -> unit
+
+    val document : t -> (Fc.Uv.subst -> 'a -> PPrint.document) -> 'a -> PPrint.document
 
     val expose_abs : t -> T.t Vector.t -> T.abs -> T.abs
     val expose : t -> T.t Vector.t -> T.t -> T.t
