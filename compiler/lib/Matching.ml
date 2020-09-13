@@ -192,7 +192,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
                     | Values typs ->
                         (uv, Values (Vector.map (fun typ ->
-                            T.Uv (sibling env (K.kindof_F env typ) uv)
+                            T.Uv (sibling env (K.kindof_F pos env typ) uv)
                         ) typs))
                     | Pi (_, domain, _, _) ->
                         (uv, Pi ( Vector.of_list []
@@ -205,8 +205,8 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     | EmptyRow -> (uv, EmptyRow)
                     | Proxy _ -> (uv, Proxy (T.to_abs (Uv (sibling env (failwith "TODO") uv))))
                     | App (callee, args) ->
-                        ( uv, T.App (Uv (sibling env (K.kindof_F env callee) uv)
-                        , Vector1.map (fun arg -> T.Uv (sibling env (K.kindof_F env arg) uv)) args) )
+                        ( uv, T.App (Uv (sibling env (K.kindof_F pos env callee) uv)
+                        , Vector1.map (fun arg -> T.Uv (sibling env (K.kindof_F pos env arg) uv)) args) )
                     | Prim pt -> (uv, Prim pt)
 
                     | Fn _ -> failwith "unreachable: `Fn` as template of `articulate`"

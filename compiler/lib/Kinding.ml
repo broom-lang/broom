@@ -24,29 +24,27 @@ let kindof_prim : Prim.t -> T.kind = function
     | Int -> Prim Type
     | Type | Row -> Prim Type
 
-let rec kindof_F env : T.t -> T.kind = function
+let rec kindof_F pos env : T.t -> T.kind = function
     | Pi _ | Record _ | Proxy _ -> Prim Type
     | With _ | EmptyRow -> Prim Row
     | Fn (domain, body) ->
-        Pi (Vector.empty, Vector1.to_vector domain, EmptyRow, T.to_abs (kindof_F env body))
+        Pi (Vector.empty, Vector1.to_vector domain, EmptyRow, T.to_abs (kindof_F pos env body))
     | App (callee, args) ->
-        (match kindof_F env callee with
+        (match kindof_F pos env callee with
         | Pi (universals, domain, eff, Exists (existentials, codomain)) ->
-            Vector.iter2 (fun domain arg -> check_F env domain arg)
+            Vector.iter2 (fun domain arg -> check_F pos env domain arg)
                 domain (Vector1.to_vector args);
             codomain)
     | Ov ((_, kind), _) -> kind
     | Bv {kind; _} -> kind
     | Uv uv -> (match Env.get_uv env uv with
         | Unassigned (_, kind, _) -> kind
-        | Assigned typ -> kindof_F env typ)
+        | Assigned typ -> kindof_F pos env typ)
     | Prim pt -> kindof_prim pt
 
-and check_F env kind typ =
-    let kind' = kindof_F env typ in
-    if kind' = kind (* HACK *)
-    then ()
-    else failwith "check_F: inequal kinds"
+and check_F pos env kind typ =
+    let kind' = kindof_F pos env typ in
+    ignore (M.solving_unify pos env kind' kind)
 
 let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
     let rec elab env (typ : AType.t with_pos) : T.t kinding =
@@ -60,13 +58,14 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
         | Row decls -> elab_row env typ.pos decls
 
         | Path expr ->
+            let pos = typ.pos in
             let {TS.term = _; typ = proxy_typ; eff} = C.typeof env {typ with v = expr} in
             let _ = M.solving_unify typ.pos env eff EmptyRow in
             (* FIXME: does not accept e.g. `row`: *)
             (match M.focalize typ.pos env proxy_typ (ProxyL (Uv (Env.uv env (Prim Type) (Name.fresh ())))) with
             | (_, Proxy typ) ->
                 let (_, typ) = reabstract env typ in
-                {typ; kind = kindof_F env typ}
+                {typ; kind = kindof_F pos env typ}
             | _ -> failwith "unreachable")
 
         (*| AType.Singleton expr ->
@@ -168,11 +167,10 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
     { typ = Exists (Vector.map snd params, Env.close env substitution typ)
     ; kind }
 
-and check env kind typ =
+and check env kind ({v = _; pos} as typ) =
     let {TS.typ; kind = kind'} = kindof env typ in
-    if kind' = kind (* HACK *)
-    then typ
-    else failwith "inequal kinds"
+    ignore (M.solving_unify pos env kind' kind);
+    typ
 
 and eval env typ =
     let (let*) = Option.bind in

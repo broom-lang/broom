@@ -104,7 +104,7 @@ let set_uv (env : t) pos uv v = match get_uv env uv with
     | Unassigned (_, kind, _) ->
         (match v with
         | Uv.Unassigned _ -> ()
-        | Assigned typ -> ignore (M.solving_unify pos env kind (K.kindof_F env typ)));
+        | Assigned typ -> ignore (M.solving_unify pos env kind (K.kindof_F pos env typ)));
         Fc.Uv.set env.tx_log uv v
     | Assigned _ -> failwith "compiler bug: tried to set Assigned uv"
 
