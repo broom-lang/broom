@@ -1,17 +1,7 @@
+module T = Fc.Type
 module TS = TyperSigs
 
-module Make (C : TS.TYPING) : TS.ENV = struct
-
-module T = Fc.Type
-module Uv = Fc.Uv
-
-module Bindings = Map.Make(Name)
-
 type uv = Fc.Uv.t
-type subst = Fc.Uv.subst
-
-let ref = TxRef.ref
-let (!) = TxRef.(!)
 
 type scope =
     | Hoisting of T.ov list TxRef.rref * T.level
@@ -19,10 +9,30 @@ type scope =
     | Val of Name.t * T.t
     | Axiom of (Name.t * T.ov * uv) Name.Map.t
 
-type t =
+type env =
     { tx_log : Fc.Uv.subst
     ; scopes : scope list
     ; level : Fc.Type.level }
+
+module Make
+    (K : TS.KINDING with type env = env)
+    (M : TS.MATCHING with type env = env)
+: TS.ENV with type t = env
+= struct
+
+module T = T
+module Uv = Fc.Uv
+
+module Bindings = Map.Make(Name)
+
+type subst = Fc.Uv.subst
+
+let ref = TxRef.ref
+let (!) = TxRef.(!)
+
+type uv = Fc.Uv.t
+
+type t = env
 
 let initial_level = 1
 
@@ -89,7 +99,14 @@ let uv (env : t) kind name = Fc.Uv.make env.tx_log (Unassigned (name, kind, env.
 
 let get_uv (env : t) uv = Fc.Uv.get env.tx_log uv
 
-let set_uv (env : t) uv v = Fc.Uv.set env.tx_log uv v
+(* OPTIMIZE: *)
+let set_uv (env : t) pos uv v = match get_uv env uv with
+    | Unassigned (_, kind, _) ->
+        (match v with
+        | Uv.Unassigned _ -> ()
+        | Assigned typ -> ignore (M.solving_unify pos env kind (K.kindof_F env typ)));
+        Fc.Uv.set env.tx_log uv v
+    | Assigned _ -> failwith "compiler bug: tried to set Assigned uv"
 
 let sibling (env : t) kind uv = match get_uv env uv with
     | Unassigned (_, _, level) -> Fc.Uv.make env.tx_log (Unassigned (Name.fresh (), kind, level))

@@ -1,4 +1,9 @@
 module TS = TyperSigs
 
-module Make (C : TS.TYPING) : TS.ENV
+type env
+
+module Make
+    (K : TS.KINDING with type env = env)
+    (M : TS.MATCHING with type env = env)
+: TS.ENV with type t = env
 

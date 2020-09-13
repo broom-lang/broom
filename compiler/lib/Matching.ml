@@ -43,7 +43,7 @@ let pull_row pos env label' typ : T.coercion option * T.t * T.t =
         | Some (Uv uv, co) -> (* FIXME: 'scopedlabels' termination check: *)
             let base = T.Uv (sibling env (Prim Row) uv) in
             let field = T.Uv (sibling env (Prim Type) uv) in
-            Env.set_uv env uv (Assigned (With {base; label = label'; field}));
+            Env.set_uv env pos uv (Assigned (With {base; label = label'; field}));
             (co, base, field)
         | Some _ ->
             let template = T.WithL {base = Hole; label = label'; field = Hole} in
@@ -93,7 +93,7 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                         (uv, (With {base = Uv (sibling env (Prim Row) uv)
                             ; label; field = Uv (sibling env (Prim Type) uv)}))
                     | Hole -> failwith "unreachable: Hole as template in `articulate_template`" in
-                Env.set_uv env uv (Assigned typ);
+                Env.set_uv env pos uv (Assigned typ);
                 typ
             | Assigned _ -> failwith "unreachable: `articulate_template` on assigned uv")
         | _ -> failwith "unreachable: `articulate_template` on non-uv" in
@@ -211,7 +211,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
                     | Fn _ -> failwith "unreachable: `Fn` as template of `articulate`"
                     | Bv _ -> failwith "unreachable: `Bv` as template of `articulate`" in
-                Env.set_uv env uv (Assigned typ);
+                Env.set_uv env pos uv (Assigned typ);
                 typ
             | Assigned _ -> failwith "unreachable: `articulate` on assigned uv")
         | _ -> failwith "unreachable: `articulate` on non-uv" in
@@ -388,7 +388,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                             | Ov (_, level') -> level' - 1
                             | _ -> failwith "unreachable: non-ov path arg in path locator" in
                         check_uv_assignee pos env uv level max_uv_level impl;
-                        Env.set_uv env uv (Assigned impl);
+                        Env.set_uv env pos uv (Assigned impl);
                         { coercion = TyperSigs.Cf (fun _ -> {v = Proxy abs_carrie'; pos})
                         ; residual = empty }
                     | _ -> failwith "unreachable: Assigned uv in Proxy <:")
@@ -529,7 +529,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
         (match Env.get_uv env uv with
         | Unassigned (_, kind, level) ->
             check_uv_assignee pos env uv level Int.max_int typ';
-            Env.set_uv env uv (Assigned typ');
+            Env.set_uv env pos uv (Assigned typ');
             {coercion = None; residual = empty}
         | Assigned _ -> failwith "unreachable: Assigned `typ` in `unify_whnf`")
 
@@ -691,7 +691,7 @@ and check_uv_assignee pos env uv level max_uv_level typ =
                 else if level' <= level
                 then ()
                 else if level' <= max_uv_level
-                then Env.set_uv env uv' (Unassigned (name, kind, level)) (* hoist *)
+                then Env.set_uv env pos uv' (Unassigned (name, kind, level)) (* hoist *)
                 else raise (Err.TypeError (pos, IncompleteImpl (uv, uv')))
             | Assigned typ -> check typ)
         | Bv _ | Prim _ -> () in

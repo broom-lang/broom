@@ -67,7 +67,7 @@ module type ENV = sig
     val uv : t -> T.kind -> Name.t -> uv
     val sibling : t -> T.kind -> uv -> uv
     val get_uv : t -> uv -> Fc.Uv.v
-    val set_uv : t -> uv -> Fc.Uv.v -> unit
+    val set_uv : t -> span -> uv -> Fc.Uv.v -> unit
 
     val set_expr : t -> Fc.Term.Expr.t with_pos TxRef.rref -> Fc.Term.Expr.t with_pos -> unit
     val set_coercion : t -> T.coercion TxRef.rref -> T.coercion -> unit
