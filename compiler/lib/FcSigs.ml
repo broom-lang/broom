@@ -13,13 +13,13 @@ module type EXPR = sig
     type t =
         | Values of t with_pos Vector.t
         | Focus of t with_pos * int
-        | Fn of Type.binding Vector.t * lvalue Vector.t * t with_pos
-        | App of t with_pos * Type.t Vector.t * t with_pos Vector.t
-        | PrimApp of Primop.t * Type.t Vector.t * t with_pos Vector.t
+        | Fn of Type.binding Vector.t * lvalue * t with_pos
+        | App of t with_pos * Type.t Vector.t * t with_pos
+        | PrimApp of Primop.t * Type.t Vector.t * t with_pos
         | Let of def * t with_pos
         | Letrec of def Vector1.t * t with_pos
         | LetType of Type.binding Vector1.t * t with_pos
-        | Match of t with_pos Vector.t * clause Vector.t
+        | Match of t with_pos * clause Vector.t
         | Axiom of (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t * t with_pos
         | Cast of t with_pos * Type.coercion
         | Pack of Type.t Vector1.t * t with_pos
@@ -40,7 +40,7 @@ module type EXPR = sig
         | UseP of Name.t
         | ConstP of Const.t
 
-    and clause = {pats : pat with_pos Vector.t; body : t with_pos}
+    and clause = {pat : pat with_pos; body : t with_pos}
 
     and field = {label : string; expr : t with_pos}
 

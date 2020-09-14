@@ -84,10 +84,11 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
             (match Env.get_uv env uv with
             | Unassigned _ ->
                 let (uv, typ) = match template with
-                    | T.PiL (arity, _) ->
-                        (uv, T.Pi ( Vector.of_list []
-                                  , Vector.init arity (fun _ -> T.Uv (sibling env (Prim Type) uv))
-                                  , Uv (sibling env (Prim Type) uv), T.to_abs (Uv (sibling env (Prim Type) uv)) ))
+                    | T.PiL _ ->
+                        (uv, T.Pi { universals = Vector.of_list []; idomain = None
+                                  ; edomain = T.Uv (sibling env (Prim Type) uv)
+                                  ; eff = Uv (sibling env (Prim Row) uv)
+                                  ; codomain = T.to_abs (Uv (sibling env (Prim Type) uv)) })
                     | ProxyL _ -> (uv, T.Proxy (T.to_abs (Uv (sibling env (Prim Type) uv))))
                     | WithL {base = _; label; field = _} ->
                         (uv, (With {base = Uv (sibling env (Prim Row) uv)
@@ -194,11 +195,11 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         (uv, Values (Vector.map (fun typ ->
                             T.Uv (sibling env (K.kindof_F pos env typ) uv)
                         ) typs))
-                    | Pi (_, domain, _, _) ->
-                        (uv, Pi ( Vector.of_list []
-                                , Vector.map (fun _ -> T.Uv (sibling env (Prim Type) uv)) domain
-                                , Uv (sibling env (Prim Row) uv)
-                                , T.to_abs (Uv (sibling env (Prim Type) uv)) ))
+                    | Pi _ ->
+                        (uv, Pi { universals = Vector.of_list []; idomain = None
+                                ; edomain = T.Uv (sibling env (Prim Type) uv)
+                                ; eff = Uv (sibling env (Prim Row) uv)
+                                ; codomain = T.to_abs (Uv (sibling env (Prim Type) uv)) })
                     | Record _ -> (uv, Record (Uv (sibling env (Prim Row) uv)))
                     | With {base = _; label; field = _} ->
                         (uv, With {base = Uv (sibling env (Prim Row) uv); label; field = Uv (sibling env (Prim Type) uv)})
@@ -254,39 +255,32 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 end else failwith "<: tuple lengths"
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
-        | (Pi (universals, domain, eff, codomain), _) -> (match super with
-            | Pi (universals', domain', eff', codomain') ->
-                let (env, universals', domain', eff', codomain') =
-                    Env.push_arrow_skolems env universals' domain' eff' codomain' in
-                let (uvs, domain, eff, codomain) =
-                    Env.instantiate_arrow env universals domain eff codomain in
+        | (Pi {universals; idomain; edomain; eff; codomain}, _) -> (match super with
+            | Pi { universals = universals'; idomain = idomain'; edomain = edomain'
+                 ; eff = eff'; codomain = codomain'} ->
+                let (env, universals', idomain', edomain', eff', codomain') =
+                    Env.push_arrow_skolems env universals' idomain' edomain' eff' codomain' in
+                let (uvs, idomain, edomain, eff, codomain) =
+                    Env.instantiate_arrow env universals idomain edomain eff codomain in
 
-                (* FIXME: raises on arity mismatch: *)
-                let {coercion = domain_coercions; residual = domain_residual} =
-                    Vector.fold2 (fun {coercion = coercions; residual} domain domain' ->
-                        let {coercion; residual = residual'} = subtype pos occ env domain' domain in
-                        {coercion = coercion :: coercions; residual = combine residual residual'})
-                    {coercion = []; residual = empty} domain domain' in
-                let domain_coercions = domain_coercions |> List.rev |> Vector.of_list in
+                let {coercion = Cf coerce_domain; residual = residual} =
+                    subtype pos occ env edomain' edomain in
                 let {coercion = _; residual = eff_residual} = subtype pos occ env eff eff' in
+                let residual = combine residual eff_residual in
                 let {coercion = Cf coerce_codomain; residual = codomain_residual} =
                     subtype_abs pos occ env codomain codomain' in
+                let residual = combine residual codomain_residual in
 
-                let names = Vector.map (fun _ -> Name.fresh ()) domain in
-                let params = Vector.map2 (fun name domain' -> {E.name; typ = domain'}) names domain' in
-                let args = Vector.map2 (fun name (TyperSigs.Cf coerce_domain) ->
-                        coerce_domain {pos; v = E.Use name}
-                ) names domain_coercions in
-                let arrows_residual = codomain_residual
-                    |> combine eff_residual
-                    |> combine domain_residual in
+                let name = Name.fresh () in
+                let param = {E.name; typ = edomain'} in
+                let arg = coerce_domain {pos; v = E.Use name} in
                 { coercion = TyperSigs.Cf (fun v ->
-                    let body = coerce_codomain {pos; v = App (v, Vector.map (fun uv -> T.Uv uv) uvs, args)} in
-                    {pos; v = E.Fn (Vector.map fst universals', params, body)})
+                    let body = coerce_codomain {pos; v = App (v, Vector.map (fun uv -> T.Uv uv) uvs, arg)} in
+                    {pos; v = E.Fn (Vector.map fst universals', param, body)})
                 ; residual =
                     (match Vector1.of_vector (Vector.map fst universals') with
-                    | Some skolems -> ResidualMonoid.skolemized (Vector1.map snd skolems) arrows_residual
-                    | None -> arrows_residual) }
+                    | Some skolems -> ResidualMonoid.skolemized (Vector1.map snd skolems) residual
+                    | None -> residual) }
             | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
 
         | (Record row, _) -> (match super with
@@ -465,8 +459,9 @@ and occurs_check pos env uv typ =
 
     and check = function
         | Values typs -> Vector.iter check typs
-        | Pi (_, domain, eff, codomain) ->
-            Vector.iter check domain;
+        | Pi {universals = _; idomain; edomain; eff; codomain} ->
+            Option.iter check idomain;
+            check edomain;
             check eff;
             check_abs codomain
         | Record row -> check row
@@ -552,8 +547,9 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             end else failwith "~ tuple lengths"
         | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
 
-    | (Pi (universals, domain, eff, codomain), _) -> (match typ' with
-        | Pi (universals', domain', eff', codomain') -> failwith "TODO: unify Pi"
+    | (Pi {universals; idomain; edomain; eff; codomain}, _) -> (match typ' with
+        | Pi { universals = universals'; idomain = idomain'; edomain = edomain'
+             ; eff = eff'; codomain = codomain' } -> failwith "TODO: unify Pi"
         | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
 
     | (Record row, _) -> (match typ' with
@@ -663,10 +659,11 @@ and check_uv_assignee pos env uv level max_uv_level typ =
 
     and check = function
         | Values typs -> Vector.iter check typs
-        | Pi (universals, domain, eff, codomain) ->
+        | Pi {universals; idomain; edomain; eff; codomain} ->
             if Vector.length universals = 0
             then begin
-                Vector.iter check domain;
+                Option.iter check idomain;
+                check edomain;
                 check eff;
                 check_abs codomain
             end else raise (Err.TypeError (pos, Polytype (T.to_abs typ)))

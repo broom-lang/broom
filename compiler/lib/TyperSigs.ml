@@ -84,10 +84,10 @@ module type ENV = sig
 
     val reabstract : t -> T.abs -> T.ov Vector.t * T.t
     val push_abs_skolems : t -> T.abs -> t * T.ov Vector.t * T.t
-    val push_arrow_skolems : t -> T.kind Vector.t -> T.t Vector.t -> T.t -> T.abs
-        -> t * T.ov Vector.t * T.t Vector.t * T.t * T.abs
+    val push_arrow_skolems : t -> T.kind Vector.t -> T.t option -> T.t -> T.t -> T.abs
+        -> t * T.ov Vector.t * T.t option * T.t * T.t * T.abs
     val instantiate_abs : t -> T.abs -> T.uv Vector.t * T.t
-    val instantiate_arrow : t -> T.kind Vector.t -> T.t Vector.t
-        -> T.t -> T.abs -> T.uv Vector.t * T.t Vector.t * T.t * T.abs
+    val instantiate_arrow : t -> T.kind Vector.t -> T.t option -> T.t
+        -> T.t -> T.abs -> T.uv Vector.t * T.t option * T.t * T.t * T.abs
 end
 

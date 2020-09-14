@@ -17,9 +17,9 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Ann of t with_pos * typ with_pos
             | Fn of clause Vector.t
             | Thunk of stmt Vector.t
-            | App of t with_pos * t with_pos Vector.t
+            | App of t with_pos * t with_pos
             | AppSequence of t with_pos Vector1.t
-            | PrimApp of Primop.t * t with_pos Vector.t
+            | PrimApp of Primop.t * t with_pos
             | Record of stmt Vector.t
             | Select of t with_pos * Name.t
             | Proxy of typ
@@ -27,8 +27,8 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Const of Const.t
 
         and clause =
-            { iparams : pat with_pos Vector.t
-            ; eparams : pat with_pos Vector.t
+            { iparam : pat with_pos option
+            ; eparam : pat with_pos
             ; body : t with_pos }
 
         and pat = t
@@ -45,12 +45,11 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                 PPrint.surround_separate_map 4 0 (PPrint.brackets PPrint.empty)
                     PPrint.lbracket (PPrint.semi ^^ PPrint.break 1) PPrint.rbracket
                     Stmt.to_doc (Vector.to_list stmts)
-            | App (callee, args) -> to_doc callee
-                ^/^ PPrint.separate_map (PPrint.break 1) to_doc (Vector.to_list args)
+            | App (callee, arg) -> to_doc callee ^/^ to_doc arg
             | AppSequence exprs ->
                 PPrint.separate_map (PPrint.break 1) to_doc (Vector1.to_list exprs)
-            | PrimApp (callee, args) -> PPrint.string "__" ^^ Primop.to_doc callee
-                ^/^ PPrint.separate_map (PPrint.break 1) to_doc (Vector.to_list args)
+            | PrimApp (callee, arg) ->
+                PPrint.string "__" ^^ Primop.to_doc callee ^/^ to_doc arg
             | Ann (expr, typ) ->
                 PPrint.infix 4 1 PPrint.colon (to_doc expr) (Type.to_doc typ)
             | Record stmts ->
@@ -62,13 +61,12 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Var name -> Name.to_doc name
             | Const v -> Const.to_doc v
 
-        and clause_to_doc {iparams; eparams; body} =
-            let idoc = PPrint.separate_map (PPrint.break 1) to_doc (Vector.to_list iparams) in
-            let edoc = PPrint.separate_map (PPrint.break 1) to_doc (Vector.to_list eparams) in
-            PPrint.bar ^^ PPrint.blank 1
-                ^^ PPrint.infix 4 1 (PPrint.string "->")
-                    (PPrint.infix 4 1 (PPrint.string "=>") idoc edoc)
-                    (to_doc body)
+        and clause_to_doc {iparam; eparam; body} =
+            let doc = PPrint.infix 4 1 (PPrint.string "->") (to_doc eparam) (to_doc body) in
+            let doc = match iparam with
+                | Some iparam -> PPrint.infix 4 1 (PPrint.string "=>") (to_doc iparam) doc
+                | None -> doc in
+            PPrint.bar ^^ PPrint.blank 1 ^^ doc
     end
 
     module Stmt = struct
@@ -100,7 +98,7 @@ and Type : AstSigs.TYPE
     type stmt = Term.Stmt.t
 
     type t =
-        | Pi of { idomain : pat with_pos; edomain : pat with_pos; eff : t with_pos
+        | Pi of { idomain : pat with_pos option; edomain : pat with_pos; eff : t with_pos
             ; codomain : t with_pos }
         | Record of stmt Vector.t
         | Row of stmt Vector.t
@@ -111,7 +109,9 @@ and Type : AstSigs.TYPE
         | Pi {idomain; edomain; eff; codomain} ->
             let doc = PPrint.infix 4 1 (PPrint.string "-!") (Term.Expr.to_doc edomain)
                 (PPrint.infix 4 1 (PPrint.string "->") (to_doc eff) (to_doc codomain)) in
-            PPrint.infix 4 1 (PPrint.string "=>") (Term.Expr.to_doc idomain) doc
+            (match idomain with
+            | Some idomain -> PPrint.infix 4 1 (PPrint.string "=>") (Term.Expr.to_doc idomain) doc
+            | None -> doc)
         | Record stmts ->
             PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.bar)
                 (PPrint.lbrace ^^ PPrint.bar) (PPrint.semi ^^ PPrint.break 1) (PPrint.bar ^^ PPrint.rbrace)

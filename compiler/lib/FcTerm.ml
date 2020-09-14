@@ -29,13 +29,13 @@ module rec Expr : FcSigs.EXPR
     type t =
         | Values of t with_pos Vector.t
         | Focus of t with_pos * int
-        | Fn of Type.binding Vector.t * lvalue Vector.t * t with_pos
-        | App of t with_pos * typ Vector.t * t with_pos Vector.t
-        | PrimApp of Primop.t * Type.t Vector.t * t with_pos Vector.t
+        | Fn of Type.binding Vector.t * lvalue * t with_pos
+        | App of t with_pos * typ Vector.t * t with_pos
+        | PrimApp of Primop.t * Type.t Vector.t * t with_pos
         | Let of def * t with_pos
         | Letrec of def Vector1.t * t with_pos
         | LetType of Type.binding Vector1.t * t with_pos
-        | Match of t with_pos Vector.t * clause Vector.t
+        | Match of t with_pos * clause Vector.t
         | Axiom of (Name.t * Type.kind Vector.t * typ * typ) Vector1.t * t with_pos
         | Cast of t with_pos * coercion
         | Pack of typ Vector1.t * t with_pos
@@ -56,7 +56,7 @@ module rec Expr : FcSigs.EXPR
         | UseP of Name.t
         | ConstP of Const.t
 
-    and clause = {pats : pat with_pos Vector.t; body : t with_pos}
+    and clause = {pat : pat with_pos; body : t with_pos}
 
     and field = {label : string; expr : t with_pos}
 
@@ -75,9 +75,7 @@ module rec Expr : FcSigs.EXPR
                              (PPrint.blank 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
                              (Type.binding_to_doc s) (Vector.to_list universals)
                          ^^ PPrint.blank 1
-                         ^^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
-                            PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
-                            (lvalue_to_doc s) (Vector.to_list params))
+                         ^^ PPrint.parens (lvalue_to_doc s params))
                      ^^ PPrint.blank 1 ^^ PPrint.string "->")
                 (to_doc s body)
         | Let (def, body) ->
@@ -97,31 +95,23 @@ module rec Expr : FcSigs.EXPR
                                         (Type.binding_to_doc s) (Vector1.to_list bindings)))
                     (PPrint.string "in")
                 ^/^ to_doc s body)
-        | Match (matchees, clauses) ->
-            let matchees_doc =
-                PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) (to_doc s)
-                    (Vector.to_list matchees) in
-            let start = PPrint.string "match" ^^ PPrint.blank 1 ^^ matchees_doc in
+        | Match (matchee, clauses) ->
+            let start = PPrint.string "match" ^^ PPrint.blank 1 ^^ to_doc s matchee in
             PPrint.surround_separate_map 4 1 (start ^/^ PPrint.string "end")
                 start (PPrint.break 1) (PPrint.string "end")
                 (clause_to_doc s) (Vector.to_list clauses)
-        | App (callee, targs, args) ->
+        | App (callee, targs, arg) ->
             PPrint.align (to_doc s callee
                           ^^ PPrint.surround_separate_map 4 0 PPrint.empty
                                 (PPrint.break 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
                                 (Type.to_doc s) (Vector.to_list targs)
-                          ^/^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
-                                PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
-                                (to_doc s) (Vector.to_list args))
-        | PrimApp (op, targs, args) ->
+                          ^/^ to_doc s arg)
+        | PrimApp (op, targs, arg) ->
             PPrint.align (PPrint.string "__" ^^ Primop.to_doc op
                           ^^ PPrint.surround_separate_map 4 0 PPrint.empty
                                 (PPrint.break 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
                                 (Type.to_doc s) (Vector.to_list targs)
-                          ^/^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
-                                PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
-                                (to_doc s) (Vector.to_list args))
-
+                          ^/^ to_doc s arg)
         | Axiom (axioms, body) ->
             PPrint.group(
                 PPrint.surround 4 1 (PPrint.string "axiom")
@@ -182,12 +172,10 @@ module rec Expr : FcSigs.EXPR
                     (Type.to_doc s l)
                     (Type.to_doc s r))
 
-    and clause_to_doc s {pats; body} =
+    and clause_to_doc s {pat; body} =
         PPrint.bar ^^ PPrint.blank 1
-        ^^ PPrint.infix 4 1 (PPrint.string "->")
-                (PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) (pat_to_doc s)
-                    (Vector.to_list pats))
-                (to_doc s body)
+            ^^ PPrint.infix 4 1 (PPrint.string "->")
+                (pat_to_doc s pat) (to_doc s body)
 
     and castee_to_doc s (castee : t with_pos) = match castee.v with
         | Fn _ -> PPrint.parens (to_doc s castee)

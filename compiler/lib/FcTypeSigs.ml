@@ -18,7 +18,7 @@ module type TYPE = sig
 
     and t =
         | Values of t Vector.t
-        | Pi of kind Vector.t * t Vector.t * t * abs
+        | Pi of {universals : kind Vector.t; idomain : t option; edomain : t; eff : t; codomain : abs}
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
@@ -31,7 +31,7 @@ module type TYPE = sig
         | Prim of Prim.t
 
     and template =
-        | PiL of int * template
+        | PiL of template
         | WithL of {base : template; label : Name.t; field : template}
         | ProxyL of t
         | Hole

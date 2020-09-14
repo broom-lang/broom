@@ -123,10 +123,12 @@ let rec expose_abs' env depth substitution (Exists (params, body) : T.abs) : T.a
 
 and expose' env depth substitution = function
     | Values typs -> Values (Vector.map (expose' env depth substitution) typs)
-    | Pi (params, domain, eff, codomain) ->
+    | Pi {universals; idomain; edomain; eff; codomain} ->
         let depth = depth + 1 in
-        Pi ( params, Vector.map (expose' env depth substitution) domain, eff
-            , expose_abs' env depth substitution codomain )
+        Pi { universals; idomain = Option.map (expose' env depth substitution) idomain
+            ; edomain = expose' env depth substitution edomain
+            ; eff = expose' env depth substitution eff
+            ; codomain = expose_abs' env depth substitution codomain }
     | Record row -> Record (expose' env depth substitution row)
     | With {base; label; field} ->
         With {base = expose' env depth substitution base; label; field = expose' env depth substitution field}
@@ -149,7 +151,7 @@ and expose' env depth substitution = function
     | (Ov _ | Prim _) as typ -> typ
 
 and expose_template' env depth substitution = function
-    | T.PiL (arity, codomain) -> T.PiL (arity, expose_template' env depth substitution codomain)
+    | T.PiL codomain -> T.PiL (expose_template' env depth substitution codomain)
     | WithL {base; label; field} ->
         WithL { base = expose_template' env depth substitution base
               ; label; field = expose_template' env depth substitution field }
@@ -168,10 +170,12 @@ let rec close_abs' env depth substitution (Exists (params, body) : T.abs) : T.ab
 
 and close' env depth substitution = function
     | Values typs -> Values (Vector.map (close' env depth substitution) typs)
-    | Pi (params, domain, eff, codomain) ->
+    | Pi {universals; idomain; edomain; eff; codomain} ->
         let depth = depth + 1 in
-        Pi ( params, Vector.map (close' env depth substitution) domain, eff
-            , close_abs' env depth substitution codomain )
+        Pi { universals; idomain = Option.map (close' env depth substitution) idomain
+           ; edomain = close' env depth substitution edomain
+           ; eff = close' env depth substitution eff
+           ; codomain = close_abs' env depth substitution codomain }
     | Record row -> Record (close' env depth substitution row)
     | With {base; label; field} ->
         With {base = close' env depth substitution base; label; field = close' env depth substitution field}
@@ -193,7 +197,7 @@ and close' env depth substitution = function
     | (Bv _ | Prim _) as typ -> typ
 
 and close_template' env depth substitution = function
-    | T.PiL (arity, codomain) -> T.PiL (arity, close_template' env depth substitution codomain)
+    | T.PiL codomain -> T.PiL (close_template' env depth substitution codomain)
     | WithL {base; label; field} ->
         WithL { base = close_template' env depth substitution base
               ; label; field = close_template' env depth substitution field }
@@ -216,11 +220,12 @@ let push_abs_skolems env (T.Exists (existentials, body)) =
     let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
     (env, skolems, expose env substitution body)
 
-let push_arrow_skolems env universals domain eff codomain =
+let push_arrow_skolems env universals idomain edomain eff codomain =
     let (env, skolems) = push_skolems env universals in
     let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
     ( env, skolems
-    , Vector.map (expose env substitution) domain
+    , Option.map (expose env substitution) idomain
+    , expose env substitution edomain
     , expose env substitution eff
     , expose_abs env substitution codomain )
 
@@ -229,12 +234,13 @@ let instantiate_abs env (T.Exists (existentials, body)) =
     let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
     (uvs, expose env substitution body)
 
-let instantiate_arrow env universals domain eff codomain =
+let instantiate_arrow env universals idomain edomain eff codomain =
     let uvs = Vector.map (fun kind -> uv env kind (Name.fresh())) universals in
     let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
     ( uvs
-    , Vector.map (expose env substitution) domain
-    , eff
+    , Option.map (expose env substitution) idomain
+    , expose env substitution edomain
+    , expose env substitution eff 
     , expose_abs env substitution codomain )
 
 end

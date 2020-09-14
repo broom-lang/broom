@@ -71,45 +71,45 @@ explicitly :
 binapp :
     | binapp "||" binapp2 {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
+        {v = App (operator, {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp2 { $1 }
 
 binapp2 :
     | binapp2 "&&" binapp3 {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
+        {v = App (operator, {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp3 { $1 }
 
 binapp3 :
     | binapp4 COMPARISON binapp4 { (* NOTE: nonassociative *)
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
+        {v = App (operator, {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp4 { $1 }
 
 binapp4 :
     | binapp4 ADDITIVE binapp5 {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
+        {v = App (operator, {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp5 { $1 }
 
 binapp5 :
     | binapp5 MULTIPLICATIVE app {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Vector.of_list [$1; $3]); pos = $loc}
+        {v = App (operator, {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | app { $1 }
 
 app :
-    | PRIMOP args? {
-        let args = match $2 with
-            | Some args -> Vector1.to_vector args
-            | None -> Vector.empty in
+    | PRIMOP args {
+        let arg = if Vector1.length $2 = 1
+            then Vector1.get $2 0
+            else {v = Values (Vector1.to_vector $2); pos = $loc($2)} in
         match Primop.of_string $1 with
-        | Some op -> {v = PrimApp (op, args); pos = $loc}
+        | Some op -> {v = PrimApp (op, arg); pos = $loc}
         | None -> failwith ("No such primop: __" ^ $1)
     }
     | select args { {v = AppSequence (Vector1.append (Vector1.singleton $1) $2); pos = $loc} }
@@ -140,13 +140,16 @@ nestable_without_pos :
     | INT { Const (Int $1) }
 
 clause : "|" params "->" expr {
-        let (iparams, eparams) = $2 in
-        {iparams; eparams; body = $4}
+        let (iparam, eparam) = $2 in
+        {iparam; eparam; body = $4}
     }
 
 params :
-    | select+ "=>" select* { ($1 |> Vector.of_list, $3 |> Vector.of_list) }
-    | select* { (Vector.empty, Vector.of_list $1) }
+    | select+ "=>" select* {
+        ( Some {v = Values (Vector.of_list $1); pos = $loc($1)}
+        , {v = Values (Vector.of_list $3); pos = $loc($3)} )
+    }
+    | select* { (None, {v = Values (Vector.of_list $1); pos = $loc($1)}) }
 
 args : select+ { Vector1.of_list $1 |> Option.get }
 
@@ -161,22 +164,20 @@ typ : typ_without_pos { {v = $1; pos = $sloc} }
 
 typ_without_pos :
     | binapp "=>" binapp "-!" binapp "->" typ {
-        Pi {idomain = $1; edomain = $3; eff = {$5 with v = path $5.v}; codomain = $7}
+        Pi {idomain = Some $1; edomain = $3; eff = {$5 with v = path $5.v}; codomain = $7}
     }
     | binapp "=>" binapp "->" typ {
-        Pi {idomain = $1; edomain = $3; eff = {v = Row Vector.empty; pos = $loc($4)}; codomain = $5}
+        Pi {idomain = Some $1; edomain = $3; eff = {v = Row Vector.empty; pos = $loc($4)}; codomain = $5}
     }
     | binapp "=>" ann_expr {
-        Pi {idomain = $1; edomain = {v = Values Vector.empty; pos = $loc($2)}
+        Pi {idomain = Some $1; edomain = {v = Values Vector.empty; pos = $loc($2)}
             ; eff = {v = Row Vector.empty; pos = $loc($2)}; codomain = {$3 with v = path $3.v}}
     }
     | binapp "-!" binapp "->" typ {
-        Pi { idomain = {v = Values Vector.empty; pos = $loc($2)}; edomain = $1
-            ; eff = {$3 with v = path $3.v}; codomain = $5 }
+        Pi {idomain = None; edomain = $1 ; eff = {$3 with v = path $3.v}; codomain = $5}
     }
     | binapp "->" typ {
-        Pi { idomain = {v = Values Vector.empty; pos = $loc($2)}; edomain = $1
-            ; eff = {v = Row Vector.empty; pos = $loc($2)}; codomain = $3 }
+        Pi {idomain = None; edomain = $1; eff = {v = Row Vector.empty; pos = $loc($2)}; codomain = $3}
     }
     | ann_expr { path $1.v }
 

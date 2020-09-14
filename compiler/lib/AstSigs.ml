@@ -9,9 +9,9 @@ module type EXPR = sig
         | Ann of t with_pos * typ with_pos
         | Fn of clause Vector.t
         | Thunk of stmt Vector.t
-        | App of t with_pos * t with_pos Vector.t
+        | App of t with_pos * t with_pos
         | AppSequence of t with_pos Vector1.t
-        | PrimApp of Primop.t * t with_pos Vector.t
+        | PrimApp of Primop.t * t with_pos
         | Record of stmt Vector.t
         | Select of t with_pos * Name.t
         | Proxy of typ
@@ -19,8 +19,8 @@ module type EXPR = sig
         | Const of Const.t
 
     and clause =
-        { iparams : pat with_pos Vector.t
-        ; eparams : pat with_pos Vector.t
+        { iparam : pat with_pos option
+        ; eparam : pat with_pos
         ; body : t with_pos }
 
     and pat = t
@@ -54,7 +54,7 @@ module type TYPE = sig
     type pat
 
     type t =
-        | Pi of { idomain : pat with_pos; edomain : pat with_pos; eff : t with_pos
+        | Pi of { idomain : pat with_pos option; edomain : pat with_pos; eff : t with_pos
             ; codomain : t with_pos }
         | Record of stmt Vector.t
         | Row of stmt Vector.t
