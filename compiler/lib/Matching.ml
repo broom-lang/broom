@@ -89,7 +89,9 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                                   ; edomain = T.Uv (sibling env (Prim Type) uv)
                                   ; eff = Uv (sibling env (Prim Row) uv)
                                   ; codomain = T.to_abs (Uv (sibling env (Prim Type) uv)) })
-                    | ProxyL _ -> (uv, T.Proxy (T.to_abs (Uv (sibling env (Prim Type) uv))))
+                    | ProxyL _ ->
+                        let kind : T.kind = Uv (sibling env (Prim Type) uv) in
+                        (uv, T.Proxy (T.to_abs (Uv (sibling env kind uv))))
                     | WithL {base = _; label; field = _} ->
                         (uv, (With {base = Uv (sibling env (Prim Row) uv)
                             ; label; field = Uv (sibling env (Prim Type) uv)}))
@@ -204,7 +206,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     | With {base = _; label; field = _} ->
                         (uv, With {base = Uv (sibling env (Prim Row) uv); label; field = Uv (sibling env (Prim Type) uv)})
                     | EmptyRow -> (uv, EmptyRow)
-                    | Proxy _ -> (uv, Proxy (T.to_abs (Uv (sibling env (failwith "TODO") uv))))
+                    | Proxy _ ->
+                        let kind : T.kind = Uv (sibling env (Prim Type) uv) in
+                        (uv, Proxy (T.to_abs (Uv (sibling env kind uv))))
                     | App (callee, args) ->
                         ( uv, T.App (Uv (sibling env (K.kindof_F pos env callee) uv)
                         , Vector1.map (fun arg -> T.Uv (sibling env (K.kindof_F pos env arg) uv)) args) )
