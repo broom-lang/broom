@@ -122,6 +122,8 @@ let rec expose_abs' env depth substitution (Exists (params, body) : T.abs) : T.a
     Exists (params, expose' env depth substitution body)
 
 and expose' env depth substitution = function
+    | PromotedArray typs -> PromotedArray (Vector.map (expose' env depth substitution) typs)
+    | PromotedValues typs -> PromotedValues (Vector.map (expose' env depth substitution) typs)
     | Values typs -> Values (Vector.map (expose' env depth substitution) typs)
     | Pi {universals; idomain; edomain; eff; codomain} ->
         let depth = depth + 1 in
@@ -135,11 +137,7 @@ and expose' env depth substitution = function
     | EmptyRow -> EmptyRow
     | Proxy typ -> Proxy (expose_abs' env depth substitution typ)
     | Fn (params, body) -> Fn (params, expose' env (depth + 1) substitution body)
-    | App (callee, args) ->
-        let args = Vector1.map (expose' env depth substitution) args in
-        (match expose' env depth substitution callee with
-        | App (callee, args') -> App (callee, Vector1.append args' args) (* TODO: is this sufficient? *)
-        | callee -> App (callee, args))
+    | App (callee, arg) -> App (expose' env depth substitution arg, expose' env depth substitution callee)
     | Bv {depth = depth'; sibli; kind = _} as typ ->
         if depth' = depth
         then Vector.get substitution sibli
@@ -169,6 +167,8 @@ let rec close_abs' env depth substitution (Exists (params, body) : T.abs) : T.ab
     Exists (params, close' env depth substitution body)
 
 and close' env depth substitution = function
+    | PromotedArray typs -> PromotedArray (Vector.map (close' env depth substitution) typs)
+    | PromotedValues typs -> PromotedValues (Vector.map (close' env depth substitution) typs)
     | Values typs -> Values (Vector.map (close' env depth substitution) typs)
     | Pi {universals; idomain; edomain; eff; codomain} ->
         let depth = depth + 1 in
@@ -182,11 +182,7 @@ and close' env depth substitution = function
     | EmptyRow -> EmptyRow
     | Proxy typ -> Proxy (close_abs' env depth substitution typ)
     | Fn (params, body) -> Fn (params, close' env (depth + 1) substitution body)
-    | App (callee, args) ->
-        let args = Vector1.map (close' env depth substitution) args in
-        (match close' env depth substitution callee with
-        | App (callee, args') -> App (callee, Vector1.append args' args) (* TODO: is this sufficient? *)
-        | callee -> App (callee, args))
+    | App (callee, arg) -> App (close' env depth substitution callee, close' env depth substitution arg)
     | Ov ((name, kind), _) as path ->
         Name.Map.find_opt name substitution
             |> Option.fold ~some: (fun sibli -> Bv {depth; sibli; kind}) ~none: path

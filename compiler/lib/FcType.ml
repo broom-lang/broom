@@ -1,16 +1,16 @@
 module rec Uv : FcTypeSigs.UV
-    with type kind = Type.kind
-    with type typ = Type.t
-    with type level = Type.level
+    with type kind = Typ.kind
+    with type typ = Typ.t
+    with type level = Typ.level
 = struct
-    type kind = Type.kind
-    type typ = Type.t
-    type level = Type.level
+    type kind = Typ.kind
+    type typ = Typ.t
+    type level = Typ.level
 
     include UnionFind.Make(TxRef.Store)
 
     type v =
-        | Unassigned of Name.t * kind * Type.level
+        | Unassigned of Name.t * kind * Typ.level
         | Assigned of typ
 
     type subst = v store
@@ -26,7 +26,7 @@ module rec Uv : FcTypeSigs.UV
     let set sr uv v = ignore (set sr uv v)
 end
 
-and Type : FcTypeSigs.TYPE
+and Typ : FcTypeSigs.TYPE
     with type uv = Uv.t
     with type subst = Uv.subst
 = struct
@@ -46,6 +46,8 @@ and Type : FcTypeSigs.TYPE
     and abs = Exists of kind Vector.t * t
 
     and t =
+        | PromotedArray of t Vector.t
+        | PromotedValues of t Vector.t
         | Values of t Vector.t
         (* TODO: Remove multiargs since they can be implemented with unboxed tuples (`Values`): *)
         | Pi of {universals : kind Vector.t; idomain : t option; edomain : t; eff : t; codomain : abs}
@@ -53,8 +55,8 @@ and Type : FcTypeSigs.TYPE
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
         | Proxy of abs
-        | Fn of kind Vector1.t * t
-        | App of t * t Vector1.t
+        | Fn of kind * t
+        | App of t * t
         | Bv of bv
         | Ov of ov
         | Uv of uv
@@ -101,10 +103,19 @@ and Type : FcTypeSigs.TYPE
         else to_doc s body
 
     and to_doc s = function
-        | Values typs ->
+        | PromotedArray typs ->
+            PPrint.surround_separate_map 4 0 (PPrint.brackets PPrint.empty)
+                PPrint.lbracket (PPrint.comma ^^ PPrint.break 1) PPrint.rbracket
+                (to_doc s) (Vector.to_list typs)
+        | PromotedValues typs ->
             PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 (to_doc s) (Vector.to_list typs)
+        | Values typs ->
+            PPrint.colon
+                ^/^ PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) (to_doc s)
+                    (Vector.to_list typs)
+            |> PPrint.parens
         | Pi {universals; idomain; edomain; eff; codomain} ->
             let idomain = Option.map (to_doc s) idomain in
             let edomain = to_doc s edomain in
@@ -127,13 +138,11 @@ and Type : FcTypeSigs.TYPE
                 (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (to_doc s field))
         | EmptyRow -> PPrint.parens (PPrint.bar)
         | Proxy typ -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ abs_to_doc s typ)
-        | Fn (params, body) ->
+        | Fn (param, body) ->
             PPrint.prefix 4 1
-                (PPrint.string "fun" ^^ PPrint.blank 1 ^^ (kinds_to_doc s) (Vector1.to_list params))
+                (PPrint.string "fun" ^^ PPrint.blank 1 ^^ kind_to_doc s param)
                 (PPrint.dot ^^ PPrint.blank 1 ^^ to_doc s body)
-        | App (callee, args) ->
-            callee_to_doc s callee ^/^ PPrint.separate_map PPrint.space (arg_to_doc s)
-                (Vector1.to_list args)
+        | App (callee, arg) -> callee_to_doc s callee ^/^ arg_to_doc s arg
         | Bv {depth; sibli; kind = _} ->
             PPrint.caret ^^ PPrint.string (Int.to_string depth) ^^ PPrint.slash
                 ^^ PPrint.string (Int.to_string sibli)
@@ -246,5 +255,21 @@ and Type : FcTypeSigs.TYPE
     let sibling sr kind uv = match Uv.get sr uv with
         | Unassigned (_, _, level) -> Uv.make sr (Unassigned (Name.fresh (), kind, level))
         | Assigned _ -> failwith "unreachable"
+end
+
+(* HACK: OCaml these constants are 'unsafe' for OCaml recursive modules,
+ * so we have to add them here: *)
+module Type = struct
+    include Typ
+
+    (* __typeIn [__boxed] *)
+    let aType = App (Prim TypeIn, PromotedArray (Vector.singleton (Prim Boxed)))
+    let aKind = aType
+
+    (* __rowOf (__typeIn [__boxed]) *)
+    let aRow = App (Prim RowOf, aType)
+
+    (* __array __singleRep *)
+    let rep = App (Prim Array, Prim SingleRep)
 end
 

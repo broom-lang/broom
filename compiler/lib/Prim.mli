@@ -1,6 +1,8 @@
 type t =
     | Int
-    | Type | Row
+    | Array
+    | SingleRep (* = *) | Boxed
+    | TypeIn | RowOf
 
 val to_doc : t -> PPrint.document
 

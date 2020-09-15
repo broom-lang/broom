@@ -1,5 +1,12 @@
 include CCImmutArray
 
+let fold_right f acc xs =
+    let rec loop acc i =
+        if i >= 0
+        then loop (f acc (get xs i)) (i - 1)
+        else acc in
+    loop acc (length xs - 1)
+
 let iter2 f xs ys =
     if length ys = length xs
     then iteri (fun i x -> f x (get ys i)) xs

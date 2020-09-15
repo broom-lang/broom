@@ -41,8 +41,8 @@ let pull_row pos env label' typ : T.coercion option * T.t * T.t =
             ( trans_with co base_co label field
             , T.With {base; label; field}, field'' )
         | Some (Uv uv, co) -> (* FIXME: 'scopedlabels' termination check: *)
-            let base = T.Uv (sibling env (Prim Row) uv) in
-            let field = T.Uv (sibling env (Prim Type) uv) in
+            let base = T.Uv (sibling env T.aRow uv) in
+            let field = T.Uv (sibling env T.aRow uv) in
             Env.set_uv env pos uv (Assigned (With {base; label = label'; field}));
             (co, base, field)
         | Some _ ->
@@ -85,16 +85,18 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
             | Unassigned _ ->
                 let (uv, typ) = match template with
                     | T.PiL _ ->
+                        let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind (Name.fresh ()))) in
+                        let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind (Name.fresh ()))) in
                         (uv, T.Pi { universals = Vector.of_list []; idomain = None
-                                  ; edomain = T.Uv (sibling env (Prim Type) uv)
-                                  ; eff = Uv (sibling env (Prim Row) uv)
-                                  ; codomain = T.to_abs (Uv (sibling env (Prim Type) uv)) })
+                                  ; edomain = T.Uv (sibling env dkind uv)
+                                  ; eff = Uv (sibling env T.aRow uv)
+                                  ; codomain = T.to_abs (Uv (sibling env cdkind uv)) })
                     | ProxyL _ ->
-                        let kind : T.kind = Uv (sibling env (Prim Type) uv) in
+                        let kind : T.kind = Uv (sibling env T.aKind uv) in
                         (uv, T.Proxy (T.to_abs (Uv (sibling env kind uv))))
                     | WithL {base = _; label; field = _} ->
-                        (uv, (With {base = Uv (sibling env (Prim Row) uv)
-                            ; label; field = Uv (sibling env (Prim Type) uv)}))
+                        (uv, (With {base = Uv (sibling env T.aRow uv)
+                            ; label; field = Uv (sibling env T.aType uv)}))
                     | Hole -> failwith "unreachable: Hole as template in `articulate_template`" in
                 Env.set_uv env pos uv (Assigned typ);
                 typ
@@ -198,20 +200,23 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                             T.Uv (sibling env (K.kindof_F pos env typ) uv)
                         ) typs))
                     | Pi _ ->
+                        let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind (Name.fresh ()))) in
+                        let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind (Name.fresh ()))) in
                         (uv, Pi { universals = Vector.of_list []; idomain = None
-                                ; edomain = T.Uv (sibling env (Prim Type) uv)
-                                ; eff = Uv (sibling env (Prim Row) uv)
-                                ; codomain = T.to_abs (Uv (sibling env (Prim Type) uv)) })
-                    | Record _ -> (uv, Record (Uv (sibling env (Prim Row) uv)))
+                                ; edomain = T.Uv (sibling env dkind uv)
+                                ; eff = Uv (sibling env T.aRow uv)
+                                ; codomain = T.to_abs (Uv (sibling env cdkind uv)) })
+                    | Record _ -> (uv, Record (Uv (sibling env T.aRow uv)))
                     | With {base = _; label; field = _} ->
-                        (uv, With {base = Uv (sibling env (Prim Row) uv); label; field = Uv (sibling env (Prim Type) uv)})
+                        (uv, With { base = Uv (sibling env T.aRow uv)
+                            ; label; field = Uv (sibling env T.aType uv) })
                     | EmptyRow -> (uv, EmptyRow)
                     | Proxy _ ->
-                        let kind : T.kind = Uv (sibling env (Prim Type) uv) in
+                        let kind : T.kind = Uv (sibling env T.aKind uv) in
                         (uv, Proxy (T.to_abs (Uv (sibling env kind uv))))
-                    | App (callee, args) ->
+                    | App (callee, arg) ->
                         ( uv, T.App (Uv (sibling env (K.kindof_F pos env callee) uv)
-                        , Vector1.map (fun arg -> T.Uv (sibling env (K.kindof_F pos env arg) uv)) args) )
+                            , Uv (sibling env (K.kindof_F pos env arg) uv)) )
                     | Prim pt -> (uv, Prim pt)
 
                     | Fn _ -> failwith "unreachable: `Fn` as template of `articulate`"
@@ -368,30 +373,27 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
         (* TODO: DRY: *)
         | (Proxy (Exists (existentials, carrie) as abs_carrie), _) -> (match super with
-            | Proxy (Exists (existentials', App (callee, args)) as abs_carrie') when Vector.length existentials' = 0 ->
-                (match K.eval env callee with
-                | Some (Uv uv, _) ->
-                    (match Env.get_uv env uv with
-                    | Unassigned (_, kind, level) ->
-                        let substitution = Vector1.foldi (fun substitution i -> function
-                            | T.Ov ((name, _), _) -> Name.Map.add name i substitution
-                            | _ -> failwith "unreachable: non-ov path arg in path locator"
-                        ) Name.Map.empty args in
-                        let params = Vector1.map (function
-                            | T.Ov ((_, kind), _) -> kind
-                            | _ -> failwith "unreachable: non-ov path arg in path locator"
-                        ) args in
-                        let impl = T.Fn (params, Env.close env substitution carrie) in
-                        let max_uv_level = match Vector1.get args 0 with
-                            | Ov (_, level') -> level' - 1
-                            | _ -> failwith "unreachable: non-ov path arg in path locator" in
-                        check_uv_assignee pos env uv level max_uv_level impl;
-                        Env.set_uv env pos uv (Assigned impl);
-                        { coercion = TyperSigs.Cf (fun _ -> {v = Proxy abs_carrie'; pos})
-                        ; residual = empty }
-                    | _ -> failwith "unreachable: Assigned uv in Proxy <:")
-
-                | _ -> (* TODO: Use unification (?) *)
+            | Proxy (Exists (existentials', carrie') as abs_carrie') when Vector.length existentials' = 0 ->
+                let (let+) = Fun.flip Option.map in
+                (* NOTE: Has the same structure as `K.eval`: *)
+                let rec leftmost_callee max_uv_level = function
+                    | T.App (callee, arg) ->
+                        let (param, substitution, max_uv_level) = match arg with
+                            | T.Ov ((name, kind), level) ->
+                                (kind, Name.Map.singleton name 0, level) in
+                        let+ (uv, callee) = leftmost_callee max_uv_level callee in
+                        (uv, T.Fn (param, Env.close env substitution callee)) (* OPTIMIZE: `close`ing repeatedly *)
+                    | Uv uv -> (match Env.get_uv env uv with
+                        | Unassigned (_, _, level) ->
+                            check_uv_assignee pos env uv level max_uv_level carrie;
+                            Some (uv, carrie)
+                        | Assigned typ -> leftmost_callee max_uv_level typ) in
+                (match leftmost_callee Int.max_int carrie' with
+                | Some (uv, impl) ->
+                    Env.set_uv env pos uv (Assigned impl);
+                    { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
+                    ; residual = empty }
+                | None -> (* TODO: Use unification (?) *)
                     let {coercion = _; residual} =
                         subtype_abs pos occ env abs_carrie abs_carrie' in
                     let {coercion = _; residual = residual'} =
@@ -473,7 +475,7 @@ and occurs_check pos env uv typ =
         | EmptyRow -> ()
         | Proxy carrie -> check_abs carrie
         | Fn (_, body) -> check body
-        | App (callee, args) -> check callee; Vector1.iter check args
+        | App (callee, arg) -> check callee; check arg
         | Ov ov ->
             (match Env.get_implementation env ov with
             | Some (_, _, uv') -> check (Uv uv')
@@ -617,26 +619,17 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             {coercion = Option.map (fun co -> T.ProxyCo co) coercion; residual}
         | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
 
-    | (T.App (callee, args), _) -> (match typ' with
-        | T.App (callee', args') ->
+    | (T.App (callee, arg), _) -> (match typ' with
+        | T.App (callee', arg') ->
+            (* NOTE: Callees must already be in WHNF because of the Krivine-style `K.eval`: *)
             let {coercion = callee_co; residual} = unify_whnf pos env callee callee' in
-            let matchings = Vector1.map2 (unify pos env) args args' in
-            { coercion = (match callee_co with
-                | Some callee_co ->
-                    Some (Comp (callee_co, Vector1.map2 (fun {coercion; _} arg' -> match coercion with
-                        | Some coercion -> coercion
-                        | None -> T.Refl arg'
-                    ) matchings args'))
-                | None ->
-                    if Vector1.exists (fun {coercion; _} -> Option.is_some coercion) matchings
-                    then Some (Comp (Refl callee', Vector1.map2 (fun {coercion; _} arg' -> match coercion with
-                        | Some coercion -> coercion
-                        | None -> T.Refl arg'
-                    ) matchings args'))
-                    else None)
-            ; residual = Vector1.fold (fun residual {coercion = _; residual = residual'} ->
-                    combine residual residual'
-                ) residual matchings }
+            let {coercion = arg_co; residual = residual'} = unify pos env arg arg' in
+            { coercion = (match (callee_co, arg_co) with
+                | (Some callee_co, Some arg_co) -> Some (Comp (callee_co, Vector1.singleton arg_co))
+                | (Some callee_co, None) -> Some (Comp (callee_co, Vector1.singleton (T.Refl arg')))
+                | (None, Some arg_co) -> Some (Comp (Refl callee', Vector1.singleton arg_co))
+                | (None, None) -> None)
+            ; residual = combine residual residual' }
         | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
 
     | (Ov ov, _) -> (match typ' with
@@ -676,7 +669,7 @@ and check_uv_assignee pos env uv level max_uv_level typ =
         | EmptyRow -> ()
         | Proxy carrie -> check_abs carrie
         | Fn (_, body) -> check body
-        | App (callee, args) -> check callee; Vector1.iter check args
+        | App (callee, arg) -> check callee; check arg
         | Ov ((_, level') as ov) ->
             (match Env.get_implementation env ov with
             | Some (_, _, uv') -> check (Uv uv')

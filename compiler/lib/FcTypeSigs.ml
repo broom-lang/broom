@@ -17,14 +17,16 @@ module type TYPE = sig
     and abs = Exists of kind Vector.t * t
 
     and t =
+        | PromotedArray of t Vector.t
+        | PromotedValues of t Vector.t
         | Values of t Vector.t
         | Pi of {universals : kind Vector.t; idomain : t option; edomain : t; eff : t; codomain : abs}
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
         | Proxy of abs
-        | Fn of kind Vector1.t * t
-        | App of t * t Vector1.t
+        | Fn of kind * t
+        | App of t * t
         | Bv of bv
         | Ov of ov
         | Uv of uv

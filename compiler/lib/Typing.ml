@@ -35,8 +35,8 @@ let primop_typ =
         (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (T.to_abs (Prim Int)))
     | Type ->
         ( Vector.empty, Vector.empty, T.EmptyRow
-        , T.Proxy (T.Exists (Vector.singleton (T.Prim Type)
-            , Proxy (T.to_abs (Bv {depth = 1; sibli = 0; kind = Prim Type})))) )
+        , T.Proxy (T.Exists (Vector.singleton T.aType
+            , Proxy (T.to_abs (Bv {depth = 1; sibli = 0; kind = T.aType})))) )
 
 let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env expr -> match expr.v with
@@ -45,7 +45,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
     | AExpr.Values exprs ->
         let exprs' = CCVector.create () in
         let typs = CCVector.create () in
-        let eff : T.t = Uv (Env.uv env (Prim Row) (Name.fresh ())) in
+        let eff : T.t = Uv (Env.uv env T.aRow (Name.fresh ())) in
         exprs |> Vector.iter (fun expr ->
             let {TS.term = expr; typ; eff = eff'} = typeof env expr in
             CCVector.push exprs' expr;
@@ -104,13 +104,14 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
     | AExpr.Record stmts -> typeof_record env expr.pos stmts
 
     | AExpr.Select (record, label) -> (* TODO: lacks-constraint: *)
-        let field : T.t = Uv (Env.uv env (Prim Type) (Name.fresh ())) in
-        let typ : T.t = Record (With {base = Uv (Env.uv env (Prim Row) (Name.fresh ())); label; field}) in
+        let field : T.t = Uv (Env.uv env T.aType (Name.fresh ())) in
+        let typ : T.t = Record (With {base = Uv (Env.uv env T.aRow (Name.fresh ())); label; field}) in
         let {TS.term = record; typ = record_typ; eff} = check env typ record in
         {TS.term = {expr with v = Select (record, label)}; typ = field; eff}
 
     | AExpr.Ann (expr, typ) ->
-        let typ = K.check env (Prim Type) typ in
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let typ = K.check env kind typ in
         (* FIXME: Abstract type generation effect *)
         check_abs env typ expr
 
@@ -181,13 +182,15 @@ and elaborate_pat env pat = match pat.v with
         ({pat with v = FExpr.ValuesP pats}, (Vector.empty, Values typs), defs)
 
     | AExpr.Ann (pat, typ) ->
-        let typ = K.check env (Prim Type) typ in
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let typ = K.check env kind typ in
         let (_, typ) as semiabs = Env.reabstract env typ in
         let (pat, defs) = check_pat env typ pat in
         (pat, semiabs, defs)
 
     | AExpr.Var name ->
-        let typ = T.Uv (Env.uv env (Prim Type) (Name.fresh ())) in
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let typ = T.Uv (Env.uv env kind (Name.fresh ())) in
         ({pat with v = FExpr.UseP name}, (Vector.empty, typ), Vector.singleton {FExpr.name; typ})
 
     | AExpr.Proxy carrie ->
@@ -254,13 +257,15 @@ and implement : Env.t -> T.ov Vector.t * T.t -> AExpr.t with_pos -> FExpr.t with
         ) existentials in
         let env = Env.push_axioms env axiom_bindings in
         let {TS.term; typ = _; eff} = check env typ expr in
-        let axioms = Vector1.map (fun (axname, (((_, kind), _) as ov), impl) -> match kind with
-            | T.Pi {universals = _; idomain = _; edomain; eff = _; codomain = _} ->
-                let Values domain = edomain in
-                let args = Vector1.mapi (fun sibli kind -> T.Bv {depth = 0; sibli; kind})
-                    (Option.get (Vector1.of_vector domain)) in
-                (axname, domain, T.App (Ov ov, args), T.App (Uv impl, args))
-            | _ -> (axname, Vector.of_list [], Ov ov, Uv impl)
+        let axioms = Vector1.map (fun (axname, (((_, kind), _) as ov), impl) ->
+            let rec to_axiom params acc i = function
+                | T.Pi {universals = _; idomain = _; edomain = domain; eff = _
+                    ; codomain = Exists (cd_existentials, codomain)} ->
+                    CCVector.push params domain;
+                    let acc = T.App (acc, (Bv {depth = 0; sibli = i; kind = domain})) in
+                    to_axiom params acc (i + 1) codomain
+                | _ -> (axname, Vector.build params, acc, T.Uv impl) in
+            to_axiom (CCVector.create ()) (Ov ov) 0 kind
         ) axiom_bindings in
         {term = {expr with v = Axiom (axioms, term)}; typ; eff}
     | None -> check env typ expr
@@ -270,7 +275,7 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
     | (T.Values typs, AExpr.Values exprs) ->
         let exprs' = CCVector.create () in
         let typs' = CCVector.create () in
-        let eff : T.t = Uv (Env.uv env (Prim Row) (Name.fresh ())) in
+        let eff : T.t = Uv (Env.uv env T.aRow (Name.fresh ())) in
         (* FIXME: raises on length mismatch: *)
         Vector.iter2 (fun typ expr ->
             let {TS.term = expr; typ; eff = eff'} = check env typ expr in
@@ -328,7 +333,8 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr
     | AExpr.Values pats -> failwith "TODO: multi-values in check_pat"
 
     | AExpr.Ann (pat', typ') ->
-        let typ' = K.check env (Prim Type) typ' in
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let typ' = K.check env kind typ' in
         let (_, typ') = Env.reabstract env typ' in
         let _ = M.solving_unify pat.pos env typ typ' in
         check_pat env typ' pat'

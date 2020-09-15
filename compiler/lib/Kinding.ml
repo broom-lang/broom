@@ -21,21 +21,27 @@ let reabstract = Env.reabstract
 let (!) = TxRef.(!)
 
 let kindof_prim : Prim.t -> T.kind = function
-    | Int -> Prim Type
-    | Type | Row -> Prim Type
+    | Int -> T.aType
+    | Array -> Pi {universals = Vector.empty; idomain = None; edomain = T.aType
+        ; eff = EmptyRow; codomain = T.to_abs T.aType}
+    | SingleRep -> T.aType
+    | Boxed -> Prim SingleRep
+    | TypeIn -> Pi {universals = Vector.empty; idomain = None; edomain = T.rep
+        ; eff = EmptyRow; codomain = T.to_abs T.aType}
+    | RowOf -> Pi {universals = Vector.empty; idomain = None; edomain = T.aKind
+        ; eff = EmptyRow; codomain = T.to_abs T.aKind}
 
 let rec kindof_F pos env : T.t -> T.kind = function
-    | Pi _ | Record _ | Proxy _ -> Prim Type
-    | With _ | EmptyRow -> Prim Row
+    | Pi _ | Record _ | Proxy _ -> T.aType
+    | With _ | EmptyRow -> T.aRow
     | Fn (domain, body) ->
-        Pi { universals = Vector.empty; idomain = None; edomain = Values (Vector1.to_vector domain)
+        Pi { universals = Vector.empty; idomain = None; edomain = domain
             ; eff = EmptyRow; codomain = T.to_abs (kindof_F pos env body) }
-    | App (callee, args) ->
+    | App (callee, arg) ->
         (match kindof_F pos env callee with
-        | Pi { universals; idomain; edomain = Values domain; eff
+        | Pi { universals; idomain; edomain = domain; eff
                 ; codomain = Exists (existentials, codomain) } ->
-            Vector.iter2 (fun domain arg -> check_F pos env domain arg)
-                domain (Vector1.to_vector args);
+            check_F pos env domain arg;
             codomain)
     | Ov ((_, kind), _) -> kind
     | Bv {kind; _} -> kind
@@ -55,7 +61,8 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
 
         | Record decls ->
             let {TS.typ = row; kind = row_kind} = elab_row env typ.pos decls in
-            {typ = T.Record row; kind = Prim Type}
+            let typ' = T.Record row in
+            {typ = typ'; kind = kindof_F typ.pos env typ'}
 
         | Row decls -> elab_row env typ.pos decls
 
@@ -64,7 +71,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
             let {TS.term = _; typ = proxy_typ; eff} = C.typeof env {typ with v = expr} in
             let _ = M.solving_unify typ.pos env eff EmptyRow in
             (* FIXME: does not accept e.g. `row`: *)
-            (match M.focalize typ.pos env proxy_typ (ProxyL (Uv (Env.uv env (Prim Type) (Name.fresh ())))) with
+            (match M.focalize typ.pos env proxy_typ (ProxyL (Prim Int)) with
             | (_, Proxy typ) ->
                 let (_, typ) = reabstract env typ in
                 {typ; kind = kindof_F pos env typ}
@@ -85,8 +92,9 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
                 (Some idomain, env)
             | None -> (None, env) in
         let (edomain, env) = elab_domain env edomain in (* FIXME: make non-dependent (by default) *)
-        let T.Exists (effixtentials, eff) = check env (T.Prim Row) eff in
-        let codomain = check env (T.Prim Type) codomain in
+        let T.Exists (effixtentials, eff) = check env T.aRow eff in
+        let codomain_kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let codomain = check env codomain_kind codomain in
         let universals = Vector.of_list !universals in
 
         let ubs = Vector.map fst universals in
@@ -96,21 +104,12 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
             | (EmptyRow, Exists (existentials, concr_codo)) ->
                 (* Hoist codomain existentials to make applicative functor (in the ML modules sense): *)
                 let substitution = Vector.map (fun kind ->
-                    let kind = match Vector1.of_vector ukinds with
-                        | Some ukinds ->
-                            (match kind with (* TODO: Is this sufficient to ensure unique reprs?: *)
-                            | T.Pi {universals; idomain; edomain = Values ukinds'; eff; codomain} ->
-                                T.Pi { universals; idomain
-                                    ; edomain = Values (Vector.append ukinds' (Vector1.to_vector ukinds))
-                                    ; eff; codomain }
-                            | _ -> T.Pi { universals = Vector.empty; idomain = None
-                                ; edomain = Values (Vector1.to_vector ukinds); eff = EmptyRow
-                                ; codomain = T.to_abs kind })
-                        | None -> kind in
+                    let kind = Vector.fold_right (fun codomain domain ->
+                        T.Pi { universals = Vector.empty; idomain = None
+                            ; edomain = domain; eff = EmptyRow; codomain = T.to_abs codomain }
+                    ) kind ukinds in
                     let ov = Env.generate env0 (Name.fresh (), kind) in
-                    (match Vector1.of_vector universals with
-                    | Some universals -> T.App (Ov ov, Vector1.map (fun ov -> T.Ov ov) universals)
-                    | None -> Ov ov)
+                    Vector.fold (fun callee arg -> T.App (callee, Ov arg)) (Ov ov) universals
                 ) existentials in
                 T.to_abs (Env.expose env0 substitution concr_codo)
             | (_, codomain) -> codomain in
@@ -123,7 +122,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
              ; edomain = Env.close env substitution edomain
              ; eff = Env.close env substitution eff
              ; codomain = Env.close_abs env substitution codomain }
-        ; kind = Prim Type }
+        ; kind = T.aType }
 
     and elab_domain env (domain : AExpr.t with_pos) =
         let (_, (_, domain), defs) = C.elaborate_pat env domain in
@@ -148,7 +147,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
         let row = Vector.fold (fun base {FExpr.name; typ} ->
             T.With {base; label = name; field = typ}
         ) EmptyRow defs in
-        {typ = row; kind = Prim Row}
+        {typ = row; kind = kindof_F pos env row}
 
     and analyze_decl env = function
         | AStmt.Def (_, pat, _) -> C.elaborate_pat env pat
@@ -181,13 +180,14 @@ and eval env typ =
     let (let+) = Fun.flip Option.map in
 
     let rec eval = function
-        | T.App (callee, args) ->
+        | T.App (callee, arg) ->
             let* (callee, callee_co) = eval callee in
-            let+ (typ, co) = apply callee args in
+            let+ (typ, co) = apply callee arg in
             ( typ
             , match (callee_co, co) with
-              | (Some callee_co, Some co) -> Some (T.Trans (Inst (callee_co, args), co))
-              | (Some callee_co, None) -> Some (Inst (callee_co, args))
+              | (Some callee_co, Some co) ->
+                  Some (T.Trans (Inst (callee_co, Vector1.singleton arg), co))
+              | (Some callee_co, None) -> Some (Inst (callee_co, Vector1.singleton arg))
               | (None, Some co) -> Some co
               | (None, None) -> None )
         | Fn _ as typ -> Some (typ, None)
@@ -205,20 +205,21 @@ and eval env typ =
             (match Env.get_uv env uv with
             | Assigned typ -> eval typ
             | Unassigned _ -> Some (typ, None))
-        | (Values _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _) as typ -> Some (typ, None)
-        | Bv _ -> failwith "unreachable: `Bv` in `whnf`"
+        | ( PromotedArray _ | PromotedValues _
+          | Values _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ) as typ -> Some (typ, None)
+        | Bv _ -> failwith "unreachable: `Bv` in `eval`"
 
-    and apply callee args = match callee with
-        | T.Fn (params, body) -> (* FIXME: Check arg kinds *)
-            eval (Env.expose env (Vector1.to_vector args) body)
-        | Ov _ | App _ -> Some (T.App (callee, args), None)
+    and apply callee arg = match callee with
+        (* NOTE: Arg kinds do not need to be checked here because all `App`s originate from functors: *)
+        | T.Fn (param, body) -> eval (Env.expose env (Vector.singleton arg) body)
+        | Ov _ | App _ | Prim _ -> Some (T.App (callee, arg), None)
         | Uv uv ->
             (match Env.get_uv env uv with
             | Unassigned _ -> None
             | Assigned _ -> failwith "unreachable: Assigned in `apply`.")
-        | Values _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ->
-            failwith "unreachable: uncallable type in `whnf`"
-        | Bv _ -> failwith "unreachable: `Bv` in `whnf/apply`"
+        | PromotedArray _ | PromotedValues _ | Values _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ ->
+            failwith "unreachable: uncallable type in `eval/apply`"
+        | Bv _ -> failwith "unreachable: `Bv` in `eval/apply`"
     in eval typ
 end
 
