@@ -77,6 +77,8 @@ and Typ : FcTypeSigs.TYPE
         | Comp of coercion * coercion Vector1.t
         | Inst of coercion * typ Vector1.t
         | AUse of Name.t
+        | PromotedArrayCo of coercion Vector.t
+        | PromotedValuesCo of coercion Vector.t
         | ValuesCo of coercion Vector.t
         | RecordCo of coercion
         | WithCo of {base : coercion; label : Name.t; field : coercion}
@@ -215,10 +217,19 @@ and Typ : FcTypeSigs.TYPE
             Vector1.fold (fun doc arg -> PPrint.infix 4 1 PPrint.at doc (to_doc s arg))
                 (instantiee_to_doc s co) args
         | AUse name -> Name.to_doc name
-        | ValuesCo coercions ->
+        | PromotedArrayCo coercions ->
+            PPrint.surround_separate_map 4 0 (PPrint.brackets PPrint.empty)
+                PPrint.lbracket (PPrint.comma ^^ PPrint.break 1) PPrint.rbracket
+                (coercion_to_doc s) (Vector.to_list coercions)
+        | PromotedValuesCo coercions ->
             PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 (coercion_to_doc s) (Vector.to_list coercions)
+        | ValuesCo coercions ->
+            PPrint.colon
+                ^/^ PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) (coercion_to_doc s)
+                    (Vector.to_list coercions)
+            |> PPrint.parens
         | RecordCo row_co -> PPrint.braces (coercion_to_doc s row_co)
         | WithCo {base; label; field} ->
             PPrint.infix 4 1 (PPrint.string "with") (base_co_to_doc s base)

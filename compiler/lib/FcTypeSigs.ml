@@ -47,6 +47,8 @@ module type TYPE = sig
         | Comp of coercion * coercion Vector1.t
         | Inst of coercion * typ Vector1.t
         | AUse of Name.t
+        | PromotedArrayCo of coercion Vector.t
+        | PromotedValuesCo of coercion Vector.t
         | ValuesCo of coercion Vector.t
         | RecordCo of coercion
         | WithCo of {base : coercion; label : Name.t; field : coercion}

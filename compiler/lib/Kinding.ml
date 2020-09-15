@@ -32,6 +32,15 @@ let kindof_prim : Prim.t -> T.kind = function
         ; eff = EmptyRow; codomain = T.to_abs T.aKind}
 
 let rec kindof_F pos env : T.t -> T.kind = function
+    | PromotedArray typs ->
+        let el_kind = if Vector.length typs = 0
+            then kindof_F pos env (Vector.get typs 0)
+            else Uv (Env.uv env T.aKind (Name.fresh ())) in
+        App (Prim Array, el_kind)
+    | PromotedValues typs -> Values (Vector.map (kindof_F pos env) typs)
+    | Values typs ->
+        let kinds = Vector.map (kindof_F pos env) typs in
+        App (Prim TypeIn, PromotedArray kinds)
     | Pi _ | Record _ | Proxy _ -> T.aType
     | With _ | EmptyRow -> T.aRow
     | Fn (domain, body) ->

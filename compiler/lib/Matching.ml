@@ -534,6 +534,25 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             {coercion = None; residual = empty}
         | Assigned _ -> failwith "unreachable: Assigned `typ` in `unify_whnf`")
 
+    | (PromotedArray typs, _) -> (match typ' with
+        | PromotedArray typs' ->
+            if Vector.length typs = Vector.length typs' then begin
+                let coercions = CCVector.create () in
+                let (residual, noop) = Vector.fold2 (fun (residual, noop) typ typ' ->
+                    let {coercion; residual = residual'} = unify pos env typ typ' in
+                    CCVector.push coercions coercion;
+                    (combine residual residual, noop && Option.is_none coercion)
+                ) (empty, true) typs typs' in
+                { coercion = if noop
+                    then Some (PromotedArrayCo (coercions |> CCVector.mapi (fun i -> function
+                        | Some coercion -> coercion
+                        | None -> T.Refl (Vector.get typs' i)
+                    ) |> Vector.build))
+                    else None
+                ; residual }
+            end else failwith "~ promoted array lengths"
+        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+
     | (Values typs, _) -> (match typ' with
         | Values typs' ->
             if Vector.length typs = Vector.length typs' then begin
@@ -655,6 +674,8 @@ and check_uv_assignee pos env uv level max_uv_level typ =
         else raise (Err.TypeError (pos, Polytype typ))
 
     and check = function
+        | PromotedArray typs -> Vector.iter check typs
+        | PromotedValues typs -> Vector.iter check typs
         | Values typs -> Vector.iter check typs
         | Pi {universals; idomain; edomain; eff; codomain} ->
             if Vector.length universals = 0
