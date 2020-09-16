@@ -10,7 +10,8 @@ type scope =
     | Axiom of (Name.t * T.ov * uv) Name.Map.t
 
 type env =
-    { tx_log : Fc.Uv.subst
+    { errorHandler : Util.span -> TypeError.t -> unit
+    ; tx_log : Fc.Uv.subst
     ; scopes : scope list
     ; level : Fc.Type.level }
 
@@ -34,24 +35,26 @@ type uv = Fc.Uv.t
 
 type t = env
 
+let raiseError pos error = raise (TypeError.TypeError (pos, error))
+
 let initial_level = 1
 
 let interactive () =
-    { tx_log = Fc.Uv.new_subst ()
+    { errorHandler = raiseError
+    ; tx_log = Fc.Uv.new_subst ()
     ; scopes = [Hoisting (ref [], initial_level)]
     ; level = initial_level }
 
 let eval () =
-    { tx_log = Fc.Uv.new_subst ()
+    { errorHandler = raiseError
+    ; tx_log = Fc.Uv.new_subst ()
     ; scopes = [Hoisting (ref [], initial_level)]
     ; level = initial_level }
 
-let find (env : t) pos name =
-    let rec find = function
-        | Val (name', typ) :: scopes -> if name' = name then typ else find scopes
-        | (Hoisting _ | Rigid _ | Axiom _) ::scopes -> find scopes
-        | [] -> raise (TypeError.TypeError (pos, Unbound name)) in
-    find env.scopes
+let reportError (env : t) pos error = env.errorHandler pos error
+
+let wrapErrorHandler (env : t) middleware =
+    {env with errorHandler = middleware env.errorHandler}
 
 let push_val (env : t) name typ =
     {env with scopes = Val (name, typ) :: env.scopes}
@@ -114,6 +117,15 @@ let sibling (env : t) kind uv = match get_uv env uv with
 
 let set_expr (env : t) ref expr = TxRef.set env.tx_log ref expr
 let set_coercion (env : t) ref coercion = TxRef.set env.tx_log ref coercion
+
+let find (env : t) pos name =
+    let rec find = function
+        | Val (name', typ) :: scopes -> if name' = name then typ else find scopes
+        | (Hoisting _ | Rigid _ | Axiom _) ::scopes -> find scopes
+        | [] ->
+            reportError env pos (Unbound name);
+            Uv (uv env (Uv (uv env T.aKind (Name.fresh ()))) (Name.fresh ())) in
+    find env.scopes
 
 let document (env : t) to_doc v = to_doc env.tx_log v
 

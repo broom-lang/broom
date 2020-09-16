@@ -1,7 +1,7 @@
 type typ = Fc.Type.t
 type abs = Fc.Type.abs
 
-type error =
+type t =
     | NonPattern of Ast.Term.Expr.t
     | InvalidDecl of Ast.Term.Stmt.t
     | InvalidField of Ast.Term.Stmt.t
@@ -19,7 +19,7 @@ type error =
     | Polytype of abs
     | PolytypeInference of abs
 
-exception TypeError of Util.span * error
+exception TypeError of Util.span * t
 
-val to_doc : Util.span -> Fc.Uv.subst -> error -> PPrint.document
+val to_doc : Util.span -> Fc.Uv.subst -> t -> PPrint.document
 

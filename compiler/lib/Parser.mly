@@ -1,7 +1,7 @@
 %{
+open Ast.Type
 open Ast.Term.Expr
 open Ast.Term.Stmt
-open Ast.Type
 open Util
 
 (* TODO: or-patterns *)

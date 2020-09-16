@@ -89,5 +89,8 @@ module type ENV = sig
     val instantiate_abs : t -> T.abs -> T.uv Vector.t * T.t
     val instantiate_arrow : t -> T.kind Vector.t -> T.t option -> T.t
         -> T.t -> T.abs -> T.uv Vector.t * T.t option * T.t * T.t * T.abs
+
+    val reportError : t -> span -> TypeError.t -> unit
+    val wrapErrorHandler : t -> ((span -> TypeError.t -> unit) -> (span -> TypeError.t -> unit)) -> t
 end
 

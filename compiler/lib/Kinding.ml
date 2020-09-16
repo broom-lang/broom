@@ -89,7 +89,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
         (*| AType.Singleton expr ->
             (match C.typeof env expr with
             | {term = _; typ; eff = Pure} -> (Hole, typ)
-            | _ -> raise (TypeError (typ.pos, ImpureType expr.v)))*)
+            | _ -> Env.reportError env typ.pos (ImpureType expr.v))*)
 
         | Prim pt -> {typ = Prim pt; kind = kindof_prim pt}
 
@@ -161,14 +161,18 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
     and analyze_decl env = function
         | AStmt.Def (_, pat, _) -> C.elaborate_pat env pat
         | AStmt.Expr {v = Ann (pat, _); pos = _} -> C.elaborate_pat env pat
-        | AStmt.Expr expr as decl -> raise (Err.TypeError (expr.pos, Err.InvalidDecl decl))
+        | AStmt.Expr expr as decl ->
+            Env.reportError env expr.pos (Err.InvalidDecl decl);
+            C.elaborate_pat env {expr with v = Values Vector.empty}
 
     and elab_decl env = function
         | AStmt.Def (_, _, expr) ->
             let expr' = AExpr.App ({expr with v = Var (Name.of_string "typeof")}, expr) in
             elab env {expr with v = Path expr'}
         | AStmt.Expr {v = Ann (_, typ); pos = _} -> elab env typ
-        | AStmt.Expr expr as decl -> raise (Err.TypeError (expr.pos, Err.InvalidDecl decl)) in
+        | AStmt.Expr expr as decl ->
+            Env.reportError env expr.pos (Err.InvalidDecl decl);
+            elab env {expr with v = AType.Values Vector.empty} in
 
     let (env, params) = Env.push_existential env in
     let {TS.typ; kind} = elab env typ in

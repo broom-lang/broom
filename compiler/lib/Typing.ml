@@ -203,7 +203,13 @@ and elaborate_pat env pat = match pat.v with
     | AExpr.AppSequence _ | AExpr.App _ | AExpr.PrimApp _ | AExpr.Select _ | AExpr.Record _ ->
         failwith "TODO in elaborate_pat"
 
-    | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
+    | AExpr.Fn _ | AExpr.Thunk _ ->
+        Env.reportError env pat.pos (NonPattern pat.v);
+        (* TODO: Treat as `_` instead: *)
+        let name = Name.fresh () in
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let typ = T.Uv (Env.uv env kind (Name.fresh ())) in
+        ({pat with v = FExpr.UseP name}, (Vector.empty, typ), Vector.singleton {FExpr.name; typ})
 
 (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
 and typeof_record env pos stmts =
@@ -233,7 +239,9 @@ and typeof_record env pos stmts =
 and analyze_field env = function
     | AStmt.Def (_, pat, _) -> elaborate_pat env pat
     | AStmt.Expr {v = Var _; pos = _} -> failwith "TODO: field punning"
-    | AStmt.Expr expr as field -> raise (Err.TypeError (expr.pos, Err.InvalidField field))
+    | AStmt.Expr expr as field ->
+        Env.reportError env expr.pos (Err.InvalidField field);
+        elaborate_pat env {expr with v = Values Vector.empty}
 
 and elaborate_field env pat semiabs = function
     | AStmt.Def (pos, _, expr) ->
@@ -241,7 +249,9 @@ and elaborate_field env pat semiabs = function
         let _ = M.solving_unify expr.pos env eff EmptyRow in
         (pos, pat, expr)
     | AStmt.Expr {v = Var _; pos = _} -> failwith "TODO: field punning"
-    | AStmt.Expr expr as field -> raise (Err.TypeError (expr.pos, Err.InvalidField field))
+    | AStmt.Expr expr as field ->
+        Env.reportError env expr.pos (Err.InvalidField field);
+        elaborate_field env pat semiabs (Expr {expr with v = Values Vector.empty})
 
 (* # Checking *)
 
@@ -353,7 +363,11 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr
     | AExpr.AppSequence _ | AExpr.App _ | AExpr.PrimApp _ | AExpr.Select _ | AExpr.Record _ ->
         failwith "TODO in check_pat"
 
-    | AExpr.Fn _ | AExpr.Thunk _ -> raise (Err.TypeError (pat.pos, NonPattern pat.v))
+    | AExpr.Fn _ | AExpr.Thunk _ ->
+        Env.reportError env pat.pos (NonPattern pat.v);
+        (* TODO: Treat as `_` instead: *)
+        let name = Name.fresh () in
+        ({pat with v = UseP name}, Vector.singleton {FExpr.name; typ})
 
 and check_pats env domain pats =
     let step (pats, env) domain pat =

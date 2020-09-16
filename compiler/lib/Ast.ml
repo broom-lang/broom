@@ -98,6 +98,7 @@ and Type : AstSigs.TYPE
     type stmt = Term.Stmt.t
 
     type t =
+        | Values of t with_pos Vector.t
         | Pi of { idomain : pat with_pos option; edomain : pat with_pos; eff : t with_pos
             ; codomain : t with_pos }
         | Record of stmt Vector.t
@@ -106,6 +107,10 @@ and Type : AstSigs.TYPE
         | Prim of Prim.t
 
     let rec to_doc (typ : t with_pos) = match typ.v with
+        | Values typs ->
+            PPrint.parens (PPrint.comma
+                ^^ PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) to_doc
+                    (Vector.to_list typs))
         | Pi {idomain; edomain; eff; codomain} ->
             let doc = PPrint.infix 4 1 (PPrint.string "-!") (Term.Expr.to_doc edomain)
                 (PPrint.infix 4 1 (PPrint.string "->") (to_doc eff) (to_doc codomain)) in

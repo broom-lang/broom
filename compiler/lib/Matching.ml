@@ -47,7 +47,8 @@ let pull_row pos env label' typ : T.coercion option * T.t * T.t =
             (co, base, field)
         | Some _ ->
             let template = T.WithL {base = Hole; label = label'; field = Hole} in
-            raise (Err.TypeError (pos, Unusable (template, typ)))
+            Env.reportError env pos (Unusable (template, typ));
+            (None, Uv (Env.uv env T.aRow (Name.fresh ())), Uv (Env.uv env T.aType (Name.fresh ())))
         | None -> failwith "TODO: pull_row None" in
     pull typ
 
@@ -113,11 +114,16 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
             | PiL _ -> (* TODO: arity check (or to `typeof`/`App`?) *)
                 (match typ with
                 | Pi _ -> (Cf Fun.id, typ)
-                | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
+                | _ ->
+                    Env.reportError env pos (Unusable (template, typ));
+                    let typ : T.t = Uv (Env.uv env T.aType (Name.fresh ())) in
+                    (Cf Fun.id, articulate_template typ template))
             | ProxyL _ ->
                 (match typ with
                 | Proxy _ -> (Cf Fun.id, typ)
-                | _ -> raise (Err.TypeError (pos, Unusable (template, typ))))
+                | _ ->
+                    let typ : T.t = Uv (Env.uv env T.aType (Name.fresh ())) in
+                    (Cf Fun.id, articulate_template typ template))
             | WithL {base = _; label; field = _} ->
                 let (co, base, field) = pull_row pos env label typ in
                 let cof = match co with
@@ -192,8 +198,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
                     | Ov ((_, level') as ov) ->
                         if level' <= level
-                        then (uv, Ov ov)
-                        else raise (Err.TypeError (pos, Escape ov))
+                        then ()
+                        else Env.reportError env pos (Escape ov);
+                        (uv, Ov ov)
 
                     | Values typs ->
                         (uv, Values (Vector.map (fun typ ->
@@ -262,7 +269,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         {pos; v = Let ((pos, {pos; v = UseP name}, expr), body)})
                     ; residual }
                 end else failwith "<: tuple lengths"
-            | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
+            | _ ->
+                Env.reportError env pos (SubType (typ, super));
+                {coercion = Cf Fun.id; residual = empty})
 
         | (Pi {universals; idomain; edomain; eff; codomain}, _) -> (match super with
             | Pi { universals = universals'; idomain = idomain'; edomain = edomain'
@@ -290,7 +299,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     (match Vector1.of_vector (Vector.map fst universals') with
                     | Some skolems -> ResidualMonoid.skolemized (Vector1.map snd skolems) residual
                     | None -> residual) }
-            | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
+            | _ ->
+                Env.reportError env pos (SubType (typ, super));
+                {coercion = Cf Fun.id; residual = empty})
 
         | (Record row, _) -> (match super with
             | Record super_row ->
@@ -345,7 +356,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     | (None, Some co') -> Cf (fun v -> {pos; v = Cast (coerce v, Symm co')})
                     | (None, None) -> Cf coerce)
                 ; residual }
-            | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
+            | _ ->
+                Env.reportError env pos (SubType (typ, super));
+                {coercion = Cf Fun.id; residual = empty})
 
         | (With _, _) -> (match super with
             | With _ ->
@@ -365,11 +378,15 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     loop residual 0 in
                 { coercion = Cf Fun.id (* NOTE: Row types have no values so this will not get used *)
                 ; residual }
-            | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
+            | _ ->
+                Env.reportError env pos (SubType (typ, super));
+                {coercion = Cf Fun.id; residual = empty})
 
         | (EmptyRow, _) -> (match super with
             | EmptyRow -> {coercion = Cf Fun.id; residual = empty}
-            | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
+            | _ ->
+                Env.reportError env pos (SubType (typ, super));
+                {coercion = Cf Fun.id; residual = empty})
 
         (* TODO: DRY: *)
         | (Proxy (Exists (existentials, carrie) as abs_carrie), _) -> (match super with
@@ -409,7 +426,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
                 ; residual = combine residual residual' }
 
-            | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
+            | _ ->
+                Env.reportError env pos (SubType (typ, super));
+                {coercion = Cf Fun.id; residual = empty})
 
         | (App _, _) -> (match super with
             | App _ ->
@@ -419,7 +438,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     | Some co -> Cf (fun v -> {pos; v = Cast (v, co)})
                     | None -> Cf Fun.id)
                 ; residual }
-            | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
+            | _ ->
+                Env.reportError env pos (SubType (typ, super));
+                {coercion = Cf Fun.id; residual = empty})
 
         | (Ov _, _) -> (match super with
             | Ov _ ->
@@ -429,11 +450,15 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     | Some co -> Cf (fun v -> {pos; v = Cast (v, co)})
                     | None -> Cf Fun.id)
                 ; residual }
-            | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
+            | _ ->
+                Env.reportError env pos (SubType (typ, super));
+                {coercion = Cf Fun.id; residual = empty})
 
         | (Prim pt, _) -> (match super with
             | Prim pt' when Prim.eq pt pt' -> {coercion = Cf Fun.id; residual = empty}
-            | _ -> raise (Err.TypeError (pos, SubType (typ, super))))
+            | _ ->
+                Env.reportError env pos (SubType (typ, super));
+                {coercion = Cf Fun.id; residual = empty})
 
         | (Fn _, _) -> failwith "unreachable: Fn in subtype_whnf"
         | (Bv _, _) -> failwith "unreachable: Bv in subtype_whnf" in
@@ -484,7 +509,7 @@ and occurs_check pos env uv typ =
             (match Env.get_uv env uv' with
             | Unassigned _ ->
                 if uv = uv'
-                then raise (Err.TypeError (pos, Occurs (uv, typ)))
+                then Env.reportError env pos (Occurs (uv, typ))
                 else ()
             | Assigned typ -> check typ)
         | Bv _ | Prim _ -> () in
@@ -551,7 +576,9 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
                     else None
                 ; residual }
             end else failwith "~ promoted array lengths"
-        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
 
     | (Values typs, _) -> (match typ' with
         | Values typs' ->
@@ -570,18 +597,24 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
                     else None
                 ; residual }
             end else failwith "~ tuple lengths"
-        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
 
     | (Pi {universals; idomain; edomain; eff; codomain}, _) -> (match typ' with
         | Pi { universals = universals'; idomain = idomain'; edomain = edomain'
              ; eff = eff'; codomain = codomain' } -> failwith "TODO: unify Pi"
-        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
 
     | (Record row, _) -> (match typ' with
         | Record row' ->
             let {coercion = row_coercion; residual} = unify pos env row row' in
             {coercion = Option.map (fun co -> T.RecordCo co) row_coercion; residual}
-        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
 
     | (With _, _) -> (match typ' with
         | With {base = base'; label = label'; field = field'} ->
@@ -626,17 +659,23 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
                 | (None, None, Some co'') -> Some (Symm co'')
                 | (None, None, None) -> None in
             {coercion; residual}
-        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
 
     | (EmptyRow, _) -> (match typ' with
         | EmptyRow -> {coercion = None; residual = empty}
-        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
 
     | (Proxy carrie, _) -> (match typ' with
         | Proxy carrie' -> 
             let {coercion; residual} = unify_abs pos env carrie carrie' in
             {coercion = Option.map (fun co -> T.ProxyCo co) coercion; residual}
-        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
 
     | (T.App (callee, arg), _) -> (match typ' with
         | T.App (callee', arg') ->
@@ -649,18 +688,21 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
                 | (None, Some arg_co) -> Some (Comp (Refl callee', Vector1.singleton arg_co))
                 | (None, None) -> None)
             ; residual = combine residual residual' }
-        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
 
     | (Ov ov, _) -> (match typ' with
-        | Ov ov'->
-            if ov = ov'
-            then {coercion = None; residual = empty}
-            else raise (Err.TypeError (pos, Unify (typ, typ')))
-        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+        | Ov ov' when ov = ov' -> {coercion = None; residual = empty}
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
 
     | (Prim pt, _) -> (match typ' with
         | Prim pt' when Prim.eq pt pt'-> {coercion = None; residual = empty}
-        | _ -> raise (Err.TypeError (pos, Unify (typ, typ'))))
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
 
     | (Fn _, _) -> failwith "unreachable: Fn in unify_whnf"
     | (Bv _, _) -> failwith "unreachable: Bv in unify_whnf"
@@ -671,7 +713,7 @@ and check_uv_assignee pos env uv level max_uv_level typ =
     let rec check_abs (Exists (existentials, body) as typ : T.abs) =
         if Vector.length existentials = 0
         then check body
-        else raise (Err.TypeError (pos, Polytype typ))
+        else Env.reportError env pos (Polytype typ)
 
     and check = function
         | PromotedArray typs -> Vector.iter check typs
@@ -684,7 +726,7 @@ and check_uv_assignee pos env uv level max_uv_level typ =
                 check edomain;
                 check eff;
                 check_abs codomain
-            end else raise (Err.TypeError (pos, Polytype (T.to_abs typ)))
+            end else Env.reportError env pos (Polytype (T.to_abs typ))
         | Record row -> check row
         | With {base; label = _; field} -> check base; check field
         | EmptyRow -> ()
@@ -697,17 +739,17 @@ and check_uv_assignee pos env uv level max_uv_level typ =
             | None ->
                 if level' <= level
                 then ()
-                else raise (Err.TypeError (pos, Escape ov)))
+                else Env.reportError env pos (Escape ov))
         | Uv uv' ->
             (match Env.get_uv env uv' with
             | Unassigned (name, kind, level') ->
                 if uv = uv'
-                then raise (Err.TypeError (pos, Occurs (uv, typ)))
+                then Env.reportError env pos (Occurs (uv, typ))
                 else if level' <= level
                 then ()
                 else if level' <= max_uv_level
                 then Env.set_uv env pos uv' (Unassigned (name, kind, level)) (* hoist *)
-                else raise (Err.TypeError (pos, IncompleteImpl (uv, uv')))
+                else Env.reportError env pos (IncompleteImpl (uv, uv'))
             | Assigned typ -> check typ)
         | Bv _ | Prim _ -> () in
     check typ
@@ -740,7 +782,7 @@ and solve pos env residual =
     in
     (match Option.bind residual (solve env) with
     | None -> ()
-    | Some residual -> raise (Err.TypeError (pos, Unsolvable residual)))
+    | Some residual -> Env.reportError env pos (Unsolvable residual))
 
 (* Public API *)
 
