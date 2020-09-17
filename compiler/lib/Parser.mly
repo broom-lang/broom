@@ -148,7 +148,7 @@ clause : "|" params "|" expr {
     }
 
 params :
-    | select+ "=>" select* {
+    | select+ "?" select* {
         ( Some {v = Values (Vector.of_list $1); pos = $loc($1)}
         , {v = Values (Vector.of_list $3); pos = $loc($3)} )
     }
