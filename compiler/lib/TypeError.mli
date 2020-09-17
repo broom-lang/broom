@@ -1,5 +1,4 @@
 type typ = Fc.Type.t
-type abs = Fc.Type.abs
 
 type t =
     | NonPattern of Ast.Term.Expr.t
@@ -16,8 +15,8 @@ type t =
     | ImpureType of Ast.Term.Expr.t
     | Escape of Fc.Type.ov
     | Occurs of Fc.Type.uv * typ
-    | Polytype of abs
-    | PolytypeInference of abs
+    | Polytype of typ
+    | PolytypeInference of typ
 
 exception TypeError of Util.span * t
 

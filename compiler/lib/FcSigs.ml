@@ -28,7 +28,7 @@ module type EXPR = sig
         | Where of t with_pos * (Name.t * t with_pos) Vector1.t
         | With of {base : t with_pos; label : Name.t; field : t with_pos}
         | Select of t with_pos * Name.t
-        | Proxy of Type.abs 
+        | Proxy of Type.t
         | Use of Name.t
         | Const of Const.t
         | Patchable of t with_pos TxRef.rref
@@ -36,7 +36,7 @@ module type EXPR = sig
     and pat =
         | ValuesP of pat with_pos Vector.t
         | AppP of t with_pos * pat with_pos Vector.t
-        | ProxyP of Type.abs
+        | ProxyP of Type.t
         | UseP of Name.t
         | ConstP of Const.t
 

@@ -18,6 +18,7 @@ type env = Env.t
 type span = Util.span
 type coercer = TyperSigs.coercer
 
+type 'a with_pos = 'a Util.with_pos
 type 'a matching = {coercion : 'a; residual : Residual.t option}
 
 let ref = TxRef.ref
@@ -91,10 +92,10 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                         (uv, T.Pi { universals = Vector.of_list []; idomain = None
                                   ; edomain = T.Uv (sibling env dkind uv)
                                   ; eff = Uv (sibling env T.aRow uv)
-                                  ; codomain = T.to_abs (Uv (sibling env cdkind uv)) })
+                                  ; codomain = Uv (sibling env cdkind uv) })
                     | ProxyL _ ->
                         let kind : T.kind = Uv (sibling env T.aKind uv) in
-                        (uv, T.Proxy (T.to_abs (Uv (sibling env kind uv))))
+                        (uv, T.Proxy (Uv (sibling env kind uv)))
                     | WithL {base = _; label; field = _} ->
                         (uv, (With {base = Uv (sibling env T.aRow uv)
                             ; label; field = Uv (sibling env T.aType uv)}))
@@ -143,40 +144,26 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
 
 (* # Subtyping *)
 
-let rec subtype_abs : span -> bool -> Env.t -> T.abs -> T.abs -> coercer matching
-= fun pos occ env typ super ->
-    let (env, skolems, typ) = Env.push_abs_skolems env typ in
-    let (uvs, super) = Env.instantiate_abs env super in
-    match Vector1.of_vector skolems with
-    | Some skolems ->
+let rec subtype_abs : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
+= fun pos occ env typ super -> match typ with
+    | Exists (existentials, body) ->
+        let (env, skolems, typ) = Env.push_abs_skolems env existentials body in
+        let {coercion = Cf coerce; residual} = subtype_abs pos occ env typ super in
+        let name = Name.fresh () in
+        let def : E.lvalue = {name; typ} in
+        let use : E.t with_pos = {pos; v = Use name} in
         let skolems = Vector1.map fst skolems in
-        (match Vector1.of_vector uvs with
-        | Some uvs ->
-            let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
+        { coercion = Cf (fun expr -> {pos; v = Unpack (skolems, def, expr, coerce use)})
+        ; residual = ResidualMonoid.skolemized (Vector1.map snd skolems) residual }
 
-            let name = Name.fresh () in
-            let impl = {E.name; typ} in
+    | typ -> (match super with
+        | Exists (existentials', body') ->
+            let (uvs, super) = Env.instantiate_abs env existentials' body' in
+            let {coercion = Cf coerce; residual} = subtype_abs pos occ env typ super in
             let uvs = Vector1.map (fun uv -> T.Uv uv) uvs in
-            let body = {Util.pos; v = E.Pack (uvs, coerce {Util.pos; v = Use name})} in
-            { coercion = Cf (fun v -> {pos; v = Unpack (skolems, impl, v, body)})
-            ; residual = ResidualMonoid.skolemized (Vector1.map snd skolems) residual }
-        | None ->
-            let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
-
-            let name = Name.fresh () in 
-            let impl = {E.name; typ} in
-            let body = coerce {Util.pos; v = Use name} in
-            { coercion = Cf (fun v -> {pos; v = Unpack (skolems, impl, v, body)})
-            ; residual = ResidualMonoid.skolemized (Vector1.map snd skolems) residual })
-
-    | None ->
-        (match Vector1.of_vector uvs with
-        | Some uvs ->
-            let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
-
-            let uvs = Vector1.map (fun uv -> T.Uv uv) uvs in
-            {coercion = Cf (fun v -> {pos; v = Pack (uvs, coerce v)}); residual}
-        | None -> subtype pos occ env typ super)
+            (* FIXME: coercing potentially nonatomic `expr`: *)
+            {coercion = Cf (fun expr -> {pos; v = Pack (uvs, coerce expr)}); residual}
+        | super -> subtype pos occ env typ super)
 
 and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 = fun pos occ env typ super ->
@@ -212,7 +199,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         (uv, Pi { universals = Vector.of_list []; idomain = None
                                 ; edomain = T.Uv (sibling env dkind uv)
                                 ; eff = Uv (sibling env T.aRow uv)
-                                ; codomain = T.to_abs (Uv (sibling env cdkind uv)) })
+                                ; codomain = Uv (sibling env cdkind uv) })
                     | Record _ -> (uv, Record (Uv (sibling env T.aRow uv)))
                     | With {base = _; label; field = _} ->
                         (uv, With { base = Uv (sibling env T.aRow uv)
@@ -220,7 +207,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     | EmptyRow -> (uv, EmptyRow)
                     | Proxy _ ->
                         let kind : T.kind = Uv (sibling env T.aKind uv) in
-                        (uv, Proxy (T.to_abs (Uv (sibling env kind uv))))
+                        (uv, Proxy (Uv (sibling env kind uv)))
                     | App (callee, arg) ->
                         ( uv, T.App (Uv (sibling env (K.kindof_F pos env callee) uv)
                             , Uv (sibling env (K.kindof_F pos env arg) uv)) )
@@ -390,7 +377,15 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
         (* TODO: DRY: *)
         | (Proxy (Exists (existentials, carrie) as abs_carrie), _) -> (match super with
-            | Proxy (Exists (existentials', carrie') as abs_carrie') when Vector.length existentials' = 0 ->
+            | Proxy (Exists _ as abs_carrie') -> (* TODO: Use unification (?) *)
+                let {coercion = _; residual} =
+                    subtype_abs pos occ env abs_carrie abs_carrie' in
+                let {coercion = _; residual = residual'} =
+                    subtype_abs pos occ env abs_carrie' abs_carrie in
+                { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
+                ; residual = combine residual residual' }
+
+            | Proxy carrie' ->
                 let (let+) = Fun.flip Option.map in
                 (* NOTE: Has the same structure as `K.eval`: *)
                 let rec leftmost_callee max_uv_level = function
@@ -408,23 +403,15 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 (match leftmost_callee Int.max_int carrie' with
                 | Some (uv, impl) ->
                     Env.set_uv env pos uv (Assigned impl);
-                    { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
+                    { coercion = Cf (fun _ -> {v = Proxy carrie'; pos})
                     ; residual = empty }
                 | None -> (* TODO: Use unification (?) *)
                     let {coercion = _; residual} =
-                        subtype_abs pos occ env abs_carrie abs_carrie' in
+                        subtype_abs pos occ env abs_carrie carrie' in
                     let {coercion = _; residual = residual'} =
-                        subtype_abs pos occ env abs_carrie' abs_carrie in
-                    { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
+                        subtype_abs pos occ env carrie' abs_carrie in
+                    { coercion = Cf (fun _ -> {v = Proxy carrie'; pos})
                     ; residual = combine residual residual' })
-
-            | Proxy abs_carrie' -> (* TODO: Use unification (?) *)
-                let {coercion = _; residual} =
-                    subtype_abs pos occ env abs_carrie abs_carrie' in
-                let {coercion = _; residual = residual'} =
-                    subtype_abs pos occ env abs_carrie' abs_carrie in
-                { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
-                ; residual = combine residual residual' }
 
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
@@ -486,19 +473,18 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
         ; residual = Some (Sub (occ, typ, super, patchable)) }
 
 and occurs_check pos env uv typ =
-    let rec check_abs (Exists (_, body) : T.abs) = check body
-
-    and check = function
+    let rec check : T.t -> unit = function
+        | Exists (_, body) -> check body
         | Values typs -> Vector.iter check typs
         | Pi {universals = _; idomain; edomain; eff; codomain} ->
             Option.iter check idomain;
             check edomain;
             check eff;
-            check_abs codomain
+            check codomain
         | Record row -> check row
         | With {base; label = _; field} -> check base; check field
         | EmptyRow -> ()
-        | Proxy carrie -> check_abs carrie
+        | Proxy carrie -> check carrie
         | Fn (_, body) -> check body
         | App (callee, arg) -> check callee; check arg
         | Ov ov ->
@@ -517,11 +503,11 @@ and occurs_check pos env uv typ =
 
 (* # Unification *)
 
-and unify_abs : span -> Env.t -> T.abs -> T.abs -> T.coercion option matching
-= fun pos env (Exists (existentials, body)) (Exists (existentials', body')) ->
-    if Vector.length existentials = 0 && Vector.length existentials' = 0
-    then unify pos env body body'
-    else failwith "todo"
+and unify_abs : span -> Env.t -> T.t -> T.t -> T.coercion option matching
+= fun pos env typ typ' -> match (typ, typ') with
+    | (Exists (existentials, body), Exists (existentials', body')) ->
+        failwith "todo"
+    | _ -> unify pos env typ typ'
 
 and unify pos env typ typ' : T.coercion option matching =
     let (>>=) = Option.bind in
@@ -710,12 +696,8 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
 (* Monotype check, occurs check, ov escape check, HKT capturability check and uv level updates.
    Complected for speed. *)
 and check_uv_assignee pos env uv level max_uv_level typ =
-    let rec check_abs (Exists (existentials, body) as typ : T.abs) =
-        if Vector.length existentials = 0
-        then check body
-        else Env.reportError env pos (Polytype typ)
-
-    and check = function
+    let rec check : T.t -> unit = function
+        | Exists _ as typ -> Env.reportError env pos (Polytype typ)
         | PromotedArray typs -> Vector.iter check typs
         | PromotedValues typs -> Vector.iter check typs
         | Values typs -> Vector.iter check typs
@@ -725,12 +707,12 @@ and check_uv_assignee pos env uv level max_uv_level typ =
                 Option.iter check idomain;
                 check edomain;
                 check eff;
-                check_abs codomain
-            end else Env.reportError env pos (Polytype (T.to_abs typ))
+                check codomain
+            end else Env.reportError env pos (Polytype typ)
         | Record row -> check row
         | With {base; label = _; field} -> check base; check field
         | EmptyRow -> ()
-        | Proxy carrie -> check_abs carrie
+        | Proxy carrie -> check carrie
         | Fn (_, body) -> check body
         | App (callee, arg) -> check callee; check arg
         | Ov ((_, level') as ov) ->

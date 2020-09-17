@@ -5,7 +5,6 @@ module Make (Type : FcSigs.TYPE) : FcSigs.TERM
 module Type = Type
 
 type 'a with_pos = 'a Util.with_pos
-type abs = Type.abs
 type typ = Type.typ
 type coercion = Type.coercion
 
@@ -44,7 +43,7 @@ module rec Expr : FcSigs.EXPR
         | Where of t with_pos * (Name.t * t with_pos) Vector1.t
         | With of {base : t with_pos; label : Name.t; field : t with_pos}
         | Select of t with_pos * Name.t
-        | Proxy of abs 
+        | Proxy of Type.t
         | Use of Name.t
         | Const of Const.t
         | Patchable of t with_pos TxRef.rref
@@ -52,7 +51,7 @@ module rec Expr : FcSigs.EXPR
     and pat =
         | ValuesP of pat with_pos Vector.t
         | AppP of t with_pos * pat with_pos Vector.t
-        | ProxyP of Type.abs
+        | ProxyP of Type.t
         | UseP of Name.t
         | ConstP of Const.t
 
@@ -155,7 +154,7 @@ module rec Expr : FcSigs.EXPR
                 (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
         | Select (record, label) ->
             PPrint.prefix 4 0 (selectee_to_doc s record) (PPrint.dot ^^ Name.to_doc label)
-        | Proxy typ -> PPrint.brackets (Type.abs_to_doc s typ)
+        | Proxy typ -> PPrint.brackets (Type.to_doc s typ)
         | Use name -> Name.to_doc name
         | Const c -> Const.to_doc c
         | Patchable ref -> to_doc s !ref
@@ -203,7 +202,7 @@ module rec Expr : FcSigs.EXPR
                 ^/^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                     PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                     (pat_to_doc s) (Vector.to_list args))
-        | ProxyP typ -> PPrint.brackets (Type.abs_to_doc s typ)
+        | ProxyP typ -> PPrint.brackets (Type.to_doc s typ)
         | UseP name -> Name.to_doc name
         | ConstP c -> Const.to_doc c
 

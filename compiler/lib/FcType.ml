@@ -43,18 +43,16 @@ and Typ : FcTypeSigs.TYPE
 
     and ov = binding * level
 
-    and abs = Exists of kind Vector.t * t
-
     and t =
+        | Exists of kind Vector1.t * t
         | PromotedArray of t Vector.t
         | PromotedValues of t Vector.t
         | Values of t Vector.t
-        (* TODO: Remove multiargs since they can be implemented with unboxed tuples (`Values`): *)
-        | Pi of {universals : kind Vector.t; idomain : t option; edomain : t; eff : t; codomain : abs}
+        | Pi of {universals : kind Vector.t; idomain : t option; edomain : t; eff : t; codomain : t}
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
-        | Proxy of abs
+        | Proxy of t
         | Fn of kind * t
         | App of t * t
         | Bv of bv
@@ -98,13 +96,10 @@ and Typ : FcTypeSigs.TYPE
 
     and kinds_to_doc s kinds = PPrint.separate_map (PPrint.break 1) (kind_to_doc s) kinds
 
-    and abs_to_doc s (Exists (params, body)) =
-        if Vector.length params > 0 then
-            PPrint.prefix 4 1 (PPrint.group (PPrint.string "exists" ^/^ (kinds_to_doc s) (Vector.to_list params)))
-                (PPrint.dot ^^ PPrint.blank 1 ^^ to_doc s body)
-        else to_doc s body
-
     and to_doc s = function
+        | Exists (params, body) ->
+            PPrint.prefix 4 1 (PPrint.group (PPrint.string "exists" ^/^ (kinds_to_doc s) (Vector1.to_list params)))
+                (PPrint.dot ^^ PPrint.blank 1 ^^ to_doc s body)
         | PromotedArray typs ->
             PPrint.surround_separate_map 4 0 (PPrint.brackets PPrint.empty)
                 PPrint.lbracket (PPrint.comma ^^ PPrint.break 1) PPrint.rbracket
@@ -124,7 +119,7 @@ and Typ : FcTypeSigs.TYPE
             let edoc =
                 PPrint.prefix 4 1 edomain
                     (PPrint.string "-!" ^^ PPrint.blank 1
-                        ^^ PPrint.infix 4 1 (PPrint.string "->") (to_doc s eff) (abs_to_doc s codomain)) in
+                        ^^ PPrint.infix 4 1 (PPrint.string "->") (to_doc s eff) (to_doc s codomain)) in
             let unquantified_doc = match idomain with
                 | Some idomain ->
                     PPrint.prefix 4 1 idomain (PPrint.string "=>" ^^ PPrint.blank 1 ^^ edoc)
@@ -139,7 +134,7 @@ and Typ : FcTypeSigs.TYPE
             PPrint.infix 4 1 (PPrint.string "with") (base_to_doc s base)
                 (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (to_doc s field))
         | EmptyRow -> PPrint.parens (PPrint.bar)
-        | Proxy typ -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ abs_to_doc s typ)
+        | Proxy typ -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ to_doc s typ)
         | Fn (param, body) ->
             PPrint.prefix 4 1
                 (PPrint.string "fun" ^^ PPrint.blank 1 ^^ kind_to_doc s param)
@@ -258,8 +253,6 @@ and Typ : FcTypeSigs.TYPE
         | co -> coercion_to_doc s co
 
     (* --- *)
-
-    let to_abs typ = Exists (Vector.of_list [], typ)
 
     let freshen (name, kind) = (Name.freshen name, kind)
 

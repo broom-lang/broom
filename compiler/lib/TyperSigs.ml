@@ -4,7 +4,6 @@ type span = Util.span
 type 'a with_pos = 'a Ast.with_pos
 
 type typ = Fc.Type.t
-type abs = Fc.Type.abs
 
 type 'a typing = {term : 'a; typ : typ; eff : typ}
 type 'a kinding = {typ : 'a; kind : Fc.Type.kind}
@@ -18,8 +17,8 @@ module type KINDING = sig
     type env
 
     val kindof_F : span -> env -> Fc.Type.t -> Fc.Type.kind
-    val kindof : env -> Ast.Type.t with_pos -> abs kinding
-    val check : env -> Fc.Type.kind -> Ast.Type.t with_pos -> abs
+    val kindof : env -> Ast.Type.t with_pos -> typ kinding
+    val check : env -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
     val eval : env -> typ -> (typ * Fc.Type.coercion option) option
 end
 
@@ -74,21 +73,19 @@ module type ENV = sig
 
     val document : t -> (Fc.Uv.subst -> 'a -> PPrint.document) -> 'a -> PPrint.document
 
-    val expose_abs : t -> T.t Vector.t -> T.abs -> T.abs
     val expose : t -> T.t Vector.t -> T.t -> T.t
     val expose_template : t -> T.t Vector.t -> T.template -> T.template
 
-    val close_abs : t -> int Name.Map.t -> T.abs -> T.abs
     val close : t -> int Name.Map.t -> T.t -> T.t
     val close_template : t -> int Name.Map.t -> T.template -> T.template
 
-    val reabstract : t -> T.abs -> T.ov Vector.t * T.t
-    val push_abs_skolems : t -> T.abs -> t * T.ov Vector.t * T.t
-    val push_arrow_skolems : t -> T.kind Vector.t -> T.t option -> T.t -> T.t -> T.abs
-        -> t * T.ov Vector.t * T.t option * T.t * T.t * T.abs
-    val instantiate_abs : t -> T.abs -> T.uv Vector.t * T.t
+    val reabstract : t -> T.t -> T.ov Vector.t * T.t
+    val push_abs_skolems : t -> T.kind Vector1.t -> T.t -> t * T.ov Vector1.t * T.t
+    val push_arrow_skolems : t -> T.kind Vector.t -> T.t option -> T.t -> T.t -> T.t
+        -> t * T.ov Vector.t * T.t option * T.t * T.t * T.t
+    val instantiate_abs : t -> T.kind Vector1.t -> T.t -> T.uv Vector1.t * T.t
     val instantiate_arrow : t -> T.kind Vector.t -> T.t option -> T.t
-        -> T.t -> T.abs -> T.uv Vector.t * T.t option * T.t * T.t * T.abs
+        -> T.t -> T.t -> T.uv Vector.t * T.t option * T.t * T.t * T.t
 
     val reportError : t -> span -> TypeError.t -> unit
     val wrapErrorHandler : t -> ((span -> TypeError.t -> unit) -> (span -> TypeError.t -> unit)) -> t

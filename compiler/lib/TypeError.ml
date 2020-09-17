@@ -1,5 +1,4 @@
 type typ = Fc.Type.t
-type abs = Fc.Type.abs
 
 type t =
     | NonPattern of Ast.Term.Expr.t
@@ -16,8 +15,8 @@ type t =
     | ImpureType of Ast.Term.Expr.t
     | Escape of Fc.Type.ov
     | Occurs of Fc.Type.uv * typ
-    | Polytype of abs
-    | PolytypeInference of abs
+    | Polytype of typ
+    | PolytypeInference of typ
 
 exception TypeError of Util.span * t
 
@@ -55,8 +54,8 @@ let rec cause_to_doc s pos = function
     | ImpureType expr -> PPrint.string "impure type expression" ^/^ Ast.Term.Expr.to_doc {v = expr; pos}
     | Escape ((name, _), _) -> Name.to_doc name ^/^ PPrint.string "would escape"
     | Occurs (uv, typ) -> Fc.Type.to_doc s (Uv uv) ^/^ PPrint.string "occurs in" ^/^ Fc.Type.to_doc s typ
-    | Polytype typ -> Fc.Type.abs_to_doc s typ ^/^ PPrint.string "is not a monotype"
-    | PolytypeInference typ -> PPrint.string "tried to infer polytype" ^/^ Fc.Type.abs_to_doc s typ
+    | Polytype typ -> Fc.Type.to_doc s typ ^/^ PPrint.string "is not a monotype"
+    | PolytypeInference typ -> PPrint.string "tried to infer polytype" ^/^ Fc.Type.to_doc s typ
 
 let to_doc (({pos_fname; _}, _) as span : Util.span) s err =
     PPrint.prefix 4 1 (PPrint.string "Type error in" ^/^ PPrint.string pos_fname ^/^ PPrint.string "at"

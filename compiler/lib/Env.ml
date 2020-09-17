@@ -129,11 +129,10 @@ let find (env : t) pos name =
 
 let document (env : t) to_doc v = to_doc env.tx_log v
 
-let rec expose_abs' env depth substitution (Exists (params, body) : T.abs) : T.abs =
-    let depth = depth + 1 in
-    Exists (params, expose' env depth substitution body)
-
-and expose' env depth substitution = function
+let rec expose' env depth substitution : T.t -> T.t = function
+    | Exists (params, body) ->
+        let depth = depth + 1 in
+        Exists (params, expose' env depth substitution body)
     | PromotedArray typs -> PromotedArray (Vector.map (expose' env depth substitution) typs)
     | PromotedValues typs -> PromotedValues (Vector.map (expose' env depth substitution) typs)
     | Values typs -> Values (Vector.map (expose' env depth substitution) typs)
@@ -142,12 +141,12 @@ and expose' env depth substitution = function
         Pi { universals; idomain = Option.map (expose' env depth substitution) idomain
             ; edomain = expose' env depth substitution edomain
             ; eff = expose' env depth substitution eff
-            ; codomain = expose_abs' env depth substitution codomain }
+            ; codomain = expose' env depth substitution codomain }
     | Record row -> Record (expose' env depth substitution row)
     | With {base; label; field} ->
         With {base = expose' env depth substitution base; label; field = expose' env depth substitution field}
     | EmptyRow -> EmptyRow
-    | Proxy typ -> Proxy (expose_abs' env depth substitution typ)
+    | Proxy typ -> Proxy (expose' env depth substitution typ)
     | Fn (params, body) -> Fn (params, expose' env (depth + 1) substitution body)
     | App (callee, arg) -> App (expose' env depth substitution arg, expose' env depth substitution callee)
     | Bv {depth = depth'; sibli; kind = _} as typ ->
@@ -168,17 +167,15 @@ and expose_template' env depth substitution = function
     | ProxyL path -> ProxyL (expose' env depth substitution path)
     | Hole -> Hole
 
-let expose_abs env = expose_abs' env 0
 let expose env = expose' env 0
 let expose_template env = expose_template' env 0
 
 (* --- *)
 
-let rec close_abs' env depth substitution (Exists (params, body) : T.abs) : T.abs =
-    let depth = depth + 1 in
-    Exists (params, close' env depth substitution body)
-
-and close' env depth substitution = function
+let rec close' env depth substitution : T.t -> T.t = function
+    | Exists (params, body) ->
+        let depth = depth + 1 in
+        Exists (params, close' env depth substitution body)
     | PromotedArray typs -> PromotedArray (Vector.map (close' env depth substitution) typs)
     | PromotedValues typs -> PromotedValues (Vector.map (close' env depth substitution) typs)
     | Values typs -> Values (Vector.map (close' env depth substitution) typs)
@@ -187,12 +184,12 @@ and close' env depth substitution = function
         Pi { universals; idomain = Option.map (close' env depth substitution) idomain
            ; edomain = close' env depth substitution edomain
            ; eff = close' env depth substitution eff
-           ; codomain = close_abs' env depth substitution codomain }
+           ; codomain = close' env depth substitution codomain }
     | Record row -> Record (close' env depth substitution row)
     | With {base; label; field} ->
         With {base = close' env depth substitution base; label; field = close' env depth substitution field}
     | EmptyRow -> EmptyRow
-    | Proxy typ -> Proxy (close_abs' env depth substitution typ)
+    | Proxy typ -> Proxy (close' env depth substitution typ)
     | Fn (params, body) -> Fn (params, close' env (depth + 1) substitution body)
     | App (callee, arg) -> App (close' env depth substitution callee, close' env depth substitution arg)
     | Ov ((name, kind), _) as path ->
@@ -214,19 +211,21 @@ and close_template' env depth substitution = function
 
 let close env = close' env 0
 let close_template env = close_template' env 0
-let close_abs env = close_abs' env 0
 
 (* --- *)
 
-let reabstract env (T.Exists (params, body)) =
-    let params' = Vector.map (fun kind -> generate env (Name.fresh (), kind)) params in
-    let substitution = Vector.map (fun ov -> T.Ov ov) params' in
-    (params', expose env substitution body)
+let reabstract env : T.t -> T.ov Vector.t * T.t = function
+    | Exists (params, body) ->
+        let params = Vector1.to_vector params in
+        let params = Vector.map (fun kind -> generate env (Name.fresh (), kind)) params in
+        let substitution = Vector.map (fun ov -> T.Ov ov) params in
+        (params, expose env substitution body)
+    | typ -> (Vector.empty, typ)
 
-let push_abs_skolems env (T.Exists (existentials, body)) =
-    let (env, skolems) = push_skolems env existentials in
+let push_abs_skolems env existentials body =
+    let (env, skolems) = push_skolems env (Vector1.to_vector existentials) in
     let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
-    (env, skolems, expose env substitution body)
+    (env, Option.get (Vector1.of_vector skolems), expose env substitution body)
 
 let push_arrow_skolems env universals idomain edomain eff codomain =
     let (env, skolems) = push_skolems env universals in
@@ -235,11 +234,11 @@ let push_arrow_skolems env universals idomain edomain eff codomain =
     , Option.map (expose env substitution) idomain
     , expose env substitution edomain
     , expose env substitution eff
-    , expose_abs env substitution codomain )
+    , expose env substitution codomain )
 
-let instantiate_abs env (T.Exists (existentials, body)) =
-    let uvs = Vector.map (fun kind -> uv env kind (Name.fresh ())) existentials in
-    let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
+let instantiate_abs env existentials body =
+    let uvs = Vector1.map (fun kind -> uv env kind (Name.fresh ())) existentials in
+    let substitution = uvs |> Vector1.to_vector |> Vector.map (fun uv -> T.Uv uv) in
     (uvs, expose env substitution body)
 
 let instantiate_arrow env universals idomain edomain eff codomain =
@@ -249,7 +248,7 @@ let instantiate_arrow env universals idomain edomain eff codomain =
     , Option.map (expose env substitution) idomain
     , expose env substitution edomain
     , expose env substitution eff 
-    , expose_abs env substitution codomain )
+    , expose env substitution codomain )
 
 end
 

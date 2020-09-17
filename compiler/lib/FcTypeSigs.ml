@@ -14,17 +14,16 @@ module type TYPE = sig
 
     and ov = binding * level
 
-    and abs = Exists of kind Vector.t * t
-
     and t =
+        | Exists of kind Vector1.t * t
         | PromotedArray of t Vector.t
         | PromotedValues of t Vector.t
         | Values of t Vector.t
-        | Pi of {universals : kind Vector.t; idomain : t option; edomain : t; eff : t; codomain : abs}
+        | Pi of {universals : kind Vector.t; idomain : t option; edomain : t; eff : t; codomain : t}
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
-        | Proxy of abs
+        | Proxy of t
         | Fn of kind * t
         | App of t * t
         | Bv of bv
@@ -61,13 +60,10 @@ module type TYPE = sig
 
     val kind_to_doc : subst -> kind -> PPrint.document
     val binding_to_doc : subst -> binding -> PPrint.document
-    val abs_to_doc : subst -> abs -> PPrint.document
     val universal_to_doc : subst -> kind Vector.t -> PPrint.document -> PPrint.document
     val to_doc : subst -> t -> PPrint.document
     val coercion_to_doc : subst -> coercion -> PPrint.document
     val template_to_doc : subst -> template -> PPrint.document
-
-    val to_abs : t -> abs
 
     val freshen : binding -> binding
     val sibling : subst -> kind -> uv -> uv

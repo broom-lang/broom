@@ -32,11 +32,11 @@ let primop_typ =
         ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
         , T.EmptyRow, T.Prim Prim.Int )
     | Int ->
-        (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (T.to_abs (Prim Int)))
+        (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim Int))
     | Type ->
         ( Vector.empty, Vector.empty, T.EmptyRow
-        , T.Proxy (T.Exists (Vector.singleton T.aType
-            , Proxy (T.to_abs (Bv {depth = 1; sibli = 0; kind = T.aType})))) )
+        , T.Proxy (T.Exists (Vector1.singleton T.aType
+            , Proxy (Bv {depth = 1; sibli = 0; kind = T.aType}))) )
 
 let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env expr -> match expr.v with
@@ -64,7 +64,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
         let {TS.term = body; typ = codomain; eff} = typeof env {expr with v = body} in
         { term = {expr with v = FExpr.Fn (Vector.empty, {name = Name.fresh (); typ = Values Vector.empty}, body)}
         ; typ = Pi {universals = Vector.empty; idomain = None
-            ; edomain = Values Vector.empty; eff; codomain = T.to_abs codomain }
+            ; edomain = Values Vector.empty; eff; codomain = codomain }
         ; eff = EmptyRow }
 
     | AExpr.App (callee, arg) ->
@@ -94,7 +94,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
     | AExpr.PrimApp (op, arg) -> (* TODO: DRY: *)
         let (universals, domain, app_eff, codomain) = primop_typ op in
         let (uvs, idomain, domain, app_eff, Exists (_, codomain)) =
-            Env.instantiate_arrow env universals None (Values domain) app_eff (T.to_abs codomain) in
+            Env.instantiate_arrow env universals None (Values domain) app_eff codomain in
         let {TS.term = arg; typ = _; eff = arg_eff} = check env domain arg in
         let _ = M.solving_unify arg.pos env arg_eff app_eff in
         { term = {expr with v = PrimApp (op, Vector.map (fun uv -> T.Uv uv) uvs, arg)}
@@ -130,8 +130,7 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t with_p
         let (env, universals) = Env.push_existential env in
         let (idomain, edomain, {TS.term = clause; typ = codomain; eff}) =
             elaborate_clause env clause in
-        let clauses' = Seq.map (check_clause env idomain edomain eff ((* HACK: *) T.to_abs codomain))
-            clauses' in
+        let clauses' = Seq.map (check_clause env idomain edomain eff codomain) clauses' in
         let clauses = Vector.of_seq (fun () -> Seq.Cons (clause, clauses')) in
         let param = {FExpr.name = Name.fresh (); typ = edomain} in
         let param_use = {Util.v = FExpr.Use param.name; pos} in
@@ -145,7 +144,7 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t with_p
                    ; idomain = Option.map (Env.close env substitution) idomain
                    ; edomain = Env.close env substitution edomain
                    ; eff = Env.close env substitution eff
-                   ; codomain = Env.close_abs env substitution (T.to_abs codomain) }
+                   ; codomain = Env.close env substitution codomain }
         ; eff = EmptyRow }
     | Nil -> failwith "TODO: clauseless fn"
 
@@ -255,7 +254,7 @@ and elaborate_field env pat semiabs = function
 
 (* # Checking *)
 
-and check_abs : Env.t -> T.abs -> AExpr.t with_pos -> FExpr.t with_pos typing
+and check_abs : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env typ expr -> implement env (Env.reabstract env typ) expr
 
 and implement : Env.t -> T.ov Vector.t * T.t -> AExpr.t with_pos -> FExpr.t with_pos typing

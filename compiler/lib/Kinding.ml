@@ -23,13 +23,13 @@ let (!) = TxRef.(!)
 let kindof_prim : Prim.t -> T.kind = function
     | Int -> T.aType
     | Array -> Pi {universals = Vector.empty; idomain = None; edomain = T.aType
-        ; eff = EmptyRow; codomain = T.to_abs T.aType}
+        ; eff = EmptyRow; codomain = T.aType}
     | SingleRep -> T.aType
     | Boxed -> Prim SingleRep
     | TypeIn -> Pi {universals = Vector.empty; idomain = None; edomain = T.rep
-        ; eff = EmptyRow; codomain = T.to_abs T.aType}
+        ; eff = EmptyRow; codomain = T.aType}
     | RowOf -> Pi {universals = Vector.empty; idomain = None; edomain = T.aKind
-        ; eff = EmptyRow; codomain = T.to_abs T.aKind}
+        ; eff = EmptyRow; codomain = T.aKind}
 
 let rec kindof_F pos env : T.t -> T.kind = function
     | PromotedArray typs ->
@@ -45,11 +45,10 @@ let rec kindof_F pos env : T.t -> T.kind = function
     | With _ | EmptyRow -> T.aRow
     | Fn (domain, body) ->
         Pi { universals = Vector.empty; idomain = None; edomain = domain
-            ; eff = EmptyRow; codomain = T.to_abs (kindof_F pos env body) }
+            ; eff = EmptyRow; codomain = kindof_F pos env body }
     | App (callee, arg) ->
         (match kindof_F pos env callee with
-        | Pi { universals; idomain; edomain = domain; eff
-                ; codomain = Exists (existentials, codomain) } ->
+        | Pi {universals; idomain; edomain = domain; eff; codomain} ->
             check_F pos env domain arg;
             codomain)
     | Ov ((_, kind), _) -> kind
@@ -63,7 +62,7 @@ and check_F pos env kind typ =
     let kind' = kindof_F pos env typ in
     ignore (M.solving_unify pos env kind' kind)
 
-let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
+let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
     let rec elab env (typ : AType.t with_pos) : T.t kinding =
         match typ.v with
         | Pi {idomain; edomain; eff; codomain} -> elab_pi env idomain edomain eff codomain
@@ -115,12 +114,12 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
                 let substitution = Vector.map (fun kind ->
                     let kind = Vector.fold_right (fun codomain domain ->
                         T.Pi { universals = Vector.empty; idomain = None
-                            ; edomain = domain; eff = EmptyRow; codomain = T.to_abs codomain }
+                            ; edomain = domain; eff = EmptyRow; codomain = codomain }
                     ) kind ukinds in
                     let ov = Env.generate env0 (Name.fresh (), kind) in
                     Vector.fold (fun callee arg -> T.App (callee, Ov arg)) (Ov ov) universals
-                ) existentials in
-                T.to_abs (Env.expose env0 substitution concr_codo)
+                ) (Vector1.to_vector existentials) in
+                Env.expose env0 substitution concr_codo
             | (_, codomain) -> codomain in
 
         let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
@@ -130,7 +129,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
              ; idomain = Option.map (Env.close env substitution) idomain
              ; edomain = Env.close env substitution edomain
              ; eff = Env.close env substitution eff
-             ; codomain = Env.close_abs env substitution codomain }
+             ; codomain = Env.close env substitution codomain }
         ; kind = T.aType }
 
     and elab_domain env (domain : AExpr.t with_pos) =
@@ -176,12 +175,14 @@ let rec kindof : Env.t -> AType.t with_pos -> T.abs kinding = fun env typ ->
 
     let (env, params) = Env.push_existential env in
     let {TS.typ; kind} = elab env typ in
-    let params = !params |> Vector.of_list |> Vector.map fst in
-    let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
-        (i + 1, Name.Map.add name i substitution)
-    ) (0, Name.Map.empty) params in
-    { typ = Exists (Vector.map snd params, Env.close env substitution typ)
-    ; kind }
+    let typ : T.t = match Vector1.of_list !params |> Option.map (Vector1.map fst) with
+        | Some params ->
+            let (_, substitution) = Vector1.fold (fun (i, substitution) (name, _) ->
+                (i + 1, Name.Map.add name i substitution)
+            ) (0, Name.Map.empty) params in
+            Exists (Vector1.map snd params, Env.close env substitution typ)
+        | None -> typ in
+    {typ; kind}
 
 and check env kind ({v = _; pos} as typ) =
     let {TS.typ; kind = kind'} = kindof env typ in
