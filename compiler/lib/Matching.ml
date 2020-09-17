@@ -374,14 +374,6 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
         (* TODO: DRY: *)
         | (Proxy carrie, _) -> (match super with
-            | Proxy (Exists _ as abs_carrie') -> (* TODO: Use unification (?) *)
-                let {coercion = _; residual} =
-                    subtype pos occ env carrie abs_carrie' in
-                let {coercion = _; residual = residual'} =
-                    subtype pos occ env abs_carrie' carrie in
-                { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
-                ; residual = combine residual residual' }
-
             | Proxy carrie' ->
                 let (let+) = Fun.flip Option.map in
                 (* NOTE: Has the same structure as `K.eval`: *)
