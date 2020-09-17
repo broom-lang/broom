@@ -118,12 +118,12 @@ and Type : AstSigs.TYPE
             | Some idomain -> PPrint.infix 4 1 (PPrint.string "=>") (Term.Expr.to_doc idomain) doc
             | None -> doc)
         | Record stmts ->
-            PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.bar)
-                (PPrint.lbrace ^^ PPrint.bar) (PPrint.semi ^^ PPrint.break 1) (PPrint.bar ^^ PPrint.rbrace)
+            PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.semi)
+                (PPrint.lbrace ^^ PPrint.semi) (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
                 Term.Stmt.to_doc (Vector.to_list stmts)
         | Row stmts ->
-            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.bar)
-                (PPrint.lparen ^^ PPrint.bar) (PPrint.semi ^^ PPrint.break 1) (PPrint.bar ^^ PPrint.rparen)
+            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.semi)
+                (PPrint.lparen ^^ PPrint.semi) (PPrint.semi ^^ PPrint.break 1) PPrint.rparen
                 Term.Stmt.to_doc (Vector.to_list stmts)
         | Path expr -> Term.Expr.to_doc {typ with v = expr}
         | Prim pt -> Prim.to_doc pt
