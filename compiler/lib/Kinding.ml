@@ -32,6 +32,7 @@ let kindof_prim : Prim.t -> T.kind = function
         ; eff = EmptyRow; codomain = T.aKind}
 
 let rec kindof_F pos env : T.t -> T.kind = function
+    | Exists (_, body) -> kindof_F pos env body
     | PromotedArray typs ->
         let el_kind = if Vector.length typs = 0
             then kindof_F pos env (Vector.get typs 0)
@@ -50,7 +51,8 @@ let rec kindof_F pos env : T.t -> T.kind = function
         (match kindof_F pos env callee with
         | Pi {universals; idomain; edomain = domain; eff; codomain} ->
             check_F pos env domain arg;
-            codomain)
+            codomain
+        | _ -> failwith "unreachable: invalid type application in `kindof_F`.")
     | Ov ((_, kind), _) -> kind
     | Bv {kind; _} -> kind
     | Uv uv -> (match Env.get_uv env uv with
@@ -65,6 +67,15 @@ and check_F pos env kind typ =
 let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
     let rec elab env (typ : AType.t with_pos) : T.t kinding =
         match typ.v with
+        | Values typs ->
+            let kinds = CCVector.create () in
+            let typs = Vector.map (fun typ ->
+                let {TS.typ; kind} = elab env typ in
+                CCVector.push kinds kind;
+                typ
+            ) typs in
+            {typ = Values typs; kind = App (Prim TypeIn, PromotedArray (Vector.build kinds))}
+
         | Pi {idomain; edomain; eff; codomain} -> elab_pi env idomain edomain eff codomain
 
         | Record decls ->
@@ -100,7 +111,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
                 (Some idomain, env)
             | None -> (None, env) in
         let (edomain, env) = elab_domain env edomain in (* FIXME: make non-dependent (by default) *)
-        let T.Exists (effixtentials, eff) = check env T.aRow eff in
+        let eff : T.t = check env T.aRow eff in
         let codomain_kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
         let codomain = check env codomain_kind codomain in
         let universals = Vector.of_list !universals in
@@ -219,7 +230,7 @@ and eval env typ =
             (match Env.get_uv env uv with
             | Assigned typ -> eval typ
             | Unassigned _ -> Some (typ, None))
-        | ( PromotedArray _ | PromotedValues _
+        | ( Exists _ | PromotedArray _ | PromotedValues _
           | Values _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ) as typ -> Some (typ, None)
         | Bv _ -> failwith "unreachable: `Bv` in `eval`"
 
@@ -231,7 +242,8 @@ and eval env typ =
             (match Env.get_uv env uv with
             | Unassigned _ -> None
             | Assigned _ -> failwith "unreachable: Assigned in `apply`.")
-        | PromotedArray _ | PromotedValues _ | Values _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ ->
+        | Exists _ | PromotedArray _ | PromotedValues _
+        | Values _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ ->
             failwith "unreachable: uncallable type in `eval/apply`"
         | Bv _ -> failwith "unreachable: `Bv` in `eval/apply`"
     in eval typ
