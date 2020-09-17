@@ -135,6 +135,8 @@ nestable_without_pos :
     | "(" ";" ")" { proxy (Row Vector.empty) }
     | "{" ";" stmt tail(";", stmt, "}") { proxy (Record (Vector.of_list ($3 :: $4))) }
     | "{" ";" "}" { proxy (Record Vector.empty) }
+    | "(" "," typ tail(",", typ, ")") { proxy (Ast.Type.Values (Vector.of_list ($3 :: $4))) }
+    | "(" "," ")" { proxy (Values Vector.empty) }
     | ID { Var (Name.of_string $1) }
     | WILD { failwith "TODO" }
     | INT { Const (Int $1) }
