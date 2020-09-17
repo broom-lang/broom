@@ -373,12 +373,12 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 {coercion = Cf Fun.id; residual = empty})
 
         (* TODO: DRY: *)
-        | (Proxy (Exists (existentials, carrie) as abs_carrie), _) -> (match super with
+        | (Proxy carrie, _) -> (match super with
             | Proxy (Exists _ as abs_carrie') -> (* TODO: Use unification (?) *)
                 let {coercion = _; residual} =
-                    subtype pos occ env abs_carrie abs_carrie' in
+                    subtype pos occ env carrie abs_carrie' in
                 let {coercion = _; residual = residual'} =
-                    subtype pos occ env abs_carrie' abs_carrie in
+                    subtype pos occ env abs_carrie' carrie in
                 { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
                 ; residual = combine residual residual' }
 
@@ -404,9 +404,9 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     ; residual = empty }
                 | None -> (* TODO: Use unification (?) *)
                     let {coercion = _; residual} =
-                        subtype pos occ env abs_carrie carrie' in
+                        subtype pos occ env carrie carrie' in
                     let {coercion = _; residual = residual'} =
-                        subtype pos occ env carrie' abs_carrie in
+                        subtype pos occ env carrie' carrie in
                     { coercion = Cf (fun _ -> {v = Proxy carrie'; pos})
                     ; residual = combine residual residual' })
 
@@ -472,6 +472,8 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 and occurs_check pos env uv typ =
     let rec check : T.t -> unit = function
         | Exists (_, body) -> check body
+        | PromotedArray typs -> Vector.iter check typs
+        | PromotedValues typs -> Vector.iter check typs
         | Values typs -> Vector.iter check typs
         | Pi {universals = _; idomain; edomain; eff; codomain} ->
             Option.iter check idomain;

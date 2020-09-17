@@ -36,7 +36,7 @@ let primop_typ =
     | Type ->
         ( Vector.empty, Vector.empty, T.EmptyRow
         , T.Proxy (T.Exists (Vector1.singleton T.aType
-            , Proxy (Bv {depth = 1; sibli = 0; kind = T.aType}))) )
+            , Proxy (Bv {depth = 0; sibli = 0; kind = T.aType}))) )
 
 let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 = fun env expr -> match expr.v with
@@ -76,11 +76,12 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
             let _ = M.solving_unify expr.pos env app_eff callee_eff in
             let {TS.term = arg; typ = _; eff = arg_eff} = check env edomain arg in
             let _ = M.solving_unify expr.pos env arg_eff callee_eff in
-            let Exists (existentials, concr_codomain) = codomain in
-            (* FIXME: Use `existentials` *)
-            { term = {expr with v = App (coerce callee, Vector.map (fun uv -> T.Uv uv) uvs, arg)}
-            ; typ = concr_codomain
-            ; eff = app_eff }
+            (match codomain with
+            | Exists (existentials, codomain) -> failwith "TODO: existential codomain in App"
+            | _ ->
+                { term = {expr with v = App (coerce callee, Vector.map (fun uv -> T.Uv uv) uvs, arg)}
+                ; typ = codomain
+                ; eff = app_eff })
         | _ -> failwith "compiler bug: callee focalization returned non-function")
 
     | AExpr.AppSequence exprs -> (* TODO: in/pre/postfix parsing, special forms, macros *)
@@ -93,7 +94,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 
     | AExpr.PrimApp (op, arg) -> (* TODO: DRY: *)
         let (universals, domain, app_eff, codomain) = primop_typ op in
-        let (uvs, idomain, domain, app_eff, Exists (_, codomain)) =
+        let (uvs, idomain, domain, app_eff, codomain) =
             Env.instantiate_arrow env universals None (Values domain) app_eff codomain in
         let {TS.term = arg; typ = _; eff = arg_eff} = check env domain arg in
         let _ = M.solving_unify arg.pos env arg_eff app_eff in
