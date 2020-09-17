@@ -123,8 +123,9 @@ nestable : nestable_without_pos { {v = $1; pos = $sloc} }
 
 nestable_without_pos :
     | trailer("{", ";", stmt, "}") { Record $1 }
-    | "[" clause* "]" { Fn (Vector.of_list $2) }
-    | "[" stmt tail(";", stmt, "]") { Thunk (Vector.of_list ($2 :: $3)) }
+    | "{" clause+ "}" { Fn (Vector.of_list $2) }
+    | "{" "|" "}" { Fn Vector.empty }
+    | "{" "||" stmt tail(";", stmt, "}") { Thunk (Vector.of_list ($3 :: $4)) }
     | trailer("(", ",", expr, ")") { Values $1 }
     | "(" "||" ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
     | "(" "&&" ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
@@ -141,7 +142,7 @@ nestable_without_pos :
     | WILD { failwith "TODO" }
     | INT { Const (Int $1) }
 
-clause : "|" params "->" expr {
+clause : "|" params "|" expr {
         let (iparam, eparam) = $2 in
         {iparam; eparam; body = $4}
     }

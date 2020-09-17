@@ -40,10 +40,11 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                     to_doc (Vector.to_list val_exprs)
             | Fn clauses ->
                 PPrint.separate_map (PPrint.break 1) clause_to_doc (Vector.to_list clauses)
-                |> PPrint.brackets
+                |> PPrint.braces
             | Thunk stmts ->
-                PPrint.surround_separate_map 4 0 (PPrint.brackets PPrint.empty)
-                    PPrint.lbracket (PPrint.semi ^^ PPrint.break 1) PPrint.rbracket
+                PPrint.surround_separate_map 4 0 (PPrint.braces (PPrint.string "||"))
+                    (PPrint.lbrace ^^ PPrint.string "||" ^^ PPrint.break 1)
+                    (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
                     Stmt.to_doc (Vector.to_list stmts)
             | App (callee, arg) -> to_doc callee ^/^ to_doc arg
             | AppSequence exprs ->
@@ -62,9 +63,9 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Const v -> Const.to_doc v
 
         and clause_to_doc {iparam; eparam; body} =
-            let doc = PPrint.infix 4 1 (PPrint.string "->") (to_doc eparam) (to_doc body) in
+            let doc = PPrint.infix 4 1 PPrint.bar (to_doc eparam) (to_doc body) in
             let doc = match iparam with
-                | Some iparam -> PPrint.infix 4 1 (PPrint.string "=>") (to_doc iparam) doc
+                | Some iparam -> PPrint.infix 4 1 PPrint.qmark (to_doc iparam) doc
                 | None -> doc in
             PPrint.bar ^^ PPrint.blank 1 ^^ doc
     end
