@@ -15,8 +15,6 @@ type t =
     | ImpureType of Ast.Term.Expr.t
     | Escape of Fc.Type.ov
     | Occurs of Fc.Type.uv * typ
-    | Polytype of typ
-    | PolytypeInference of typ
 
 exception TypeError of Util.span * t
 

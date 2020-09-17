@@ -686,22 +686,19 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
     | (Fn _, _) -> failwith "unreachable: Fn in unify_whnf"
     | (Bv _, _) -> failwith "unreachable: Bv in unify_whnf"
 
-(* Monotype check, occurs check, ov escape check, HKT capturability check and uv level updates.
+(* Occurs check, ov escape check, HKT capturability check and uv level updates.
    Complected for speed. *)
 and check_uv_assignee pos env uv level max_uv_level typ =
     let rec check : T.t -> unit = function
-        | Exists _ as typ -> Env.reportError env pos (Polytype typ)
+        | Exists (_, body) -> check body
         | PromotedArray typs -> Vector.iter check typs
         | PromotedValues typs -> Vector.iter check typs
         | Values typs -> Vector.iter check typs
         | Pi {universals; idomain; edomain; eff; codomain} ->
-            if Vector.length universals = 0
-            then begin
-                Option.iter check idomain;
-                check edomain;
-                check eff;
-                check codomain
-            end else Env.reportError env pos (Polytype typ)
+            Option.iter check idomain;
+            check edomain;
+            check eff;
+            check codomain
         | Record row -> check row
         | With {base; label = _; field} -> check base; check field
         | EmptyRow -> ()
