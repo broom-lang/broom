@@ -144,28 +144,7 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
 
 (* # Subtyping *)
 
-let rec subtype_abs : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
-= fun pos occ env typ super -> match typ with
-    | Exists (existentials, body) ->
-        let (env, skolems, typ) = Env.push_abs_skolems env existentials body in
-        let {coercion = Cf coerce; residual} = subtype_abs pos occ env typ super in
-        let name = Name.fresh () in
-        let def : E.lvalue = {name; typ} in
-        let use : E.t with_pos = {pos; v = Use name} in
-        let skolems = Vector1.map fst skolems in
-        { coercion = Cf (fun expr -> {pos; v = Unpack (skolems, def, expr, coerce use)})
-        ; residual = ResidualMonoid.skolemized (Vector1.map snd skolems) residual }
-
-    | typ -> (match super with
-        | Exists (existentials', body') ->
-            let (uvs, super) = Env.instantiate_abs env existentials' body' in
-            let {coercion = Cf coerce; residual} = subtype_abs pos occ env typ super in
-            let uvs = Vector1.map (fun uv -> T.Uv uv) uvs in
-            (* FIXME: coercing potentially nonatomic `expr`: *)
-            {coercion = Cf (fun expr -> {pos; v = Pack (uvs, coerce expr)}); residual}
-        | super -> subtype pos occ env typ super)
-
-and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
+let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 = fun pos occ env typ super ->
     let empty = ResidualMonoid.empty in
     let combine = ResidualMonoid.combine in
@@ -222,6 +201,24 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
     let subtype_whnf : bool -> T.t -> T.t -> coercer matching
     = fun occ typ super -> match (typ, super) with
+        | (Exists (existentials, body), _) ->
+            let (env, skolems, typ) = Env.push_abs_skolems env existentials body in
+            let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
+            let name = Name.fresh () in
+            let def : E.lvalue = {name; typ} in
+            let use : E.t with_pos = {pos; v = Use name} in
+            let skolems = Vector1.map fst skolems in
+            { coercion = Cf (fun expr -> {pos; v = Unpack (skolems, def, expr, coerce use)})
+            ; residual = ResidualMonoid.skolemized (Vector1.map snd skolems) residual }
+        | (_, Exists (existentials', body')) ->
+            let (uvs, super) = Env.instantiate_abs env existentials' body' in
+            let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
+            let uvs = Vector1.map (fun uv -> T.Uv uv) uvs in
+            (* FIXME: coercing potentially nonatomic `expr`: *)
+            {coercion = Cf (fun expr -> {pos; v = Pack (uvs, coerce expr)}); residual}
+
+        (* TODO: uv <: Exists impredicativity clash *)
+
         | (Uv uv, Uv uv') when uv = uv' -> {coercion = Cf Fun.id; residual = None}
         | (Uv uv, _) ->
             (match Env.get_uv env uv with
@@ -273,7 +270,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 let {coercion = _; residual = eff_residual} = subtype pos occ env eff eff' in
                 let residual = combine residual eff_residual in
                 let {coercion = Cf coerce_codomain; residual = codomain_residual} =
-                    subtype_abs pos occ env codomain codomain' in
+                    subtype pos occ env codomain codomain' in
                 let residual = combine residual codomain_residual in
 
                 let name = Name.fresh () in
@@ -379,9 +376,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
         | (Proxy (Exists (existentials, carrie) as abs_carrie), _) -> (match super with
             | Proxy (Exists _ as abs_carrie') -> (* TODO: Use unification (?) *)
                 let {coercion = _; residual} =
-                    subtype_abs pos occ env abs_carrie abs_carrie' in
+                    subtype pos occ env abs_carrie abs_carrie' in
                 let {coercion = _; residual = residual'} =
-                    subtype_abs pos occ env abs_carrie' abs_carrie in
+                    subtype pos occ env abs_carrie' abs_carrie in
                 { coercion = Cf (fun _ -> {v = Proxy abs_carrie'; pos})
                 ; residual = combine residual residual' }
 
@@ -407,9 +404,9 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     ; residual = empty }
                 | None -> (* TODO: Use unification (?) *)
                     let {coercion = _; residual} =
-                        subtype_abs pos occ env abs_carrie carrie' in
+                        subtype pos occ env abs_carrie carrie' in
                     let {coercion = _; residual = residual'} =
-                        subtype_abs pos occ env carrie' abs_carrie in
+                        subtype pos occ env carrie' abs_carrie in
                     { coercion = Cf (fun _ -> {v = Proxy carrie'; pos})
                     ; residual = combine residual residual' })
 
@@ -502,12 +499,6 @@ and occurs_check pos env uv typ =
     check typ
 
 (* # Unification *)
-
-and unify_abs : span -> Env.t -> T.t -> T.t -> T.coercion option matching
-= fun pos env typ typ' -> match (typ, typ') with
-    | (Exists (existentials, body), Exists (existentials', body')) ->
-        failwith "todo"
-    | _ -> unify pos env typ typ'
 
 and unify pos env typ typ' : T.coercion option matching =
     let (>>=) = Option.bind in
@@ -657,7 +648,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
 
     | (Proxy carrie, _) -> (match typ' with
         | Proxy carrie' -> 
-            let {coercion; residual} = unify_abs pos env carrie carrie' in
+            let {coercion; residual} = unify pos env carrie carrie' in
             {coercion = Option.map (fun co -> T.ProxyCo co) coercion; residual}
         | _ ->
             Env.reportError env pos (Unify (typ, typ'));
