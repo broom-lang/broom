@@ -1,20 +1,20 @@
 fun callCC f = perform ('CallCC f);
 
 fun ctak x y z =
-  match (callCC (ctak' _ x y z)) [
-  | effect ('CallCC f) k -> k (f k)
-  | v -> v
-  ];
+  match (callCC (ctak' _ x y z)) {
+  |effect ('CallCC f) k| k (f k)
+  |v| v
+  };
 
 fun ctak' k x y z =
-  match (y < x) [
-  | False -> k z
-  | True ->
-    callCC [|k ->
+  match (y < x) {
+  |False| k z
+  |True|
+    callCC {|k|
       ctak' k
             (callCC (ctak' _ (x - 1) y z))
             (callCC (ctak' _ (y - 1) z x))
             (callCC (ctak' _ (z - 1) x y))
-    ]
-  ];
+    }
+  };
 

@@ -2,32 +2,32 @@
 
 fun nqueens n = let {
   fun iota1 n = let {
-    fun loop l = [
-    | 0 -> l
-    | i -> loop (i - 1) (i :: l)
-    ];
+    fun loop l = {
+    |0| l
+    |i| loop (i - 1) (i :: l)
+    };
     
     loop n List.Empty
   };
 
-  fun myTry x y z = match x y z [
-  | List.Empty List.Empty _ -> 1
-  | List.Empty _ _ -> 0
-  | (x0 :: x') y z ->
-    match (isOk x0 1 z) [
-    | True -> myTry (List.concat x' y) List.empty (x0 :: z)
-    | False -> 0
-    ]
+  fun myTry x y z = match x y z {
+  |List.Empty List.Empty _| 1
+  |List.Empty _ _| 0
+  |(x0 :: x') y z|
+    match (isOk x0 1 z) {
+    |True| myTry (List.concat x' y) List.empty (x0 :: z)
+    |False| 0
+    }
     + myTry x' (x0 :: y) z
-  ];
+  };
 
-  fun isOk row dist placed = match row dist placed [
-  |_ _ List.Empty -> True
-  | row dist (placed0 :: placed') ->
+  fun isOk row dist placed = match row dist placed {
+  |_ _ List.Empty| True
+  |row dist (placed0 :: placed')|
     not (placed0 == row + dist)
     && not (placed0 == row - dist)
     && isOk row (dist + 1) placed';
-  ]
+  }
 
   myTry (iota1 n) List.Empty List.Empty;
 };

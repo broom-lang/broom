@@ -1,14 +1,14 @@
 (::) = List.(::);
 
-listn = [
-| 0 -> List.Empty
-| n -> n :: listn (n - 1)
-];
+listn = {
+|0| List.Empty
+|n| :: listn (n - 1)
+};
 
-nlist = [
-| List.Empty = 0
-| (n :: _) = n
-];
+nlist = {
+|List.Empty| 0
+|(n :: _)| n
+};
 
 fun x < y =
     not (List.isEmpty y)
@@ -16,13 +16,13 @@ fun x < y =
         || List.tail! x < List.tail! y);
 
 fun takl x y z =
-  match (y < x) [
-  | False -> z
-  | True ->
+  match (y < x) {
+  |False| z
+  |True|
     takl (takl (List.tail! x) y z)
          (takl (List.tail! y) z x)
          (takl (List.tail! z) x y)
-  ];
+  };
 
 fun tak x y z =
     takl (listn x) (listn y) (listn z)
