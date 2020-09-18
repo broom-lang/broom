@@ -7,6 +7,7 @@ In-progress Design Documents
    :caption: Contents:
 
    typing
+   fixpointing
    layout
    data_inlining
    register_allocation
