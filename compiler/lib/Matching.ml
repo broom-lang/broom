@@ -168,6 +168,15 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         else Env.reportError env pos (Escape ov);
                         (uv, Ov ov)
 
+                    | PromotedArray typs -> (match Vector1.of_vector typs with
+                        | Some typs1 ->
+                            let kind = K.kindof_F pos env (Vector1.get typs1 0) in
+                            (uv, PromotedArray (Vector.map (fun _ -> T.Uv (sibling env kind uv)) typs))
+                        | None -> (uv, PromotedArray Vector.empty))
+                    | PromotedValues typs ->
+                        (uv, PromotedValues (Vector.map (fun typ ->
+                            T.Uv (sibling env (K.kindof_F pos env typ) uv)
+                        ) typs))
                     | Values typs ->
                         (uv, Values (Vector.map (fun typ ->
                             T.Uv (sibling env (K.kindof_F pos env typ) uv)
@@ -232,6 +241,36 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 if occ then occurs_check pos env uv typ else ();
                 subtype pos false env typ (articulate pos occ env super typ)
             | Assigned _ -> failwith "unreachable: Assigned `super` in `subtype_whnf`")
+
+        | (PromotedArray typs, _) -> (match super with
+            | PromotedArray super_typs ->
+                if Vector.length typs = Vector.length super_typs then begin
+                    let residual = Vector.fold2 (fun residual typ super ->
+                        let {coercion = Cf _; residual = residual'} =
+                            subtype pos occ env typ super in
+                        combine residual residual'
+                    ) empty typs super_typs in
+                    {residual; coercion = Cf (fun _ ->
+                        failwith "Compiler bug: PromotedArray coercion called")}
+                end else failwith "<: PromotedArray lengths"
+            | _ ->
+                Env.reportError env pos (SubType (typ, super));
+                {coercion = Cf Fun.id; residual = empty})
+
+        | (PromotedValues typs, _) -> (match super with
+            | PromotedValues super_typs ->
+                if Vector.length typs = Vector.length super_typs then begin
+                    let residual = Vector.fold2 (fun residual typ super ->
+                        let {coercion = Cf _; residual = residual'} =
+                            subtype pos occ env typ super in
+                        combine residual residual'
+                    ) empty typs super_typs in
+                    {residual; coercion = Cf (fun _ ->
+                        failwith "Compiler bug: PromotedValues coercion called")}
+                end else failwith "<: PromotedValues lengths"
+            | _ ->
+                Env.reportError env pos (SubType (typ, super));
+                {coercion = Cf Fun.id; residual = empty})
 
         | (Values typs, _) -> (match super with
             | Values super_typs ->
@@ -547,6 +586,27 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
                     else None
                 ; residual }
             end else failwith "~ promoted array lengths"
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
+
+    | (PromotedValues typs, _) -> (match typ' with
+        | PromotedValues typs' ->
+            if Vector.length typs = Vector.length typs' then begin
+                let coercions = CCVector.create () in
+                let (residual, noop) = Vector.fold2 (fun (residual, noop) typ typ' ->
+                    let {coercion; residual = residual'} = unify pos env typ typ' in
+                    CCVector.push coercions coercion;
+                    (combine residual residual, noop && Option.is_none coercion)
+                ) (empty, true) typs typs' in
+                { coercion = if noop
+                    then Some (PromotedValuesCo (coercions |> CCVector.mapi (fun i -> function
+                        | Some coercion -> coercion
+                        | None -> T.Refl (Vector.get typs' i)
+                    ) |> Vector.build))
+                    else None
+                ; residual }
+            end else failwith "~ promoted values lengths"
         | _ ->
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})
