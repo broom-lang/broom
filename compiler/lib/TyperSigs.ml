@@ -55,6 +55,10 @@ module type ENV = sig
     val find : t -> Util.span -> Name.t -> Fc.Type.t
 
     val push_val : t -> Name.t -> T.t -> t
+    val push_row : t
+        -> ( Fc.Term.Expr.lvalue Vector.t
+           * T.ov Vector.t * T.t * Ast.Type.t with_pos ) CCVector.ro_vector
+        -> t * (Name.t * T.t) list TxRef.rref
     val push_existential : t -> t * T.ov list TxRef.rref
     val push_skolems : t -> T.kind Vector.t -> t * T.ov Vector.t
     val push_axioms : t -> (Name.t * T.ov * uv) Vector1.t -> t

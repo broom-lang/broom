@@ -150,39 +150,35 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
         (domain, env)
 
     and elab_row env pos decls =
-        let (pat_typs, defs, env) = Vector.fold (fun (semiabsen, defs, env) decl ->
-            let (pat, semiabs, defs') = analyze_decl env decl in
+        let bindings = CCVector.create () in
+        let (defs, _) = Vector.fold (fun (defs, env) decl ->
+            let (_, ((existentials, lhs) as semiabs), defs', rhs) = analyze_decl env decl in
             let env = Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ)
                 env defs' in
-            (semiabs :: semiabsen, Vector.append defs defs', env))
-            ([], Vector.empty, env) decls in
-        let pat_typs = Vector.of_list (List.rev pat_typs) in
+            CCVector.push bindings (defs', existentials, lhs , rhs);
+            (Vector.append defs defs', env))
+            (Vector.empty, env) decls in
+        let (env, fields) = Env.push_row env (CCVector.freeze bindings) in
 
-        Vector.iter2 (fun decl (_, super) ->
-            let {TS.typ; kind} = elab_decl env decl in
-            ignore (M.solving_subtype pos env typ super)
-        ) decls pat_typs;
+        Vector.iter (fun {FExpr.name; typ = _} -> ignore (Env.find env pos name)) defs;
 
-        let row = Vector.fold (fun base {FExpr.name; typ} ->
+        let row = List.fold_right (fun (name, typ) base ->
             T.With {base; label = name; field = typ}
-        ) EmptyRow defs in
+        ) (!fields) EmptyRow in
         {typ = row; kind = kindof_F pos env row}
 
     and analyze_decl env = function
-        | AStmt.Def (_, pat, _) -> C.elaborate_pat env pat
-        | AStmt.Expr {v = Ann (pat, _); pos = _} -> C.elaborate_pat env pat
-        | AStmt.Expr expr as decl ->
-            Env.reportError env expr.pos (Err.InvalidDecl decl);
-            C.elaborate_pat env {expr with v = Values Vector.empty}
-
-    and elab_decl env = function
-        | AStmt.Def (_, _, expr) ->
+        | AStmt.Def (_, pat, expr) ->
+            let (pat, semiabs, defs') = C.elaborate_pat env pat in
             let expr' = AExpr.App ({expr with v = Var (Name.of_string "typeof")}, expr) in
-            elab env {expr with v = Path expr'}
-        | AStmt.Expr {v = Ann (_, typ); pos = _} -> elab env typ
+            (pat, semiabs, defs', {expr with v = AType.Path expr'})
+        | AStmt.Expr {v = Ann (pat, typ); pos = _} ->
+            let (pat, semiabs, defs') = C.elaborate_pat env pat in
+            (pat, semiabs, defs', typ)
         | AStmt.Expr expr as decl ->
             Env.reportError env expr.pos (Err.InvalidDecl decl);
-            elab env {expr with v = AType.Values Vector.empty} in
+            let (pat, semiabs, defs') = C.elaborate_pat env {expr with v = Values Vector.empty} in
+            (pat, semiabs, defs', {expr with v = AType.Values Vector.empty}) in
 
     let (env, params) = Env.push_existential env in
     let {TS.typ; kind} = elab env typ in

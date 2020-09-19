@@ -1,12 +1,19 @@
 module T = Fc.Type
 module TS = TyperSigs
 
+type 'a with_pos = 'a Util.with_pos
 type uv = Fc.Uv.t
+
+type row_binding =
+    | WhiteT of T.ov Vector.t * T.t * Ast.Type.t with_pos
+    | GreyT
+    | BlackT of T.t
 
 type scope =
     | Hoisting of T.ov list TxRef.rref * T.level
     | Rigid of T.ov Vector.t
     | Val of Name.t * T.t
+    | Row of (T.t * row_binding TxRef.rref) Name.Map.t * (Name.t * T.t) list TxRef.rref
     | Axiom of (Name.t * T.ov * uv) Name.Map.t
 
 type env =
@@ -58,6 +65,15 @@ let wrapErrorHandler (env : t) middleware =
 
 let push_val (env : t) name typ =
     {env with scopes = Val (name, typ) :: env.scopes}
+
+let push_row env decls =
+    let bindings = CCVector.fold (fun bindings (defs, existentials, lhs, rhs) ->
+        Vector.fold (fun bindings {Fc.Term.Expr.name; typ} ->
+            Name.Map.add name (typ, ref (WhiteT (existentials, lhs, rhs))) bindings
+        ) bindings defs
+    ) Name.Map.empty decls in
+    let fields = ref [] in
+    ({env with scopes = Row (bindings, fields) :: env.scopes}, fields)
 
 let push_existential (env : t) =
     let bindings = ref [] in
@@ -117,15 +133,6 @@ let sibling (env : t) kind uv = match get_uv env uv with
 
 let set_expr (env : t) ref expr = TxRef.set env.tx_log ref expr
 let set_coercion (env : t) ref coercion = TxRef.set env.tx_log ref coercion
-
-let find (env : t) pos name =
-    let rec find = function
-        | Val (name', typ) :: scopes -> if name' = name then typ else find scopes
-        | (Hoisting _ | Rigid _ | Axiom _) ::scopes -> find scopes
-        | [] ->
-            reportError env pos (Unbound name);
-            Uv (uv env (Uv (uv env T.aKind (Name.fresh ()))) (Name.fresh ())) in
-    find env.scopes
 
 let document (env : t) to_doc v = to_doc env.tx_log v
 
@@ -249,6 +256,30 @@ let instantiate_arrow env universals idomain edomain eff codomain =
     , expose env substitution edomain
     , expose env substitution eff 
     , expose env substitution codomain )
+
+let find (env : t) pos name =
+    let rec find scopes = match scopes with
+        | Val (name', typ) :: scopes -> if name' = name then typ else find scopes
+        | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
+            | Some (typ, binding) ->
+                (match !binding with
+                | WhiteT (existentials, lhs, rhs) ->
+                    let env = {env with scopes} in
+                    TxRef.set env.tx_log binding GreyT;
+                    let {TS.typ = rhs; kind = _} = K.kindof env rhs in
+                    let (existentials', rhs) = reabstract env rhs in
+                    ignore (M.solving_subtype pos env rhs lhs);
+                    TxRef.set env.tx_log binding (BlackT rhs);
+                    TxRef.set env.tx_log fields ((name, lhs) :: !fields)
+                | GreyT -> () (* TODO: really? *)
+                | BlackT _ -> ());
+                typ
+            | None -> find scopes')
+        | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
+        | [] ->
+            reportError env pos (Unbound name);
+            Uv (uv env (Uv (uv env T.aKind (Name.fresh ()))) (Name.fresh ())) in
+    find env.scopes
 
 end
 
