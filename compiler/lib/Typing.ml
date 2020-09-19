@@ -166,19 +166,17 @@ and elaborate_clause env {iparam; eparam; body} =
     , {term = {FExpr.pat; body}; typ = codomain ; eff} )
 
 and elaborate_pats env pats =
-    let step (pats, typs, defs, env) pat =
+    let step (pats, typs, defs) pat =
         let (pat, (_, typ), defs') = elaborate_pat env pat in
-        let env =
-            Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs' in
-        (pat :: pats, typ :: typs, Vector.append defs defs', env) in
-    let (pats, typs, defs, env) = Vector.fold step ([], [], Vector.empty, env) pats in
-    (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), defs, env)
+        (pat :: pats, typ :: typs, Vector.append defs defs') in
+    let (pats, typs, defs) = Vector.fold step ([], [], Vector.empty) pats in
+    (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), defs)
 
 and elaborate_pat env pat = match pat.v with
     | AExpr.Values pats when Vector.length pats = 1 -> elaborate_pat env (Vector.get pats 0)
 
     | AExpr.Values pats ->
-        let (pats, typs, defs, env) = elaborate_pats env pats in
+        let (pats, typs, defs) = elaborate_pats env pats in
         ({pat with v = FExpr.ValuesP pats}, (Vector.empty, Values typs), defs)
 
     | AExpr.Ann (pat, typ) ->
