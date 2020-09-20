@@ -307,8 +307,6 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t with_pos typing
 
     | (Pi _, AExpr.Fn clauses) -> check_fn env typ expr.pos clauses
 
-    | (Record row, AExpr.Record stmts) -> failwith "TODO: check Record"
-
     | _ ->
         let {TS.term = expr; typ = expr_typ; eff} = typeof env expr in
         let Cf coerce = M.solving_subtype expr.pos env expr_typ typ in
