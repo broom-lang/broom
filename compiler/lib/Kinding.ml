@@ -152,8 +152,8 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
     and elab_row env pos decls =
         let bindings = CCVector.create () in
         let _ = Vector.fold (fun env decl ->
-            let (_, ((existentials, lhs) as semiabs), defs', rhs) = analyze_decl env decl in
-            CCVector.push bindings (defs', existentials, lhs , rhs);
+            let (_, semiabs, defs', rhs) = analyze_decl env decl in
+            CCVector.push bindings (defs', semiabs, rhs);
             Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs'
         ) env decls in
         let (env, fields) = Env.push_row env (CCVector.freeze bindings) in
@@ -178,7 +178,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
             let (pat, semiabs, defs') = C.elaborate_pat env {expr with v = Values Vector.empty} in
             (pat, semiabs, defs', {expr with v = AType.Values Vector.empty})
 
-    and elaborate_field env (defs, existentials, lhs, rhs) decl =
+    and elaborate_field env (defs, (existentials, lhs), rhs) decl =
         let pos = AStmt.pos decl in
         ignore (
             if Vector.length defs > 0

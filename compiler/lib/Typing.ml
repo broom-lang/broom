@@ -214,9 +214,9 @@ and typeof_record env pos stmts =
     let pats = CCVector.create () in
     let bindings = CCVector.create () in
     let _ = Vector.fold (fun env stmt ->
-        let (pat, ((existentials, typ) as semiabs), defs', expr) = analyze_field env stmt in
+        let (pat, semiabs, defs', expr) = analyze_field env stmt in
         CCVector.push pats pat;
-        CCVector.push bindings (defs', existentials, typ, expr);
+        CCVector.push bindings (defs', semiabs, expr);
         Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs'
     ) env stmts in
     let pats = Vector.build pats in
@@ -249,13 +249,13 @@ and analyze_field env = function
         let (pat, semiabs, defs) = elaborate_pat env {expr with v = Values Vector.empty} in
         (pat, semiabs, defs, {expr with v = Values Vector.empty})
 
-and elaborate_field env pat (defs, existentials, typ, _) stmt =
+and elaborate_field env pat (defs, semiabs, _) stmt =
     let (pos, {TS.term = expr; typ = _; eff}) = match stmt with
         | AStmt.Def (pos, _, expr) ->
             ( pos
             , if Vector.length defs > 0
               then Env.find_rhs env pos (Vector.get defs 0).name
-              else implement env (existentials, typ) expr )
+              else implement env semiabs expr )
         | AStmt.Expr {v = Var _; pos = _} -> failwith "TODO: field punning"
         | AStmt.Expr _ -> failwith "unreachable: invalid field in `elaborate_field`" in
     ignore (M.solving_unify expr.pos env eff EmptyRow);

@@ -61,11 +61,11 @@ module type ENV = sig
     val push_val : t -> Name.t -> T.t -> t
     val push_rec : t
         -> ( Fc.Term.Expr.lvalue Vector.t
-           * T.ov Vector.t * T.t * Ast.Term.Expr.t with_pos ) CCVector.ro_vector
+           * (T.ov Vector.t * T.t) * Ast.Term.Expr.t with_pos ) CCVector.ro_vector
         -> t * (Name.t * T.t) list TxRef.rref
     val push_row : t
         -> ( Fc.Term.Expr.lvalue Vector.t
-           * T.ov Vector.t * T.t * Ast.Type.t with_pos ) CCVector.ro_vector
+           * (T.ov Vector.t * T.t) * Ast.Type.t with_pos ) CCVector.ro_vector
         -> t * (Name.t * T.t) list TxRef.rref
     val push_existential : t -> t * T.ov list TxRef.rref
     val push_skolems : t -> T.kind Vector.t -> t * T.ov Vector.t

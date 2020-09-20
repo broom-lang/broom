@@ -5,12 +5,12 @@ type 'a with_pos = 'a Util.with_pos
 type uv = Fc.Uv.t
 
 type vals_binding =
-    | White of T.ov Vector.t * T.t * Ast.Term.Expr.t with_pos
+    | White of (T.ov Vector.t * T.t) * Ast.Term.Expr.t with_pos
     | Grey
     | Black of Fc.Term.Expr.t with_pos TS.typing
 
 type row_binding =
-    | WhiteT of T.ov Vector.t * T.t * Ast.Type.t with_pos
+    | WhiteT of (T.ov Vector.t * T.t) * Ast.Type.t with_pos
     | GreyT
     | BlackT of T.t TS.kinding
 
@@ -74,18 +74,18 @@ let push_val (env : t) name typ =
     {env with scopes = Val (name, typ) :: env.scopes}
 
 let push_rec env stmts =
-    let bindings = CCVector.fold (fun bindings (defs, existentials, overall_typ, expr) ->
+    let bindings = CCVector.fold (fun bindings (defs, semiabs, expr) ->
         Vector.fold (fun bindings {Fc.Term.Expr.name; typ} ->
-            Name.Map.add name (typ, ref (White (existentials, overall_typ, expr))) bindings
+            Name.Map.add name (typ, ref (White (semiabs, expr))) bindings
         ) bindings defs
     ) Name.Map.empty stmts in
     let fields = ref [] in
     ({env with scopes = Vals (bindings, fields) :: env.scopes}, fields)
 
 let push_row env decls =
-    let bindings = CCVector.fold (fun bindings (defs, existentials, lhs, rhs) ->
+    let bindings = CCVector.fold (fun bindings (defs, semiabs, rhs) ->
         Vector.fold (fun bindings {Fc.Term.Expr.name; typ} ->
-            Name.Map.add name (typ, ref (WhiteT (existentials, lhs, rhs))) bindings
+            Name.Map.add name (typ, ref (WhiteT (semiabs, rhs))) bindings
         ) bindings defs
     ) Name.Map.empty decls in
     let fields = ref [] in
@@ -279,11 +279,10 @@ let find (env : t) pos name =
         | Vals (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some (typ, binding) ->
                 (match !binding with
-                | White (existentials, overall_typ, expr) ->
+                | White (semiabs, expr) ->
                     let env = {env with scopes} in
                     TxRef.set env.tx_log binding Grey;
-                    let {TS.term = expr; typ = _; eff} as typing =
-                        C.implement env (existentials, overall_typ) expr in
+                    let {TS.term = expr; typ = _; eff} as typing = C.implement env semiabs expr in
                     TxRef.set env.tx_log binding (Black typing);
                     TxRef.set env.tx_log fields ((name, typ) :: !fields)
                 | Grey -> () (* TODO: really? *)
@@ -293,7 +292,7 @@ let find (env : t) pos name =
         | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some (typ, binding) ->
                 (match !binding with
-                | WhiteT (existentials, lhs, rhs) ->
+                | WhiteT ((existentials, lhs), rhs) ->
                     let env = {env with scopes} in
                     TxRef.set env.tx_log binding GreyT;
                     let {TS.typ = rhs; kind = _} as kinding = K.kindof env rhs in
@@ -320,11 +319,11 @@ let find_rhs (env : t) pos name =
         | Vals (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some (typ, binding) ->
                 (match !binding with
-                | White (existentials, overall_typ, expr) ->
+                | White (semiabs, expr) ->
                     let env = {env with scopes} in
                     TxRef.set env.tx_log binding Grey;
                     let {TS.term = expr; typ = _; eff} as typing =
-                        C.implement env (existentials, overall_typ) expr in
+                        C.implement env semiabs expr in
                     TxRef.set env.tx_log binding (Black typing);
                     TxRef.set env.tx_log fields ((name, typ) :: !fields);
                     typing
@@ -352,7 +351,7 @@ let find_rhst (env : t) pos name =
         | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some (typ, binding) ->
                 (match !binding with
-                | WhiteT (existentials, lhs, rhs) ->
+                | WhiteT ((existentials, lhs), rhs) ->
                     let env = {env with scopes} in
                     TxRef.set env.tx_log binding GreyT;
                     let {TS.typ = rhs; kind = _} as kinding = K.kindof env rhs in
