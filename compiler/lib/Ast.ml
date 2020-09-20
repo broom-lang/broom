@@ -80,6 +80,10 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Def of def
             | Expr of expr with_pos
 
+        let pos = function
+            | Def (pos, _, _) -> pos
+            | Expr expr -> expr.pos
+
         let def_to_doc ((_, pat, expr) : def) =
             PPrint.infix 4 1 PPrint.equals (Expr.to_doc pat) (Expr.to_doc expr)
 

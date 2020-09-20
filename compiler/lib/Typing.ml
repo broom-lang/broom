@@ -211,45 +211,55 @@ and elaborate_pat env pat = match pat.v with
 
 (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
 and typeof_record env pos stmts =
-    let (pats, pat_typs, defs, env) = Vector.fold (fun (pats, semiabsen, defs, env) stmt ->
-        let (pat, semiabs, defs') = analyze_field env stmt in
-        let env = Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ)
-            env defs' in
-        (pat :: pats, semiabs :: semiabsen, Vector.append defs defs', env))
-        ([], [], Vector.empty, env) stmts in
-    let pats = Vector.of_list (List.rev pats) in
-    let pat_typs = Vector.of_list (List.rev pat_typs) in
+    let pats = CCVector.create () in
+    let bindings = CCVector.create () in
+    let _ = Vector.fold (fun env stmt ->
+        let (pat, ((existentials, typ) as semiabs), defs', expr) = analyze_field env stmt in
+        CCVector.push pats pat;
+        CCVector.push bindings (defs', existentials, typ, expr);
+        Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs'
+    ) env stmts in
+    let pats = Vector.build pats in
+    let (env, fields) = Env.push_rec env (CCVector.freeze bindings) in
 
-    let stmts = Vector.map3 (elaborate_field env) pats pat_typs stmts in
+    let stmts = Vector.map3 (elaborate_field env) pats (Vector.build bindings) stmts in
 
-    let term = {Util.v = FExpr.Record (Vector.map (fun {FExpr.name; typ = _} ->
+    let fields = CCVector.of_list !fields in
+    CCVector.rev_in_place fields;
+    let fields = Vector.build fields in
+    let term = {Util.v = FExpr.Record (Vector.map (fun (name, _) ->
         (name, {Util.v = FExpr.Use name; pos})
-    ) defs); pos} in
+    ) fields); pos} in
     let term = match Vector1.of_vector stmts with
         | Some stmts -> {Util.v = FExpr.Letrec (stmts, term); pos}
         | None -> term in
-    let typ = Vector.fold (fun base {FExpr.name; typ} -> T.With {base; label = name; field = typ})
-        T.EmptyRow defs
-        |> (fun row -> T.Record row) in
+    let typ = T.Record (Vector.fold (fun base (name, typ) ->
+        T.With {base; label = name; field = typ}
+    ) T.EmptyRow fields) in
     let eff = T.EmptyRow in
     {term; typ; eff}
 
 and analyze_field env = function
-    | AStmt.Def (_, pat, _) -> elaborate_pat env pat
+    | AStmt.Def (_, pat, expr) ->
+        let (pat, semiabs, defs) = elaborate_pat env pat in
+        (pat, semiabs, defs, expr)
     | AStmt.Expr {v = Var _; pos = _} -> failwith "TODO: field punning"
     | AStmt.Expr expr as field ->
         Env.reportError env expr.pos (Err.InvalidField field);
-        elaborate_pat env {expr with v = Values Vector.empty}
+        let (pat, semiabs, defs) = elaborate_pat env {expr with v = Values Vector.empty} in
+        (pat, semiabs, defs, {expr with v = Values Vector.empty})
 
-and elaborate_field env pat semiabs = function
-    | AStmt.Def (pos, _, expr) ->
-        let {TS.term = expr; typ = _; eff} = implement env semiabs expr in
-        let _ = M.solving_unify expr.pos env eff EmptyRow in
-        (pos, pat, expr)
-    | AStmt.Expr {v = Var _; pos = _} -> failwith "TODO: field punning"
-    | AStmt.Expr expr as field ->
-        Env.reportError env expr.pos (Err.InvalidField field);
-        elaborate_field env pat semiabs (Expr {expr with v = Values Vector.empty})
+and elaborate_field env pat (defs, existentials, typ, _) stmt =
+    let (pos, {TS.term = expr; typ = _; eff}) = match stmt with
+        | AStmt.Def (pos, _, expr) ->
+            ( pos
+            , if Vector.length defs > 0
+              then Env.find_rhs env pos (Vector.get defs 0).name
+              else implement env (existentials, typ) expr )
+        | AStmt.Expr {v = Var _; pos = _} -> failwith "TODO: field punning"
+        | AStmt.Expr _ -> failwith "unreachable: invalid field in `elaborate_field`" in
+    ignore (M.solving_unify expr.pos env eff EmptyRow);
+    (pos, pat, expr)
 
 (* # Checking *)
 

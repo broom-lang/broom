@@ -151,16 +151,14 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
 
     and elab_row env pos decls =
         let bindings = CCVector.create () in
-        let (defs, _) = Vector.fold (fun (defs, env) decl ->
+        let _ = Vector.fold (fun env decl ->
             let (_, ((existentials, lhs) as semiabs), defs', rhs) = analyze_decl env decl in
-            let env = Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ)
-                env defs' in
             CCVector.push bindings (defs', existentials, lhs , rhs);
-            (Vector.append defs defs', env))
-            (Vector.empty, env) decls in
+            Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs'
+        ) env decls in
         let (env, fields) = Env.push_row env (CCVector.freeze bindings) in
 
-        Vector.iter (fun {FExpr.name; typ = _} -> ignore (Env.find env pos name)) defs;
+        Vector.iter2 (elaborate_field env) (Vector.build bindings) decls;
 
         let row = List.fold_right (fun (name, typ) base ->
             T.With {base; label = name; field = typ}
@@ -178,7 +176,19 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
         | AStmt.Expr expr as decl ->
             Env.reportError env expr.pos (Err.InvalidDecl decl);
             let (pat, semiabs, defs') = C.elaborate_pat env {expr with v = Values Vector.empty} in
-            (pat, semiabs, defs', {expr with v = AType.Values Vector.empty}) in
+            (pat, semiabs, defs', {expr with v = AType.Values Vector.empty})
+
+    and elaborate_field env (defs, existentials, lhs, rhs) decl =
+        let pos = AStmt.pos decl in
+        ignore (
+            if Vector.length defs > 0
+            then Env.find_rhst env pos (Vector.get defs 0).FExpr.name
+            else begin
+                let {TS.typ = rhs; kind = _} as kinding = kindof env rhs in
+                let (existentials', rhs) = reabstract env rhs in
+                ignore (M.solving_subtype pos env rhs lhs);
+                kinding
+            end) in
 
     let (env, params) = Env.push_existential env in
     let {TS.typ; kind} = elab env typ in

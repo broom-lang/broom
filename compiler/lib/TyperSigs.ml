@@ -26,6 +26,8 @@ module type TYPING = sig
     type env
 
     val typeof : env -> Ast.Term.Expr.t with_pos -> Fc.Term.Expr.t with_pos typing
+    val implement : env -> (Fc.Type.ov Vector.t * Fc.Type.t) -> Ast.Term.Expr.t with_pos
+        -> Fc.Term.Expr.t with_pos typing
     val deftype : env -> Ast.Term.Stmt.def -> Fc.Term.Expr.def typing
     val check_stmt : env -> Ast.Term.Stmt.t -> Fc.Term.Stmt.t typing * env
     (* HACK: (?): *)
@@ -53,8 +55,14 @@ module type ENV = sig
     val eval : unit -> t
 
     val find : t -> Util.span -> Name.t -> Fc.Type.t
+    val find_rhs : t -> Util.span -> Name.t -> Fc.Term.Expr.t with_pos typing
+    val find_rhst : t -> Util.span -> Name.t -> Fc.Type.t kinding
 
     val push_val : t -> Name.t -> T.t -> t
+    val push_rec : t
+        -> ( Fc.Term.Expr.lvalue Vector.t
+           * T.ov Vector.t * T.t * Ast.Term.Expr.t with_pos ) CCVector.ro_vector
+        -> t * (Name.t * T.t) list TxRef.rref
     val push_row : t
         -> ( Fc.Term.Expr.lvalue Vector.t
            * T.ov Vector.t * T.t * Ast.Type.t with_pos ) CCVector.ro_vector

@@ -38,6 +38,8 @@ module type STMT = sig
         | Def of def
         | Expr of expr with_pos
 
+    val pos : t -> Util.span
+
     val to_doc : t -> PPrint.document
 end
 
