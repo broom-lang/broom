@@ -61,58 +61,88 @@ stmt :
 expr : typ { {$1 with v = proxy $1.v} }
 
 ann_expr :
-    | explicitly ":" typ { {v = Ann ($1, $3); pos = $loc} } (* NOTE: ~ right-associative *)
-    | explicitly { $1 }
-
-explicitly :
-    | binapp at_args { failwith "TODO" }
+    | binapp ":" typ { {v = Ann ($1, $3); pos = $loc} } (* NOTE: ~ right-associative *)
     | binapp { $1 }
 
 binapp :
     | binapp "||" binapp2 {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Right {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp2 { $1 }
 
 binapp2 :
     | binapp2 "&&" binapp3 {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Right {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp3 { $1 }
 
 binapp3 :
     | binapp4 COMPARISON binapp4 { (* NOTE: nonassociative *)
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Right {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp4 { $1 }
 
 binapp4 :
     | binapp4 ADDITIVE binapp5 {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Right {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp5 { $1 }
 
 binapp5 :
     | binapp5 MULTIPLICATIVE app {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Right {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | app { $1 }
 
+(* TODO: DRY: *)
 app :
     | PRIMOP args {
-        let arg = if Vector1.length $2 = 1
-            then Vector1.get $2 0
-            else {v = Values (Vector1.to_vector $2); pos = $loc($2)} in
-        match Primop.of_string $1 with
-        | Some op -> {v = PrimApp (op, arg); pos = $loc}
-        | None -> failwith ("No such primop: __" ^ $1)
+        let op = match Primop.of_string $1 with
+            | Some op -> op
+            | None -> failwith ("No such primop: __" ^ $1) in
+        match $2 with
+        | Left iargs ->
+            let arg = if Vector.length iargs = 1
+                then Vector.get iargs 0
+                else {v = Values iargs; pos = $loc($2)} in
+            {v = PrimApp (op, Left arg); pos = $loc}
+        | Right eargs ->
+            let arg = if Vector.length eargs = 1
+                then Vector.get eargs 0
+                else {v = Values eargs; pos = $loc($2)} in
+            {v = PrimApp (op, Right arg); pos = $loc}
+        | Both (iargs, eargs) ->
+            let iarg = if Vector.length iargs = 1
+                then Vector.get iargs 0
+                else {v = Values iargs; pos = $loc($2)} in
+            let earg = if Vector.length eargs = 1
+                then Vector.get eargs 0
+                else {v = Values eargs; pos = $loc($2)} in
+            {v = PrimApp (op, Both (iarg, earg)); pos = $loc}
     }
-    | select args { {v = AppSequence (Vector1.append (Vector1.singleton $1) $2); pos = $loc} }
+    | select args { match $2 with
+        | Left iargs ->
+            let arg = if Vector.length iargs = 1
+                then Vector.get iargs 0
+                else {v = Values iargs; pos = $loc($2)} in
+            {v = App ($1, Left arg); pos = $loc}
+        | Right args ->
+            let args = args |> Vector1.of_vector |> Option.get in
+            {v = AppSequence (Vector1.append (Vector1.singleton $1) args); pos = $loc}
+        | Both (iargs, eargs) ->
+            let iarg = if Vector.length iargs = 1
+                then Vector.get iargs 0
+                else {v = Values iargs; pos = $loc($2)} in
+            let earg = if Vector.length eargs = 1
+                then Vector.get eargs 0
+                else {v = Values eargs; pos = $loc($2)} in
+            {v = App ($1, Both (iarg, earg)); pos = $loc}
+    }
     | select { $1 }
 
 select :
@@ -124,8 +154,14 @@ nestable : nestable_without_pos { {v = $1; pos = $sloc} }
 nestable_without_pos :
     | trailer("{", ";", stmt, "}") { Record $1 }
     | "{" clause+ "}" { Fn (Vector.of_list $2) }
+    | "{" "||" stmt tail(";", stmt, "}") {
+        let body = App ( {v = Var (Name.of_string "do"); pos = $loc}
+            , Right {v = Record (Vector.of_list ($3 :: $4)); pos = $loc} ) in
+        Fn (Vector.singleton
+            { params = Ior.Right {v = Values Vector.empty; pos = $loc($2)}
+            ; body = {v = body; pos = $loc} })
+    }
     | "{" "|" "}" { Fn Vector.empty }
-    | "{" "||" stmt tail(";", stmt, "}") { Thunk (Vector.of_list ($3 :: $4)) }
     | trailer("(", ",", expr, ")") { Values $1 }
     | "(" "||" ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
     | "(" "&&" ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
@@ -142,24 +178,20 @@ nestable_without_pos :
     | WILD { failwith "TODO" }
     | INT { Const (Int $1) }
 
-clause : "|" params "|" expr {
-        let (iparam, eparam) = $2 in
-        {iparam; eparam; body = $4}
-    }
+clause : params expr { {params = $1; body = $2} }
 
 params :
-    | select+ "?" select* {
-        ( Some {v = Values (Vector.of_list $1); pos = $loc($1)}
-        , {v = Values (Vector.of_list $3); pos = $loc($3)} )
+    | "?" select* "|" select* "|" {
+        Both ( {v = Values (Vector.of_list $2); pos = $loc($2)}
+             , {v = Values (Vector.of_list $4); pos = $loc($4)} )
     }
-    | select* { (None, {v = Values (Vector.of_list $1); pos = $loc($1)}) }
+    | "|" select* "|" { Ior.Right {v = Values (Vector.of_list $2); pos = $loc($2)} }
+    | "?" select* "?" { Ior.Left {v = Values (Vector.of_list $2); pos = $loc($2)} }
 
-args : select+ { Vector1.of_list $1 |> Option.get }
-
-at_args : "@" args? { match $2 with (* TODO: Implicit args need more design *)
-        | Some args -> Vector1.to_vector args
-        | None -> Vector.empty
-    }
+args :
+    | select+ "@" select+ { Ior.Both (Vector.of_list $1, Vector.of_list $3) }
+    | select+ { Ior.Right (Vector.of_list $1) }
+    | select+ "@" { Ior.Left (Vector.of_list $1) }
 
 (* # Types *)
 
@@ -167,20 +199,19 @@ typ : typ_without_pos { {v = $1; pos = $sloc} }
 
 typ_without_pos :
     | binapp "=>" binapp "-!" binapp "->" typ {
-        Pi {idomain = Some $1; edomain = $3; eff = {$5 with v = path $5.v}; codomain = $7}
+        Pi {domain = Both ($1, ($3, Some {$5 with v = path $5.v})); codomain = $7}
     }
     | binapp "=>" binapp "->" typ {
-        Pi {idomain = Some $1; edomain = $3; eff = {v = Row Vector.empty; pos = $loc($4)}; codomain = $5}
+        Pi {domain = Both ($1, ($3, None)); codomain = $5}
     }
     | binapp "=>" ann_expr {
-        Pi {idomain = Some $1; edomain = {v = Values Vector.empty; pos = $loc($2)}
-            ; eff = {v = Row Vector.empty; pos = $loc($2)}; codomain = {$3 with v = path $3.v}}
+        Pi {domain = Left $1; codomain = {$3 with v = path $3.v}}
     }
     | binapp "-!" binapp "->" typ {
-        Pi {idomain = None; edomain = $1 ; eff = {$3 with v = path $3.v}; codomain = $5}
+        Pi {domain = Right ($1, Some {$3 with v = path $3.v}); codomain = $5}
     }
     | binapp "->" typ {
-        Pi {idomain = None; edomain = $1; eff = {v = Row Vector.empty; pos = $loc($2)}; codomain = $3}
+        Pi {domain = Right ($1, None); codomain = $3}
     }
     | ann_expr { path $1.v }
 

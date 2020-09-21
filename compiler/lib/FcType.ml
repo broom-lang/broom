@@ -48,7 +48,7 @@ and Typ : FcTypeSigs.TYPE
         | PromotedArray of t Vector.t
         | PromotedValues of t Vector.t
         | Values of t Vector.t
-        | Pi of {universals : kind Vector.t; idomain : t option; edomain : t; eff : t; codomain : t}
+        | Pi of {universals : kind Vector.t; domain : (t, edomain) Ior.t; codomain : t}
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
@@ -59,6 +59,8 @@ and Typ : FcTypeSigs.TYPE
         | Ov of ov
         | Uv of uv
         | Prim of Prim.t
+
+    and edomain = {edomain : t; eff : t}
 
     and template =
         | PiL of template
@@ -113,22 +115,30 @@ and Typ : FcTypeSigs.TYPE
                 ^/^ PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) (to_doc s)
                     (Vector.to_list typs)
             |> PPrint.parens
-        | Pi {universals; idomain; edomain; eff; codomain} ->
-            let idomain = Option.map (to_doc s) idomain in
-            let edomain = to_doc s edomain in
-            let edoc =
-                PPrint.prefix 4 1 edomain
-                    (PPrint.string "-!" ^^ PPrint.blank 1
-                        ^^ PPrint.infix 4 1 (PPrint.string "->") (to_doc s eff) (to_doc s codomain)) in
-            let unquantified_doc = match idomain with
-                | Some idomain ->
-                    PPrint.prefix 4 1 idomain (PPrint.string "=>" ^^ PPrint.blank 1 ^^ edoc)
-                | None -> edoc in
+        | Pi {universals; domain; codomain} ->
+            let codoc = to_doc s codomain in
+            let (idoc, edoc, effdoc) = match domain with
+                | Left idomain -> (Some (to_doc s idomain), None, None)
+                | Right {edomain; eff} -> (None, Some (to_doc s edomain), Some (to_doc s eff))
+                | Both (idomain, {edomain; eff}) ->
+                    (Some (to_doc s idomain), Some (to_doc s edomain), Some (to_doc s eff)) in
+            let doc = match edoc with
+                | Some edoc ->
+                    let doc = PPrint.string "->" ^^ PPrint.blank 1 ^^ codoc in
+                    let doc = match effdoc with
+                        | Some effdoc ->
+                            PPrint.prefix 4 1 (PPrint.string "-!" ^^ PPrint.blank 1 ^^ effdoc) doc
+                        | None -> doc in
+                    PPrint.prefix 4 1 edoc doc
+                | None -> codoc in
+            let doc = match idoc with
+                | Some idoc -> PPrint.prefix 4 1 idoc (PPrint.string "=>" ^^ PPrint.blank 1 ^^ doc)
+                | None -> doc in
             if Vector.length universals > 0
             then PPrint.prefix 4 1
-                (PPrint.group (PPrint.string "forall" ^/^ (kinds_to_doc s) (Vector.to_list universals)))
-                (PPrint.dot ^^ PPrint.blank 1 ^^ unquantified_doc)
-            else unquantified_doc
+                (PPrint.string "forall" ^^ PPrint.blank 1 ^^ kinds_to_doc s (Vector.to_list universals))
+                (PPrint.dot ^^ PPrint.blank 1 ^^ doc)
+            else doc
         | Record row -> PPrint.braces (to_doc s row)
         | With {base; label; field} ->
             PPrint.infix 4 1 (PPrint.string "with") (base_to_doc s base)

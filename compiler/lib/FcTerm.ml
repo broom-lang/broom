@@ -28,24 +28,32 @@ module rec Expr : FcSigs.EXPR
     type t =
         | Values of t with_pos Vector.t
         | Focus of t with_pos * int
+
         | Fn of Type.binding Vector.t * lvalue * t with_pos
-        | App of t with_pos * typ Vector.t * t with_pos
+        | App of t with_pos * Type.t Vector.t * t with_pos
         | PrimApp of Primop.t * Type.t Vector.t * t with_pos
+
         | Let of def * t with_pos
         | Letrec of def Vector1.t * t with_pos
         | LetType of Type.binding Vector1.t * t with_pos
         | Match of t with_pos * clause Vector.t
-        | Axiom of (Name.t * Type.kind Vector.t * typ * typ) Vector1.t * t with_pos
-        | Cast of t with_pos * coercion
-        | Pack of typ Vector1.t * t with_pos
+
+        | Axiom of (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t * t with_pos
+        | Cast of t with_pos * Type.coercion
+
+        | Pack of Type.t Vector1.t * t with_pos
         | Unpack of Type.binding Vector1.t * lvalue * t with_pos * t with_pos
+
         | Record of (Name.t * t with_pos) Vector.t
         | Where of t with_pos * (Name.t * t with_pos) Vector1.t
         | With of {base : t with_pos; label : Name.t; field : t with_pos}
         | Select of t with_pos * Name.t
+
         | Proxy of Type.t
-        | Use of Name.t
         | Const of Const.t
+
+        | Use of Name.t
+
         | Patchable of t with_pos TxRef.rref
 
     and pat =
@@ -67,14 +75,13 @@ module rec Expr : FcSigs.EXPR
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 (to_doc s) (Vector.to_list exprs)
         | Focus (expr, i) -> selectee_to_doc s expr ^^ PPrint.dot ^^ PPrint.string (Int.to_string i)
-        | Fn (universals, params, body) ->
+        | Fn (universals, param, body) ->
             PPrint.prefix 4 1
                 (PPrint.string "fun"
                      ^^ (PPrint.surround_separate_map 4 0 PPrint.empty
                              (PPrint.blank 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
                              (Type.binding_to_doc s) (Vector.to_list universals)
-                         ^^ PPrint.blank 1
-                         ^^ PPrint.parens (lvalue_to_doc s params))
+                         ^^ PPrint.blank 1 ^^ lvalue_to_doc s param)
                      ^^ PPrint.blank 1 ^^ PPrint.string "->")
                 (to_doc s body)
         | Let (def, body) ->

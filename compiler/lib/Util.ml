@@ -6,7 +6,6 @@ let span_to_string (pos, pos') = pos_to_string pos ^ "-" ^ pos_to_string pos'
 
 type 'a with_pos = {v : 'a; pos: span}
 
-
 let doc_to_string doc =
     let buf = Buffer.create 0 in
     PPrint.ToBuffer.compact buf doc;

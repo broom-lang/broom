@@ -22,14 +22,14 @@ let (!) = TxRef.(!)
 
 let kindof_prim : Prim.t -> T.kind = function
     | Int -> T.aType
-    | Array -> Pi {universals = Vector.empty; idomain = None; edomain = T.aType
-        ; eff = EmptyRow; codomain = T.aType}
+    | Array -> Pi {universals = Vector.empty; domain = Right {edomain = T.aType; eff = EmptyRow}
+        ; codomain = T.aType}
     | SingleRep -> T.aType
     | Boxed -> Prim SingleRep
-    | TypeIn -> Pi {universals = Vector.empty; idomain = None; edomain = T.rep
-        ; eff = EmptyRow; codomain = T.aType}
-    | RowOf -> Pi {universals = Vector.empty; idomain = None; edomain = T.aKind
-        ; eff = EmptyRow; codomain = T.aKind}
+    | TypeIn -> Pi {universals = Vector.empty; domain = Right {edomain = T.rep; eff = EmptyRow}
+        ; codomain = T.aType}
+    | RowOf -> Pi {universals = Vector.empty; domain = Right {edomain = T.aKind; eff = EmptyRow}
+        ; codomain = T.aKind}
 
 let rec kindof_F pos env : T.t -> T.kind = function
     | Exists (_, body) -> kindof_F pos env body
@@ -45,11 +45,11 @@ let rec kindof_F pos env : T.t -> T.kind = function
     | Pi _ | Record _ | Proxy _ -> T.aType
     | With _ | EmptyRow -> T.aRow
     | Fn (domain, body) ->
-        Pi { universals = Vector.empty; idomain = None; edomain = domain
-            ; eff = EmptyRow; codomain = kindof_F pos env body }
+        Pi { universals = Vector.empty; domain  = Right {edomain = domain; eff = EmptyRow}
+            ; codomain = kindof_F pos env body }
     | App (callee, arg) ->
         (match kindof_F pos env callee with
-        | Pi {universals; idomain; edomain = domain; eff; codomain} ->
+        | Pi {universals; domain = Right {edomain = domain; eff = _}; codomain} ->
             check_F pos env domain arg;
             codomain
         | _ -> failwith "unreachable: invalid type application in `kindof_F`.")
@@ -76,7 +76,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
             ) typs in
             {typ = Values typs; kind = App (Prim TypeIn, PromotedArray (Vector.build kinds))}
 
-        | Pi {idomain; edomain; eff; codomain} -> elab_pi env idomain edomain eff codomain
+        | Pi {domain; codomain} -> elab_pi env domain codomain
 
         | Record decls ->
             let {TS.typ = row; kind = row_kind} = elab_row env typ.pos decls in
@@ -103,15 +103,25 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
 
         | Prim pt -> {typ = Prim pt; kind = kindof_prim pt}
 
-    and elab_pi env0 idomain edomain eff codomain =
+    and elab_pi env0 domain codomain =
         let (env, universals) = Env.push_existential env0 in
-        let (idomain, env) = match idomain with
-            | Some idomain ->
+        let (domain, eff, env) = match domain with
+            | Left idomain ->
                 let (idomain, env) = elab_domain env idomain in
-                (Some idomain, env)
-            | None -> (None, env) in
-        let (edomain, env) = elab_domain env edomain in (* FIXME: make non-dependent (by default) *)
-        let eff : T.t = check env T.aRow eff in
+                (Ior.Left idomain, T.EmptyRow, env)
+            | Right (edomain, eff) ->
+                let (edomain, env) = elab_domain env edomain in
+                let eff : T.t = match eff with
+                    | Some eff -> check env T.aRow eff
+                    | None -> EmptyRow in
+                (Right {T.edomain; eff}, eff, env)
+            | Both (idomain, (edomain, eff)) ->
+                let (idomain, env) = elab_domain env idomain in
+                let (edomain, env) = elab_domain env edomain in
+                let eff : T.t = match eff with
+                    | Some eff -> check env T.aRow eff
+                    | None -> EmptyRow in
+                (Both (idomain, {edomain; eff}), eff, env) in
         let codomain_kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
         let codomain = check env codomain_kind codomain in
         let universals = Vector.of_list !universals in
@@ -124,8 +134,8 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
                 (* Hoist codomain existentials to make applicative functor (in the ML modules sense): *)
                 let substitution = Vector.map (fun kind ->
                     let kind = Vector.fold_right (fun codomain domain ->
-                        T.Pi { universals = Vector.empty; idomain = None
-                            ; edomain = domain; eff = EmptyRow; codomain = codomain }
+                        T.Pi { universals = Vector.empty; domain = Right {edomain = domain; eff = EmptyRow}
+                            ; codomain }
                     ) kind ukinds in
                     let ov = Env.generate env0 (Name.fresh (), kind) in
                     Vector.fold (fun callee arg -> T.App (callee, Ov arg)) (Ov ov) universals
@@ -137,9 +147,11 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
             (i + 1, Name.Map.add name i substitution)
         ) (0, Name.Map.empty) ubs in
         { TS.typ = T.Pi { universals = Vector.map snd ubs
-             ; idomain = Option.map (Env.close env substitution) idomain
-             ; edomain = Env.close env substitution edomain
-             ; eff = Env.close env substitution eff
+             ; domain = Ior.bimap (Env.close env substitution)
+                 (fun {T.edomain; eff} ->
+                     { T.edomain = Env.close env substitution edomain
+                     ; eff = Env.close env substitution eff })
+                domain
              ; codomain = Env.close env substitution codomain }
         ; kind = T.aType }
 
@@ -168,7 +180,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
     and analyze_decl env = function
         | AStmt.Def (_, pat, expr) ->
             let (pat, semiabs, defs') = C.elaborate_pat env pat in
-            let expr' = AExpr.App ({expr with v = Var (Name.of_string "typeof")}, expr) in
+            let expr' = AExpr.App ({expr with v = Var (Name.of_string "typeof")}, Right expr) in
             (pat, semiabs, defs', {expr with v = AType.Path expr'})
         | AStmt.Expr {v = Ann (pat, typ); pos = _} ->
             let (pat, semiabs, defs') = C.elaborate_pat env pat in

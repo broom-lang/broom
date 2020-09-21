@@ -159,11 +159,14 @@ let rec expose' env depth substitution : T.t -> T.t = function
     | PromotedArray typs -> PromotedArray (Vector.map (expose' env depth substitution) typs)
     | PromotedValues typs -> PromotedValues (Vector.map (expose' env depth substitution) typs)
     | Values typs -> Values (Vector.map (expose' env depth substitution) typs)
-    | Pi {universals; idomain; edomain; eff; codomain} ->
+    | Pi {universals; domain; codomain} ->
         let depth = depth + 1 in
-        Pi { universals; idomain = Option.map (expose' env depth substitution) idomain
-            ; edomain = expose' env depth substitution edomain
-            ; eff = expose' env depth substitution eff
+        Pi { universals
+            ; domain = Ior.bimap (expose' env depth substitution)
+                (fun {T.edomain; eff} ->
+                    { T.edomain = expose' env depth substitution edomain
+                    ; eff = expose' env depth substitution eff })
+                domain
             ; codomain = expose' env depth substitution codomain }
     | Record row -> Record (expose' env depth substitution row)
     | With {base; label; field} ->
@@ -202,11 +205,14 @@ let rec close' env depth substitution : T.t -> T.t = function
     | PromotedArray typs -> PromotedArray (Vector.map (close' env depth substitution) typs)
     | PromotedValues typs -> PromotedValues (Vector.map (close' env depth substitution) typs)
     | Values typs -> Values (Vector.map (close' env depth substitution) typs)
-    | Pi {universals; idomain; edomain; eff; codomain} ->
+    | Pi {universals; domain; codomain} ->
         let depth = depth + 1 in
-        Pi { universals; idomain = Option.map (close' env depth substitution) idomain
-           ; edomain = close' env depth substitution edomain
-           ; eff = close' env depth substitution eff
+        Pi { universals
+           ; domain = Ior.bimap (close' env depth substitution)
+                (fun {T.edomain; eff} ->
+                    { T.edomain = close' env depth substitution edomain
+                    ; eff = close' env depth substitution eff })
+                domain
            ; codomain = close' env depth substitution codomain }
     | Record row -> Record (close' env depth substitution row)
     | With {base; label; field} ->
@@ -250,13 +256,15 @@ let push_abs_skolems env existentials body =
     let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
     (env, Option.get (Vector1.of_vector skolems), expose env substitution body)
 
-let push_arrow_skolems env universals idomain edomain eff codomain =
+let push_arrow_skolems env universals domain codomain =
     let (env, skolems) = push_skolems env universals in
     let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
     ( env, skolems
-    , Option.map (expose env substitution) idomain
-    , expose env substitution edomain
-    , expose env substitution eff
+    , Ior.bimap (expose env substitution)
+        (fun {T.edomain; eff} ->
+            { T.edomain = expose env substitution edomain
+            ; eff =  expose env substitution eff })
+        domain
     , expose env substitution codomain )
 
 let instantiate_abs env existentials body =
@@ -264,13 +272,14 @@ let instantiate_abs env existentials body =
     let substitution = uvs |> Vector1.to_vector |> Vector.map (fun uv -> T.Uv uv) in
     (uvs, expose env substitution body)
 
-let instantiate_arrow env universals idomain edomain eff codomain =
+let instantiate_arrow env universals domain codomain =
     let uvs = Vector.map (fun kind -> uv env kind (Name.fresh())) universals in
     let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
     ( uvs
-    , Option.map (expose env substitution) idomain
-    , expose env substitution edomain
-    , expose env substitution eff 
+    , Ior.bimap (expose env substitution)
+        (fun {T.edomain; eff} ->
+            {T.edomain = expose env substitution edomain; eff = expose env substitution eff})
+        domain
     , expose env substitution codomain )
 
 let find (env : t) pos name =
