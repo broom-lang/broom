@@ -295,7 +295,8 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 | (Right {edomain; eff}, Right {edomain = edomain'; eff = eff'}) ->
                     let {coercion = Cf coerce_domain; residual = residual} =
                         subtype pos occ env edomain' edomain in
-                    let {coercion = _; residual = eff_residual} = subtype pos occ env eff eff' in
+                    (* TODO: row opening à la Koka: *)
+                    let {coercion = _; residual = eff_residual} = unify pos env eff eff' in
                     let residual = combine residual eff_residual in
                     let {coercion = Cf coerce_codomain; residual = codomain_residual} =
                         subtype pos occ env codomain codomain' in
