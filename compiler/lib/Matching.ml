@@ -242,32 +242,20 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 subtype pos false env typ (articulate pos occ env super typ)
             | Assigned _ -> failwith "unreachable: Assigned `super` in `subtype_whnf`")
 
-        | (PromotedArray typs, _) -> (match super with
-            | PromotedArray super_typs ->
-                if Vector.length typs = Vector.length super_typs then begin
-                    let residual = Vector.fold2 (fun residual typ super ->
-                        let {coercion = Cf _; residual = residual'} =
-                            subtype pos occ env typ super in
-                        combine residual residual'
-                    ) empty typs super_typs in
-                    {residual; coercion = Cf (fun _ ->
-                        failwith "Compiler bug: PromotedArray coercion called")}
-                end else failwith "<: PromotedArray lengths"
+        | (PromotedArray _, _) -> (match super with
+            | PromotedArray _ ->
+                let {coercion = _; residual} = unify pos env typ super in
+                { coercion = Cf (fun _ -> failwith "Compiler bug: PromotedArray coercion called")
+                ; residual }
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
                 {coercion = Cf Fun.id; residual = empty})
 
-        | (PromotedValues typs, _) -> (match super with
-            | PromotedValues super_typs ->
-                if Vector.length typs = Vector.length super_typs then begin
-                    let residual = Vector.fold2 (fun residual typ super ->
-                        let {coercion = Cf _; residual = residual'} =
-                            subtype pos occ env typ super in
-                        combine residual residual'
-                    ) empty typs super_typs in
-                    {residual; coercion = Cf (fun _ ->
-                        failwith "Compiler bug: PromotedValues coercion called")}
-                end else failwith "<: PromotedValues lengths"
+        | (PromotedValues _, _) -> (match super with
+            | PromotedValues _ ->
+                let {coercion = _; residual} = unify pos env typ super in
+                { coercion = Cf (fun _ -> failwith "Compiler bug: PromotedValues coercion called")
+                ; residual }
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
                 {coercion = Cf Fun.id; residual = empty})
