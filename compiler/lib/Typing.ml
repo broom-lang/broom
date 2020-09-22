@@ -180,14 +180,15 @@ and elaborate_param env param =
     let env = Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
     (param, typ, env)
 
-and elaborate_pats env pats =
-    let step (pats, typs, defs) pat =
-        let (pat, (_, typ), defs') = elaborate_pat env pat in
-        (pat :: pats, typ :: typs, Vector.append defs defs') in
-    let (pats, typs, defs) = Vector.fold step ([], [], Vector.empty) pats in
-    (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), defs)
+and elaborate_pat env pat =
+    let elaborate_pats env pats =
+        let step (pats, typs, defs) pat =
+            let (pat, (_, typ), defs') = elaborate_pat env pat in
+            (pat :: pats, typ :: typs, Vector.append defs defs') in
+        let (pats, typs, defs) = Vector.fold step ([], [], Vector.empty) pats in
+        (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), defs) in
 
-and elaborate_pat env pat = match pat.v with
+    match pat.v with
     | AExpr.Values pats when Vector.length pats = 1 -> elaborate_pat env (Vector.get pats 0)
 
     | AExpr.Values pats ->
@@ -395,7 +396,17 @@ and check_param env domain param =
 
 (* TODO: use coercions (and subtyping ?): *)
 and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr.lvalue Vector.t
-= fun env typ pat -> match pat.v with
+= fun env typ pat ->
+    let check_pats env domain pats =
+        let step (pats, env) domain pat =
+            let (pat, defs) = check_pat env domain pat in
+            let env =
+                Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
+            (pat :: pats, env) in
+        let (pats, env) = Vector.fold2 step ([], env) domain pats in (* FIXME: raises on length mismatch *)
+        (Vector.of_list (List.rev pats), env) in
+
+    match pat.v with
     | AExpr.Values pats when Vector.length pats = 1 -> check_pat env typ (Vector.get pats 0)
 
     | AExpr.Values pats -> failwith "TODO: multi-values in check_pat"
@@ -426,15 +437,6 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr
         (* TODO: Treat as `_` instead: *)
         let name = Name.fresh () in
         ({pat with v = UseP name}, Vector.singleton {FExpr.name; typ})
-
-and check_pats env domain pats =
-    let step (pats, env) domain pat =
-        let (pat, defs) = check_pat env domain pat in
-        let env =
-            Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
-        (pat :: pats, env) in
-    let (pats, env) = Vector.fold2 step ([], env) domain pats in (* FIXME: raises on length mismatch *)
-    (Vector.of_list (List.rev pats), env)
 
 (* # Statement Typing *)
 
