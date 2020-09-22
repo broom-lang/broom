@@ -224,33 +224,31 @@ and elaborate_pat env pat = match pat.v with
         let typ = T.Uv (Env.uv env kind (Name.fresh ())) in
         ({pat with v = FExpr.UseP name}, (Vector.empty, typ), Vector.singleton {FExpr.name; typ})
 
-(* TODO: DRY: *)
 and check_args env pos domain eff args =
+    let check_arg env pos domain eff arg =
+        let {TS.term = arg; typ = _; eff = arg_eff} = check env domain arg in
+        let _ = M.solving_unify pos env arg_eff eff in
+        arg in
+
     match domain with
-    | Ior.Right {T.edomain; eff = app_eff} -> (match args with
-        | Ior.Right arg ->
-            (* TODO: Effect opening à la Koka: *)
-            let _ = M.solving_unify pos env app_eff eff in
-            let {TS.term = arg; typ = _; eff = arg_eff} = check env edomain arg in
-            let _ = M.solving_unify pos env arg_eff eff in
-            arg
-        | _ -> failwith "implicit arg passed to purely explicit callee")
-    | Left idomain -> (match args with
+    | Ior.Left idomain -> (match args with
         | Left arg ->
             (* TODO: Effect opening à la Koka: *)
             let _ = M.solving_unify pos env EmptyRow eff in
-            let {TS.term = arg; typ = _; eff = arg_eff} = check env idomain arg in
-            let _ = M.solving_unify pos env arg_eff eff in
-            arg
+            check_arg env pos idomain eff arg
         | _ -> failwith "explicit arg passed to purely implicit callee")
+    | Right {T.edomain; eff = app_eff} -> (match args with
+        | Ior.Right arg ->
+            (* TODO: Effect opening à la Koka: *)
+            let _ = M.solving_unify pos env app_eff eff in
+            check_arg env pos edomain eff arg
+        | _ -> failwith "implicit arg passed to purely explicit callee")
     | Both (idomain, {edomain; eff = app_eff}) -> (match args with
         | Both (iarg, earg) ->
             (* TODO: Effect opening à la Koka: *)
             let _ = M.solving_unify pos env app_eff eff in
-            let {TS.term = iarg; typ = _; eff = iarg_eff} = check env idomain iarg in
-            let _ = M.solving_unify pos env iarg_eff eff in
-            let {TS.term = earg; typ = _; eff = earg_eff} = check env edomain earg in
-            let _ = M.solving_unify pos env earg_eff eff in
+            let iarg = check_arg env pos idomain eff iarg in
+            let earg = check_arg env pos edomain eff earg in
             {iarg with v = Values (Vector.of_list [iarg; earg])}
         | Right earg -> failwith "TODO: Both App args"
         | Left _ -> failwith "missing explicit arg")
