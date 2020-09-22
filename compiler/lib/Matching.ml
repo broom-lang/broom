@@ -409,7 +409,6 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 Env.reportError env pos (SubType (typ, super));
                 {coercion = Cf Fun.id; residual = empty})
 
-        (* TODO: DRY: *)
         | (Proxy carrie, _) -> (match super with
             | Proxy carrie' ->
                 let (let+) = Fun.flip Option.map in

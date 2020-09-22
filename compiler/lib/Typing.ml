@@ -71,7 +71,6 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
         (match M.focalize callee.pos env callee_typ (PiL Hole) with
         | (Cf coerce, Pi {universals; domain; codomain}) ->
             let (uvs, domain, codomain) = Env.instantiate_arrow env universals domain codomain in
-            (* TODO: DRY: *)
             let arg = check_args env expr.pos domain callee_eff args in
             (match codomain with
             | Exists (existentials, codomain) -> failwith "TODO: existential codomain in App"
