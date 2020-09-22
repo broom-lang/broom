@@ -13,6 +13,11 @@ let path = function
 let proxy = function
     | Path expr -> expr
     | typ -> Proxy typ
+
+let to_arg args pos =
+    if Vector.length args = 1
+    then Vector.get args 0
+    else {v = Values args; pos}
 %}
 
 %token
@@ -99,49 +104,24 @@ binapp5 :
     }
     | app { $1 }
 
-(* TODO: DRY: *)
 app :
     | PRIMOP args {
         let op = match Primop.of_string $1 with
             | Some op -> op
             | None -> failwith ("No such primop: __" ^ $1) in
         match $2 with
-        | Left iargs ->
-            let arg = if Vector.length iargs = 1
-                then Vector.get iargs 0
-                else {v = Values iargs; pos = $loc($2)} in
-            {v = PrimApp (op, Left arg); pos = $loc}
-        | Right eargs ->
-            let arg = if Vector.length eargs = 1
-                then Vector.get eargs 0
-                else {v = Values eargs; pos = $loc($2)} in
-            {v = PrimApp (op, Right arg); pos = $loc}
+        | Left iargs -> {v = PrimApp (op, Left (to_arg iargs $loc($2))); pos = $loc}
+        | Right eargs -> {v = PrimApp (op, Right (to_arg eargs $loc($2))); pos = $loc}
         | Both (iargs, eargs) ->
-            let iarg = if Vector.length iargs = 1
-                then Vector.get iargs 0
-                else {v = Values iargs; pos = $loc($2)} in
-            let earg = if Vector.length eargs = 1
-                then Vector.get eargs 0
-                else {v = Values eargs; pos = $loc($2)} in
-            {v = PrimApp (op, Both (iarg, earg)); pos = $loc}
+            {v = PrimApp (op, Both (to_arg iargs $loc($2), to_arg eargs $loc($2))); pos = $loc}
     }
     | select args { match $2 with
-        | Left iargs ->
-            let arg = if Vector.length iargs = 1
-                then Vector.get iargs 0
-                else {v = Values iargs; pos = $loc($2)} in
-            {v = App ($1, Left arg); pos = $loc}
+        | Left iargs -> {v = App ($1, Left (to_arg iargs $loc($2))); pos = $loc}
         | Right args ->
             let args = args |> Vector1.of_vector |> Option.get in
             {v = AppSequence (Vector1.append (Vector1.singleton $1) args); pos = $loc}
         | Both (iargs, eargs) ->
-            let iarg = if Vector.length iargs = 1
-                then Vector.get iargs 0
-                else {v = Values iargs; pos = $loc($2)} in
-            let earg = if Vector.length eargs = 1
-                then Vector.get eargs 0
-                else {v = Values eargs; pos = $loc($2)} in
-            {v = App ($1, Both (iarg, earg)); pos = $loc}
+            {v = App ($1, Both (to_arg iargs $loc($2), to_arg eargs $loc($2))); pos = $loc}
     }
     | select { $1 }
 
