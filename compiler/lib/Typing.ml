@@ -56,6 +56,14 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t with_pos typing
         ; typ = Values (Vector.build typs)
         ; eff }
 
+    | AExpr.Focus (tup, i) ->
+        let {TS.term = tup; typ = tup_typ; eff} = typeof env tup in
+        (match M.focalize tup.pos env tup_typ (ValuesL (i + 1)) with
+        | (Cf coerce, Values typs) when i < Vector.length typs ->
+            (* FIXME: coercing potentially nontrivial expr `tup`: *)
+            {term = {expr with v = Focus (coerce tup, i)}; typ = Vector.get typs i; eff}
+        | _ -> failwith "compiler bug: focusee focalization returned non-tuple")
+
     | AExpr.Fn clauses -> elaborate_fn env expr.pos clauses
 
     | AExpr.App (callee, args) ->
@@ -205,7 +213,7 @@ and elaborate_pat env pat = match pat.v with
     | AExpr.Const c ->
         ({pat with v = FExpr.ConstP c}, (Vector.empty, const_typ c), Vector.empty)
 
-    | AExpr.AppSequence _ | AExpr.App _ | AExpr.PrimApp _ | AExpr.Select _ | AExpr.Record _ ->
+    | AExpr.Focus _ | AppSequence _ | App _ | PrimApp _ | Select _ | Record _ ->
         failwith "TODO in elaborate_pat"
 
     | AExpr.Fn _ ->
@@ -412,7 +420,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr
         let _ = M.solving_unify pat.pos env typ (const_typ c) in
         ({pat with v = ConstP c}, Vector.empty)
 
-    | AExpr.AppSequence _ | AExpr.App _ | AExpr.PrimApp _ | AExpr.Select _ | AExpr.Record _ ->
+    | AExpr.Focus _ | AppSequence _ | App _ | PrimApp _ | Select _ | Record _ ->
         failwith "TODO in check_pat"
 
     | AExpr.Fn _ ->

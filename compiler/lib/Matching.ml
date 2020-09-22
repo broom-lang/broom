@@ -86,16 +86,17 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
             (match Env.get_uv env uv with
             | Unassigned _ ->
                 let (uv, typ) = match template with
-                    | T.PiL _ ->
+                    | T.ValuesL min_width -> failwith "cannot articulate tuple; width unknown"
+                    | PiL _ ->
                         let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind (Name.fresh ()))) in
                         let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind (Name.fresh ()))) in
                         (uv, T.Pi { universals = Vector.of_list []
-                                  ; domain = Right { edomain = T.Uv (sibling env dkind uv)
-                                      ; eff = Uv (sibling env T.aRow uv) }
-                                  ; codomain = Uv (sibling env cdkind uv) })
+                                ; domain = Right { edomain = T.Uv (sibling env dkind uv)
+                                    ; eff = Uv (sibling env T.aRow uv) }
+                                ; codomain = Uv (sibling env cdkind uv) })
                     | ProxyL _ ->
-                        let kind : T.kind = Uv (sibling env T.aKind uv) in
-                        (uv, T.Proxy (Uv (sibling env kind uv)))
+                        let kind = T.Uv (sibling env T.aKind uv) in
+                        (uv, Proxy (Uv (sibling env kind uv)))
                     | WithL {base = _; label; field = _} ->
                         (uv, (With {base = Uv (sibling env T.aRow uv)
                             ; label; field = Uv (sibling env T.aType uv)}))
@@ -112,6 +113,13 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
             | Assigned _ -> failwith "unreachable: Assigned uv in `focalize`.")
         | _ ->
             (match template with
+            | ValuesL min_length ->
+                (match typ with
+                | Values typs when Vector.length typs >= min_length -> (Cf Fun.id, typ)
+                | _ ->
+                    Env.reportError env pos (Unusable (template, typ));
+                    let typ : T.t = Uv (Env.uv env T.aType (Name.fresh ())) in
+                    (Cf Fun.id, articulate_template typ template))
             | PiL _ -> (* TODO: arity check (or to `typeof`/`App`?) *)
                 (match typ with
                 | Pi _ -> (Cf Fun.id, typ)

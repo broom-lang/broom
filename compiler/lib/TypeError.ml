@@ -28,6 +28,9 @@ let rec cause_to_doc s pos = function
     | Unusable (template, typ) ->
         Fc.Type.to_doc s typ ^/^
         (match template with
+        | ValuesL min_length ->
+            PPrint.string "is not a tuple of at least" ^/^ PPrint.string (Int.to_string min_length)
+                ^/^ PPrint.string "values"
         | PiL _ -> PPrint.string "is uncallable"
         | WithL {base = _; label; field = _} -> PPrint.string "lacks the field" ^/^ Name.to_doc label
         | ProxyL _ -> PPrint.string "is not a type"

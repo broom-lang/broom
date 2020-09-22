@@ -6,6 +6,7 @@ module type EXPR = sig
 
     type t =
         | Values of t with_pos Vector.t
+        | Focus of t with_pos * int
         | Ann of t with_pos * typ with_pos
         | Fn of clause Vector.t
         | App of t with_pos * (t with_pos, t with_pos) Ior.t

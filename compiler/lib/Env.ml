@@ -186,7 +186,8 @@ let rec expose' env depth substitution : T.t -> T.t = function
     | (Ov _ | Prim _) as typ -> typ
 
 and expose_template' env depth substitution = function
-    | T.PiL codomain -> T.PiL (expose_template' env depth substitution codomain)
+    | T.ValuesL _ as template -> template
+    | PiL codomain -> T.PiL (expose_template' env depth substitution codomain)
     | WithL {base; label; field} ->
         WithL { base = expose_template' env depth substitution base
               ; label; field = expose_template' env depth substitution field }
@@ -231,6 +232,7 @@ let rec close' env depth substitution : T.t -> T.t = function
     | (Bv _ | Prim _) as typ -> typ
 
 and close_template' env depth substitution = function
+    | T.ValuesL _ as template -> template
     | T.PiL codomain -> T.PiL (close_template' env depth substitution codomain)
     | WithL {base; label; field} ->
         WithL { base = close_template' env depth substitution base

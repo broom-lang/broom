@@ -63,6 +63,7 @@ and Typ : FcTypeSigs.TYPE
     and edomain = {edomain : t; eff : t}
 
     and template =
+        | ValuesL of int
         | PiL of template
         | WithL of {base : template; label : Name.t; field : template}
         | ProxyL of t
@@ -185,6 +186,10 @@ and Typ : FcTypeSigs.TYPE
         PPrint.string label ^/^ PPrint.colon ^/^ to_doc s typ
 
     and template_to_doc s = function
+        | ValuesL length ->
+            PPrint.surround_separate 4 0 (PPrint.parens PPrint.empty)
+                PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+                (List.init length (fun _ -> PPrint.underscore))
         | PiL codomain ->
             let domain_doc = PPrint.parens PPrint.empty in
             PPrint.infix 4 1 (PPrint.string "->") domain_doc (template_to_doc s codomain)

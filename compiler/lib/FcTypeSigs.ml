@@ -34,6 +34,7 @@ module type TYPE = sig
     and edomain = {edomain : t; eff : t}
 
     and template =
+        | ValuesL of int
         | PiL of template
         | WithL of {base : template; label : Name.t; field : template}
         | ProxyL of t

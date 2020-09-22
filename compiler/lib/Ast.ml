@@ -14,6 +14,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
 
         type t =
             | Values of t with_pos Vector.t
+            | Focus of t with_pos * int
             | Ann of t with_pos * typ with_pos
             | Fn of clause Vector.t
             | App of t with_pos * (t with_pos, t with_pos) Ior.t
@@ -34,6 +35,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                 PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                     PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                     to_doc (Vector.to_list val_exprs)
+            | Focus (tup, i) -> to_doc tup ^^ PPrint.dot ^^ PPrint.string (Int.to_string i)
             | Fn clauses ->
                 PPrint.separate_map (PPrint.break 1) clause_to_doc (Vector.to_list clauses)
                 |> PPrint.braces

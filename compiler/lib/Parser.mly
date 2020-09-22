@@ -147,6 +147,7 @@ app :
 
 select :
     | select "." ID { {v = Select ($1, Name.of_string $3); pos = $loc} }
+    | select "." INT { {v = Focus ($1, $3); pos = $loc} }
     | nestable { $1 }
 
 nestable : nestable_without_pos { {v = $1; pos = $sloc} }
