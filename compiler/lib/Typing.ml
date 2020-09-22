@@ -175,56 +175,6 @@ and elaborate_clause env {params; body} =
         | Both (idomain, edomain) -> Both (idomain, {T.edomain; eff}) in
     (domain, {term = {FExpr.pat; body}; typ = codomain; eff})
 
-and elaborate_param env param =
-    let (param, (_, typ), defs) = elaborate_pat env param in
-    let env = Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
-    (param, typ, env)
-
-and elaborate_pat env pat =
-    let elaborate_pats env pats =
-        let step (pats, typs, defs) pat =
-            let (pat, (_, typ), defs') = elaborate_pat env pat in
-            (pat :: pats, typ :: typs, Vector.append defs defs') in
-        let (pats, typs, defs) = Vector.fold step ([], [], Vector.empty) pats in
-        (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), defs) in
-
-    match pat.v with
-    | AExpr.Values pats when Vector.length pats = 1 -> elaborate_pat env (Vector.get pats 0)
-
-    | AExpr.Values pats ->
-        let (pats, typs, defs) = elaborate_pats env pats in
-        ({pat with v = FExpr.ValuesP pats}, (Vector.empty, Values typs), defs)
-
-    | AExpr.Ann (pat, typ) ->
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
-        let typ = K.check env kind typ in
-        let (_, typ) as semiabs = Env.reabstract env typ in
-        let (pat, defs) = check_pat env typ pat in
-        (pat, semiabs, defs)
-
-    | AExpr.Var name ->
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
-        let typ = T.Uv (Env.uv env kind (Name.fresh ())) in
-        ({pat with v = FExpr.UseP name}, (Vector.empty, typ), Vector.singleton {FExpr.name; typ})
-
-    | AExpr.Proxy carrie ->
-        let {TS.typ = carrie; kind} = K.kindof env {pat with v = carrie} in
-        ({pat with v = ProxyP carrie}, (Vector.empty, Proxy carrie), Vector.empty)
-
-    | AExpr.Const c ->
-        ({pat with v = FExpr.ConstP c}, (Vector.empty, const_typ c), Vector.empty)
-
-    | AExpr.Focus _ | AppSequence _ | App _ | PrimApp _ | Select _ | Record _ ->
-        failwith "TODO in elaborate_pat"
-
-    | AExpr.Fn _ ->
-        Env.reportError env pat.pos (NonPattern pat.v);
-        (* TODO: Treat as `_` instead: *)
-        let name = Name.fresh () in
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
-        let typ = T.Uv (Env.uv env kind (Name.fresh ())) in
-        ({pat with v = FExpr.UseP name}, (Vector.empty, typ), Vector.singleton {FExpr.name; typ})
-
 and check_args env pos domain eff args =
     let check_arg env pos domain eff arg =
         let {TS.term = arg; typ = _; eff = arg_eff} = check env domain arg in
@@ -389,6 +339,64 @@ and check_clause env domain codomain {params; body} =
     ignore (M.solving_unify body.pos env body_eff eff);
     {pat; body}
 
+(* # Patterns *)
+
+(* ## Synthesis *)
+
+and elaborate_param env param =
+    let (param, (_, typ), defs) = elaborate_pat env param in
+    let env = Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
+    (param, typ, env)
+
+and elaborate_pat env pat =
+    let elaborate_pats env pats =
+        let step (env, pats, typs, defs) pat =
+            let (pat, (_, typ), defs') = elaborate_pat env pat in
+            let env =
+                Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs' in
+            (env, pat :: pats, typ :: typs, Vector.append defs defs') in
+        let (_, pats, typs, defs) = Vector.fold step (env, [], [], Vector.empty) pats in
+        (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), defs) in
+
+    match pat.v with
+    | AExpr.Values pats when Vector.length pats = 1 -> elaborate_pat env (Vector.get pats 0)
+
+    | AExpr.Values pats ->
+        let (pats, typs, defs) = elaborate_pats env pats in
+        ({pat with v = FExpr.ValuesP pats}, (Vector.empty, Values typs), defs)
+
+    | AExpr.Ann (pat, typ) ->
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let typ = K.check env kind typ in
+        let (_, typ) as semiabs = Env.reabstract env typ in
+        let (pat, defs) = check_pat env typ pat in
+        (pat, semiabs, defs)
+
+    | AExpr.Var name ->
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let typ = T.Uv (Env.uv env kind (Name.fresh ())) in
+        ({pat with v = FExpr.UseP name}, (Vector.empty, typ), Vector.singleton {FExpr.name; typ})
+
+    | AExpr.Proxy carrie ->
+        let {TS.typ = carrie; kind} = K.kindof env {pat with v = carrie} in
+        ({pat with v = ProxyP carrie}, (Vector.empty, Proxy carrie), Vector.empty)
+
+    | AExpr.Const c ->
+        ({pat with v = FExpr.ConstP c}, (Vector.empty, const_typ c), Vector.empty)
+
+    | AExpr.Focus _ | AppSequence _ | App _ | PrimApp _ | Select _ | Record _ ->
+        failwith "TODO in elaborate_pat"
+
+    | AExpr.Fn _ ->
+        Env.reportError env pat.pos (NonPattern pat.v);
+        (* TODO: Treat as `_` instead: *)
+        let name = Name.fresh () in
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let typ = T.Uv (Env.uv env kind (Name.fresh ())) in
+        ({pat with v = FExpr.UseP name}, (Vector.empty, typ), Vector.singleton {FExpr.name; typ})
+
+(* ## Checking *)
+
 and check_param env domain param =
     let (param, defs) = check_pat env domain param in
     let env = Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
@@ -398,18 +406,25 @@ and check_param env domain param =
 and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat with_pos * FExpr.lvalue Vector.t
 = fun env typ pat ->
     let check_pats env domain pats =
-        let step (pats, env) domain pat =
-            let (pat, defs) = check_pat env domain pat in
+        let step (env, pats, defs) domain pat =
+            let (pat, defs') = check_pat env domain pat in
             let env =
                 Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs in
-            (pat :: pats, env) in
-        let (pats, env) = Vector.fold2 step ([], env) domain pats in (* FIXME: raises on length mismatch *)
-        (Vector.of_list (List.rev pats), env) in
+            (env, pat :: pats, Vector.append defs defs') in
+        if Vector.length domain = Vector.length pats then begin
+            let (_, pats, defs) = Vector.fold2 step (env, [], Vector.empty) domain pats in
+            (Vector.of_list (List.rev pats), defs)
+        end else failwith "tuple type and pattern widths don't match" in
 
     match pat.v with
     | AExpr.Values pats when Vector.length pats = 1 -> check_pat env typ (Vector.get pats 0)
 
-    | AExpr.Values pats -> failwith "TODO: multi-values in check_pat"
+    | AExpr.Values pats ->
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let typs = Vector.map (fun _ -> T.Uv (Env.uv env kind (Name.fresh ()))) pats in
+        let _ = M.solving_unify pat.pos env typ (Values typs) in
+        let (pats, defs) = check_pats env typs pats in
+        ({pat with v = FExpr.ValuesP pats}, defs)
 
     | AExpr.Ann (pat', typ') ->
         let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
