@@ -145,7 +145,7 @@ and Type : AstSigs.TYPE
                 Term.Stmt.to_doc (Vector.to_list stmts)
         | Row stmts ->
             PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.bar)
-                (PPrint.lparen ^^ PPrint.bar) (PPrint.semi ^^ PPrint.break 1) PPrint.rparen
+                (PPrint.lparen ^^ PPrint.bar) (PPrint.break 1 ^^ PPrint.bar ^^ PPrint.break 1) PPrint.rparen
                 Term.Stmt.to_doc (Vector.to_list stmts)
         | Path expr -> Term.Expr.to_doc {typ with v = expr}
         | Prim pt -> Prim.to_doc pt
