@@ -112,10 +112,9 @@ and Typ : FcTypeSigs.TYPE
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 (to_doc s) (Vector.to_list typs)
         | Values typs ->
-            PPrint.colon
-                ^/^ PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) (to_doc s)
-                    (Vector.to_list typs)
-            |> PPrint.parens
+            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.colon)
+                (PPrint.lparen ^^ PPrint.colon) (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+                (to_doc s) (Vector.to_list typs)
         | Pi {universals; domain; codomain} ->
             let codoc = to_doc s codomain in
             let (idoc, edoc, effdoc) = match domain with

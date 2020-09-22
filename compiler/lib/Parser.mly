@@ -149,12 +149,12 @@ nestable_without_pos :
     | "(" COMPARISON ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
     | "(" ADDITIVE ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
     | "(" MULTIPLICATIVE ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
-    | "(" ";" stmt tail(";", stmt, ")") { proxy (Row (Vector.of_list ($3 :: $4))) }
-    | "(" ";" ")" { proxy (Row Vector.empty) }
-    | "{" ";" stmt tail(";", stmt, "}") { proxy (Record (Vector.of_list ($3 :: $4))) }
-    | "{" ";" "}" { proxy (Record Vector.empty) }
-    | "(" "," typ tail(",", typ, ")") { proxy (Ast.Type.Values (Vector.of_list ($3 :: $4))) }
-    | "(" "," ")" { proxy (Values Vector.empty) }
+    | "(" "|" stmt tail("|", stmt, ")") { proxy (Row (Vector.of_list ($3 :: $4))) }
+    | "(" "|" ")" { proxy (Row Vector.empty) }
+    | "{" ":" stmt tail(";", stmt, "}") { proxy (Record (Vector.of_list ($3 :: $4))) }
+    | "{" ":" "}" { proxy (Record Vector.empty) }
+    | "(" ":" typ tail(",", typ, ")") { proxy (Ast.Type.Values (Vector.of_list ($3 :: $4))) }
+    | "(" ":" ")" { proxy (Values Vector.empty) }
     | ID { Var (Name.of_string $1) }
     | WILD { failwith "TODO" }
     | INT { Const (Int $1) }

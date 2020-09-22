@@ -116,9 +116,9 @@ and Type : AstSigs.TYPE
 
     let rec to_doc (typ : t with_pos) = match typ.v with
         | Values typs ->
-            PPrint.parens (PPrint.comma
-                ^^ PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) to_doc
-                    (Vector.to_list typs))
+            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.colon)
+                (PPrint.lparen ^^ PPrint.colon) (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+                to_doc (Vector.to_list typs)
         | Pi {domain; codomain} ->
             let codoc = to_doc codomain in
             let (idoc, edoc, effdoc) = match domain with
@@ -140,12 +140,12 @@ and Type : AstSigs.TYPE
             | Some idoc -> PPrint.prefix 4 1 idoc (PPrint.string "=>" ^^ PPrint.blank 1 ^^ doc)
             | None -> doc)
         | Record stmts ->
-            PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.semi)
-                (PPrint.lbrace ^^ PPrint.semi) (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
+            PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.colon)
+                (PPrint.lbrace ^^ PPrint.colon) (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
                 Term.Stmt.to_doc (Vector.to_list stmts)
         | Row stmts ->
-            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.semi)
-                (PPrint.lparen ^^ PPrint.semi) (PPrint.semi ^^ PPrint.break 1) PPrint.rparen
+            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.bar)
+                (PPrint.lparen ^^ PPrint.bar) (PPrint.semi ^^ PPrint.break 1) PPrint.rparen
                 Term.Stmt.to_doc (Vector.to_list stmts)
         | Path expr -> Term.Expr.to_doc {typ with v = expr}
         | Prim pt -> Prim.to_doc pt
