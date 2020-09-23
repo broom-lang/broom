@@ -32,9 +32,11 @@ end
 
 exception RuntimeException of Error.t
 
-let match_failure _ = failwith "compiler bug: pattern matching failed at runtime"
+let match_failure () = failwith "compiler bug: pattern matching failed at runtime"
 
 type cont = Value.t -> Value.t
+
+type cont' = unit -> Value.t
 
 let exit = Fun.id
 
@@ -59,17 +61,18 @@ let rec eval : Env.t -> cont -> expr with_pos -> Value.t
     | Pack (_, expr) -> eval env k expr
     | Const (Int n) -> k (Value.Int n)
 
-and bind : Env.t -> cont -> cont -> pat with_pos -> cont
+and bind : Env.t -> cont' -> cont' -> pat with_pos -> cont
 = fun env then_k else_k pat v -> match pat.v with
     | ConstP (Int n) -> (match v with
         | Int n' ->
             if n' = n
-            then then_k (Tuple Vector.empty) (* NOTE: Arbitrarily, will be discarded anyway *)
-            else else_k v)
+            then then_k ()
+            else else_k ())
 
 and exec : Env.t -> cont -> stmt -> Value.t
 = fun env k -> function
-    | Def (_, pat, expr) -> eval env (bind env k match_failure pat) expr
+    | Def (_, pat, expr) ->
+        eval env (bind env (fun () -> Tuple Vector.empty) match_failure pat) expr
     | Expr expr -> eval env k expr
 
 let interpret env expr =
