@@ -64,10 +64,8 @@ let rec eval : Env.t -> cont -> expr with_pos -> Value.t
 and bind : Env.t -> cont' -> cont' -> pat with_pos -> cont
 = fun env then_k else_k pat v -> match pat.v with
     | ConstP (Int n) -> (match v with
-        | Int n' ->
-            if n' = n
-            then then_k ()
-            else else_k ())
+        | Int n' when n' = n -> then_k ()
+        | _ -> else_k ())
 
 and exec : Env.t -> cont -> stmt -> Value.t
 = fun env k -> function
