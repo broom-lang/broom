@@ -58,7 +58,7 @@ let rec eval : Env.t -> cont -> expr with_pos -> Value.t
             | Tuple _ -> failwith "compiler bug: tuple index out of bounds"
             | _ -> failwith "compiler bug: tuple-indexing non-tuple at runtime" in
         eval env k expr
-    | Pack (_, expr) -> eval env k expr
+    | LetType (_, expr) | Axiom (_, expr) | Cast (expr, _) | Pack (_, expr) -> eval env k expr
     | Const (Int n) -> k (Value.Int n)
 
 and bind : Env.t -> cont' -> cont' -> pat with_pos -> cont
