@@ -36,3 +36,9 @@ module Map = Map.Make(struct
     let compare = compare
 end)
 
+module Hashtbl = Hashtbl.Make(struct
+    type t = name
+    let equal = (=)
+    let hash = Hashtbl.hash
+end)
+

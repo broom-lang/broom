@@ -8,4 +8,5 @@ val freshen : t -> t
 val to_doc : t -> PPrint.document
 
 module Map : Map.S with type key = t
+module Hashtbl : Hashtbl.S with type key = t
 
