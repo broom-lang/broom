@@ -50,6 +50,7 @@ let rep envs input =
             prerr_endline (SedlexMenhir.string_of_ParseError err);
             envs
 
+(* FIXME: Here, non-(:) expr-stmts must allowed for the REPL to make any sense: *)
 let repl () =
     let rec loop envs =
         match LNoise.linenoise prompt with

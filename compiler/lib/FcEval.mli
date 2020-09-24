@@ -12,6 +12,9 @@ end
 module Value : sig
     type t =
         | Tuple of t Vector.t
+        | Fn of ((t -> t) -> t -> t)
+        | Record of t Name.Map.t
+        | Proxy
         | Int of int
 
     val to_doc : t -> PPrint.document
