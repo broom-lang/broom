@@ -272,7 +272,14 @@ let interpret env expr =
     try Ok (eval env exit expr)
     with RuntimeException err -> Error err
 
-let run env stmt =
-    try Ok (exec env (fun _ -> Tuple Vector.empty) stmt)
+let run env (stmt : stmt) =
+    try match stmt with
+        | Def (_, pat, expr) ->
+            let res = ref None in
+            let k v =
+                res := Some v;
+                bind env (fun () -> Option.get !res) match_failure pat v in
+            Ok (eval env k expr)
+        | Expr expr -> Ok (eval env exit expr)
     with RuntimeException err -> Error err
 
