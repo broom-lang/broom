@@ -21,9 +21,9 @@ let ep ((tenv, venv) as envs) stmt =
         PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc);
 
         let res = Fc.Eval.run venv stmt in
-        let (chan, vdoc) = match res with
-            | Ok v -> (stdout, Fc.Eval.Value.to_doc v)
-            | Error err -> (stderr, PPrint.string "Runtime error:" ^/^ Fc.Eval.Error.to_doc err) in
+        let (chan, vdoc, venv) = match res with
+            | Ok (v, venv) -> (stdout, Fc.Eval.Value.to_doc v, venv)
+            | Error err -> (stderr, PPrint.string "Runtime error:" ^/^ Fc.Eval.Error.to_doc err, venv) in
         PPrint.ToChannel.pretty 1.0 80 chan (PPrint.hardline ^^ vdoc);
         (tenv, venv)
     end with

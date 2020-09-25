@@ -37,6 +37,7 @@ module Env = struct
             type t = Value.t Name.Hashtbl.t
             
             let create () = Name.Hashtbl.create 0
+            let copy = Name.Hashtbl.copy
             let find = Fun.flip Name.Hashtbl.find_opt
             let add k v toplevel = Name.Hashtbl.add toplevel k v
         end
@@ -45,7 +46,7 @@ module Env = struct
             type t = Value.t Name.Hashtbl.t
 
             let create () = Name.Hashtbl.create 0
-
+            let copy = Name.Hashtbl.copy
             let find = Fun.flip Name.Hashtbl.find_opt
 
             let add k v scope = match Name.Hashtbl.find_opt scope k with
@@ -58,6 +59,10 @@ module Env = struct
 
     let interactive () = {global = Some (Scope.Global.create ()); locals = []}
     let eval () = {global = None; locals = []}
+
+    let copy {global; locals} =
+        { global = Option.map Scope.Global.copy global
+        ; locals = List.map Scope.Local.copy locals }
 
     let find {global; locals} name = match List.find_map (Scope.Local.find name) locals with
         | Some v -> v
@@ -273,13 +278,14 @@ let interpret env expr =
     with RuntimeException err -> Error err
 
 let run env (stmt : stmt) =
+    let env = Env.copy env in
     try match stmt with
         | Def (_, pat, expr) ->
             let res = ref None in
             let k v =
                 res := Some v;
                 bind env (fun () -> Option.get !res) match_failure pat v in
-            Ok (eval env k expr)
-        | Expr expr -> Ok (eval env exit expr)
+            Ok (eval env k expr, env)
+        | Expr expr -> Ok (eval env exit expr, env)
     with RuntimeException err -> Error err
 

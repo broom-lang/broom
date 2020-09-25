@@ -27,5 +27,5 @@ module Error : sig
 end
 
 val interpret : Env.t -> expr with_pos -> (Value.t, Error.t) Result.t
-val run : Env.t -> stmt -> (Value.t, Error.t) Result.t
+val run : Env.t -> stmt -> (Value.t * Env.t, Error.t) Result.t
 
