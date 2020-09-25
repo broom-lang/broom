@@ -50,13 +50,19 @@ let rep envs input =
             prerr_endline (SedlexMenhir.string_of_ParseError err);
             envs
 
+let lep envs filename =
+    let input = open_in filename in
+    Fun.protect (fun () ->
+        rep envs (Sedlexing.Utf8.from_channel input)
+    ) ~finally: (fun () -> close_in input)
+
 let repl () =
     let rec loop envs =
         match LNoise.linenoise prompt with
         | None -> ()
         | Some input ->
             let _ = LNoise.history_add input in
-            let envs = rep envs input in
+            let envs = rep envs (Sedlexing.Utf8.from_string input) in
             loop envs in
     print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
     loop (Typer.Env.interactive (), Fc.Eval.Env.interactive ())
@@ -67,7 +73,16 @@ let eval_t =
         let docv = "STATEMENTS" in
         let doc = "the statements to evaluate" in
         C.Arg.(value & pos 0 string "" & info [] ~docv ~doc) in
-    (C.Term.(const ignore $ (const rep $ (const eval_envs $ const ()) $ expr)), C.Term.info "eval" ~doc)
+    ( C.Term.(const ignore $ (const rep $ (const eval_envs $ const ()) $ (const Sedlexing.Utf8.from_string $ expr)))
+    , C.Term.info "eval" ~doc )
+
+let script_t =
+    let doc = "evaluate statements from file" in
+    let expr =
+        let docv = "FILENAME" in
+        let doc = "the file to evaluate" in
+        C.Arg.(value & pos 0 string "" & info [] ~docv ~doc) in
+    (C.Term.(const ignore $ (const lep $ (const eval_envs $ const ()) $ expr)), C.Term.info "script" ~doc)
 
 let repl_t =
     let doc = "interactive evaluation loop" in
@@ -79,5 +94,5 @@ let default_t =
 
 let () =
     Hashtbl.randomize ();
-    C.Term.exit (C.Term.eval_choice default_t [repl_t; eval_t])
+    C.Term.exit (C.Term.eval_choice default_t [repl_t; script_t; eval_t])
 

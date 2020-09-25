@@ -15,7 +15,7 @@ let try_prints_as goal s =
     then ()
     else failwith (s' ^ "` != `" ^ goal)
 
-let try_roundtrip s = try_prints_as s s
+let try_roundtrip s = try_prints_as s (Sedlexing.Utf8.from_string s)
 
 let%test_unit "parse_int" = try_roundtrip "23"
 

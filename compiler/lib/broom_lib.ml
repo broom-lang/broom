@@ -13,8 +13,8 @@ module SedlexMenhir = SedlexMenhir
 
 module Parse = struct
     let parse_commands_exn input =
-        let lexbuf = SedlexMenhir.create_lexbuf (Sedlexing.Utf8.from_string input) in
-        SedlexMenhir.sedlex_with_menhir Lexer.token Parser.commands lexbuf
+        SedlexMenhir.create_lexbuf input
+        |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.commands
 end
 
 module Typer = Typer
