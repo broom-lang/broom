@@ -61,7 +61,6 @@ let repl () =
     print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
     loop (Typer.Env.interactive (), Fc.Eval.Env.interactive ())
 
-(* FIXME: Global scope is not created, leading to unbound variables galore: *)
 let eval_t =
     let doc = "evaluate statements" in
     let expr =

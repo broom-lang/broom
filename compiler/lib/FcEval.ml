@@ -58,7 +58,7 @@ module Env = struct
     type t = {global : Scope.Global.t option; locals : Scope.Local.t list}
 
     let interactive () = {global = Some (Scope.Global.create ()); locals = []}
-    let eval () = {global = None; locals = []}
+    let eval () = interactive () (* HACK? *)
 
     let copy {global; locals} =
         { global = Option.map Scope.Global.copy global
