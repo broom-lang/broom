@@ -135,6 +135,21 @@ let rec eval : Env.t -> cont -> expr with_pos -> Value.t
             | _ -> failwith "compiler bug: tried to call non-fn at runtime" in
         eval env eval_arg callee
 
+    | PrimApp (op, _, arg) ->
+        let apply_primop (arg : Value.t) = match op with
+            | IAdd | ISub | IMul -> (match arg with
+                | Tuple args when Vector.length args = 2 ->
+                    (match (Vector.get args 0, Vector.get args 1) with
+                    | (Int a, Int b) -> k (Int (match op with
+                        | IAdd -> a + b
+                        | ISub -> a - b
+                        | IMul -> a * b
+                        | _ -> failwith "unreachable"))
+                    | _ -> failwith "compiler bug: invalid primop args")
+                | _ -> failwith "compiler bug: invalid primop arg")
+            | Int | Type -> k Proxy in
+        eval env apply_primop arg
+
     | Match (expr, clauses) -> (match Vector.length clauses with
         | 0 -> match_failure ()
         | len ->
@@ -186,14 +201,43 @@ let rec eval : Env.t -> cont -> expr with_pos -> Value.t
         | 0 -> k (Record Name.Map.empty)
         | len ->
             let rec eval_fields i r label v =
-                let i = i + 1 in
-                let r = Name.Map.add label v r in
-                if i < len then begin
-                    let (label, expr) = Vector.get fields i in
-                    eval env (eval_fields i r label) expr
-                end else k (Record r) in
+                if not (Name.Map.mem label r) then begin
+                    let i = i + 1 in
+                    let r = Name.Map.add label v r in
+                    if i < len then begin
+                        let (label, expr) = Vector.get fields i in
+                        eval env (eval_fields i r label) expr
+                    end else k (Record r)
+                end else failwith "compiler bug: duplicate record fields" in
             let (label, expr) = Vector.get fields 0 in
             eval env (eval_fields 0 Name.Map.empty label) expr)
+
+    | Where (base, fields) ->
+        let len = Vector1.length fields in
+        let rec eval_fields i base label v =
+            if Name.Map.mem label base then begin
+                let i = i + 1 in
+                let base = Name.Map.add label v base in
+                if i < len then begin
+                    let (label, expr) = Vector1.get fields i in
+                    eval env (eval_fields i base label) expr
+                end else k (Record base)
+            end else failwith "compiler bug: `where` a new label" in
+        let k : cont = function
+            | Record base ->
+                let (label, expr) = Vector1.get fields 0 in
+                eval env (eval_fields 0 base label) expr
+            | _ -> failwith "compiler bug: `where` to a non-record" in
+        eval env k base
+
+    | With {base; label; field} ->
+        let k : cont = function
+            | Record fields when not (Name.Map.mem label fields) ->
+                let k fv = k (Record (Name.Map.add label fv fields)) in
+                eval env k field
+            | Record _ -> failwith "compiler bug: `with` pre-existing field"
+            |_ -> failwith "compiler bug: `with` to a non_record" in
+        eval env k base
 
     | Select (expr, label) ->
         let k : cont = function
