@@ -42,25 +42,15 @@ module Env = struct
         end
 
         module Local = struct
-            type t = Value.t option Name.Hashtbl.t
+            type t = Value.t Name.Hashtbl.t
 
             let create () = Name.Hashtbl.create 0
 
-            let singleton k v =
-                let scope = Name.Hashtbl.create 1 in
-                Name.Hashtbl.add scope k (Some v);
-                scope
-
             let find = Fun.flip Name.Hashtbl.find_opt
 
-            let init scope name = match Name.Hashtbl.find_opt scope name with
-                | Some _ -> failwith "compiler bug: double definition"
-                | None -> Name.Hashtbl.add scope name None
-
             let add k v scope = match Name.Hashtbl.find_opt scope k with
-                | Some None -> Name.Hashtbl.add scope k (Some v); true
-                | Some (Some _) -> failwith "compiler bug: double initialization"
-                | None -> false
+                | Some _ -> failwith "compiler bug: double definition"
+                | None -> Name.Hashtbl.add scope k v
         end
     end
 
@@ -70,17 +60,16 @@ module Env = struct
     let eval () = {global = None; locals = []}
 
     let find {global; locals} name = match List.find_map (Scope.Local.find name) locals with
-        | Some (Some v) -> v
-        | Some None -> failwith "compiler bug: uninitialized variable at runtime"
+        | Some v -> v
         | None -> (match Option.bind global (Scope.Global.find name) with
             | Some v -> v
             | None -> failwith "compiler bug: unbound variable at runtime")
 
-    let push env scope = {env with locals = scope :: env.locals}
+    let push env = {env with locals = Scope.Local.create () :: env.locals}
 
-    let add {global; locals} k v = match List.find_opt (Scope.Local.add k v) locals with
-        | Some _ -> ()
-        | None -> (match global with
+    let add {global; locals} k v = match locals with
+        | scope :: _ -> Scope.Local.add k v scope
+        | [] -> (match global with
             | Some toplevel -> Scope.Global.add k v toplevel
             | None -> failwith "compiler bug: tried to set unbound variable at runtime")
 end
@@ -125,7 +114,8 @@ let rec eval : Env.t -> cont -> expr with_pos -> Value.t
 
     | Fn (_, {name; typ = _}, body) ->
         k (Fn (fun k v ->
-            let env = Env.push env (Env.Scope.Local.singleton name v) in
+            let env = Env.push env in
+            Env.add env name v;
             eval env k body))
 
     | App (callee, _, arg) ->
@@ -156,10 +146,7 @@ let rec eval : Env.t -> cont -> expr with_pos -> Value.t
             let rec eval_clause i v =
                 if i < len then begin
                     let {Expr.pat; body} = Vector.get clauses i in
-                    let env =
-                        let scope = Env.Scope.Local.create () in
-                        init_pat scope pat;
-                        Env.push env scope in
+                    let env = Env.push env in
                     bind env
                         (fun () -> eval env k body)
                         (fun () -> eval_clause (i + 1) v)
@@ -169,17 +156,12 @@ let rec eval : Env.t -> cont -> expr with_pos -> Value.t
 
     | Let ((_, pat, expr), body) ->
         let k v = 
-            let scope = Env.Scope.Local.create () in
-            init_pat scope pat;
-            let env = Env.push env scope in
+            let env = Env.push env in
             bind env (fun () -> eval env k body) match_failure pat v in
         eval env k expr
 
     | Letrec (defs, body) ->
-        let env =
-            let scope = Env.Scope.Local.create () in
-            Vector1.iter (fun (_, pat, _) -> init_pat scope pat) defs;
-            Env.push env scope in
+        let env = Env.push env in
         let rec define i () =
             if i < Vector1.length defs then begin
                 let (_, pat, expr) = Vector1.get defs i in
@@ -190,7 +172,7 @@ let rec eval : Env.t -> cont -> expr with_pos -> Value.t
 
     | Unpack (_, {name; typ = _}, expr, body) ->
         let k v =
-            let env = Env.push env (Env.Scope.Local.singleton name v) in
+            let env = Env.push env in
             eval env k body in
         eval env k expr
 
@@ -251,12 +233,6 @@ let rec eval : Env.t -> cont -> expr with_pos -> Value.t
     | Const (Int n) -> k (Value.Int n)
 
     | Patchable eref -> TxRef.(eval env k !eref)
-
-and init_pat : Env.Scope.Local.t -> pat with_pos -> unit
-= fun scope pat -> match pat.v with
-    | ValuesP pats -> Vector.iter (init_pat scope) pats
-    | UseP name -> Env.Scope.Local.init scope name
-    | ProxyP _ | ConstP _ -> ()
 
 and bind : Env.t -> cont' -> cont' -> pat with_pos -> cont
 = fun env then_k else_k pat v -> match pat.v with
