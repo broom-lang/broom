@@ -40,8 +40,6 @@ module Uv = Fc.Uv
 
 module Bindings = Map.Make(Name)
 
-type subst = Fc.Uv.subst
-
 let ref = TxRef.ref
 let (!) = TxRef.(!)
 
@@ -293,7 +291,7 @@ let find (env : t) pos name =
                 | White (semiabs, expr) ->
                     let env = {env with scopes} in
                     TxRef.set env.tx_log binding Grey;
-                    let {TS.term = expr; typ = _; eff} as typing = C.implement env semiabs expr in
+                    let typing = C.implement env semiabs expr in
                     TxRef.set env.tx_log binding (Black typing);
                     TxRef.set env.tx_log fields ((name, typ) :: !fields)
                 | Grey -> () (* TODO: really? *)
@@ -323,7 +321,7 @@ let find (env : t) pos name =
 
 let find_rhs (env : t) pos name =
     let rec find scopes = match scopes with
-        | Val (name', typ) :: scopes ->
+        | Val (name', _) :: scopes ->
             if name' = name
             then failwith "compiler bug: `Env.find_rhs` found `Val` scope"
             else find scopes
@@ -333,8 +331,7 @@ let find_rhs (env : t) pos name =
                 | White (semiabs, expr) ->
                     let env = {env with scopes} in
                     TxRef.set env.tx_log binding Grey;
-                    let {TS.term = expr; typ = _; eff} as typing =
-                        C.implement env semiabs expr in
+                    let typing = C.implement env semiabs expr in
                     TxRef.set env.tx_log binding (Black typing);
                     TxRef.set env.tx_log fields ((name, typ) :: !fields);
                     typing
@@ -342,7 +339,7 @@ let find_rhs (env : t) pos name =
                 | Black typing -> typing)
             | None -> find scopes')
         | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some (typ, binding) -> failwith "compiler bug: `Env.find_rhs` found `Row` scope."
+            | Some _ -> failwith "compiler bug: `Env.find_rhs` found `Row` scope."
             | None -> find scopes')
         | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
         | [] ->
@@ -352,7 +349,7 @@ let find_rhs (env : t) pos name =
 
 let find_rhst (env : t) pos name =
     let rec find scopes = match scopes with
-        | Val (name', typ) :: scopes ->
+        | Val (name', _) :: scopes ->
             if name' = name
             then failwith "compiler bug: `Env.find_rhst` found `Val` scope"
             else find scopes

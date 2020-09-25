@@ -157,7 +157,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
     let empty = ResidualMonoid.empty in
     let combine = ResidualMonoid.combine in
 
-    let articulate pos occ env uv_typ template = match uv_typ with
+    let articulate pos env uv_typ template = match uv_typ with
         | T.Uv uv ->
             (match Env.get_uv env uv with
             | Unassigned (_, kind, level) ->
@@ -241,13 +241,13 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
             (match Env.get_uv env uv with
             | Unassigned _ ->
                 if occ then occurs_check pos env uv super else ();
-                subtype pos false env (articulate pos occ env typ super) super
+                subtype pos false env (articulate pos env typ super) super
             | Assigned _ -> failwith "unreachable: Assigned `typ` in `subtype_whnf`")
         | (_, Uv uv) ->
             (match Env.get_uv env uv with
             | Unassigned _ ->
                 if occ then occurs_check pos env uv typ else ();
-                subtype pos false env typ (articulate pos occ env super typ)
+                subtype pos false env typ (articulate pos env super typ)
             | Assigned _ -> failwith "unreachable: Assigned `super` in `subtype_whnf`")
 
         | (PromotedArray _, _) -> (match super with
@@ -571,7 +571,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
                 let (residual, noop) = Vector.fold2 (fun (residual, noop) typ typ' ->
                     let {coercion; residual = residual'} = unify pos env typ typ' in
                     CCVector.push coercions coercion;
-                    (combine residual residual, noop && Option.is_none coercion)
+                    (combine residual residual', noop && Option.is_none coercion)
                 ) (empty, true) typs typs' in
                 { coercion = if noop
                     then Some (PromotedArrayCo (coercions |> CCVector.mapi (fun i -> function
@@ -592,7 +592,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
                 let (residual, noop) = Vector.fold2 (fun (residual, noop) typ typ' ->
                     let {coercion; residual = residual'} = unify pos env typ typ' in
                     CCVector.push coercions coercion;
-                    (combine residual residual, noop && Option.is_none coercion)
+                    (combine residual residual', noop && Option.is_none coercion)
                 ) (empty, true) typs typs' in
                 { coercion = if noop
                     then Some (PromotedValuesCo (coercions |> CCVector.mapi (fun i -> function
@@ -613,7 +613,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
                 let (residual, noop) = Vector.fold2 (fun (residual, noop) typ typ' ->
                     let {coercion; residual = residual'} = unify pos env typ typ' in
                     CCVector.push coercions coercion;
-                    (combine residual residual, noop && Option.is_none coercion)
+                    (combine residual residual', noop && Option.is_none coercion)
                 ) (empty, true) typs typs' in
                 { coercion = if noop
                     then Some (ValuesCo (coercions |> CCVector.mapi (fun i -> function
@@ -643,7 +643,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             {coercion = None; residual = empty})
 
     | (With _, _) -> (match typ' with
-        | With {base = base'; label = label'; field = field'} ->
+        | With _ ->
             let (labels, co, base, fields, base', fields', co') = match_rows pos env typ typ' in
 
             let fields_len = CCVector.length labels in
