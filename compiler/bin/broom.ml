@@ -20,6 +20,10 @@ let ep ((tenv, venv) as envs) stmt =
             |> PPrint.group in
         PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc);
 
+        let stmt = ExpandPats.expand_stmt stmt in
+        let doc = Env.document tenv Fc.Term.Stmt.to_doc stmt ^^ PPrint.semi in
+        PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc);
+
         let res = Fc.Eval.run venv stmt in
         let (chan, vdoc, venv) = match res with
             | Ok (v, venv) -> (stdout, Fc.Eval.Value.to_doc v, venv)

@@ -23,3 +23,6 @@ val iter2 : ('a -> 'b -> unit) -> 'a t -> 'b t -> unit
 
 val fold2 : ('a -> 'b -> 'c -> 'a) -> 'a -> 'b t -> 'c t -> 'a
 
+val to_source : 'a t -> 'a Streaming.Source.t
+val sink : unit -> ('a, 'a t option) Streaming.Sink.t
+

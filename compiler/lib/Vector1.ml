@@ -32,3 +32,7 @@ let iter2 = Vector.iter2
 
 let fold2 = Vector.fold2
 
+let to_source = Vector.to_source
+
+let sink () = Streaming.Sink.map of_vector (Vector.sink ())
+

@@ -58,6 +58,8 @@ module type EXPR = sig
 
     (* TODO: Add more of these: *)
     val letrec : def Vector.t -> t with_pos -> t
+
+    val map_children : (t with_pos -> t with_pos) -> t with_pos -> t with_pos
 end
 
 module type STMT = sig

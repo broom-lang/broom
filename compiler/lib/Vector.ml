@@ -38,5 +38,18 @@ let to_seq xs =
 
 let of_seq seq = of_array_unsafe (Array.of_seq seq)
 
+let to_source xs =
+    let len = length xs in
+    Streaming.Source.unfold 0 (fun i ->
+        if i < len
+        then Some (get xs i, i + 1)
+        else None
+    )
+
 let build vec = of_array_unsafe (CCVector.to_array vec)
+
+let sink () = Streaming.Sink.make
+    ~init: CCVector.create
+    ~push: (fun xs x -> CCVector.push xs x; xs)
+    ~stop: build ()
 

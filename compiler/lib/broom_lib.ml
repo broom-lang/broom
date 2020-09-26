@@ -19,3 +19,5 @@ end
 
 module Typer = Typer
 
+module ExpandPats = ExpandPats
+

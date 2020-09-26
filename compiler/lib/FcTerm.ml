@@ -1,3 +1,5 @@
+open Streaming
+
 module Make (Type : FcSigs.TYPE) : FcSigs.TERM
     with module Type = Type
 = struct 
@@ -22,6 +24,7 @@ module rec Expr : FcSigs.EXPR
     type stmt = Stmt.t
 
     let (!) = TxRef.(!)
+    let ref = TxRef.ref
 
     type lvalue = {name : Name.t; typ : Type.t}
 
@@ -219,6 +222,113 @@ module rec Expr : FcSigs.EXPR
     let letrec defs body = match Vector1.of_vector defs with
         | Some defs -> Letrec (defs, body)
         | None -> body.v
+
+    let map_children f (expr : t with_pos) =
+        let v = expr.v in
+        let v' = match v with
+            | Values vals ->
+                let vals' = Vector.map f vals in
+                let noop = Stream.from (Source.zip_with (==)
+                        (Vector.to_source vals') (Vector.to_source vals))
+                    |> Stream.into (Sink.all ~where: Fun.id) in
+                if noop then v else Values vals'
+
+            | Focus (tuple, i) ->
+                let tuple' = f tuple in
+                if tuple' == tuple then v else Focus (tuple', i)
+
+            | Fn (universals, param, body) ->
+                let body' = f body in
+                if body' == body then v else Fn (universals, param, body')
+
+            | App (callee, universals, arg) ->
+                let callee' = f callee in
+                let arg' = f arg in
+                if callee' == callee && arg' == arg then v else App (callee', universals, arg')
+
+            | PrimApp (op, universals, arg) ->
+                let arg' = f arg in
+                if arg' == arg then v else PrimApp (op, universals, arg')
+
+            | Let ((pos, def, expr), body) ->
+                let expr' = f expr in
+                let body' = f body in
+                if expr' == expr && body' == body then v else Let ((pos, def, expr'), body')
+
+            | Letrec (defs, body) ->
+                let defs' = Vector1.map (fun (pos, def, expr) -> (pos, def, f expr)) defs in
+                let body' = f body in
+                if body' == body
+                    && Stream.from (Source.zip_with (fun (_, _, expr') (_, _, expr) -> expr' == expr)
+                        (Vector1.to_source defs') (Vector1.to_source defs))
+                    |> Stream.into (Sink.all ~where: Fun.id)
+                then v
+                else Letrec (defs', body')
+
+            | LetType (typs, body) ->
+                let body' = f body in
+                if body' == body then v else LetType (typs, body')
+
+            | Axiom (axioms, body) ->
+                let body' = f body in
+                if body' == body then v else Axiom (axioms, body')
+
+            | Cast (expr, co) ->
+                let expr' = f expr in
+                if expr' == expr then v else Cast (expr', co)
+
+            | Pack (existentials, expr) ->
+                let expr' = f expr in
+                if expr' == expr then v else Pack (existentials, expr')
+
+            | Unpack (existentials, def, expr, body) ->
+                let expr' = f expr in
+                let body' = f body in
+                if expr' == expr && body' == body then v else Unpack (existentials, def, expr', body')
+
+            | Record fields ->
+                let fields' = Vector.map (fun (label, field) -> (label, f field)) fields in
+                let noop = Stream.from (Source.zip_with (fun (_, expr') (_, expr) -> expr' == expr)
+                        (Vector.to_source fields') (Vector.to_source fields))
+                    |> Stream.into (Sink.all ~where: Fun.id) in
+                if noop then v else Record fields'
+
+            | With {base; label; field} ->
+                let base' = f base in
+                let field' = f field in
+                if base' == base && field' == field then v else With {base = base'; label; field = field'}
+
+            | Where (base, fields) ->
+                let base' = f base in
+                let fields' = Vector1.map (fun (label, field) -> (label, f field)) fields in
+                if base' == base
+                    && Stream.from (Source.zip_with (fun (_, expr') (_, expr) -> expr' == expr)
+                        (Vector1.to_source fields') (Vector1.to_source fields))
+                    |> Stream.into (Sink.all ~where: Fun.id)
+                then v
+                else Where (base', fields')
+
+            | Select (expr, label) ->
+                let expr' = f expr in
+                if expr' == expr then v else Select (expr', label)
+
+            | Match (matchee, clauses) ->
+                let matchee' = f matchee in
+                let clauses' = Vector.map (fun {pat; body} -> {pat; body = f body}) clauses in
+                if matchee' == matchee
+                    && Stream.from (Source.zip_with (fun clause' clause -> clause'.body == clause.body)
+                        (Vector.to_source clauses') (Vector.to_source clauses))
+                    |> Stream.into (Sink.all ~where: Fun.id)
+                then v
+                else Match (matchee', clauses')
+
+            | Proxy _ | Use _ | Const _ -> v
+
+            | Patchable rref ->
+                let expr = !rref in
+                let expr' = f expr in
+                if expr' == expr then v else Patchable (ref expr') in
+        if v' == v then expr else {expr with v = v'}
 end
 
 and Stmt : FcSigs.STMT
