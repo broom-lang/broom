@@ -6,7 +6,6 @@ module Make (Type : FcSigs.TYPE) : FcSigs.TERM
 
 module Type = Type
 
-type 'a with_pos = 'a Util.with_pos
 type typ = Type.typ
 type coercion = Type.coercion
 
@@ -26,53 +25,55 @@ module rec Expr : FcSigs.EXPR
     let (!) = TxRef.(!)
     let ref = TxRef.ref
 
+    type 'a wrapped = {term : 'a; typ : Type.t; pos : Util.span}
+
     type lvalue = {name : Name.t; typ : Type.t}
 
     type t =
-        | Values of t with_pos Vector.t
-        | Focus of t with_pos * int
+        | Values of t wrapped Vector.t
+        | Focus of t wrapped * int
 
-        | Fn of Type.binding Vector.t * lvalue * t with_pos
-        | App of t with_pos * Type.t Vector.t * t with_pos
-        | PrimApp of Primop.t * Type.t Vector.t * t with_pos
+        | Fn of Type.binding Vector.t * lvalue * t wrapped
+        | App of t wrapped * Type.t Vector.t * t wrapped
+        | PrimApp of Primop.t * Type.t Vector.t * t wrapped
 
-        | Let of def * t with_pos
-        | Letrec of def Vector1.t * t with_pos
-        | LetType of Type.binding Vector1.t * t with_pos
-        | Match of t with_pos * clause Vector.t
+        | Let of def * t wrapped
+        | Letrec of def Vector1.t * t wrapped
+        | LetType of Type.binding Vector1.t * t wrapped
+        | Match of t wrapped * clause Vector.t
 
-        | Axiom of (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t * t with_pos
-        | Cast of t with_pos * Type.coercion
+        | Axiom of (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t * t wrapped
+        | Cast of t wrapped * Type.coercion
 
-        | Pack of Type.t Vector1.t * t with_pos
-        | Unpack of Type.binding Vector1.t * lvalue * t with_pos * t with_pos
+        | Pack of Type.t Vector1.t * t wrapped
+        | Unpack of Type.binding Vector1.t * lvalue * t wrapped * t wrapped
 
-        | Record of (Name.t * t with_pos) Vector.t
-        | Where of t with_pos * (Name.t * t with_pos) Vector1.t
-        | With of {base : t with_pos; label : Name.t; field : t with_pos}
-        | Select of t with_pos * Name.t
+        | Record of (Name.t * t wrapped) Vector.t
+        | Where of t wrapped * (Name.t * t wrapped) Vector1.t
+        | With of {base : t wrapped; label : Name.t; field : t wrapped}
+        | Select of t wrapped * Name.t
 
         | Proxy of Type.t
         | Const of Const.t
 
         | Use of Name.t
 
-        | Patchable of t with_pos TxRef.rref
+        | Patchable of t wrapped TxRef.rref
 
     and pat =
-        | ValuesP of pat with_pos Vector.t
-        | AppP of t with_pos * pat with_pos Vector.t
+        | ValuesP of pat wrapped Vector.t
+        | AppP of t wrapped * pat wrapped Vector.t
         | ProxyP of Type.t
         | UseP of Name.t
         | ConstP of Const.t
 
-    and clause = {pat : pat with_pos; body : t with_pos}
+    and clause = {pat : pat wrapped; body : t wrapped}
 
-    and field = {label : string; expr : t with_pos}
+    and field = {label : string; expr : t wrapped}
 
     let coercion_to_doc = Type.coercion_to_doc
 
-    let rec to_doc s {Util.v = expr; pos = _} = match expr with
+    let rec to_doc s {term = expr; typ = _; pos = _} = match expr with
         | Values exprs ->
             PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
@@ -186,15 +187,15 @@ module rec Expr : FcSigs.EXPR
             ^^ PPrint.infix 4 1 (PPrint.string "->")
                 (pat_to_doc s pat) (to_doc s body)
 
-    and castee_to_doc s (castee : t with_pos) = match castee.v with
+    and castee_to_doc s (castee : t wrapped) = match castee.term with
         | Fn _ -> PPrint.parens (to_doc s castee)
         | _ -> to_doc s castee
 
-    and base_to_doc s (base : t with_pos) = match base.v with
+    and base_to_doc s (base : t wrapped) = match base.term with
         | Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ -> PPrint.parens (to_doc s base)
         | _ -> to_doc s base
 
-    and selectee_to_doc s (selectee : t with_pos) = match selectee.v with
+    and selectee_to_doc s (selectee : t wrapped) = match selectee.term with
         | Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ | App _ | Where _ | With _ ->
             PPrint.parens (to_doc s selectee)
         | _ -> to_doc s selectee
@@ -202,7 +203,7 @@ module rec Expr : FcSigs.EXPR
     and lvalue_to_doc s {name; typ} =
         PPrint.infix 4 1 PPrint.colon (Name.to_doc name) (Type.to_doc s typ)
 
-    and pat_to_doc s (pat : pat with_pos) = match pat.v with
+    and pat_to_doc s (pat : pat wrapped) = match pat.term with
         | ValuesP pats ->
             PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
@@ -221,39 +222,39 @@ module rec Expr : FcSigs.EXPR
 
     let letrec defs body = match Vector1.of_vector defs with
         | Some defs -> Letrec (defs, body)
-        | None -> body.v
+        | None -> body.term
 
-    let map_children f (expr : t with_pos) =
-        let v = expr.v in
-        let v' = match v with
+    let map_children f (expr : t wrapped) =
+        let term = expr.term in
+        let term' = match term with
             | Values vals ->
                 let vals' = Vector.map f vals in
                 let noop = Stream.from (Source.zip_with (==)
                         (Vector.to_source vals') (Vector.to_source vals))
                     |> Stream.into (Sink.all ~where: Fun.id) in
-                if noop then v else Values vals'
+                if noop then term else Values vals'
 
             | Focus (tuple, i) ->
                 let tuple' = f tuple in
-                if tuple' == tuple then v else Focus (tuple', i)
+                if tuple' == tuple then term else Focus (tuple', i)
 
             | Fn (universals, param, body) ->
                 let body' = f body in
-                if body' == body then v else Fn (universals, param, body')
+                if body' == body then term else Fn (universals, param, body')
 
             | App (callee, universals, arg) ->
                 let callee' = f callee in
                 let arg' = f arg in
-                if callee' == callee && arg' == arg then v else App (callee', universals, arg')
+                if callee' == callee && arg' == arg then term else App (callee', universals, arg')
 
             | PrimApp (op, universals, arg) ->
                 let arg' = f arg in
-                if arg' == arg then v else PrimApp (op, universals, arg')
+                if arg' == arg then term else PrimApp (op, universals, arg')
 
             | Let ((pos, def, expr), body) ->
                 let expr' = f expr in
                 let body' = f body in
-                if expr' == expr && body' == body then v else Let ((pos, def, expr'), body')
+                if expr' == expr && body' == body then term else Let ((pos, def, expr'), body')
 
             | Letrec (defs, body) ->
                 let defs' = Vector1.map (fun (pos, def, expr) -> (pos, def, f expr)) defs in
@@ -262,41 +263,41 @@ module rec Expr : FcSigs.EXPR
                     && Stream.from (Source.zip_with (fun (_, _, expr') (_, _, expr) -> expr' == expr)
                         (Vector1.to_source defs') (Vector1.to_source defs))
                     |> Stream.into (Sink.all ~where: Fun.id)
-                then v
+                then term
                 else Letrec (defs', body')
 
             | LetType (typs, body) ->
                 let body' = f body in
-                if body' == body then v else LetType (typs, body')
+                if body' == body then term else LetType (typs, body')
 
             | Axiom (axioms, body) ->
                 let body' = f body in
-                if body' == body then v else Axiom (axioms, body')
+                if body' == body then term else Axiom (axioms, body')
 
             | Cast (expr, co) ->
                 let expr' = f expr in
-                if expr' == expr then v else Cast (expr', co)
+                if expr' == expr then term else Cast (expr', co)
 
             | Pack (existentials, expr) ->
                 let expr' = f expr in
-                if expr' == expr then v else Pack (existentials, expr')
+                if expr' == expr then term else Pack (existentials, expr')
 
             | Unpack (existentials, def, expr, body) ->
                 let expr' = f expr in
                 let body' = f body in
-                if expr' == expr && body' == body then v else Unpack (existentials, def, expr', body')
+                if expr' == expr && body' == body then term else Unpack (existentials, def, expr', body')
 
             | Record fields ->
                 let fields' = Vector.map (fun (label, field) -> (label, f field)) fields in
                 let noop = Stream.from (Source.zip_with (fun (_, expr') (_, expr) -> expr' == expr)
                         (Vector.to_source fields') (Vector.to_source fields))
                     |> Stream.into (Sink.all ~where: Fun.id) in
-                if noop then v else Record fields'
+                if noop then term else Record fields'
 
             | With {base; label; field} ->
                 let base' = f base in
                 let field' = f field in
-                if base' == base && field' == field then v else With {base = base'; label; field = field'}
+                if base' == base && field' == field then term else With {base = base'; label; field = field'}
 
             | Where (base, fields) ->
                 let base' = f base in
@@ -305,12 +306,12 @@ module rec Expr : FcSigs.EXPR
                     && Stream.from (Source.zip_with (fun (_, expr') (_, expr) -> expr' == expr)
                         (Vector1.to_source fields') (Vector1.to_source fields))
                     |> Stream.into (Sink.all ~where: Fun.id)
-                then v
+                then term
                 else Where (base', fields')
 
             | Select (expr, label) ->
                 let expr' = f expr in
-                if expr' == expr then v else Select (expr', label)
+                if expr' == expr then term else Select (expr', label)
 
             | Match (matchee, clauses) ->
                 let matchee' = f matchee in
@@ -319,33 +320,33 @@ module rec Expr : FcSigs.EXPR
                     && Stream.from (Source.zip_with (fun clause' clause -> clause'.body == clause.body)
                         (Vector.to_source clauses') (Vector.to_source clauses))
                     |> Stream.into (Sink.all ~where: Fun.id)
-                then v
+                then term
                 else Match (matchee', clauses')
 
-            | Proxy _ | Use _ | Const _ -> v
+            | Proxy _ | Use _ | Const _ -> term
 
             | Patchable rref ->
                 let expr = !rref in
                 let expr' = f expr in
-                if expr' == expr then v else Patchable (ref expr') in
-        if v' == v then expr else {expr with v = v'}
+                if expr' == expr then term else Patchable (ref expr') in
+        if term' == term then expr else {expr with term = term'}
 end
 
 and Stmt : FcSigs.STMT
     with module Type = Type
-    with type pat = Expr.pat
-    with type expr = Expr.t
+    with type pat = Expr.pat Expr.wrapped
+    with type expr = Expr.t Expr.wrapped
 = struct
     module Type = Type
 
-    type expr = Expr.t
-    type pat = Expr.pat
+    type expr = Expr.t Expr.wrapped
+    type pat = Expr.pat Expr.wrapped
 
-    type def = Util.span * pat with_pos * expr with_pos
+    type def = Util.span * pat * expr
 
     type t
         = Def of def
-        | Expr of Expr.t with_pos
+        | Expr of expr
 
     let def_to_doc s ((_, pat, expr) : def) =
         PPrint.infix 4 1 PPrint.equals (Expr.pat_to_doc s pat) (Expr.to_doc s expr)
@@ -353,6 +354,8 @@ and Stmt : FcSigs.STMT
     let to_doc s = function
         | Def def -> def_to_doc s def
         | Expr expr -> Expr.to_doc s expr
+
+    let rhs (Def (_, _, expr) | Expr expr) = expr
 end
 
 end

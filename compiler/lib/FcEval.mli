@@ -1,4 +1,3 @@
-type 'a with_pos = 'a Util.with_pos
 type expr = Fc.Term.Expr.t
 type stmt = Fc.Term.Stmt.t
 
@@ -26,6 +25,6 @@ module Error : sig
     val to_doc : t -> PPrint.document
 end
 
-val interpret : Env.t -> expr with_pos -> (Value.t, Error.t) Result.t
+val interpret : Env.t -> expr Fc.Term.Expr.wrapped -> (Value.t, Error.t) Result.t
 val run : Env.t -> stmt -> (Value.t * Env.t, Error.t) Result.t
 

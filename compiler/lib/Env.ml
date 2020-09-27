@@ -7,7 +7,7 @@ type uv = Fc.Uv.t
 type vals_binding =
     | White of (T.ov Vector.t * T.t) * Ast.Term.Expr.t with_pos
     | Grey
-    | Black of Fc.Term.Expr.t with_pos TS.typing
+    | Black of Fc.Term.Expr.t Fc.Term.Expr.wrapped TS.typing
 
 type row_binding =
     | WhiteT of (T.ov Vector.t * T.t) * Ast.Type.t with_pos

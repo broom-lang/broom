@@ -1,6 +1,5 @@
-type 'a with_pos = 'a Util.with_pos
-
 module Expr = Fc.Term.Expr
+type 'a wrapped = 'a Expr.wrapped
 type expr = Expr.t
 type pat = Expr.pat
 type stmt = Fc.Term.Stmt.t
@@ -97,8 +96,8 @@ type cont' = unit -> Value.t
 
 let exit = Fun.id
 
-let rec eval : Env.t -> cont -> expr with_pos -> Value.t
-= fun env k expr -> match expr.v with
+let rec eval : Env.t -> cont -> expr wrapped -> Value.t
+= fun env k expr -> match expr.term with
     | Values exprs -> (match Vector.length exprs with
         | 0 -> k (Tuple Vector.empty)
         | len ->
@@ -239,8 +238,8 @@ let rec eval : Env.t -> cont -> expr with_pos -> Value.t
 
     | Patchable eref -> TxRef.(eval env k !eref)
 
-and bind : Env.t -> cont' -> cont' -> pat with_pos -> cont
-= fun env then_k else_k pat v -> match pat.v with
+and bind : Env.t -> cont' -> cont' -> pat wrapped -> cont
+= fun env then_k else_k pat v -> match pat.term with
     | ValuesP pats -> (match v with
         | Tuple vs when Vector.length vs = Vector.length pats -> (match Vector.length pats with
             | 0 -> then_k ()

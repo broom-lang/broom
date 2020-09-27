@@ -1,5 +1,3 @@
-type 'a with_pos = 'a Util.with_pos
-
 module type TYPE = FcTypeSigs.TYPE
 
 module type EXPR = sig
@@ -8,58 +6,60 @@ module type EXPR = sig
     type def
     type stmt
 
+    type 'a wrapped = {term : 'a; typ : Type.t; pos : Util.span}
+
     type lvalue = {name : Name.t; typ : Type.t}
 
     type t =
-        | Values of t with_pos Vector.t
-        | Focus of t with_pos * int
+        | Values of t wrapped Vector.t
+        | Focus of t wrapped * int
 
-        | Fn of Type.binding Vector.t * lvalue * t with_pos
-        | App of t with_pos * Type.t Vector.t * t with_pos
-        | PrimApp of Primop.t * Type.t Vector.t * t with_pos
+        | Fn of Type.binding Vector.t * lvalue * t wrapped
+        | App of t wrapped * Type.t Vector.t * t wrapped
+        | PrimApp of Primop.t * Type.t Vector.t * t wrapped
 
-        | Let of def * t with_pos
-        | Letrec of def Vector1.t * t with_pos
-        | LetType of Type.binding Vector1.t * t with_pos
-        | Match of t with_pos * clause Vector.t
+        | Let of def * t wrapped
+        | Letrec of def Vector1.t * t wrapped
+        | LetType of Type.binding Vector1.t * t wrapped
+        | Match of t wrapped * clause Vector.t
 
-        | Axiom of (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t * t with_pos
-        | Cast of t with_pos * Type.coercion
+        | Axiom of (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t * t wrapped
+        | Cast of t wrapped * Type.coercion
 
-        | Pack of Type.t Vector1.t * t with_pos
-        | Unpack of Type.binding Vector1.t * lvalue * t with_pos * t with_pos
+        | Pack of Type.t Vector1.t * t wrapped
+        | Unpack of Type.binding Vector1.t * lvalue * t wrapped * t wrapped
 
-        | Record of (Name.t * t with_pos) Vector.t
-        | Where of t with_pos * (Name.t * t with_pos) Vector1.t
-        | With of {base : t with_pos; label : Name.t; field : t with_pos}
-        | Select of t with_pos * Name.t
+        | Record of (Name.t * t wrapped) Vector.t
+        | Where of t wrapped * (Name.t * t wrapped) Vector1.t
+        | With of {base : t wrapped; label : Name.t; field : t wrapped}
+        | Select of t wrapped * Name.t
 
         | Proxy of Type.t
         | Const of Const.t
 
         | Use of Name.t
 
-        | Patchable of t with_pos TxRef.rref
+        | Patchable of t wrapped TxRef.rref
 
     and pat =
-        | ValuesP of pat with_pos Vector.t
-        | AppP of t with_pos * pat with_pos Vector.t
+        | ValuesP of pat wrapped Vector.t
+        | AppP of t wrapped * pat wrapped Vector.t
         | ProxyP of Type.t
         | UseP of Name.t
         | ConstP of Const.t
 
-    and clause = {pat : pat with_pos; body : t with_pos}
+    and clause = {pat : pat wrapped; body : t wrapped}
 
-    and field = {label : string; expr : t with_pos}
+    and field = {label : string; expr : t wrapped}
 
     val lvalue_to_doc : Type.subst -> lvalue -> PPrint.document
-    val pat_to_doc : Type.subst -> pat with_pos -> PPrint.document
-    val to_doc : Type.subst -> t with_pos -> PPrint.document
+    val pat_to_doc : Type.subst -> pat wrapped -> PPrint.document
+    val to_doc : Type.subst -> t wrapped -> PPrint.document
 
     (* TODO: Add more of these: *)
-    val letrec : def Vector.t -> t with_pos -> t
+    val letrec : def Vector.t -> t wrapped -> t
 
-    val map_children : (t with_pos -> t with_pos) -> t with_pos -> t with_pos
+    val map_children : (t wrapped -> t wrapped) -> t wrapped -> t wrapped
 end
 
 module type STMT = sig
@@ -68,14 +68,16 @@ module type STMT = sig
     type expr
     type pat
 
-    type def = Util.span * pat with_pos * expr with_pos
+    type def = Util.span * pat * expr
 
     type t
         = Def of def
-        | Expr of expr with_pos
+        | Expr of expr
 
     val def_to_doc : Type.subst -> def -> PPrint.document
     val to_doc : Type.subst -> t -> PPrint.document
+
+    val rhs : t -> expr
 end
 
 module type TERM = sig
@@ -88,7 +90,7 @@ module type TERM = sig
 
     and Stmt : (STMT
         with module Type = Type
-        with type expr = Expr.t
-        with type pat = Expr.pat)
+        with type expr = Expr.t Expr.wrapped
+        with type pat = Expr.pat Expr.wrapped)
 end
 

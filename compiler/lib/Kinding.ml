@@ -87,10 +87,10 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
 
         | Path expr ->
             let pos = typ.pos in
-            let {TS.term = _; typ = proxy_typ; eff} = C.typeof env {typ with v = expr} in
+            let {TS.term; eff} = C.typeof env {typ with v = expr} in
             let _ = M.solving_unify typ.pos env eff EmptyRow in
             (* FIXME: does not accept e.g. `row`: *)
-            (match M.focalize typ.pos env proxy_typ (ProxyL (Prim Int)) with
+            (match M.focalize typ.pos env term.typ (ProxyL (Prim Int)) with
             | (_, Proxy typ) ->
                 let (_, typ) = reabstract env typ in
                 {typ; kind = kindof_F pos env typ}

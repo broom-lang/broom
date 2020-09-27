@@ -13,7 +13,8 @@ let eval_envs () = (Typer.Env.eval (), Fc.Eval.Env.eval ())
 
 let ep ((tenv, venv) as envs) stmt =
     try begin
-        let ({term = stmt; typ; eff}, tenv) : Fc.Term.Stmt.t Typer.typing * _ = Typer.check_stmt tenv stmt in
+        let ({term = stmt; eff}, tenv) : Fc.Term.Stmt.t Typer.typing * _ = Typer.check_stmt tenv stmt in
+        let typ = (Fc.Term.Stmt.rhs stmt).typ in
         let doc = Env.document tenv Fc.Term.Stmt.to_doc stmt ^^ PPrint.semi
             ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc typ
             ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc eff

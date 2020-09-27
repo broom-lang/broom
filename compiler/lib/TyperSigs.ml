@@ -2,16 +2,17 @@
 
 type span = Util.span
 type 'a with_pos = 'a Ast.with_pos
+type 'a wrapped = 'a Fc.Term.Expr.wrapped
 
 type typ = Fc.Type.t
 
-type 'a typing = {term : 'a; typ : typ; eff : typ}
+type 'a typing = {term : 'a; eff : typ}
 type 'a kinding = {typ : 'a; kind : Fc.Type.kind}
 
 (* Newtype to allow ignoring subtyping coercions without partial application warning: *)
 (* TODO: triv_expr with_pos -> expr with_pos to avoid bugs that would delay side effects
          or that duplicate large/nontrivial terms: *)
-type coercer = Cf of (Fc.Term.Expr.t with_pos -> Fc.Term.Expr.t with_pos)
+type coercer = Cf of (Fc.Term.Expr.t wrapped -> Fc.Term.Expr.t wrapped)
 
 module type KINDING = sig
     type env
@@ -25,14 +26,14 @@ end
 module type TYPING = sig
     type env
 
-    val typeof : env -> Ast.Term.Expr.t with_pos -> Fc.Term.Expr.t with_pos typing
+    val typeof : env -> Ast.Term.Expr.t with_pos -> Fc.Term.Expr.t wrapped typing
     val implement : env -> (Fc.Type.ov Vector.t * Fc.Type.t) -> Ast.Term.Expr.t with_pos
-        -> Fc.Term.Expr.t with_pos typing
+        -> Fc.Term.Expr.t wrapped typing
     val deftype : env -> Ast.Term.Stmt.def -> Fc.Term.Expr.def typing
     val check_stmt : env -> Ast.Term.Stmt.t -> Fc.Term.Stmt.t typing * env
     (* HACK: (?): *)
     val elaborate_pat : env -> Ast.Term.Expr.pat with_pos ->
-        Fc.Term.Expr.pat with_pos * (Fc.Type.ov Vector.t * Fc.Type.t) * Fc.Term.Expr.lvalue Vector.t
+        Fc.Term.Expr.pat wrapped * (Fc.Type.ov Vector.t * Fc.Type.t) * Fc.Term.Expr.lvalue Vector.t
     val lookup : span -> env -> Name.t -> Fc.Term.Expr.lvalue
 end
 
@@ -55,7 +56,7 @@ module type ENV = sig
     val eval : unit -> t
 
     val find : t -> Util.span -> Name.t -> Fc.Type.t
-    val find_rhs : t -> Util.span -> Name.t -> Fc.Term.Expr.t with_pos typing
+    val find_rhs : t -> Util.span -> Name.t -> Fc.Term.Expr.t wrapped typing
     val find_rhst : t -> Util.span -> Name.t -> Fc.Type.t kinding
 
     val push_val : t -> Name.t -> T.t -> t
@@ -80,7 +81,7 @@ module type ENV = sig
     val get_uv : t -> uv -> Fc.Uv.v
     val set_uv : t -> span -> uv -> Fc.Uv.v -> unit
 
-    val set_expr : t -> Fc.Term.Expr.t with_pos TxRef.rref -> Fc.Term.Expr.t with_pos -> unit
+    val set_expr : t -> Fc.Term.Expr.t wrapped TxRef.rref -> Fc.Term.Expr.t wrapped -> unit
     val set_coercion : t -> T.coercion TxRef.rref -> T.coercion -> unit
 
     val document : t -> (Fc.Uv.subst -> 'a -> PPrint.document) -> 'a -> PPrint.document
