@@ -45,7 +45,8 @@ let matcher' : Automaton.t -> E.lvalue Vector.t -> pat wrapped Matrix.t -> State
             | Final {index; body} ->
                 let defs = Stream.from (Source.zip_with (fun (pat : pat wrapped) (matchee : E.lvalue) ->
                     (pat.pos, pat, {E.term = E.Use matchee.name; typ = matchee.typ; pos = pat.pos})
-                    ) pats (Vector.to_source matchees))
+                    ) (Source.filter (function {E.term = E.UseP _; _} -> true | _ -> false) pats)
+                        (Vector.to_source matchees))
                     |> Stream.into (Vector.sink ()) in
                 (match Vector1.of_vector defs with
                 | Some defs ->
