@@ -45,6 +45,17 @@ let split_int : pat wrapped Matrix.t -> int -> IntSet.t IntMap.t * IntSet.t
         |> Stream.into (Sink.fold step (IntMap.empty, IntSet.empty)) in
     (IntMap.map (IntSet.union defaults) singles, defaults)
 
+let split_tuple pats coli width =
+    let subpats (pat : pat wrapped) = match pat.term with
+        | ValuesP pats -> pats
+        | UseP _ -> Vector.init width (fun _ ->
+            {pat with term = E.UseP (Name.freshen (Name.of_string "_"))})
+        | ProxyP _ | ConstP _ -> failwith "unreachable" in
+    let cols' = Stream.from (Option.get (Matrix.col coli pats))
+        |> Stream.map subpats
+        |> Matrix.of_rows in
+    failwith "TODO"
+
 let is_nontrivial : pat wrapped -> bool = fun pat -> match pat.term with
     | UseP _ | ProxyP _ -> false
     | ValuesP _ | ConstP _ -> true
@@ -78,7 +89,12 @@ let rec matcher' : Util.span -> Automaton.t -> E.lvalue Vector.t -> pat wrapped 
                 let name = Name.fresh () in
                 let node : State.node = Test {matchee; clauses} in
                 Automaton.add states name {name; refcount = 1; frees = Some matchees; node};
-                name)
+                name
+
+            | Values typs ->
+                let pats = split_tuple pats coli (Vector.length typs) in
+                failwith "TODO")
+
         | None ->
             let acceptor = Vector.get acceptors 0 in
             acceptor.refcount <- acceptor.refcount + 1;

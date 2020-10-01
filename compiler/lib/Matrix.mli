@@ -1,6 +1,7 @@
 type 'a t
 
 val of_col : 'a Vector.t -> 'a t
+val of_rows : 'a Vector.t Streaming.Stream.t -> 'a t
 
 val height : 'a t -> int
 val width : 'a t -> int
