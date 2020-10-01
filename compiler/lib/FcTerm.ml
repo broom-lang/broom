@@ -62,7 +62,6 @@ module rec Expr : FcSigs.EXPR
 
     and pat =
         | ValuesP of pat wrapped Vector.t
-        | AppP of t wrapped * pat wrapped Vector.t
         | ProxyP of Type.t
         | UseP of Name.t
         | ConstP of Const.t
@@ -208,11 +207,6 @@ module rec Expr : FcSigs.EXPR
             PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 (pat_to_doc s) (Vector.to_list pats)
-        | AppP (callee, args) ->
-            PPrint.align (to_doc s callee
-                ^/^ PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
-                    PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
-                    (pat_to_doc s) (Vector.to_list args))
         | ProxyP typ -> PPrint.brackets (Type.to_doc s typ)
         | UseP name -> Name.to_doc name
         | ConstP c -> Const.to_doc c

@@ -43,7 +43,6 @@ module type EXPR = sig
 
     and pat =
         | ValuesP of pat wrapped Vector.t
-        | AppP of t wrapped * pat wrapped Vector.t
         | ProxyP of Type.t
         | UseP of Name.t
         | ConstP of Const.t

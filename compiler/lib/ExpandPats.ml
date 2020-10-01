@@ -29,15 +29,57 @@ module Automaton = struct
     type t = table
 end
 
-let is_trivial : pat wrapped -> bool = fun pat -> match pat.term with
-    | UseP _ | ProxyP _ -> true (* NOTE: ProxyP matches all inputs (of the correct type) *)
-    | ValuesP _ | AppP _ | ConstP _ -> false
+module IntMap = Map.Make(Int)
 
-let matcher' : Automaton.t -> E.lvalue Vector.t -> pat wrapped Matrix.t -> State.t Vector.t -> Name.t
-= fun states matchees pats acceptors ->
+let split_int : pat wrapped Matrix.t -> int -> IntSet.t IntMap.t * IntSet.t
+= fun pats col ->
+    let add_single singles n i = singles |> IntMap.update n (function
+        | Some branch -> Some (IntSet.add i branch)
+        | None -> Some (IntSet.singleton i)) in
+    let step (singles, defaults) (i, (pat : pat wrapped)) = match pat.term with
+        | ConstP (Int n) -> (add_single singles n i, defaults)
+        | UseP _ -> (singles, IntSet.add i defaults)
+        | ValuesP _ | ProxyP _ -> failwith "unreachable" in
+    let (singles, defaults) =
+        Stream.from (Source.zip (Source.count 0) (Option.get (Matrix.col col pats)))
+        |> Stream.into (Sink.fold step (IntMap.empty, IntSet.empty)) in
+    (IntMap.map (IntSet.union defaults) singles, defaults)
+
+let is_nontrivial : pat wrapped -> bool = fun pat -> match pat.term with
+    | UseP _ | ProxyP _ -> false
+    | ValuesP _ | ConstP _ -> true
+
+let rec matcher' : Util.span -> Automaton.t -> E.lvalue Vector.t -> pat wrapped Matrix.t -> State.t Vector.t -> Name.t
+= fun pos states matchees pats acceptors ->
     match Matrix.row 0 pats with
-    | Some pats ->
-        if Stream.into (Sink.all ~where: is_trivial) (Stream.from pats) then begin
+    | Some row ->
+        (match Stream.from (Source.zip (Source.count 0) (Source.filter is_nontrivial row))
+            |> Stream.into Sink.first with
+        | Some (coli, _) -> (match (Vector.get matchees coli).typ with (* TODO: eval typ *)
+            | Prim Int ->
+                let (rows, default_rowis) = split_int pats coli in
+                let matchee = Vector.get matchees coli in
+                let matchees = Vector.remove matchees coli in
+                let pats = Matrix.remove_col coli pats in
+                let clause (pat, rowis) =
+                    let pats = Matrix.select_rows rowis pats in
+                    let acceptors = Vector.select acceptors rowis in
+                    (pat, matcher' pos states matchees pats acceptors) in
+                let clauses = Stream.concat
+                    (Stream.from (Source.seq (IntMap.to_seq rows))
+                        |> Stream.map (fun (n, rowis) ->
+                            ( {E.term = E.ConstP (Int n); typ = matchee.typ; pos}
+                            , rowis )))
+                    (Stream.single ( { E.term = E.UseP (Name.freshen (Name.of_string "_"))
+                                     ; typ = matchee.typ; pos}
+                                   , default_rowis))
+                |> Stream.map clause
+                |> Stream.into (Vector.sink ()) in
+                let name = Name.fresh () in
+                let node : State.node = Test {matchee; clauses} in
+                Automaton.add states name {name; refcount = 1; frees = Some matchees; node};
+                name)
+        | None ->
             let acceptor = Vector.get acceptors 0 in
             acceptor.refcount <- acceptor.refcount + 1;
             acceptor.frees <- Some matchees;
@@ -45,7 +87,7 @@ let matcher' : Automaton.t -> E.lvalue Vector.t -> pat wrapped Matrix.t -> State
             | Final {index; body} ->
                 let defs = Stream.from (Source.zip_with (fun (pat : pat wrapped) (matchee : E.lvalue) ->
                     (pat.pos, pat, {E.term = E.Use matchee.name; typ = matchee.typ; pos = pat.pos})
-                    ) (Source.filter (function {E.term = E.UseP _; _} -> true | _ -> false) pats)
+                    ) (Source.filter (function {E.term = E.UseP _; _} -> true | _ -> false) row)
                         (Vector.to_source matchees))
                     |> Stream.into (Vector.sink ()) in
                 (match Vector1.of_vector defs with
@@ -54,13 +96,12 @@ let matcher' : Automaton.t -> E.lvalue Vector.t -> pat wrapped Matrix.t -> State
                         Final {index; body = {body with term = Letrec (defs, body)}} }
                 | None -> ())
             | _ -> failwith "unreachable");
-            acceptor.name
-        end else failwith "TODO: mixture rule"
+            acceptor.name)
 
     | None -> failwith "nonexhaustive matching"
 
-let matcher : E.lvalue -> clause Vector.t -> Automaton.t * Name.t
-= fun matchee clauses ->
+let matcher : Util.span -> E.lvalue -> clause Vector.t -> Automaton.t * Name.t
+= fun pos matchee clauses ->
     let states = Automaton.create (Vector.length clauses) in
     let matchees = Vector.singleton matchee in
     let pats = Matrix.of_col (Vector.map (fun {E.pat; body = _} -> pat) clauses) in
@@ -70,17 +111,17 @@ let matcher : E.lvalue -> clause Vector.t -> Automaton.t * Name.t
         Automaton.add states name state;
         state
     ) clauses in
-    (states, matcher' states matchees pats acceptors)
+    (states, matcher' pos states matchees pats acceptors)
 
 let rec emit' : Util.span -> T.t -> Automaton.t -> E.def CCVector.vector -> Name.t -> expr wrapped
-= fun pos typ states shareds state_name ->
+= fun pos codomain states shareds state_name ->
     let {State.name = _; refcount; frees; node} = Automaton.find states state_name in
     let expr : expr wrapped = match node with
         | Test {matchee; clauses} ->
             { term = Match ({term = Use matchee.name; typ = matchee.typ; pos},
                 clauses |> Vector.map (fun (pat, target) ->
-                    {E.pat; body = emit' pos typ states shareds target}))
-            ; typ; pos }
+                    {E.pat; body = emit' pos codomain states shareds target}))
+            ; typ = codomain; pos }
         | Final {index = _; body} -> body in
     if refcount = 1
     then expr
@@ -91,7 +132,7 @@ let rec emit' : Util.span -> T.t -> Automaton.t -> E.def CCVector.vector -> Name
         let ftyp = T.Pi { universals = Vector.empty
             ; domain = Ior.Right { edomain = domain 
                 ; eff = EmptyRow } (* NOTE: effect does not matter any more... *)
-            ; codomain = typ } in
+            ; codomain } in
         let def : pat wrapped = {term = UseP state_name; typ = ftyp; pos} in
         let params = failwith "TODO" in
         let f : expr wrapped = {term = Fn (Vector.empty, params, expr); typ = ftyp; pos} in
@@ -99,23 +140,23 @@ let rec emit' : Util.span -> T.t -> Automaton.t -> E.def CCVector.vector -> Name
         let args = Vector.map (fun {E.name; typ} -> {E.term = E.Use name; typ; pos}) frees in
         { term = App ( {term = Use state_name; typ = ftyp; pos}, Vector.empty
             , {term = Values args; typ = domain; pos} )
-        ; typ; pos}
+        ; typ = codomain; pos}
     end
 
 let emit : Util.span -> T.t -> Automaton.t -> Name.t -> expr wrapped
-= fun pos typ states start ->
+= fun pos codomain states start ->
     let shareds = CCVector.create () in
-    let body = emit' pos typ states shareds start in
+    let body = emit' pos codomain states shareds start in
     (* TODO: Warnings for redundant states (refcount = 0) *)
     match Vector1.of_vector (Vector.build shareds) with
-    | Some shareds -> {term = Letrec (shareds, body); typ; pos}
+    | Some shareds -> {term = Letrec (shareds, body); typ = codomain; pos}
     | None -> body
 
 let expand_clauses : Util.span -> T.t -> expr wrapped -> clause Vector.t -> expr
-= fun pos typ matchee clauses ->
+= fun pos codomain matchee clauses ->
     let matchee_name = Name.fresh () in
-    let (states, start) = matcher {E.name = matchee_name; typ = matchee.typ} clauses in
-    let body = emit pos typ states start in
+    let (states, start) = matcher pos {E.name = matchee_name; typ = matchee.typ} clauses in
+    let body = emit pos codomain states start in
     E.Let ((pos, {term = UseP matchee_name; typ = matchee.typ; pos = matchee.pos}, matchee), body)
 
 let rec expand : E.t wrapped -> E.t wrapped

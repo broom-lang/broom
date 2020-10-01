@@ -1,5 +1,7 @@
 include CCImmutArray
 
+open Streaming
+
 let fold_right f acc xs =
     let rec loop acc i =
         if i >= 0
@@ -48,8 +50,24 @@ let to_source xs =
 
 let build vec = of_array_unsafe (CCVector.to_array vec)
 
-let sink () = Streaming.Sink.make
+let sink () = Sink.make
     ~init: CCVector.create
     ~push: (fun xs x -> CCVector.push xs x; xs)
     ~stop: build ()
+
+let remove xs i =
+    let len = length xs in
+    if i >= 0 && i < len
+    then Stream.concat
+            (Stream.take i (Stream.from (to_source xs)))
+            (Stream.drop (i + 1) (Stream.from (to_source xs)))
+        |> Stream.into (Sink.buffer (len - 1))
+        |> of_array_unsafe
+    else raise (Invalid_argument "Vector.remove: index out of bounds")
+
+let select xs is =
+    Stream.from (Source.seq (IntSet.to_seq is))
+    |> Stream.map (get xs)
+    |> Stream.into (Sink.buffer (IntSet.cardinal is))
+    |> of_array_unsafe
 
