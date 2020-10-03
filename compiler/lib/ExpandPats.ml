@@ -66,7 +66,8 @@ let rec matcher' : Util.span -> Automaton.t -> E.lvalue Vector.t -> pat wrapped 
 = fun pos states matchees pats acceptors ->
     match Matrix.row 0 pats with
     | Some row ->
-        (match Stream.from (Source.zip (Source.count 0) (Source.filter is_nontrivial row))
+        (match Stream.from (Source.zip (Source.count 0) row)
+            |> Stream.filter (fun (i, pat) -> is_nontrivial pat)
             |> Stream.into Sink.first with
         | Some (coli, _) -> (match (Vector.get matchees coli).typ with (* TODO: eval typ *)
             | Prim Int ->

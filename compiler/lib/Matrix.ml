@@ -1,102 +1,104 @@
-(* NOTE: Column-major layout *)
+(* NOTE: Row-major layout *)
 
 open Streaming
 
-type 'a t = {elems : 'a Vector.t; rows : int; cols : int}
+type 'a t = {elems : 'a Vector.t; width : int; height : int}
 
-let height (mat : 'a t) = mat.rows
-let width (mat : 'a t) = mat.cols
+let height (mat : 'a t) = mat.width
+let width (mat : 'a t) = mat.height
 
-let get ~row ~col {elems; rows; cols} =
-    if row < rows && col < cols
-    then Some (Vector.get elems (rows * col + row))
+let get ~row ~col {elems; width; height} =
+    if 0 <= row && row < height && 0 <= col && col < width
+    then Some (Vector.get elems (width * row + col))
     else None
 
-let transpose ({elems = _; rows; cols} as mat) =
-    { elems = Stream.from (Source.count 0) |> Stream.take cols
-        |> Stream.flat_map (fun coli ->
-            Stream.from (Source.count 0) |> Stream.take rows
-            |> Stream.map (fun rowi -> (rowi, coli)))
-        |> Stream.map (fun (row, col) -> get ~row ~col mat |> Option.get)
-        |> Stream.into (Sink.buffer (rows * cols))
-        |> Vector.of_array_unsafe
-    ; rows = cols; cols = rows }
+let empty = {elems = Vector.empty; width = 0; height = 0}
 
-let empty = {elems = Vector.empty; rows = 0; cols = 0}
+let of_col col = {elems = col; width = 1; height = Vector.length col}
 
-let of_col col = {elems = col; rows = Vector.length col; cols = 1}
-
-let of_cols colvecs =
-    let colvecs = Stream.into (Vector.sink ()) colvecs in
-    let cols = Vector.length colvecs in
-    if cols > 0 then begin
-        let rows = Vector.length (Vector.get colvecs 0) in
-        { elems = Stream.from (Vector.to_source colvecs)
-            |> Stream.flat_map (fun col -> Stream.from (Vector.to_source col))
-            |> Stream.into (Sink.buffer (rows * cols))
+let of_rows rowvecs =
+    let rowvecs = Stream.into (Vector.sink ()) rowvecs in
+    let height = Vector.length rowvecs in
+    if height > 0 then begin
+        let width = Vector.length (Vector.get rowvecs 0) in
+        { elems = Stream.from (Vector.to_source rowvecs)
+            |> Stream.flat_map (fun row ->
+                assert (Vector.length row = width);
+                Stream.from (Vector.to_source row))
+            |> Stream.into (Sink.buffer (width * height))
             |> Vector.of_array_unsafe
-        ; rows; cols }
+        ; width; height }
     end else empty
 
-let of_rows rowvecs = transpose (of_cols rowvecs) (* OPTIMIZE *)
-
-let hcat = function
-    | (mat :: _) as mats ->
-        let rows = mat.rows in
-        { elems = Stream.from (Source.list mats)
-            |> Stream.flat_map (fun {elems; rows = rows'; cols = _} ->
-                assert (rows' = rows);
-                Stream.from (elems |> Vector.to_source))
-            |> Stream.into (Vector.sink ())
-        ; cols = List.fold_left (fun cols (mat : 'a t) -> cols + mat.cols) 0 mats
-        ; rows }
-    | [] -> empty
-
-let col coli {elems; rows; cols} =
-    if coli < cols
+let row rowi {elems; width; height} =
+    if 0 <= rowi && rowi < height
     then Some (Streaming.Source.make
-        ~init: (fun () -> coli * rows)
+        ~init: (fun () -> rowi * width)
         ~pull: (fun i ->
-            if i < (coli + 1) * rows
+            if i < (rowi + 1) * width 
             then Some (Vector.get elems i, i + 1)
             else None) ())
     else None
 
-let row rowi {elems; rows; cols = _} =
-    if rowi < rows
+let col coli {elems; width; height} =
+    if 0 <= coli && coli < width
     then Some (Streaming.Source.make
-        ~init: (fun () -> rowi)
+        ~init: (fun () -> coli)
         ~pull: (fun i ->
             if i < Vector.length elems
-            then Some (Vector.get elems i, i + rows)
+            then Some (Vector.get elems i, i + width)
             else None) ())
     else None
 
-let sub_cols start len {elems; rows; cols} =
-    if 0 <= start && start <= cols then begin
-        let len = Option.value len ~default: (cols - start) in
-        if 0 <= len && len <= cols - start
-        then { elems = Vector.sub elems (start * rows) (len * rows)
-            ; cols = len; rows }
-        else raise (Invalid_argument "Matrix.sub_cols: invalid len")
-    end else raise (Invalid_argument ("Matrix.sub_cols: invalid index "
-        ^ "0 < " ^ Int.to_string start ^ " <= " ^ Int.to_string cols))
+let hcat = function
+    | (mat :: _) as mats ->
+        let height = mat.height in
+        let mats = Vector.of_list mats in
+        let width = Vector.fold (fun w (mat : 'a t) -> w + mat.width) 0 mats in
+        { elems =
+            (let open Stream.Syntax in
+            let* rowi = Stream.range 0 height in
+            let* i = Stream.range 0 (Vector.length mats) in
+            Stream.from (row rowi (Vector.get mats i) |> Option.get))
+            |> Stream.into (Sink.buffer (width * height))
+            |> Vector.of_array_unsafe
+        ; width; height }
+    | [] -> empty
 
-let remove_col coli {elems; rows; cols} =
-    let cols' = cols - 1 in
-    { elems = Stream.concat
-            (Stream.take (coli * rows) (Stream.from (Vector.to_source elems)))
-            (Stream.drop ((coli + 1) * rows) (Stream.from (Vector.to_source elems)))
-        |> Stream.into (Sink.buffer (cols' * rows))
+let sub_cols start len {elems; width; height} =
+    let len = Option.value len ~default: (width - start) in
+    let stop = start + len in
+    if 0 <= start && start <= width
+        && 0 <= stop && stop <= width
+    then { elems =
+            (let open Stream.Syntax in
+            let* rowi = Stream.range 0 height in
+            let* coli = Stream.range start stop in
+            yield (Vector.get elems (rowi * width + coli)))
+            |> Stream.into (Sink.buffer (height * len))
+            |> Vector.of_array_unsafe
+        ; width = len; height }
+    else raise (Invalid_argument "sub_cols: out of bounds")
+
+let remove_col coli {elems; width; height} =
+    { elems =
+        (let open Stream.Syntax in
+        let* rowi = Stream.range 0 height in
+        let* coli = Stream.range 0 width in
+        yield (coli, rowi * width + coli))
+        |> Stream.filter (fun (coli', _) -> coli' <> coli)
+        |> Stream.map (fun (_, i) -> Vector.get elems i)
+        |> Stream.into (Sink.buffer (height * (width - 1)))
         |> Vector.of_array_unsafe
-    ; cols = cols'; rows }
+    ; width = width - 1; height }
 
-let select_rows rowis {elems; rows = _; cols} =
-    let rows' = IntSet.cardinal rowis in
+let select_rows rowis ({elems; width; height = _} as mat) = 
+    let height = IntSet.cardinal rowis in
     { elems = Stream.from (Source.seq (IntSet.to_seq rowis))
-        |> Stream.cycle ~times: cols
-        |> Stream.map (Vector.get elems)
-        |> Stream.into (Sink.buffer (cols * rows'))
+        |> Stream.flat_map (fun rowi -> match row rowi mat with
+            | Some row -> Stream.from row
+            | None -> raise (Invalid_argument "select_rows: out of bounds index"))
+        |> Stream.into (Sink.buffer (width * height))
         |> Vector.of_array_unsafe
-    ; rows = rows'; cols }
+    ; height; width }
 
