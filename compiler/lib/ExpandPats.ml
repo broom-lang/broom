@@ -7,6 +7,7 @@ type expr = E.t
 type pat = E.pat
 type clause = E.clause
 type stmt = Fc.Term.Stmt.t
+type def = Fc.Term.Stmt.def
 
 (* TODO: Integrate into typechecker (because of lacks constraints, later also GADTs) *)
 (* TODO: Don't even need nested patterns in Fc since this unnests them immediately (?) *)
@@ -14,6 +15,7 @@ type stmt = Fc.Term.Stmt.t
 module State = struct
     type node =
         | Test of {matchee : E.lvalue; clauses : (pat wrapped * Name.t) Vector.t}
+        | Destructure of {defs : def Vector.t; body : Name.t}
         | Final of {index : int; body : expr wrapped}
 
     type t =
@@ -54,7 +56,7 @@ let split_tuple pats coli width =
     let cols' = Stream.from (Option.get (Matrix.col coli pats))
         |> Stream.map subpats
         |> Matrix.of_rows in
-    failwith "TODO"
+    Matrix.hcat [Matrix.sub_cols 0 (Some coli) pats; cols'; Matrix.sub_cols (coli + 1) None pats]
 
 let is_nontrivial : pat wrapped -> bool = fun pat -> match pat.term with
     | UseP _ | ProxyP _ -> false
@@ -70,12 +72,12 @@ let rec matcher' : Util.span -> Automaton.t -> E.lvalue Vector.t -> pat wrapped 
             | Prim Int ->
                 let (rows, default_rowis) = split_int pats coli in
                 let matchee = Vector.get matchees coli in
-                let matchees = Vector.remove matchees coli in
+                let matchees' = Vector.remove matchees coli in
                 let pats = Matrix.remove_col coli pats in
                 let clause (pat, rowis) =
                     let pats = Matrix.select_rows rowis pats in
                     let acceptors = Vector.select acceptors rowis in
-                    (pat, matcher' pos states matchees pats acceptors) in
+                    (pat, matcher' pos states matchees' pats acceptors) in
                 let clauses = Stream.concat
                     (Stream.from (Source.seq (IntMap.to_seq rows))
                         |> Stream.map (fun (n, rowis) ->
@@ -92,8 +94,25 @@ let rec matcher' : Util.span -> Automaton.t -> E.lvalue Vector.t -> pat wrapped 
                 name
 
             | Values typs ->
-                let pats = split_tuple pats coli (Vector.length typs) in
-                failwith "TODO")
+                let width = Vector.length typs in
+                let pats = split_tuple pats coli width in
+                let matchee = Vector.get matchees coli in
+                let matchees'' = Vector.init width (fun i ->
+                    {E.name = Name.fresh (); typ = Vector.get typs i}) in
+                let matchees' = Vector.concat [Vector.sub matchees 0 coli; matchees''
+                    ; Vector.sub matchees (coli + 1) (Vector.length matchees - (coli + 1))] in
+                let defs = Stream.from (Source.zip_with (fun (matchee' : E.lvalue) i ->
+                            let def = {E.term = E.UseP matchee'.name; typ = matchee'.typ; pos} in
+                            ( pos, def
+                            , {E.term = E.Focus ({def with term = Use matchee.name}, i); typ = matchee'.typ; pos} ))
+                        (Vector.to_source matchees'')
+                        (Source.count 0))
+                    |> Stream.into (Vector.sink ()) in
+                let body = matcher' pos states matchees' pats acceptors in
+                let name = Name.fresh () in
+                let node : State.node = Destructure {defs; body} in
+                Automaton.add states name {name; refcount = 1; frees = Some matchees; node};
+                name)
 
         | None ->
             let acceptor = Vector.get acceptors 0 in
@@ -137,6 +156,9 @@ let rec emit' : Util.span -> T.t -> Automaton.t -> E.def CCVector.vector -> Name
             { term = Match ({term = Use matchee.name; typ = matchee.typ; pos},
                 clauses |> Vector.map (fun (pat, target) ->
                     {E.pat; body = emit' pos codomain states shareds target}))
+            ; typ = codomain; pos }
+        | Destructure {defs; body} ->
+            { term = E.letrec defs (emit' pos codomain states shareds body)
             ; typ = codomain; pos }
         | Final {index = _; body} -> body in
     if refcount = 1

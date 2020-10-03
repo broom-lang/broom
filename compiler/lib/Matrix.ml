@@ -12,7 +12,7 @@ let get ~row ~col {elems; rows; cols} =
     then Some (Vector.get elems (rows * col + row))
     else None
 
-let transpose ({elems; rows; cols} as mat) =
+let transpose ({elems = _; rows; cols} as mat) =
     { elems = Stream.from (Source.count 0) |> Stream.take cols
         |> Stream.flat_map (fun coli ->
             Stream.from (Source.count 0) |> Stream.take rows
@@ -21,6 +21,8 @@ let transpose ({elems; rows; cols} as mat) =
         |> Stream.into (Sink.buffer (rows * cols))
         |> Vector.of_array_unsafe
     ; rows = cols; cols = rows }
+
+let empty = {elems = Vector.empty; rows = 0; cols = 0}
 
 let of_col col = {elems = col; rows = Vector.length col; cols = 1}
 
@@ -34,9 +36,21 @@ let of_cols colvecs =
             |> Stream.into (Sink.buffer (rows * cols))
             |> Vector.of_array_unsafe
         ; rows; cols }
-    end else {elems = Vector.empty; rows = 0; cols = 0}
+    end else empty
 
 let of_rows rowvecs = transpose (of_cols rowvecs) (* OPTIMIZE *)
+
+let hcat = function
+    | (mat :: _) as mats ->
+        let rows = mat.rows in
+        { elems = Stream.from (Source.list mats)
+            |> Stream.flat_map (fun {elems; rows = rows'; cols = _} ->
+                assert (rows' = rows);
+                Stream.from (elems |> Vector.to_source))
+            |> Stream.into (Vector.sink ())
+        ; cols = List.fold_left (fun cols (mat : 'a t) -> cols + mat.cols) 0 mats
+        ; rows }
+    | [] -> empty
 
 let col coli {elems; rows; cols} =
     if coli < cols
@@ -57,6 +71,16 @@ let row rowi {elems; rows; cols = _} =
             then Some (Vector.get elems i, i + rows)
             else None) ())
     else None
+
+let sub_cols start len {elems; rows; cols} =
+    if 0 <= start && start <= cols then begin
+        let len = Option.value len ~default: (cols - start) in
+        if 0 <= len && len <= cols - start
+        then { elems = Vector.sub elems (start * rows) (len * rows)
+            ; cols = len; rows }
+        else raise (Invalid_argument "Matrix.sub_cols: invalid len")
+    end else raise (Invalid_argument ("Matrix.sub_cols: invalid index "
+        ^ "0 < " ^ Int.to_string start ^ " <= " ^ Int.to_string cols))
 
 let remove_col coli {elems; rows; cols} =
     let cols' = cols - 1 in

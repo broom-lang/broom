@@ -55,6 +55,10 @@ let sink () = Sink.make
     ~push: (fun xs x -> CCVector.push xs x; xs)
     ~stop: build ()
 
+let concat vecs = Stream.from (Source.list vecs)
+    |> Stream.flat_map (fun xs -> Stream.from (xs |> to_source))
+    |> Stream.into (sink ())
+
 let remove xs i =
     let len = length xs in
     if i >= 0 && i < len
