@@ -18,6 +18,8 @@ let freshen name =
     | Fresh _ -> Fresh i
     | Fring (s, _) -> Fring (s, i)
 
+let is_gensym = function String _ -> false | Fresh _ | Fring _ -> true
+
 let of_string str = String str
 
 let compare = compare

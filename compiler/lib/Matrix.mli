@@ -9,6 +9,7 @@ val width : 'a t -> int
 
 val get : row: int -> col: int -> 'a t -> 'a option
 val row : int -> 'a t -> 'a Streaming.Source.t option
+val set_row : int -> 'a Streaming.Stream.t -> 'a t -> 'a t
 val col : int -> 'a t -> 'a Streaming.Source.t option
 
 val sub_cols : int -> int option -> 'a t -> 'a t

@@ -15,13 +15,14 @@ type def = Fc.Term.Stmt.def
 module State = struct
     type node =
         | Test of {matchee : E.lvalue; clauses : (pat wrapped * Name.t) Vector.t}
-        | Destructure of {defs : def Vector.t; body : Name.t}
+        | Destructure of Name.t
         | Final of {index : int; body : expr wrapped}
 
     type t =
         { name : Name.t
         ; mutable refcount : int
         ; mutable frees : E.lvalue Vector.t option
+        ; defs : def Vector.t
         ; node : node }
 end
 
@@ -40,7 +41,7 @@ let split_int : pat wrapped Matrix.t -> int -> IntSet.t IntMap.t * IntSet.t
         | None -> Some (IntSet.singleton i)) in
     let step (singles, defaults) (i, (pat : pat wrapped)) = match pat.term with
         | ConstP (Int n) -> (add_single singles n i, defaults)
-        | UseP _ -> (singles, IntSet.add i defaults)
+        | UseP _ | WildP -> (singles, IntSet.add i defaults)
         | ValuesP _ | ProxyP _ -> failwith "unreachable" in
     let (singles, defaults) =
         Stream.from (Source.zip (Source.count 0) (Option.get (Matrix.col col pats)))
@@ -50,26 +51,40 @@ let split_int : pat wrapped Matrix.t -> int -> IntSet.t IntMap.t * IntSet.t
 let split_tuple pats coli width =
     let subpats (pat : pat wrapped) = match pat.term with
         | ValuesP pats -> pats
-        | UseP _ -> Vector.init width (fun _ ->
-            {pat with term = E.UseP (Name.freshen (Name.of_string "_"))})
+        | UseP _ | WildP -> Vector.init width (fun _ -> {pat with term = E.WildP})
         | ProxyP _ | ConstP _ -> failwith "unreachable" in
     let cols' = Stream.from (Option.get (Matrix.col coli pats))
         |> Stream.map subpats
         |> Matrix.of_rows in
     Matrix.hcat [Matrix.sub_cols 0 (Some coli) pats; cols'; Matrix.sub_cols (coli + 1) None pats]
 
-let is_nontrivial : pat wrapped -> bool = fun pat -> match pat.term with
-    | UseP _ | ProxyP _ -> false
-    | ValuesP _ | ConstP _ -> true
+let is_trivial : pat wrapped -> bool = fun pat -> match pat.term with
+    | UseP _ | WildP | ProxyP _ -> true
+    | ValuesP _ | ConstP _ -> false
+
+let is_named (pat : pat wrapped) = match pat.term with
+    | UseP _ -> true
+    | _ -> false
 
 let rec matcher' : Util.span -> Automaton.t -> E.lvalue Vector.t -> pat wrapped Matrix.t -> State.t Vector.t -> Name.t
 = fun pos states matchees pats acceptors ->
     match Matrix.row 0 pats with
     | Some row ->
-        (match Stream.from (Source.zip (Source.count 0) row)
-            |> Stream.filter (fun (i, pat) -> is_nontrivial pat)
-            |> Stream.into Sink.first with
-        | Some (coli, _) -> (match (Vector.get matchees coli).typ with (* TODO: eval typ *)
+        let (coli, defs) = Stream.from (Source.zip row (Vector.to_source matchees))
+            |> Stream.take_while (fun (pat, _) -> is_trivial pat)
+            |> Stream.into (Sink.zip Sink.len
+                (Vector.sink ()
+                |> Sink.premap (fun ((pat : pat wrapped), (matchee : E.lvalue)) ->
+                    (pat.pos, pat, {E.term = E.Use matchee.name; typ = matchee.typ; pos = pat.pos}))
+                |> Sink.prefilter (fun (pat, _) -> is_named pat))) in
+        if coli < Vector.length matchees then begin
+            let row = Stream.concat
+                (Stream.generate ~len: coli (fun i ->
+                    let (_, {E.pos; _}, {E.term = _; typ; pos = _}) = Vector.get defs i in
+                    {E.term = E.WildP; typ; pos}))
+                (Stream.drop coli (Stream.from row)) in
+            let pats = Matrix.set_row 0 row pats in
+            match (Vector.get matchees coli).typ with (* TODO: eval typ *)
             | Prim Int ->
                 let (rows, default_rowis) = split_int pats coli in
                 let matchee = Vector.get matchees coli in
@@ -91,7 +106,7 @@ let rec matcher' : Util.span -> Automaton.t -> E.lvalue Vector.t -> pat wrapped 
                 |> Stream.into (Vector.sink ()) in
                 let name = Name.fresh () in
                 let node : State.node = Test {matchee; clauses} in
-                Automaton.add states name {name; refcount = 1; frees = Some matchees; node};
+                Automaton.add states name {name; refcount = 1; frees = Some matchees; defs; node};
                 name
 
             | Values typs ->
@@ -102,37 +117,27 @@ let rec matcher' : Util.span -> Automaton.t -> E.lvalue Vector.t -> pat wrapped 
                     {E.name = Name.fresh (); typ = Vector.get typs i}) in
                 let matchees' = Vector.concat [Vector.sub matchees 0 coli; matchees''
                     ; Vector.sub matchees (coli + 1) (Vector.length matchees - (coli + 1))] in
-                let defs = Stream.from (Source.zip_with (fun (matchee' : E.lvalue) i ->
-                            let def = {E.term = E.UseP matchee'.name; typ = matchee'.typ; pos} in
-                            ( pos, def
-                            , {E.term = E.Focus ({def with term = Use matchee.name}, i); typ = matchee'.typ; pos} ))
-                        (Vector.to_source matchees'')
-                        (Source.count 0))
+                let defs = Stream.concat
+                        (Stream.from (Vector.to_source defs))
+                        (Stream.from (Source.zip_with (fun (matchee' : E.lvalue) i ->
+                                let def = {E.term = E.UseP matchee'.name; typ = matchee'.typ; pos} in
+                                ( pos, def
+                                , {E.term = E.Focus ({def with term = Use matchee.name}, i); typ = matchee'.typ; pos} ))
+                            (Vector.to_source matchees'')
+                            (Source.count 0)))
                     |> Stream.into (Vector.sink ()) in
                 let body = matcher' pos states matchees' pats acceptors in
                 let name = Name.fresh () in
-                let node : State.node = Destructure {defs; body} in
-                Automaton.add states name {name; refcount = 1; frees = Some matchees; node};
-                name)
-
-        | None ->
+                let node : State.node = Destructure body in
+                Automaton.add states name {name; refcount = 1; frees = Some matchees; defs; node};
+                name
+        end else begin
             let acceptor = Vector.get acceptors 0 in
             acceptor.refcount <- acceptor.refcount + 1;
             acceptor.frees <- Some matchees;
-            (match acceptor.node with
-            | Final {index; body} ->
-                let defs = Stream.from (Source.zip_with (fun (pat : pat wrapped) (matchee : E.lvalue) ->
-                    (pat.pos, pat, {E.term = E.Use matchee.name; typ = matchee.typ; pos = pat.pos})
-                    ) (Source.filter (function {E.term = E.UseP _; _} -> true | _ -> false) row)
-                        (Vector.to_source matchees))
-                    |> Stream.into (Vector.sink ()) in
-                (match Vector1.of_vector defs with
-                | Some defs ->
-                    Automaton.add states acceptor.name { acceptor with node =
-                        Final {index; body = {body with term = Letrec (defs, body)}} }
-                | None -> ())
-            | _ -> failwith "unreachable");
-            acceptor.name)
+            Automaton.add states acceptor.name {acceptor with defs};
+            acceptor.name
+        end
 
     | None -> failwith "nonexhaustive matching"
 
@@ -143,7 +148,8 @@ let matcher : Util.span -> E.lvalue -> clause Vector.t -> Automaton.t * Name.t
     let pats = Matrix.of_col (Vector.map (fun {E.pat; body = _} -> pat) clauses) in
     let acceptors = Vector.mapi (fun index {E.pat = _; body} ->
         let name = Name.fresh () in
-        let state = {State.name; refcount = 0; frees = None; node = Final {index; body}} in
+        let node : State.node = Final {index; body} in
+        let state = {State.name; refcount = 0; frees = None; defs = Vector.empty; node} in
         Automaton.add states name state;
         state
     ) clauses in
@@ -151,21 +157,20 @@ let matcher : Util.span -> E.lvalue -> clause Vector.t -> Automaton.t * Name.t
 
 let rec emit' : Util.span -> T.t -> Automaton.t -> E.def CCVector.vector -> Name.t -> expr wrapped
 = fun pos codomain states shareds state_name ->
-    let {State.name = _; refcount; frees; node} = Automaton.find states state_name in
-    let expr : expr wrapped = match node with
+    let {State.name = _; refcount; frees; defs; node} = Automaton.find states state_name in
+    let body : expr wrapped = match node with
         | Test {matchee; clauses} ->
             { term = Match ({term = Use matchee.name; typ = matchee.typ; pos},
                 clauses |> Vector.map (fun (pat, target) ->
                     {E.pat; body = emit' pos codomain states shareds target}))
             ; typ = codomain; pos }
-        | Destructure {defs; body} ->
-            { term = E.letrec defs (emit' pos codomain states shareds body)
-            ; typ = codomain; pos }
+        | Destructure body -> emit' pos codomain states shareds body
         | Final {index = _; body} -> body in
+    let body = {body with term = E.letrec defs body} in
     if refcount = 1
-    then expr
+    then body
     else begin
-        let pos = expr.pos in
+        let pos = body.pos in
         let frees = Option.get frees in
         let domain : T.t = Values (Vector.map (fun {E.name = _; typ} -> typ) frees) in
         let ftyp = T.Pi { universals = Vector.empty
@@ -174,8 +179,8 @@ let rec emit' : Util.span -> T.t -> Automaton.t -> E.def CCVector.vector -> Name
             ; codomain } in
         let def : pat wrapped = {term = UseP state_name; typ = ftyp; pos} in
         let params = failwith "TODO" in
-        let f : expr wrapped = {term = Fn (Vector.empty, params, expr); typ = ftyp; pos} in
-        CCVector.push shareds (expr.pos, def, f);
+        let f : expr wrapped = {term = Fn (Vector.empty, params, body); typ = ftyp; pos} in
+        CCVector.push shareds (body.pos, def, f);
         let args = Vector.map (fun {E.name; typ} -> {E.term = E.Use name; typ; pos}) frees in
         { term = App ( {term = Use state_name; typ = ftyp; pos}, Vector.empty
             , {term = Values args; typ = domain; pos} )
@@ -187,9 +192,7 @@ let emit : Util.span -> T.t -> Automaton.t -> Name.t -> expr wrapped
     let shareds = CCVector.create () in
     let body = emit' pos codomain states shareds start in
     (* TODO: Warnings for redundant states (refcount = 0) *)
-    match Vector1.of_vector (Vector.build shareds) with
-    | Some shareds -> {term = Letrec (shareds, body); typ = codomain; pos}
-    | None -> body
+    {body with term = E.letrec (Vector.build shareds) body}
 
 let expand_clauses : Util.span -> T.t -> expr wrapped -> clause Vector.t -> expr
 = fun pos codomain matchee clauses ->

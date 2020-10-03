@@ -45,6 +45,7 @@ module type EXPR = sig
         | ValuesP of pat wrapped Vector.t
         | ProxyP of Type.t
         | UseP of Name.t
+        | WildP
         | ConstP of Const.t
 
     and clause = {pat : pat wrapped; body : t wrapped}

@@ -5,6 +5,7 @@ val to_string : t -> string
 val compare : t -> t -> int
 val fresh : unit -> t
 val freshen : t -> t
+val is_gensym : t -> bool
 val to_doc : t -> PPrint.document
 
 module Map : Map.S with type key = t

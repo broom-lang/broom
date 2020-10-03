@@ -64,6 +64,7 @@ module rec Expr : FcSigs.EXPR
         | ValuesP of pat wrapped Vector.t
         | ProxyP of Type.t
         | UseP of Name.t
+        | WildP
         | ConstP of Const.t
 
     and clause = {pat : pat wrapped; body : t wrapped}
@@ -209,6 +210,7 @@ module rec Expr : FcSigs.EXPR
                 (pat_to_doc s) (Vector.to_list pats)
         | ProxyP typ -> PPrint.brackets (Type.to_doc s typ)
         | UseP name -> Name.to_doc name
+        | WildP -> PPrint.underscore
         | ConstP c -> Const.to_doc c
 
     and field_to_doc s {label; expr} =

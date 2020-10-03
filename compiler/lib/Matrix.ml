@@ -40,6 +40,19 @@ let row rowi {elems; width; height} =
             else None) ())
     else None
 
+let set_row rowi r {elems; width; height} =
+    if 0 <= rowi && rowi < height then begin
+        let r = Stream.into (Vector.sink ()) r in
+        if Vector.length r = width then
+            { elems = Stream.drop ((rowi + 1) * width) (Stream.from (Vector.to_source elems))
+                |> Stream.concat (Stream.from (Vector.to_source r))
+                |> Stream.concat (Stream.take (rowi * width) (Stream.from (Vector.to_source elems)))
+                |> Stream.into (Sink.buffer (width * height))
+                |> Vector.of_array_unsafe
+            ; width; height }
+        else raise (Invalid_argument "set_row: wrong row length")
+    end else raise (Invalid_argument "set_row: row index out of bounds")
+
 let col coli {elems; width; height} =
     if 0 <= coli && coli < width
     then Some (Streaming.Source.make
