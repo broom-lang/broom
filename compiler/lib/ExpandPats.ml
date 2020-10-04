@@ -210,6 +210,8 @@ let rec expand : E.t wrapped -> E.t wrapped
     | Record _ | With _ | Where _ | Select _ | Proxy _
     | Use _ | Const _ | Patchable _ -> expr
     | Match (matchee, clauses) -> {expr with term = expand_clauses expr.pos expr.typ matchee clauses}
+    | Let ((_, pat, expr), body) ->
+        {expr with term = expand_clauses expr.pos expr.typ expr (Vector.singleton {E.pat; body})}
 
 let expand_stmt : stmt -> stmt = function
     | Expr expr -> Expr (expand expr)
