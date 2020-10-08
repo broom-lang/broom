@@ -180,7 +180,7 @@ let rec emit' : Util.span -> T.t -> Automaton.t -> E.def CCVector.vector -> Name
             ; domain = Ior.Right { edomain = domain 
                 ; eff = EmptyRow } (* NOTE: effect does not matter any more... *)
             ; codomain } in
-        let param = failwith "TODO" in
+        let param = E.fresh_var domain None in
         let f : expr = E.at pos ftyp (Fn {universals = Vector.empty; param; body}) in
         CCVector.push shareds (body.pos, var, f);
         let args = Stream.from (Vector.to_source frees)
