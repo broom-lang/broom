@@ -17,6 +17,7 @@ module Parse = struct
         |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.commands
 end
 
+module TyperSigs = TyperSigs (* HACK *)
 module Typer = Typer
 
 module ExpandPats = ExpandPats

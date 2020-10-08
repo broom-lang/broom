@@ -157,8 +157,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
 
     and elab_domain env (domain : AExpr.t with_pos) =
         let (_, (_, domain), defs) = C.elaborate_pat env domain in
-        let env = Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ)
-            env defs in
+        let env = Vector.fold Env.push_val env defs in
         (domain, env)
 
     and elab_row env pos decls =
@@ -166,14 +165,14 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
         let _ = Vector.fold (fun env decl ->
             let (_, semiabs, defs', rhs) = analyze_decl env decl in
             CCVector.push bindings (defs', semiabs, rhs);
-            Vector.fold (fun env {FExpr.name; typ} -> Env.push_val env name typ) env defs'
+            Vector.fold Env.push_val env defs'
         ) env decls in
         let (env, fields) = Env.push_row env (CCVector.freeze bindings) in
 
         Vector.iter2 (elaborate_field env) (Vector.build bindings) decls;
 
-        let row = List.fold_right (fun (name, typ) base ->
-            T.With {base; label = name; field = typ}
+        let row = List.fold_right (fun {FExpr.name; vtyp; _} base ->
+            T.With {base; label = name; field = vtyp}
         ) (!fields) EmptyRow in
         {typ = row; kind = kindof_F pos env row}
 

@@ -2,7 +2,6 @@
 
 type span = Util.span
 type 'a with_pos = 'a Ast.with_pos
-type 'a wrapped = 'a Fc.Term.Expr.wrapped
 
 type typ = Fc.Type.t
 
@@ -12,7 +11,7 @@ type 'a kinding = {typ : 'a; kind : Fc.Type.kind}
 (* Newtype to allow ignoring subtyping coercions without partial application warning: *)
 (* TODO: triv_expr with_pos -> expr with_pos to avoid bugs that would delay side effects
          or that duplicate large/nontrivial terms: *)
-type coercer = Cf of (Fc.Term.Expr.t wrapped -> Fc.Term.Expr.t wrapped)
+type coercer = Cf of (Fc.Term.Expr.t -> Fc.Term.Expr.t) [@unboxed]
 
 module type KINDING = sig
     type env
@@ -26,15 +25,15 @@ end
 module type TYPING = sig
     type env
 
-    val typeof : env -> Ast.Term.Expr.t with_pos -> Fc.Term.Expr.t wrapped typing
+    val typeof : env -> Ast.Term.Expr.t with_pos -> Fc.Term.Expr.t typing
     val implement : env -> (Fc.Type.ov Vector.t * Fc.Type.t) -> Ast.Term.Expr.t with_pos
-        -> Fc.Term.Expr.t wrapped typing
+        -> Fc.Term.Expr.t typing
     val deftype : env -> Ast.Term.Stmt.def -> Fc.Term.Expr.def typing
-    val check_stmt : env -> Ast.Term.Stmt.t -> Fc.Term.Stmt.t typing * env
+    val check_stmt : env -> Ast.Term.Stmt.t -> Fc.Term.Stmt.t Vector.t typing * Fc.Type.t * env
     (* HACK: (?): *)
     val elaborate_pat : env -> Ast.Term.Expr.pat with_pos ->
-        Fc.Term.Expr.pat wrapped * (Fc.Type.ov Vector.t * Fc.Type.t) * Fc.Term.Expr.lvalue Vector.t
-    val lookup : span -> env -> Name.t -> Fc.Term.Expr.lvalue
+        Fc.Term.Expr.pat * (Fc.Type.ov Vector.t * Fc.Type.t) * Fc.Term.Expr.var Vector.t
+    val lookup : span -> env -> Name.t -> Fc.Term.Expr.var
 end
 
 module type MATCHING = sig
@@ -55,19 +54,19 @@ module type ENV = sig
     val interactive : unit -> t
     val eval : unit -> t
 
-    val find : t -> Util.span -> Name.t -> Fc.Type.t
-    val find_rhs : t -> Util.span -> Name.t -> Fc.Term.Expr.t wrapped typing
+    val find : t -> Util.span -> Name.t -> Fc.Term.Expr.var
+    val find_rhs : t -> Util.span -> Name.t -> Fc.Term.Expr.t typing
     val find_rhst : t -> Util.span -> Name.t -> Fc.Type.t kinding
 
-    val push_val : t -> Name.t -> T.t -> t
+    val push_val : t -> Fc.Term.Expr.var -> t
     val push_rec : t
-        -> ( Fc.Term.Expr.lvalue Vector.t
+        -> ( Fc.Term.Expr.var Vector.t
            * (T.ov Vector.t * T.t) * Ast.Term.Expr.t with_pos ) CCVector.ro_vector
-        -> t * (Name.t * T.t) list TxRef.rref
+        -> t * Fc.Term.Expr.var list TxRef.rref
     val push_row : t
-        -> ( Fc.Term.Expr.lvalue Vector.t
+        -> ( Fc.Term.Expr.var Vector.t
            * (T.ov Vector.t * T.t) * Ast.Type.t with_pos ) CCVector.ro_vector
-        -> t * (Name.t * T.t) list TxRef.rref
+        -> t * Fc.Term.Expr.var list TxRef.rref
     val push_existential : t -> t * T.ov list TxRef.rref
     val push_skolems : t -> T.kind Vector.t -> t * T.ov Vector.t
     val push_axioms : t -> (Name.t * T.ov * uv) Vector1.t -> t
@@ -81,7 +80,7 @@ module type ENV = sig
     val get_uv : t -> uv -> Fc.Uv.v
     val set_uv : t -> span -> uv -> Fc.Uv.v -> unit
 
-    val set_expr : t -> Fc.Term.Expr.t wrapped TxRef.rref -> Fc.Term.Expr.t wrapped -> unit
+    val set_expr : t -> Fc.Term.Expr.t TxRef.rref -> Fc.Term.Expr.t -> unit
     val set_coercion : t -> T.coercion TxRef.rref -> T.coercion -> unit
 
     val document : t -> (Fc.Uv.subst -> 'a -> PPrint.document) -> 'a -> PPrint.document

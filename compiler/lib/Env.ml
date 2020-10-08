@@ -1,13 +1,15 @@
 module T = Fc.Type
+module E = Fc.Term.Expr
 module TS = TyperSigs
 
 type 'a with_pos = 'a Util.with_pos
 type uv = Fc.Uv.t
+type var = E.var
 
 type vals_binding =
     | White of (T.ov Vector.t * T.t) * Ast.Term.Expr.t with_pos
     | Grey
-    | Black of Fc.Term.Expr.t Fc.Term.Expr.wrapped TS.typing
+    | Black of Fc.Term.Expr.t TS.typing
 
 type row_binding =
     | WhiteT of (T.ov Vector.t * T.t) * Ast.Type.t with_pos
@@ -17,9 +19,9 @@ type row_binding =
 type scope =
     | Hoisting of T.ov list TxRef.rref * T.level
     | Rigid of T.ov Vector.t
-    | Val of Name.t * T.t
-    | Vals of (T.t * vals_binding TxRef.rref) Name.Map.t * (Name.t * T.t) list TxRef.rref
-    | Row of (T.t * row_binding TxRef.rref) Name.Map.t * (Name.t * T.t) list TxRef.rref
+    | Val of Fc.Term.Expr.var
+    | Vals of (var * vals_binding TxRef.rref) Name.Map.t * var list TxRef.rref
+    | Row of (var * row_binding TxRef.rref) Name.Map.t * var list TxRef.rref
     | Axiom of (Name.t * T.ov * uv) Name.Map.t
 
 type env =
@@ -68,13 +70,12 @@ let reportError (env : t) pos error = env.errorHandler pos error
 let wrapErrorHandler (env : t) middleware =
     {env with errorHandler = middleware env.errorHandler}
 
-let push_val (env : t) name typ =
-    {env with scopes = Val (name, typ) :: env.scopes}
+let push_val (env : t) var = {env with scopes = Val var :: env.scopes}
 
 let push_rec env stmts =
     let bindings = CCVector.fold (fun bindings (defs, semiabs, expr) ->
-        Vector.fold (fun bindings {Fc.Term.Expr.name; typ} ->
-            Name.Map.add name (typ, ref (White (semiabs, expr))) bindings
+        Vector.fold (fun bindings (var : var) ->
+            Name.Map.add var.name (var, ref (White (semiabs, expr))) bindings
         ) bindings defs
     ) Name.Map.empty stmts in
     let fields = ref [] in
@@ -82,8 +83,8 @@ let push_rec env stmts =
 
 let push_row env decls =
     let bindings = CCVector.fold (fun bindings (defs, semiabs, rhs) ->
-        Vector.fold (fun bindings {Fc.Term.Expr.name; typ} ->
-            Name.Map.add name (typ, ref (WhiteT (semiabs, rhs))) bindings
+        Vector.fold (fun bindings (var : var) ->
+            Name.Map.add var.name (var, ref (WhiteT (semiabs, rhs))) bindings
         ) bindings defs
     ) Name.Map.empty decls in
     let fields = ref [] in
@@ -284,22 +285,22 @@ let instantiate_arrow env universals domain codomain =
 
 let find (env : t) pos name =
     let rec find scopes = match scopes with
-        | Val (name', typ) :: scopes -> if name' = name then typ else find scopes
+        | Val var :: scopes -> if var.name = name then var else find scopes
         | Vals (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some (typ, binding) ->
+            | Some (var, binding) ->
                 (match !binding with
                 | White (semiabs, expr) ->
                     let env = {env with scopes} in
                     TxRef.set env.tx_log binding Grey;
                     let typing = C.implement env semiabs expr in
                     TxRef.set env.tx_log binding (Black typing);
-                    TxRef.set env.tx_log fields ((name, typ) :: !fields)
+                    TxRef.set env.tx_log fields (var :: !fields)
                 | Grey -> () (* TODO: really? *)
                 | Black _ -> ());
-                typ
+                var 
             | None -> find scopes')
         | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some (typ, binding) ->
+            | Some (var, binding) ->
                 (match !binding with
                 | WhiteT ((existentials, lhs), rhs) ->
                     let env = {env with scopes} in
@@ -308,32 +309,32 @@ let find (env : t) pos name =
                     let (existentials', rhs) = reabstract env rhs in
                     ignore (M.solving_subtype pos env rhs lhs);
                     TxRef.set env.tx_log binding (BlackT kinding);
-                    TxRef.set env.tx_log fields ((name, typ) :: !fields)
+                    TxRef.set env.tx_log fields (var :: !fields)
                 | GreyT -> () (* TODO: really? *)
                 | BlackT _ -> ());
-                typ
+                var
             | None -> find scopes')
         | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
         | [] ->
             reportError env pos (Unbound name);
-            Uv (uv env (Uv (uv env T.aKind (Name.fresh ()))) (Name.fresh ())) in
+            E.fresh_var (T.Uv (uv env (Uv (uv env T.aKind (Name.fresh ()))) (Name.fresh ()))) None in
     find env.scopes
 
 let find_rhs (env : t) pos name =
     let rec find scopes = match scopes with
-        | Val (name', _) :: scopes ->
+        | Val {name = name'; _} :: scopes ->
             if name' = name
             then failwith "compiler bug: `Env.find_rhs` found `Val` scope"
             else find scopes
         | Vals (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some (typ, binding) ->
+            | Some (var, binding) ->
                 (match !binding with
                 | White (semiabs, expr) ->
                     let env = {env with scopes} in
                     TxRef.set env.tx_log binding Grey;
                     let typing = C.implement env semiabs expr in
                     TxRef.set env.tx_log binding (Black typing);
-                    TxRef.set env.tx_log fields ((name, typ) :: !fields);
+                    TxRef.set env.tx_log fields (var :: !fields);
                     typing
                 | Grey -> failwith "compiler bug: `Env.find_rlhs` found `Grey` binding"
                 | Black typing -> typing)
@@ -349,7 +350,7 @@ let find_rhs (env : t) pos name =
 
 let find_rhst (env : t) pos name =
     let rec find scopes = match scopes with
-        | Val (name', _) :: scopes ->
+        | Val {name = name'; _} :: scopes ->
             if name' = name
             then failwith "compiler bug: `Env.find_rhst` found `Val` scope"
             else find scopes
@@ -357,7 +358,7 @@ let find_rhst (env : t) pos name =
             | Some (typ, binding) -> failwith "compiler bug: `Env.find_rhst` found `Vals` scope."
             | None -> find scopes')
         | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some (typ, binding) ->
+            | Some (var, binding) ->
                 (match !binding with
                 | WhiteT ((existentials, lhs), rhs) ->
                     let env = {env with scopes} in
@@ -366,7 +367,7 @@ let find_rhst (env : t) pos name =
                     let (existentials', rhs) = reabstract env rhs in
                     ignore (M.solving_subtype pos env rhs lhs);
                     TxRef.set env.tx_log binding (BlackT kinding);
-                    TxRef.set env.tx_log fields ((name, typ) :: !fields);
+                    TxRef.set env.tx_log fields (var :: !fields);
                     kinding
                 | GreyT -> failwith "compiler bug: `Env.find_rhst` found `GreyT` binding"
                 | BlackT kinding -> kinding)

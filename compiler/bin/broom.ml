@@ -1,4 +1,5 @@
 open Broom_lib
+module TS = TyperSigs
 module Env = Typer.Env
 module C = Cmdliner
 
@@ -13,24 +14,27 @@ let eval_envs () = (Typer.Env.eval (), Fc.Eval.Env.eval ())
 
 let ep ((tenv, venv) as envs) stmt =
     try begin
-        let ({term = stmt; eff}, tenv) : Fc.Term.Stmt.t Typer.typing * _ = Typer.check_stmt tenv stmt in
-        let typ = (Fc.Term.Stmt.rhs stmt).typ in
-        let doc = Env.document tenv Fc.Term.Stmt.to_doc stmt ^^ PPrint.semi
-            ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc typ
-            ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
-            |> PPrint.group in
-        PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc);
+        let ({TS.term = stmts; TS.eff}, typ, tenv) = Typer.check_stmt tenv stmt in
+        stmts |> Vector.iter (fun stmt ->
+            let doc = Env.document tenv Fc.Term.Stmt.to_doc stmt ^^ PPrint.semi
+                ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc typ
+                ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
+                |> PPrint.group in
+            PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc));
 
-        let stmt = ExpandPats.expand_stmt stmt in
-        let doc = Env.document tenv Fc.Term.Stmt.to_doc stmt ^^ PPrint.semi in
-        PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc);
+        let stmts = Vector.map ExpandPats.expand_stmt stmts in
+        stmts |> Vector.iter (fun stmt ->
+            let doc = Env.document tenv Fc.Term.Stmt.to_doc stmt ^^ PPrint.semi in
+            PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc));
 
-        let res = Fc.Eval.run venv stmt in
-        let (chan, vdoc, venv) = match res with
-            | Ok (v, venv) -> (stdout, Fc.Eval.Value.to_doc v, venv)
-            | Error err -> (stderr, PPrint.string "Runtime error:" ^/^ Fc.Eval.Error.to_doc err, venv) in
-        PPrint.ToChannel.pretty 1.0 80 chan (PPrint.hardline ^^ vdoc);
-        (tenv, venv)
+        stmts |> Vector.fold (fun (tenv, venv) stmt ->
+            let res = Fc.Eval.run venv stmt in
+            let (chan, vdoc, venv) = match res with
+                | Ok (v, venv) -> (stdout, Fc.Eval.Value.to_doc v, venv)
+                | Error err -> (stderr, PPrint.string "Runtime error:" ^/^ Fc.Eval.Error.to_doc err, venv) in
+            PPrint.ToChannel.pretty 1.0 80 chan (PPrint.hardline ^^ vdoc);
+            (tenv, venv)
+        ) (tenv, venv)
     end with
     | Typer.TypeError.TypeError (pos, err) ->
         flush stdout;

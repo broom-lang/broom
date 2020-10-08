@@ -4,71 +4,86 @@ module type EXPR = sig
     module Type : TYPE
 
     type def
-    type stmt
 
-    type 'a wrapped = {term : 'a; typ : Type.t; pos : Util.span}
+    and var =
+        { name : Name.t; vtyp : Type.t; mutable value : t option
+        ; uses : use CCVector.vector }
 
-    type lvalue = {name : Name.t; typ : Type.t}
+    and use = {mutable expr : t option; mutable var : var}
 
-    type t =
-        | Values of t wrapped Vector.t
-        | Focus of t wrapped * int
+    and t =
+        { term : t'
+        ; mutable parent : t option
+        ; typ : Type.t
+        ; pos : Util.span }
 
-        | Fn of Type.binding Vector.t * lvalue * t wrapped
-        | App of t wrapped * Type.t Vector.t * t wrapped
-        | PrimApp of Primop.t * Type.t Vector.t * t wrapped
+    (* TODO: Make an Array1 module, then use it here: *)
+    and t' =
+        | Values of t array
+        | Focus of {mutable focusee : t; index : int}
 
-        | Let of def * t wrapped
-        | Letrec of def Vector1.t * t wrapped
-        | LetType of Type.binding Vector1.t * t wrapped
-        | Match of t wrapped * clause Vector.t
+        | Fn of {universals : Type.binding Vector.t; param : var; mutable body : t}
+        | App of {mutable callee : t; universals : Type.t Vector.t; mutable arg : t}
+        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t}
 
-        | Axiom of (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t * t wrapped
-        | Cast of t wrapped * Type.coercion
+        | Let of {def : def; mutable body : t}
+        | Letrec of {defs : def Vector1.t; mutable body : t}
+        | LetType of {typedefs : Type.binding Vector1.t; mutable body : t}
+        | Match of {mutable matchee : t; clauses : clause Vector.t}
 
-        | Pack of Type.t Vector1.t * t wrapped
-        | Unpack of Type.binding Vector1.t * lvalue * t wrapped * t wrapped
+        | Axiom of { axioms : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t
+            ; mutable body : t }
+        | Cast of {mutable castee : t; coercion : Type.coercion}
 
-        | Record of (Name.t * t wrapped) Vector.t
-        | Where of t wrapped * (Name.t * t wrapped) Vector1.t
-        | With of {base : t wrapped; label : Name.t; field : t wrapped}
-        | Select of t wrapped * Name.t
+        | Pack of {existentials : Type.t Vector1.t; mutable impl : t}
+        | Unpack of { existentials : Type.binding Vector1.t; var : var; mutable value : t
+            ; mutable body : t }
+
+        | Record of (Name.t * t) array
+        | Where of {mutable base : t; fields : (Name.t * t) Vector1.t}
+        | With of {mutable base : t; label : Name.t; mutable field : t}
+        | Select of {mutable selectee : t; label : Name.t}
 
         | Proxy of Type.t
         | Const of Const.t
 
-        | Use of Name.t
+        | Use of use
 
-        | Patchable of t wrapped TxRef.rref
+        | Patchable of t TxRef.rref
 
-    and pat =
-        | ValuesP of pat wrapped Vector.t
+    and clause = {pat : pat; mutable body : t}
+
+    and pat = {pterm: pat'; ptyp : Type.t; ppos : Util.span}
+    and pat' =
+        | ValuesP of pat Vector.t
         | ProxyP of Type.t
-        | UseP of Name.t
-        | WildP
         | ConstP of Const.t
+        | VarP of var
+        | WildP
 
-    and clause = {pat : pat wrapped; body : t wrapped}
+    val var_to_doc : var -> PPrint.document
+    val to_doc : Type.subst -> t -> PPrint.document
+    val pat_to_doc : Type.subst -> pat -> PPrint.document
 
-    and field = {label : string; expr : t wrapped}
+    val var : Name.t -> Type.t -> t option -> var
+    val fresh_var : Type.t -> t option -> var
 
-    val lvalue_to_doc : Type.subst -> lvalue -> PPrint.document
-    val pat_to_doc : Type.subst -> pat wrapped -> PPrint.document
-    val to_doc : Type.subst -> t wrapped -> PPrint.document
+    val at : Util.span -> Type.t -> t' -> t
 
     (* TODO: Add more of these: *)
-    val letrec : def Vector.t -> t wrapped -> t
+    val letrec : def Vector.t -> t -> t'
+    val use : var -> t'
 
-    val map_children : (t wrapped -> t wrapped) -> t wrapped -> t wrapped
+    val map_children : (t -> t) -> t -> t
 end
 
 module type STMT = sig
     module Type : TYPE
 
     type expr
-    type pat
+    type var
 
-    type def = Util.span * pat * expr
+    type def = Util.span * var * expr
 
     type t
         = Def of def
@@ -85,12 +100,11 @@ module type TERM = sig
 
     module rec Expr : (EXPR
         with module Type = Type
-        with type def = Stmt.def
-        with type stmt = Stmt.t)
+        with type def = Stmt.def)
 
     and Stmt : (STMT
         with module Type = Type
-        with type expr = Expr.t Expr.wrapped
-        with type pat = Expr.pat Expr.wrapped)
+        with type expr = Expr.t
+        with type var = Expr.var)
 end
 
