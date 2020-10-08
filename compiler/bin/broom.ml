@@ -22,11 +22,6 @@ let ep ((tenv, venv) as envs) stmt =
                 |> PPrint.group in
             PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc));
 
-        let stmts = Vector.map ExpandPats.expand_stmt stmts in
-        stmts |> Vector.iter (fun stmt ->
-            let doc = Env.document tenv Fc.Term.Stmt.to_doc stmt ^^ PPrint.semi in
-            PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc));
-
         stmts |> Vector.fold (fun (tenv, venv) stmt ->
             let res = Fc.Eval.run venv stmt in
             let (chan, vdoc, venv) = match res with

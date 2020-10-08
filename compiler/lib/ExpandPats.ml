@@ -205,16 +205,3 @@ let expand_clauses : Util.span -> T.t -> expr -> clause Vector.t -> expr
     let body = emit pos codomain states start.name in
     E.at pos codomain (E.Let {def = (pos, var, matchee); body})
 
-let rec expand : E.t -> E.t
-= fun expr ->
-    let expr = E.map_children expand expr in
-    match expr.term with
-    | Values _ | Focus _ | Fn _ | App _ | PrimApp _
-    | LetType _ | Axiom _ | Cast _ | Pack _ | Unpack _
-    | Record _ | With _ | Where _ | Select _ | Proxy _
-    | Use _ | Const _ | Patchable _ -> expr
-    | Match {matchee; clauses} -> expand_clauses expr.pos expr.typ matchee clauses
-
-let expand_stmt : stmt -> stmt = function
-    | Expr expr -> Expr (expand expr)
-

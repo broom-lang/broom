@@ -143,7 +143,7 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typing
                 Values (Vector.of_list [idomain; edomain]) in
         let param = FExpr.fresh_var domain_t None in
         let matchee = FExpr.at pos param.vtyp (FExpr.use param) in
-        let body = FExpr.at pos codomain (FExpr.Match {matchee; clauses}) in
+        let body = ExpandPats.expand_clauses pos codomain matchee clauses in
         let universals = Vector.map fst (Vector.of_list !universals) in
         let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
             (i + 1, Name.Map.add name i substitution)
@@ -344,7 +344,7 @@ and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typ
                     Values (Vector.of_list [idomain; edomain]) in
             let param = FExpr.fresh_var domain None in
             let matchee = FExpr.at pos param.vtyp (FExpr.use param) in
-            let body = FExpr.at pos codomain (FExpr.Match {matchee; clauses = Vector1.to_vector clauses}) in
+            let body = ExpandPats.expand_clauses pos codomain matchee (Vector1.to_vector clauses) in
             { term = FExpr.at pos typ (Fn {universals = (* FIXME: *) Vector.empty; param; body})
             ; eff = EmptyRow }
         | None -> failwith "TODO: check clauseless fn")
