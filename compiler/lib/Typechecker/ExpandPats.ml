@@ -77,8 +77,7 @@ let rec matcher' : Util.span -> T.t -> Automaton.t -> var Vector.t -> pat Matrix
                 (Sink.array
                 |> Sink.premap (fun ((pat : pat), (matchee : var)) -> match pat.pterm with
                     | VarP var ->
-                        let use = { E.term = Use {var = matchee; expr = None}
-                            ; typ = matchee.vtyp; pos = pat.ppos; parent = None } in
+                        let use = E.at pat.ppos matchee.vtyp (E.use matchee) in
                         (pat.ppos, var, use))
                 |> Sink.prefilter (fun (pat, _) -> is_named pat))) in
         if coli < Vector.length matchees then begin
@@ -124,7 +123,7 @@ let rec matcher' : Util.span -> T.t -> Automaton.t -> var Vector.t -> pat Matrix
                         (Stream.from (Source.zip_with (fun (matchee' : var) index ->
                                 let focusee = E.at pos matchee.vtyp (E.use matchee) in
                                 ( pos, matchee'
-                                , E.at pos matchee'.vtyp (E.Focus {focusee; index} )))
+                                , E.at pos matchee'.vtyp (E.focus focusee index )))
                             (Vector.to_source matchees'')
                             (Source.count 0)))
                     |> Stream.into Sink.array in
@@ -172,16 +171,15 @@ let rec emit' : Util.span -> T.t -> Automaton.t -> E.def Name.Hashtbl.t -> Name.
         let args = Stream.from (Vector.to_source frees)
             |> Stream.map (fun (var : var) -> E.at pos var.vtyp (E.use var))
             |> Stream.into (Sink.buffer (Vector.length frees)) in
-        E.at pos codomain (App { callee = E.at pos ftyp (E.use var)
-            ; universals = Vector.empty
-            ; arg = E.at pos domain (Values args) })
+        E.at pos codomain (E.app (E.at pos ftyp (E.use var)) Vector.empty
+            (E.at pos domain (E.values args)))
     end else begin
         let body : expr = match node with
             | Test {matchee; clauses} ->
                 E.at pos codomain
-                    (Match { matchee = E.at pos matchee.vtyp (E.use matchee)
-                        ; clauses = clauses |> Vector.map (fun (pat, (target : var)) ->
-                            {E.pat; body = emit' pos codomain states shareds target.name}) })
+                    (E.match' (E.at pos matchee.vtyp (E.use matchee))
+                        (clauses |> Vector.map (fun (pat, (target : var)) ->
+                            {E.pat; body = emit' pos codomain states shareds target.name})))
             | Destructure body -> emit' pos codomain states shareds body.name
             | Final {index = _; body} -> body in
         let body = {body with term = E.letrec defs body} in
@@ -196,14 +194,13 @@ let rec emit' : Util.span -> T.t -> Automaton.t -> E.def Name.Hashtbl.t -> Name.
                     ; eff = EmptyRow } (* NOTE: effect does not matter any more... *)
                 ; codomain } in
             let param = E.fresh_var domain None in
-            let f : expr = E.at pos ftyp (Fn {universals = Vector.empty; param; body}) in
+            let f : expr = E.at pos ftyp (E.fn Vector.empty param body) in
             Name.Hashtbl.add shareds state_name (body.pos, var, f);
             let args = Stream.from (Vector.to_source frees)
                 |> Stream.map (fun (var : var) -> E.at pos var.vtyp (E.use var))
                 |> Stream.into (Sink.buffer (Vector.length frees)) in
-            E.at pos codomain (App { callee = E.at pos ftyp (E.use var)
-                ; universals = Vector.empty
-                ; arg = E.at pos domain (Values args) })
+            E.at pos codomain (E.app (E.at pos ftyp (E.use var)) Vector.empty
+                (E.at pos domain (E.values args)))
         end
     end
 
@@ -220,5 +217,5 @@ let expand_clauses : Util.span -> T.t -> expr -> clause Vector.t -> expr
     let var = E.fresh_var matchee.typ (Some matchee) in
     let (states, start) = matcher pos codomain var clauses in
     let body = emit pos codomain states start.name in
-    E.at pos codomain (E.Let {def = (pos, var, matchee); body})
+    E.at pos codomain (E.let' (pos, var, matchee) body)
 

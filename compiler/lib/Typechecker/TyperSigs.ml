@@ -69,7 +69,7 @@ module type ENV = sig
         -> t * Fc.Term.Expr.var list TxRef.rref
     val push_existential : t -> t * T.ov list TxRef.rref
     val push_skolems : t -> T.kind Vector.t -> t * T.ov Vector.t
-    val push_axioms : t -> (Name.t * T.ov * uv) Vector1.t -> t
+    val push_axioms : t -> (Name.t * T.ov * uv) Vector.t -> t
 
     val generate : t -> T.binding -> T.binding * T.level
 

@@ -104,10 +104,12 @@ let push_skolems (env : t) kinds =
     , skolems )
 
 let push_axioms (env : t) axioms =
-    let bindings = Vector1.fold (fun bindings ((_, ((k, _), _), _) as v) ->
-        Name.Map.add k v bindings
-    ) Name.Map.empty axioms in
-    {env with scopes = Axiom bindings :: env.scopes}
+    if Vector.length axioms > 0 then begin
+        let bindings = Vector.fold (fun bindings ((_, ((k, _), _), _) as v) ->
+            Name.Map.add k v bindings
+        ) Name.Map.empty axioms in
+        {env with scopes = Axiom bindings :: env.scopes}
+    end else env
 
 let generate env binding =
     let rec generate = function

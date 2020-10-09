@@ -3,7 +3,9 @@ open Streaming
 module ResidualMonoid = struct
     include Monoid.OfSemigroup(Residual)
 
-    let skolemized skolems m = Option.map (fun r -> Residual.Skolems (skolems, r)) m
+    let skolemized skolems m = match Vector1.of_vector skolems with
+        | Some skolems -> Option.map (fun r -> Residual.Skolems (skolems, r)) m
+        | None -> m
 end
 
 module Make
@@ -139,7 +141,7 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                 let (co, base, field) = pull_row pos env label typ in
                 let cof = match co with
                     | Some co -> (fun castee ->
-                        E.at pos (With {base; label; field}) (E.Cast {castee; coercion = co}))
+                        E.at pos (With {base; label; field}) (E.cast castee co))
                     | None -> Fun.id in
                 (Cf cof, With {base; label; field})
             | Hole -> failwith "unreachable: Hole as template in `focalize`.") in
@@ -149,7 +151,7 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
         let (Cf cf as coercer, typ) = focalize_whnf typ' in
         ( (match coercion with
           | Some coercion -> Cf (fun castee ->
-                cf (E.at pos typ' (E.Cast {castee; coercion})))
+                cf (E.at pos typ' (E.cast castee coercion)))
           | None -> coercer)
         , typ )
     | None -> failwith "unreachable: `whnf` failed in `focalize`."
@@ -229,15 +231,15 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
             { coercion = Cf (fun expr ->
                 let var = E.fresh_var typ (Some expr) in
                 let use = E.at pos var.vtyp (E.use var) in
-                E.at pos super (Unpack {existentials = skolems; var; value = expr
-                    ; body = coerce use}))
-            ; residual = ResidualMonoid.skolemized (Vector1.map snd skolems) residual }
+                E.at pos super (E.unpack skolems var expr (coerce use)))
+            ; residual = ResidualMonoid.skolemized (Vector.map snd (Vector1.to_vector skolems))
+                residual }
         | (_, Exists (existentials', body')) ->
             let (uvs, super) = Env.instantiate_abs env existentials' body' in
             let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
-            let existentials = Vector1.map (fun uv -> T.Uv uv) uvs in
+            let existentials = Vector1.map (fun uv -> T.Uv uv) uvs |> Vector1.to_vector in
             (* FIXME: coercing potentially nonatomic `expr`: *)
-            { coercion = Cf (fun expr -> E.at pos super (Pack {existentials; impl = coerce expr}))
+            { coercion = Cf (fun expr -> E.at pos super (E.pack existentials (coerce expr)))
             ; residual }
 
         (* TODO: uv <: Exists impredicativity clash *)
@@ -287,11 +289,11 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     ) empty typs super_typs in
                     { coercion = Cf (fun expr ->
                         let var = E.fresh_var typ (Some expr) in
-                        let body = E.at pos super (E.Values (coercions |> CCVector.mapi (fun i (typ, coerce) ->
+                        let body = E.at pos super (E.values (coercions |> CCVector.mapi (fun i (typ, coerce) ->
                             let use = E.at pos typ (E.use var) in
-                            coerce (E.at pos typ (E.Focus {focusee = use; index = i}))
+                            coerce (E.at pos typ (E.focus use i))
                         ) |> CCVector.to_array)) in
-                        E.at pos super (Let {def = (pos, var, expr); body}))
+                        E.at pos super (E.let' (pos, var, expr) body))
                     ; residual }
                 end else failwith "<: tuple lengths"
             | _ ->
@@ -321,13 +323,10 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     let param = E.fresh_var edomain' None in
                     let arg = coerce_domain (E.at pos edomain' (E.use param)) in
                     { coercion = TyperSigs.Cf (fun expr ->
-                        let body = E.at pos codomain (App {callee = expr; universals; arg}) in
+                        let body = E.at pos codomain (E.app expr universals arg) in
                         let body = coerce_codomain body in
-                        E.at pos super (E.Fn {universals = universals'; param; body}))
-                    ; residual =
-                        (match Vector1.of_vector universals' with
-                        | Some skolems -> ResidualMonoid.skolemized (Vector1.map snd skolems) residual
-                        | None -> residual) })
+                        E.at pos super (E.fn universals' param body))
+                    ; residual = ResidualMonoid.skolemized (Vector.map snd universals') residual })
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
                 {coercion = Cf Fun.id; residual = empty})
@@ -359,10 +358,10 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         let label = CCVector.get labels i in
                         let Cf coerce = CCVector.get field_cos i in
                         let super = CCVector.get super_fields i in
-                        let selection = E.at pos super (E.Select {selectee; label}) in
+                        let selection = E.at pos super (E.select selectee label) in
                         (label, coerce selection) in
-                    let body = E.at pos super (E.Record (Array.init fields_len field)) in
-                    E.at pos super (E.Let {def = (pos, var, expr); body}))
+                    let body = E.at pos super (E.record (Array.init fields_len field)) in
+                    E.at pos super (E.let' (pos, var, expr) body))
                 | _ -> (fun expr ->
                     let var = E.fresh_var typ (Some expr) in
                     let field i =
@@ -370,14 +369,11 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         let label = CCVector.get labels i in
                         let Cf coerce = CCVector.get field_cos i in
                         let super = CCVector.get super_fields i in
-                        let selection = E.at pos super (E.Select {selectee; label}) in
+                        let selection = E.at pos super (E.select selectee label) in
                         (label, coerce selection) in
-                    (match Array1.of_array (Array.init fields_len field) with
-                    | Some fields ->
-                        let base = E.at pos typ (E.use var) in
-                        let body = E.at pos super (E.Where {base; fields}) in
-                        E.at pos super (E.Let {def = (pos, var, expr); body})
-                    | None -> expr)) in
+                    let base = E.at pos typ (E.use var) in
+                    let body = E.at pos super (E.where base (Array.init fields_len field)) in
+                    E.at pos super (E.let' (pos, var, expr) body)) in
 
                 { coercion = (match (co, super_co) with
                     | (Some co, Some super_co) ->
@@ -387,12 +383,12 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                             |> Stream.into (Sink.fold (fun base (label, field) ->
                                 T.With {base; label; field}) base) in
                         TyperSigs.Cf (fun v ->
-                            let castee = coerce (E.at pos typ' (Cast {castee = v; coercion = co})) in
-                            E.at pos super (Cast {castee; coercion = Symm super_co}))
+                            let castee = coerce (E.at pos typ' (E.cast v co)) in
+                            E.at pos super (E.cast castee (Symm super_co)))
                     | (Some co, None) -> Cf (fun v ->
-                        coerce (E.at pos super (Cast {castee = v; coercion = co})))
+                        coerce (E.at pos super (E.cast v co)))
                     | (None, Some co') -> Cf (fun v ->
-                        E.at pos super (Cast {castee = coerce v; coercion = Symm co'}))
+                        E.at pos super (E.cast (coerce v) (Symm co')))
                     | (None, None) -> Cf coerce)
                 ; residual }
             | _ ->
@@ -446,12 +442,12 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 (match leftmost_callee Int.max_int carrie' with
                 | Some (uv, impl) ->
                     Env.set_uv env pos uv (Assigned impl);
-                    let expr = E.at pos super (Proxy carrie') in
+                    let expr = E.at pos super (E.proxy carrie') in
                     {coercion = Cf (fun _ -> expr); residual = empty}
                 | None -> (* TODO: Use unification (?) *)
                     let {coercion = _; residual} = subtype pos occ env carrie carrie' in
                     let {coercion = _; residual = residual'} = subtype pos occ env carrie' carrie in
-                    let expr = E.at pos super (Proxy carrie') in
+                    let expr = E.at pos super (E.proxy carrie') in
                     {coercion = Cf (fun _ -> expr); residual = combine residual residual'})
 
             | _ ->
@@ -463,7 +459,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 let {coercion; residual} = unify_whnf pos env typ super in
                 { coercion =
                     (match coercion with
-                    | Some co -> Cf (fun v -> E.at pos super (Cast {castee = v; coercion = co}))
+                    | Some co -> Cf (fun v -> E.at pos super (E.cast v co))
                     | None -> Cf Fun.id)
                 ; residual }
             | _ ->
@@ -475,7 +471,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 let {coercion; residual} = unify_whnf pos env typ super in
                 { coercion =
                     (match coercion with
-                    | Some co -> Cf (fun v -> E.at pos super (Cast {castee = v; coercion = co}))
+                    | Some co -> Cf (fun v -> E.at pos super (E.cast v co))
                     | None -> Cf Fun.id)
                 ; residual }
             | _ ->
@@ -500,21 +496,21 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 (match (co, co') with
                 | (Some co, Some co') ->
                     TyperSigs.Cf (fun v ->
-                        let castee = coerce (E.at pos typ' (Cast {castee = v; coercion = co})) in
-                        E.at pos super (Cast {castee; coercion = Symm co'}))
+                        let castee = coerce (E.at pos typ' (E.cast v co)) in
+                        E.at pos super (E.cast castee (Symm co')))
                 | (Some co, None) -> Cf (fun v ->
-                    coerce (E.at pos typ' (Cast {castee = v; coercion = co})))
+                    coerce (E.at pos typ' (E.cast v co)))
                 | (None, Some co') -> Cf (fun v ->
-                    E.at pos super (Cast {castee = coerce v; coercion = Symm co'}))
+                    E.at pos super (E.cast (coerce v) (Symm co')))
                 | (None, None) -> Cf coerce)
             ; residual }) in
     match res with
     | Some res -> res
     | None ->
-        let patchable = ref (E.at pos super (E.Const (Int 0))) in
+        let patchable = ref (E.at pos super (E.const (Int 0))) in
         { coercion = Cf (fun v ->
             Env.set_expr env patchable v;
-            E.at pos super (Patchable patchable))
+            E.at pos super (E.patchable patchable))
         ; residual = Some (Sub (occ, typ, super, patchable)) }
 
 and occurs_check pos env uv typ =
@@ -797,7 +793,7 @@ and solve pos env residual =
     let open Residual in
     let rec solve env = function
         | Axioms (axiom_bindings, residual) ->
-            let env = Env.push_axioms env axiom_bindings in
+            let env = Env.push_axioms env (Vector1.to_vector axiom_bindings) in
             solve env residual
 
         | Skolems (skolems, residual) ->

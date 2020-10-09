@@ -227,21 +227,57 @@ module rec Expr : FcSigs.EXPR
 
     let at pos typ term = {term; pos; typ; parent = None}
 
+    let values vals =
+        if Array.length vals = 1
+        then (Array.get vals 0).term
+        else (Values vals)
+
+    let focus focusee index = Focus {focusee; index}
+    let fn universals param body = Fn {universals; param; body}
+    let app callee universals arg = App {callee; universals; arg}
+    let primapp op universals arg = PrimApp {op; universals; arg}
+    let let' def body = Let {def; body}
+
     let letrec defs body = match Array1.of_array defs with
         | Some defs -> Letrec {defs; body}
         | None -> body.term
 
+    let match' matchee clauses = Match {matchee; clauses}
+
+    let axiom axioms body = match Vector1.of_vector axioms with
+        | Some axioms -> Axiom {axioms; body}
+        | None -> body.term
+
+    let cast castee = function
+        | Type.Refl _ -> castee.term
+        | coercion -> Cast {castee; coercion}
+
+    let pack existentials impl = match Vector1.of_vector existentials with
+        | Some existentials -> Pack {existentials; impl}
+        | None -> impl.term
+
+    let unpack existentials var value body = Unpack {existentials; var; value; body}
+    let record fields = Record fields
+
+    let where base fields = match Array1.of_array fields with
+        | Some fields -> Where {base; fields}
+        | None -> base.term
+
+    let select selectee label = Select {selectee; label}
+    let proxy t = Proxy t
+    let const c = Const c
     let use var = Use {var; expr = None}
+    let patchable ref = Patchable ref
 
     let map_children f (expr : t) =
         let term = expr.term in
         let term' = match term with
-            | Values vals ->
-                let vals' = Array.map f vals in
+            | Values lets ->
+                let lets' = Array.map f lets in
                 let noop = Stream.from (Source.zip_with (==)
-                        (Source.array vals') (Source.array vals))
+                        (Source.array lets') (Source.array lets))
                     |> Stream.into (Sink.all ~where: Fun.id) in
-                if noop then term else Values vals'
+                if noop then term else Values lets'
 
             | Focus {focusee; index} ->
                 let focusee' = f focusee in

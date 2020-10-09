@@ -17,7 +17,7 @@ module type EXPR = sig
         ; typ : Type.t
         ; pos : Util.span }
 
-    and t' =
+    and t' = private
         | Values of t array
         | Focus of {mutable focusee : t; index : int}
 
@@ -69,9 +69,25 @@ module type EXPR = sig
 
     val at : Util.span -> Type.t -> t' -> t
 
-    (* TODO: Add more of these: *)
+    val values : t Array.t -> t'
+    val focus : t -> int -> t'
+    val fn : Type.binding Vector.t -> var -> t -> t'
+    val app : t -> Type.t Vector.t -> t -> t'
+    val primapp : Primop.t -> Type.t Vector.t -> t -> t'
+    val let' : def -> t -> t'
     val letrec : def Array.t -> t -> t'
+    val axiom : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector.t -> t -> t'
+    val match' : t -> clause Vector.t -> t'
+    val cast : t -> Type.coercion -> t'
+    val pack : Type.t Vector.t -> t -> t'
+    val unpack : Type.binding Vector1.t -> var -> t -> t -> t'
+    val record : (Name.t * t) array -> t'
+    val where : t -> (Name.t * t) array -> t'
+    val select : t -> Name.t -> t'
+    val proxy : Type.t -> t'
+    val const : Const.t -> t'
     val use : var -> t'
+    val patchable : t TxRef.rref -> t'
 
     val map_children : (t -> t) -> t -> t
 end
