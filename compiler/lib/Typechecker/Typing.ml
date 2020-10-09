@@ -231,7 +231,7 @@ and typeof_record env pos stmts =
         |> Source.zip (Vector.to_source pats)
         |> Stream.from
         |> Stream.flat_map (elaborate_field env)
-        |> Stream.into (Vector.sink ()) in
+        |> Stream.into Sink.array in
 
     let fields = CCVector.of_list !fields in
     CCVector.rev_in_place fields;

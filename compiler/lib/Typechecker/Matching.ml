@@ -372,8 +372,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         let super = CCVector.get super_fields i in
                         let selection = E.at pos super (E.Select {selectee; label}) in
                         (label, coerce selection) in
-                    (* TODO: use Array1: *)
-                    (match Vector1.of_vector (Vector.init fields_len field) with
+                    (match Array1.of_array (Array.init fields_len field) with
                     | Some fields ->
                         let base = E.at pos typ (E.use var) in
                         let body = E.at pos super (E.Where {base; fields}) in

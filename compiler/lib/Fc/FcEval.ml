@@ -167,8 +167,8 @@ let rec eval : Env.t -> cont -> expr -> Value.t
     | Letrec {defs; body} ->
         let env = Env.push env in
         let rec define i =
-            if i < Vector1.length defs then begin
-                let (_, {Expr.name; _}, vexpr) = Vector1.get defs i in
+            if i < Array1.length defs then begin
+                let (_, {Expr.name; _}, vexpr) = Array1.get defs i in
                 let k v =
                     Env.add env name v;
                     define (i + 1) in
@@ -202,19 +202,19 @@ let rec eval : Env.t -> cont -> expr -> Value.t
             eval env (eval_fields 0 Name.Map.empty label) expr)
 
     | Where {base; fields} ->
-        let len = Vector1.length fields in
+        let len = Array1.length fields in
         let rec eval_fields i base label v =
             if Name.Map.mem label base then begin
                 let i = i + 1 in
                 let base = Name.Map.add label v base in
                 if i < len then begin
-                    let (label, expr) = Vector1.get fields i in
+                    let (label, expr) = Array1.get fields i in
                     eval env (eval_fields i base label) expr
                 end else k (Record base)
             end else failwith "compiler bug: `where` a new label" in
         let k : cont = function
             | Record base ->
-                let (label, expr) = Vector1.get fields 0 in
+                let (label, expr) = Array1.get fields 0 in
                 eval env (eval_fields 0 base label) expr
             | _ -> failwith "compiler bug: `where` to a non-record" in
         eval env k base

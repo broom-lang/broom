@@ -23,7 +23,7 @@ module State = struct
         { var : var
         ; mutable refcount : int
         ; mutable frees : var Vector.t option
-        ; defs : def Vector.t
+        ; defs : def Array.t
         ; node : node }
 end
 
@@ -74,7 +74,7 @@ let rec matcher' : Util.span -> T.t -> Automaton.t -> var Vector.t -> pat Matrix
         let (coli, defs) = Stream.from (Source.zip row (Vector.to_source matchees))
             |> Stream.take_while (fun (pat, _) -> is_trivial pat)
             |> Stream.into (Sink.zip Sink.len
-                (Vector.sink ()
+                (Sink.array
                 |> Sink.premap (fun ((pat : pat), (matchee : var)) -> match pat.pterm with
                     | VarP var ->
                         let use = { E.term = Use {var = matchee; expr = None}
@@ -84,7 +84,7 @@ let rec matcher' : Util.span -> T.t -> Automaton.t -> var Vector.t -> pat Matrix
         if coli < Vector.length matchees then begin
             let row = Stream.concat
                 (Stream.generate ~len: coli (fun i ->
-                    let (ppos, _, {E.typ = ptyp; _}) = Vector.get defs i in
+                    let (ppos, _, {E.typ = ptyp; _}) = Array.get defs i in
                     {E.pterm = E.WildP; ptyp; ppos}))
                 (Stream.drop coli (Stream.from row)) in
             let pats = Matrix.set_row 0 row pats in
@@ -120,14 +120,14 @@ let rec matcher' : Util.span -> T.t -> Automaton.t -> var Vector.t -> pat Matrix
                 let matchees' = Vector.concat [Vector.sub matchees 0 coli; matchees''
                     ; Vector.sub matchees (coli + 1) (Vector.length matchees - (coli + 1))] in
                 let defs = Stream.concat
-                        (Stream.from (Vector.to_source defs))
+                        (Stream.from (Source.array defs))
                         (Stream.from (Source.zip_with (fun (matchee' : var) index ->
                                 let focusee = E.at pos matchee.vtyp (E.use matchee) in
                                 ( pos, matchee'
                                 , E.at pos matchee'.vtyp (E.Focus {focusee; index} )))
                             (Vector.to_source matchees'')
                             (Source.count 0)))
-                    |> Stream.into (Vector.sink ()) in
+                    |> Stream.into Sink.array in
                 let body = matcher' pos typ states matchees' pats acceptors in
                 let var = E.fresh_var typ None in
                 let node : State.node = Destructure body in
@@ -152,7 +152,8 @@ let matcher : Util.span -> T.t -> var -> clause Vector.t -> Automaton.t * var
     let acceptors = Vector.mapi (fun index {E.pat = _; body} ->
         let var = E.fresh_var body.typ (Some body) in
         let node : State.node = Final {index; body} in
-        let state = {State.var; refcount = 0; frees = None; defs = Vector.empty; node} in
+        let defs = Array.init 0 (fun _ -> failwith "unreachable") in
+        let state = {State.var; refcount = 0; frees = None; defs; node} in
         Automaton.add states var.name state;
         state
     ) clauses in
@@ -212,7 +213,7 @@ let emit : Util.span -> T.t -> Automaton.t -> Name.t -> expr
     let body = emit' pos codomain states shareds start in
     (* TODO: Warnings for redundant states (refcount = 0) *)
     {body with term = E.letrec (Stream.from (Source.seq (Name.Hashtbl.to_seq_values shareds))
-        |> Stream.into (Vector.sink ())) body}
+        |> Stream.into Sink.array) body}
 
 let expand_clauses : Util.span -> T.t -> expr -> clause Vector.t -> expr
 = fun pos codomain matchee clauses ->

@@ -17,7 +17,6 @@ module type EXPR = sig
         ; typ : Type.t
         ; pos : Util.span }
 
-    (* TODO: Make an Array1 module, then use it here: *)
     and t' =
         | Values of t array
         | Focus of {mutable focusee : t; index : int}
@@ -27,7 +26,7 @@ module type EXPR = sig
         | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t}
 
         | Let of {def : def; mutable body : t}
-        | Letrec of {defs : def Vector1.t; mutable body : t}
+        | Letrec of {defs : def Array1.t; mutable body : t}
         | LetType of {typedefs : Type.binding Vector1.t; mutable body : t}
         | Match of {mutable matchee : t; clauses : clause Vector.t}
 
@@ -40,7 +39,7 @@ module type EXPR = sig
             ; mutable body : t }
 
         | Record of (Name.t * t) array
-        | Where of {mutable base : t; fields : (Name.t * t) Vector1.t}
+        | Where of {mutable base : t; fields : (Name.t * t) Array1.t}
         | With of {mutable base : t; label : Name.t; mutable field : t}
         | Select of {mutable selectee : t; label : Name.t}
 
@@ -71,7 +70,7 @@ module type EXPR = sig
     val at : Util.span -> Type.t -> t' -> t
 
     (* TODO: Add more of these: *)
-    val letrec : def Vector.t -> t -> t'
+    val letrec : def Array.t -> t -> t'
     val use : var -> t'
 
     val map_children : (t -> t) -> t -> t

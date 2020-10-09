@@ -44,7 +44,7 @@ module rec Expr : FcSigs.EXPR
         | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t}
 
         | Let of {def : def; mutable body : t}
-        | Letrec of {defs : def Vector1.t; mutable body : t}
+        | Letrec of {defs : def Array1.t; mutable body : t}
         | LetType of {typedefs : Type.binding Vector1.t; mutable body : t}
         | Match of {mutable matchee : t; clauses : clause Vector.t}
 
@@ -57,7 +57,7 @@ module rec Expr : FcSigs.EXPR
             ; mutable body : t }
 
         | Record of (Name.t * t) array
-        | Where of {mutable base : t; fields : (Name.t * t) Vector1.t}
+        | Where of {mutable base : t; fields : (Name.t * t) Array1.t}
         | With of {mutable base : t; label : Name.t; mutable field : t}
         | Select of {mutable selectee : t; label : Name.t}
 
@@ -105,7 +105,7 @@ module rec Expr : FcSigs.EXPR
             PPrint.group(
                 PPrint.surround 4 1 (PPrint.string "letrec")
                     (PPrint.align (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1)
-                                        (Stmt.def_to_doc s) (Vector1.to_list defs)))
+                                        (Stmt.def_to_doc s) (Array1.to_list defs)))
                     (PPrint.string "in")
                 ^/^ to_doc s body)
         | LetType {typedefs; body} ->
@@ -170,7 +170,7 @@ module rec Expr : FcSigs.EXPR
                     PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
                     (fun (label, field) ->
                         PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
-                    (Vector1.to_list fields))
+                    (Array1.to_list fields))
         | With {base; label; field} ->
             PPrint.infix 4 1 (PPrint.string "with") (base_to_doc s base)
                 (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
@@ -227,7 +227,7 @@ module rec Expr : FcSigs.EXPR
 
     let at pos typ term = {term; pos; typ; parent = None}
 
-    let letrec defs body = match Vector1.of_vector defs with
+    let letrec defs body = match Array1.of_array defs with
         | Some defs -> Letrec {defs; body}
         | None -> body.term
 
@@ -270,11 +270,11 @@ module rec Expr : FcSigs.EXPR
                 else Let {def = (pos, def, expr'); body = body'}
 
             | Letrec {defs; body} ->
-                let defs' = Vector1.map (fun (pos, def, expr) -> (pos, def, f expr)) defs in
+                let defs' = Array1.map (fun (pos, def, expr) -> (pos, def, f expr)) defs in
                 let body' = f body in
                 if body' == body
                     && Stream.from (Source.zip_with (fun (_, _, expr') (_, _, expr) -> expr' == expr)
-                        (Vector1.to_source defs') (Vector1.to_source defs))
+                        (Array1.to_source defs') (Array1.to_source defs))
                     |> Stream.into (Sink.all ~where: Fun.id)
                 then term
                 else Letrec {defs = defs'; body = body'}
@@ -316,10 +316,10 @@ module rec Expr : FcSigs.EXPR
 
             | Where {base; fields} ->
                 let base' = f base in
-                let fields' = Vector1.map (fun (label, field) -> (label, f field)) fields in
+                let fields' = Array1.map (fun (label, field) -> (label, f field)) fields in
                 if base' == base
                     && Stream.from (Source.zip_with (fun (_, expr') (_, expr) -> expr' == expr)
-                        (Vector1.to_source fields') (Vector1.to_source fields))
+                        (Array1.to_source fields') (Array1.to_source fields))
                     |> Stream.into (Sink.all ~where: Fun.id)
                 then term
                 else Where {base = base'; fields = fields'}
