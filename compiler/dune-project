@@ -1,5 +1,5 @@
-(lang dune 2.0)
-(using menhir 2.0)
+(lang dune 2.7)
+(using menhir 2.1)
 
 (name broom)
 (version 0.1.0)
