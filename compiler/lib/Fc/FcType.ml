@@ -268,8 +268,6 @@ and Typ : FcTypeSigs.TYPE
 
     (* --- *)
 
-    let freshen (name, kind) = (Name.freshen name, kind)
-
     let sibling sr kind uv = match Uv.get sr uv with
         | Unassigned (_, _, level) -> Uv.make sr (Unassigned (Name.fresh (), kind, level))
         | Assigned _ -> failwith "unreachable"

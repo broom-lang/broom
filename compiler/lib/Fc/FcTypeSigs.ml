@@ -68,7 +68,6 @@ module type TYPE = sig
     val coercion_to_doc : subst -> coercion -> PPrint.document
     val template_to_doc : subst -> template -> PPrint.document
 
-    val freshen : binding -> binding
     val sibling : subst -> kind -> uv -> uv
 end
 
