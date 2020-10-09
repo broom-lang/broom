@@ -158,45 +158,61 @@ let matcher : Util.span -> T.t -> var -> clause Vector.t -> Automaton.t * var
     ) clauses in
     (states, matcher' pos typ states matchees pats acceptors)
 
-let rec emit' : Util.span -> T.t -> Automaton.t -> E.def CCVector.vector -> Name.t -> expr
+let rec emit' : Util.span -> T.t -> Automaton.t -> E.def Name.Hashtbl.t -> Name.t -> expr
 = fun pos codomain states shareds state_name ->
     let {State.var; refcount; frees; defs; node} = Automaton.find states state_name in
-    let body : expr = match node with
-        | Test {matchee; clauses} ->
-            E.at pos codomain
-                (Match { matchee = E.at pos matchee.vtyp (E.use matchee)
-                    ; clauses = clauses |> Vector.map (fun (pat, (target : var)) ->
-                        {E.pat; body = emit' pos codomain states shareds target.name}) })
-        | Destructure body -> emit' pos codomain states shareds body.name
-        | Final {index = _; body} -> body in
-    let body = {body with term = E.letrec defs body} in
-    if refcount = 1
-    then body
-    else begin
-        let pos = body.pos in
+    if Name.Hashtbl.mem shareds state_name then begin (* TODO: DRY: *)
         let frees = Option.get frees in
         let domain : T.t = Values (Vector.map (fun {E.name = _; vtyp} -> vtyp) frees) in
         let ftyp = T.Pi { universals = Vector.empty
             ; domain = Ior.Right { edomain = domain 
                 ; eff = EmptyRow } (* NOTE: effect does not matter any more... *)
             ; codomain } in
-        let param = E.fresh_var domain None in
-        let f : expr = E.at pos ftyp (Fn {universals = Vector.empty; param; body}) in
-        CCVector.push shareds (body.pos, var, f);
         let args = Stream.from (Vector.to_source frees)
             |> Stream.map (fun (var : var) -> E.at pos var.vtyp (E.use var))
             |> Stream.into (Sink.buffer (Vector.length frees)) in
         E.at pos codomain (App { callee = E.at pos ftyp (E.use var)
             ; universals = Vector.empty
             ; arg = E.at pos domain (Values args) })
+    end else begin
+        let body : expr = match node with
+            | Test {matchee; clauses} ->
+                E.at pos codomain
+                    (Match { matchee = E.at pos matchee.vtyp (E.use matchee)
+                        ; clauses = clauses |> Vector.map (fun (pat, (target : var)) ->
+                            {E.pat; body = emit' pos codomain states shareds target.name}) })
+            | Destructure body -> emit' pos codomain states shareds body.name
+            | Final {index = _; body} -> body in
+        let body = {body with term = E.letrec defs body} in
+        if refcount = 1
+        then body
+        else begin
+            let pos = body.pos in
+            let frees = Option.get frees in
+            let domain : T.t = Values (Vector.map (fun {E.name = _; vtyp} -> vtyp) frees) in
+            let ftyp = T.Pi { universals = Vector.empty
+                ; domain = Ior.Right { edomain = domain 
+                    ; eff = EmptyRow } (* NOTE: effect does not matter any more... *)
+                ; codomain } in
+            let param = E.fresh_var domain None in
+            let f : expr = E.at pos ftyp (Fn {universals = Vector.empty; param; body}) in
+            Name.Hashtbl.add shareds state_name (body.pos, var, f);
+            let args = Stream.from (Vector.to_source frees)
+                |> Stream.map (fun (var : var) -> E.at pos var.vtyp (E.use var))
+                |> Stream.into (Sink.buffer (Vector.length frees)) in
+            E.at pos codomain (App { callee = E.at pos ftyp (E.use var)
+                ; universals = Vector.empty
+                ; arg = E.at pos domain (Values args) })
+        end
     end
 
 let emit : Util.span -> T.t -> Automaton.t -> Name.t -> expr
 = fun pos codomain states start ->
-    let shareds = CCVector.create () in
+    let shareds = Name.Hashtbl.create 0 in
     let body = emit' pos codomain states shareds start in
     (* TODO: Warnings for redundant states (refcount = 0) *)
-    {body with term = E.letrec (Vector.build shareds) body}
+    {body with term = E.letrec (Stream.from (Source.seq (Name.Hashtbl.to_seq_values shareds))
+        |> Stream.into (Vector.sink ())) body}
 
 let expand_clauses : Util.span -> T.t -> expr -> clause Vector.t -> expr
 = fun pos codomain matchee clauses ->
