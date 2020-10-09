@@ -4,6 +4,8 @@ type 'a rref
 val log : unit -> log
 val transaction : log -> (unit -> 'a) -> 'a
 
+val fresh_id : log -> int
+
 val ref : 'a -> 'a rref
 val (!) : 'a rref -> 'a
 val set : log -> 'a rref -> 'a -> unit

@@ -131,7 +131,7 @@ let get_implementation (env : t) (((name, _), _) : T.ov) =
         | [] -> None
     in get env.scopes
 
-let uv (env : t) kind name = Fc.Uv.make env.tx_log (Unassigned (name, kind, env.level))
+let uv (env : t) kind = Fc.Uv.make env.tx_log kind env.level
 
 let get_uv (env : t) uv = Fc.Uv.get env.tx_log uv
 
@@ -145,7 +145,7 @@ let set_uv (env : t) pos uv v = match get_uv env uv with
     | Assigned _ -> failwith "compiler bug: tried to set Assigned uv"
 
 let sibling (env : t) kind uv = match get_uv env uv with
-    | Unassigned (_, _, level) -> Fc.Uv.make env.tx_log (Unassigned (Name.fresh (), kind, level))
+    | Unassigned (_, _, level) -> Fc.Uv.make env.tx_log kind level
     | Assigned _ -> failwith "unreachable"
 
 let set_expr (env : t) ref expr = TxRef.set env.tx_log ref expr
@@ -271,12 +271,12 @@ let push_arrow_skolems env universals domain codomain =
     , expose env substitution codomain )
 
 let instantiate_abs env existentials body =
-    let uvs = Vector1.map (fun kind -> uv env kind (Name.fresh ())) existentials in
+    let uvs = Vector1.map (uv env) existentials in
     let substitution = uvs |> Vector1.to_vector |> Vector.map (fun uv -> T.Uv uv) in
     (uvs, expose env substitution body)
 
 let instantiate_arrow env universals domain codomain =
-    let uvs = Vector.map (fun kind -> uv env kind (Name.fresh())) universals in
+    let uvs = Vector.map (uv env) universals in
     let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
     ( uvs
     , Ior.bimap (expose env substitution)
@@ -319,7 +319,7 @@ let find (env : t) pos name =
         | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
         | [] ->
             reportError env pos (Unbound name);
-            E.fresh_var (T.Uv (uv env (Uv (uv env T.aKind (Name.fresh ()))) (Name.fresh ()))) None in
+            E.fresh_var (T.Uv (uv env (Uv (uv env T.aKind)))) None in
     find env.scopes
 
 let find_rhs (env : t) pos name =

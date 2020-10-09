@@ -75,7 +75,7 @@ module type ENV = sig
 
     val get_implementation : t -> T.ov -> (Name.t * T.ov * uv) option
 
-    val uv : t -> T.kind -> Name.t -> uv
+    val uv : t -> T.kind -> uv
     val sibling : t -> T.kind -> uv -> uv
     val get_uv : t -> uv -> Fc.Uv.v
     val set_uv : t -> span -> uv -> Fc.Uv.v -> unit

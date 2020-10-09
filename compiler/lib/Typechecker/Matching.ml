@@ -53,7 +53,7 @@ let pull_row pos env label' typ : T.coercion option * T.t * T.t =
         | Some _ ->
             let template = T.WithL {base = Hole; label = label'; field = Hole} in
             Env.reportError env pos (Unusable (template, typ));
-            (None, Uv (Env.uv env T.aRow (Name.fresh ())), Uv (Env.uv env T.aType (Name.fresh ())))
+            (None, Uv (Env.uv env T.aRow), Uv (Env.uv env T.aType))
         | None -> failwith "TODO: pull_row None" in
     pull typ
 
@@ -92,8 +92,8 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                 let (uv, typ) = match template with
                     | T.ValuesL min_width -> failwith "cannot articulate tuple; width unknown"
                     | PiL _ ->
-                        let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind (Name.fresh ()))) in
-                        let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind (Name.fresh ()))) in
+                        let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind)) in
+                        let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind)) in
                         (uv, T.Pi { universals = Vector.of_list []
                                 ; domain = Right { edomain = T.Uv (sibling env dkind uv)
                                     ; eff = Uv (sibling env T.aRow uv) }
@@ -122,20 +122,20 @@ let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                 | Values typs when Vector.length typs >= min_length -> (Cf Fun.id, typ)
                 | _ ->
                     Env.reportError env pos (Unusable (template, typ));
-                    let typ : T.t = Uv (Env.uv env T.aType (Name.fresh ())) in
+                    let typ : T.t = Uv (Env.uv env T.aType) in
                     (Cf Fun.id, articulate_template typ template))
             | PiL _ -> (* TODO: arity check (or to `typeof`/`App`?) *)
                 (match typ with
                 | Pi _ -> (Cf Fun.id, typ)
                 | _ ->
                     Env.reportError env pos (Unusable (template, typ));
-                    let typ : T.t = Uv (Env.uv env T.aType (Name.fresh ())) in
+                    let typ : T.t = Uv (Env.uv env T.aType) in
                     (Cf Fun.id, articulate_template typ template))
             | ProxyL _ ->
                 (match typ with
                 | Proxy _ -> (Cf Fun.id, typ)
                 | _ ->
-                    let typ : T.t = Uv (Env.uv env T.aType (Name.fresh ())) in
+                    let typ : T.t = Uv (Env.uv env T.aType) in
                     (Cf Fun.id, articulate_template typ template))
             | WithL {base = _; label; field = _} ->
                 let (co, base, field) = pull_row pos env label typ in
@@ -196,8 +196,8 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                             T.Uv (sibling env (K.kindof_F pos env typ) uv)
                         ) typs))
                     | Pi _ ->
-                        let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind (Name.fresh ()))) in
-                        let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind (Name.fresh ()))) in
+                        let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind)) in
+                        let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind)) in
                         (uv, Pi { universals = Vector.of_list []
                                 ; domain = Right { edomain = T.Uv (sibling env dkind uv)
                                     ; eff = Uv (sibling env T.aRow uv) }

@@ -36,7 +36,7 @@ let rec kindof_F pos env : T.t -> T.kind = function
     | PromotedArray typs ->
         let el_kind = if Vector.length typs = 0
             then kindof_F pos env (Vector.get typs 0)
-            else Uv (Env.uv env T.aKind (Name.fresh ())) in
+            else Uv (Env.uv env T.aKind) in
         App (Prim Array, el_kind)
     | PromotedValues typs -> Values (Vector.map (kindof_F pos env) typs)
     | Values typs ->
@@ -122,7 +122,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
                     | Some eff -> check env T.aRow eff
                     | None -> EmptyRow in
                 (Both (idomain, {edomain; eff}), eff, env) in
-        let codomain_kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let codomain_kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
         let codomain = check env codomain_kind codomain in
         let universals = Vector.of_list !universals in
 

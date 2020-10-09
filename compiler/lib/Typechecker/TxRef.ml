@@ -2,12 +2,14 @@ module Log = struct
     type t =
         { mutable nesting : int
         ; refs : Obj.t ref CCVector.vector
-        ; vals : Obj.t CCVector.vector }
+        ; vals : Obj.t CCVector.vector
+        ; mutable id_counter : int }
 
     let log () =
         { nesting = 0
         ; refs = CCVector.create ()
-        ; vals = CCVector.create () }
+        ; vals = CCVector.create () 
+        ; id_counter = 0 }
 
     let record : t -> 'a ref -> unit = fun log ref ->
         let ref = Obj.magic ref in
@@ -55,6 +57,11 @@ type 'a rref = 'a ref
 
 let log = Log.log
 let transaction = Log.transaction
+
+let fresh_id (log : log) =
+    let id = log.id_counter in
+    log.id_counter <- id + 1;
+    id
 
 let ref = ref
 

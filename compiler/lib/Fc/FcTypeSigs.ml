@@ -67,8 +67,6 @@ module type TYPE = sig
     val to_doc : subst -> t -> PPrint.document
     val coercion_to_doc : subst -> coercion -> PPrint.document
     val template_to_doc : subst -> template -> PPrint.document
-
-    val sibling : subst -> kind -> uv -> uv
 end
 
 module type UV = sig
@@ -81,12 +79,12 @@ module type UV = sig
     type t
 
     type v =
-        | Unassigned of Name.t * kind * level
+        | Unassigned of int * kind * level
         | Assigned of typ
 
     val new_subst : unit -> subst
    
-    val make : subst -> v -> t
+    val make : subst -> kind -> level -> t
     val get : subst -> t -> v
     val set : subst -> t -> v -> unit
 end

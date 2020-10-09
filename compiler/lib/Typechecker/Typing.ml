@@ -48,7 +48,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
     | AExpr.Values exprs ->
         let exprs' = CCVector.create () in
         let typs = CCVector.create () in
-        let eff : T.t = Uv (Env.uv env T.aRow (Name.fresh ())) in
+        let eff : T.t = Uv (Env.uv env T.aRow) in
         exprs |> Vector.iter (fun expr ->
             let {TS.term = expr; eff = eff'} = typeof env expr in
             CCVector.push exprs' expr;
@@ -104,13 +104,13 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
     | AExpr.Record stmts -> typeof_record env expr.pos stmts
 
     | AExpr.Select (selectee, label) -> (* TODO: lacks-constraint: *)
-        let field : T.t = Uv (Env.uv env T.aType (Name.fresh ())) in
-        let typ : T.t = Record (With {base = Uv (Env.uv env T.aRow (Name.fresh ())); label; field}) in
+        let field : T.t = Uv (Env.uv env T.aType) in
+        let typ : T.t = Record (With {base = Uv (Env.uv env T.aRow); label; field}) in
         let {TS.term = selectee; eff} = check env typ selectee in
         {TS.term = FExpr.at expr.pos field (FExpr.select selectee label); eff}
 
     | AExpr.Ann (expr, typ) ->
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
         let typ = K.check env kind typ in
         (* FIXME: Abstract type generation effect *)
         check_abs env typ expr
@@ -289,7 +289,7 @@ and implement : Env.t -> T.ov Vector.t * T.t -> AExpr.t with_pos -> FExpr.t typi
 = fun env (existentials, typ) expr ->
     if Vector.length existentials > 0 then begin
         let axiom_bindings = Vector.map (fun (((name, kind), _) as param) ->
-            (Name.fresh (), param, Env.uv env kind name)
+            (Name.fresh (), param, Env.uv env kind)
         ) existentials in
         let env = Env.push_axioms env axiom_bindings in
         let {TS.term; eff} = check env typ expr in
@@ -310,7 +310,7 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
     | (T.Values typs, AExpr.Values exprs) ->
         let exprs' = CCVector.create () in
         let typs' = CCVector.create () in
-        let eff : T.t = Uv (Env.uv env T.aRow (Name.fresh ())) in
+        let eff : T.t = Uv (Env.uv env T.aRow) in
         (* FIXME: raises on length mismatch: *)
         Vector.iter2 (fun typ expr ->
             let {TS.term = expr; eff = eff'} = check env typ expr in
@@ -388,15 +388,15 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
         ({ppos = pat.pos; pterm = FExpr.ValuesP pats; ptyp}, (Vector.empty, ptyp), defs)
 
     | AExpr.Ann (pat, typ) ->
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
         let typ = K.check env kind typ in
         let (_, typ) as semiabs = Env.reabstract env typ in
         let (pat, defs) = check_pat env typ pat in
         (pat, semiabs, defs)
 
     | AExpr.Var name ->
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
-        let ptyp = T.Uv (Env.uv env kind (Name.fresh ())) in
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
+        let ptyp = T.Uv (Env.uv env kind) in
         let var = FExpr.var name ptyp None in
         ({ppos = pat.pos; pterm = VarP var; ptyp}, (Vector.empty, ptyp), Vector.singleton var)
 
@@ -415,10 +415,9 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
     | AExpr.Fn _ ->
         Env.reportError env pat.pos (NonPattern pat.v);
         (* TODO: Treat as `_` instead: *)
-        let name = Name.fresh () in
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
-        let ptyp = T.Uv (Env.uv env kind (Name.fresh ())) in
-        let var = FExpr.var name ptyp None in
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
+        let ptyp = T.Uv (Env.uv env kind) in
+        let var = FExpr.fresh_var ptyp None in
         ( {ppos = pat.pos; pterm = VarP var; ptyp}, (Vector.empty, ptyp)
         , Vector.singleton var )
 
@@ -444,14 +443,14 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
     | AExpr.Values pats when Vector.length pats = 1 -> check_pat env ptyp (Vector.get pats 0)
 
     | AExpr.Values pats ->
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
-        let typs = Vector.map (fun _ -> T.Uv (Env.uv env kind (Name.fresh ()))) pats in
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
+        let typs = Vector.map (fun _ -> T.Uv (Env.uv env kind)) pats in
         let _ = M.solving_unify pat.pos env ptyp (Values typs) in
         let (pats, defs) = check_pats env typs pats in
         ({ppos = pat.pos; pterm = FExpr.ValuesP pats; ptyp}, defs)
 
     | AExpr.Ann (pat', typ') ->
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep (Name.fresh ()))) in
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
         let typ' = K.check env kind typ' in
         let (_, typ') = Env.reabstract env typ' in
         let _ = M.solving_unify pat.pos env ptyp typ' in

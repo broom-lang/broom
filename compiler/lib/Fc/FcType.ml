@@ -10,7 +10,7 @@ module rec Uv : FcTypeSigs.UV
     include UnionFind.Make(TxRef.Store)
 
     type v =
-        | Unassigned of Name.t * kind * Typ.level
+        | Unassigned of int * kind * Typ.level
         | Assigned of typ
 
     type subst = v store
@@ -19,7 +19,8 @@ module rec Uv : FcTypeSigs.UV
 
     let new_subst = new_store
 
-    let make sr v = make sr v |> snd
+    let make sr kind level =
+        make sr (Unassigned (TxRef.fresh_id sr, kind, level)) |> snd
 
     let get sr uv = get sr uv |> snd
 
@@ -210,7 +211,7 @@ and Typ : FcTypeSigs.TYPE
             (PPrint.dot ^^ PPrint.blank 1 ^^ body)
 
     and uv_to_doc s uv = match Uv.get s uv with
-        | Unassigned (name, _, _) -> PPrint.qmark ^^ Name.to_doc name
+        | Unassigned (id, _, _) -> PPrint.qmark ^^ PPrint.string (Int.to_string id)
         | Assigned t -> to_doc s t
 
     let rec coercion_to_doc s = function
@@ -265,12 +266,6 @@ and Typ : FcTypeSigs.TYPE
     and base_co_to_doc s = function
         | (Trans _ | Comp _ | Inst _) as co -> PPrint.parens (coercion_to_doc s co)
         | co -> coercion_to_doc s co
-
-    (* --- *)
-
-    let sibling sr kind uv = match Uv.get sr uv with
-        | Unassigned (_, _, level) -> Uv.make sr (Unassigned (Name.fresh (), kind, level))
-        | Assigned _ -> failwith "unreachable"
 end
 
 (* HACK: OCaml these constants are 'unsafe' for OCaml recursive modules,
