@@ -12,20 +12,20 @@ type coercion = Type.coercion
 let (^^) = PPrint.(^^)
 let (^/^) = PPrint.(^/^)
 
-module rec Expr : FcSigs.EXPR
-    with module Type = Type
-    with type def = Stmt.def
-= struct
-    module Type = Type
+module rec Expr : sig
+    include FcSigs.EXPR
+        with module Type = Type
+        with type def = Stmt.def
 
-    let (!) = TxRef.(!)
-    let ref = TxRef.ref
+    val def_to_doc : Type.subst -> var -> PPrint.document
+end = struct
+    module Type = Type
 
     type def = Stmt.def
 
     and var =
-        { name : Name.t; vtyp : Type.t; mutable value : t option
-        ; uses : use CCVector.vector }
+        { id : int; name : Name.t; vtyp : Type.t
+        ; mutable value : t option; uses : use CCVector.vector }
 
     and use = {mutable expr : t option; mutable var : var}
 
@@ -78,7 +78,11 @@ module rec Expr : FcSigs.EXPR
         | VarP of var
         | WildP
 
-    let var_to_doc (var : var) = Name.to_doc var.name
+    let var_to_doc (var : var) =
+        Name.to_doc var.name ^^ PPrint.sharp ^^ PPrint.string (Int.to_string var.id)
+
+    let def_to_doc s (var : var) =
+        PPrint.infix 4 1 PPrint.colon (var_to_doc var) (Type.to_doc s var.vtyp)
 
     let use_to_doc (use : use) = var_to_doc use.var
 
@@ -95,7 +99,7 @@ module rec Expr : FcSigs.EXPR
                      ^^ (PPrint.surround_separate_map 4 0 PPrint.empty
                              (PPrint.blank 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
                              (Type.binding_to_doc s) (Vector.to_list universals)
-                         ^^ PPrint.blank 1 ^^ var_to_doc param)
+                         ^^ PPrint.blank 1 ^^ def_to_doc s param)
                      ^^ PPrint.blank 1 ^^ PPrint.string "->")
                 (to_doc s body)
         | Let {def; body} ->
@@ -153,7 +157,7 @@ module rec Expr : FcSigs.EXPR
                         ^^ PPrint.surround_separate 4 0 PPrint.empty
                             PPrint.langle (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
                             (Vector1.to_list (Vector1.map (Type.binding_to_doc s) existentials)
-                                @ [var_to_doc var])
+                                @ [def_to_doc s var])
                         ^^ PPrint.blank 1 ^^ PPrint.equals)
                     (to_doc s value)
                     (PPrint.string "in")
@@ -177,9 +181,9 @@ module rec Expr : FcSigs.EXPR
         | Select {selectee; label} ->
             PPrint.prefix 4 0 (selectee_to_doc s selectee) (PPrint.dot ^^ Name.to_doc label)
         | Proxy typ -> PPrint.brackets (Type.to_doc s typ)
-        | Use name -> use_to_doc name
+        | Use use -> use_to_doc use
         | Const c -> Const.to_doc c
-        | Patchable ref -> to_doc s !ref
+        | Patchable r -> TxRef.(to_doc s !r)
 
     and axiom_to_doc s (name, universals, l, r) = match Vector.to_list universals with
         | _ :: _ ->
@@ -217,11 +221,16 @@ module rec Expr : FcSigs.EXPR
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 (pat_to_doc s) (Vector.to_list pats)
         | ProxyP typ -> PPrint.brackets (Type.to_doc s typ)
-        | VarP var -> var_to_doc var
+        | VarP var -> PPrint.parens (def_to_doc s var)
         | WildP -> PPrint.underscore
         | ConstP c -> Const.to_doc c
 
-    let var name vtyp value = {name; vtyp; value; uses = CCVector.create ()}
+    let id_counter = ref 0
+
+    let var name vtyp value =
+        let id = !id_counter in
+        id_counter := id + 1;
+        {id; name; vtyp; value; uses = CCVector.create ()}
 
     let fresh_var vtyp value = var (Name.fresh ()) vtyp value
 
@@ -377,6 +386,7 @@ module rec Expr : FcSigs.EXPR
             | Proxy _ | Use _ | Const _ -> term
 
             | Patchable rref ->
+                let open TxRef in
                 let expr = !rref in
                 let expr' = f expr in
                 if expr' == expr then term else Patchable (ref expr') in
@@ -400,7 +410,7 @@ and Stmt : FcSigs.STMT
         | Expr of expr
 
     let def_to_doc s ((_, var, expr) : def) =
-        PPrint.infix 4 1 PPrint.equals (Expr.var_to_doc var) (Expr.to_doc s expr)
+        PPrint.infix 4 1 PPrint.equals (Expr.def_to_doc s var) (Expr.to_doc s expr)
 
     let to_doc s = function
         | Def def -> def_to_doc s def

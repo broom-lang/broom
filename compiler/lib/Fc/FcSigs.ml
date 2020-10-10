@@ -6,8 +6,8 @@ module type EXPR = sig
     type def
 
     and var =
-        { name : Name.t; vtyp : Type.t; mutable value : t option
-        ; uses : use CCVector.vector }
+        { id : int; name : Name.t; vtyp : Type.t
+        ; mutable value : t option; uses : use CCVector.vector }
 
     and use = {mutable expr : t option; mutable var : var}
 
