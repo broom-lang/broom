@@ -1,12 +1,13 @@
 type t =
     | Int
-    | Array
+    | Array | Cell
     | SingleRep (* = *) | Boxed
     | TypeIn | RowOf
 
 let to_string = function
     | Int -> "int"
     | Array -> "array"
+    | Cell -> "cell"
     | SingleRep -> "singleRep"
     | Boxed -> "boxed"
     | TypeIn -> "typeIn"

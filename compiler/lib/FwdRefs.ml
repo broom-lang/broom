@@ -1,9 +1,10 @@
 open Streaming
 
+module T = Fc.Type
 module E = Fc.Term.Expr
 module S = Fc.Term.Stmt
 
-module Make (IntHashtbl : Hashtbl.S with type key = int) (IntHashSet : CCHashSet.S with type elt = int) = struct
+module Make (IntHashtbl : Hashtbl.S with type key = int) = struct
 
 module Support = E.VarSet
 
@@ -246,18 +247,83 @@ let analyzeStmts stmts =
 
 (* --- *)
 
-module Initialized : sig
+type deref_state =
+    | Backward
+    | Forward of {cell : E.var}
+    | WasForward of {cell : E.var}
+
+module VarRefs : sig
     type t
 
     val create : int -> t
+    val add : t -> E.var -> unit
+    val initialize : t -> E.var -> unit
+    val find : t -> E.var -> deref_state
 end = struct
-    include IntHashSet
+    type t = deref_state option IntHashtbl.t
+
+    let create = IntHashtbl.create
+
+    let add vrs (var : E.var) = IntHashtbl.add vrs var.id None
+
+    let initialize vrs (var : E.var) =
+        let state =  match IntHashtbl.find vrs var.id with
+            | Some (Forward {cell}) -> WasForward {cell}
+            | Some Backward | None -> Backward
+            | Some (WasForward _) -> failwith "unreachable" in
+        IntHashtbl.replace vrs var.id (Some state)
+
+    let find vrs (var : E.var) = match IntHashtbl.find_opt vrs var.id with
+        | Some (Some vr) -> vr
+        | Some None ->
+            let typ = T.App (Prim Cell, var.vtyp) in
+            let vr = Forward {cell = E.fresh_var typ None} in
+            IntHashtbl.add vrs var.id (Some vr);
+            vr
+        | None -> Backward (* NOTE: nonrecursively bound *)
 end
 
 let emitStmts stmts shapes =
-    let ini = Initialized.create (Shapes.length shapes) in
+    let vrs = VarRefs.create (Shapes.length shapes) in
 
-    let emit expr = failwith "TODO" in
+    let rec emit (expr : E.t) = match expr.term with
+        | Letrec {defs; body} ->
+            defs |> Array1.iter (fun (_, var, _) -> VarRefs.add vrs var);
+            let (defs, defs_changed) = Stream.from (Array1.to_source defs)
+                |> Stream.map (fun ((pos, var, value) as def) ->
+                    let value' = emit value in
+                    VarRefs.initialize vrs var;
+                    if value' == value
+                    then (def, false)
+                    else ((pos, var, value'), true))
+                |> Stream.into (Sink.unzip
+                    (Sink.buffer (Array1.length defs))
+                    (Sink.fold (||) false)) in
+            let body' = emit body in
+            let cell_defs = Stream.from (Source.array defs)
+                |> Stream.flat_map (fun (pos, var, _) -> match VarRefs.find vrs var with
+                    | Backward -> Stream.empty
+                    | WasForward {cell} ->
+                        let arg = E.at pos (Values Vector.empty)
+                            (E.values (Array.init 0 (fun _ -> failwith "unreachable"))) in
+                        let value = E.at pos cell.vtyp (E.primapp CellNew Vector.empty arg) in
+                        Stream.single (pos, cell, value)
+                    | Forward _ -> failwith "unreachable")
+                |> Stream.into Sink.array in
+            if not defs_changed && body' == body && Array.length cell_defs = 0
+            then expr
+            else E.at expr.pos expr.typ (E.letrec (Array.append cell_defs defs) body)
+
+        | Use {var; expr = _} -> (match VarRefs.find vrs var with
+            | Forward {cell} ->
+                E.at expr.pos expr.typ (E.primapp CellGet (Vector.singleton expr.typ)
+                    (E.at expr.pos expr.typ (E.use cell)))
+            | Backward | WasForward _ -> expr)
+
+        | LetType _ | Axiom _ | Let _ | Match _
+        | Cast _ | Pack _ | Unpack _ | Fn _ | App _ | PrimApp _
+        | Values _ | Focus _ | Record _ | Where _ | With _ | Select _ | Proxy _ | Const _
+        | Patchable _ -> E.map_children emit expr in
 
     stmts |> Vector.map (function
         | S.Expr expr -> S.Expr (emit expr))
