@@ -8,6 +8,8 @@ module Make (IntHashtbl : Hashtbl.S with type key = int) = struct
 
 module Support = E.VarSet
 
+(* TODO: Add 'Fixing Leterc' optimizations *)
+
 type error = AccessUninitialized of Util.span * E.var * E.var
 
 let error_to_doc = function

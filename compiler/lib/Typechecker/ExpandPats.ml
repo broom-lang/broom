@@ -10,7 +10,19 @@ type clause = E.clause
 type stmt = Fc.Term.Stmt.t
 type def = Fc.Term.Stmt.def
 
-(* TODO: Integrate into typechecker (because of lacks constraints, later also GADTs) *)
+(* TODO: Roll back eager `letrec` generation,
+    `|Foo, 'Foo x|->` can be handled by substituting temp instead, i.e. `'Foo#0 x#1` *)
+(* TODO: `let {(x, y) = ...; ...}` should produce
+    `letrec t#42 = ...; x = t#42.0; y = t#42.1; in ...` or at least
+    `letrec t#42 = ...; x#43 = t#42.0; y#44 = t#42.1; x = x#43; y = y#44; in ...`  instead of the silly
+    `letrec
+        t#45 = letrec t#42 = ...; x#43 = t#42.0; y#44 = t#42.1; in (x#43, y#44) end
+        x = t#45.0; y = t#45.1;
+     in ...`
+     Flattening `letrec x = letrec y = ...; z = ...; in ...;` into
+     `letrec y = ...; z = ...; x = ...;` and eliding the final tuple when pattern was purely
+     destructuring (i.e. no or patterns, so no `match`es are generated) should suffice as MVP. *)
+(* TODO: Also deduplicate internal nodes as in Pettersson paper *)
 (* TODO: Don't even need nested patterns in Fc since this unnests them immediately (?) *)
 
 module State = struct
