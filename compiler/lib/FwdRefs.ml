@@ -10,6 +10,13 @@ module Support = E.VarSet
 
 type error = AccessUninitialized of Util.span * E.var * E.var
 
+let error_to_doc = function
+    | AccessUninitialized (pos, via, var) ->
+        let open PPrint in
+        string "Uninitialized variable" ^/^ Name.to_doc var.name
+            ^/^ string "accessed via" ^/^ Name.to_doc via.name
+            ^/^ string "at" ^/^ string (Util.span_to_string pos)
+
 type shape =
     | Values of shape Vector.t
     | Closure of Support.t * shape

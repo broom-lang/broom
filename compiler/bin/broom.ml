@@ -15,21 +15,29 @@ let eval_envs () = (Typer.Env.eval (), Fc.Eval.Env.eval ())
 let ep ((tenv, venv) as envs) stmt =
     try begin
         let ({TS.term = stmts; TS.eff}, typ, tenv) = Typer.check_stmt tenv stmt in
-        stmts |> Vector.iter (fun stmt ->
-            let doc = Env.document tenv Fc.Term.Stmt.to_doc stmt ^^ PPrint.semi
-                ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc typ
-                ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
-                |> PPrint.group in
-            PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc));
 
-        stmts |> Vector.fold (fun (tenv, venv) stmt ->
-            let res = Fc.Eval.run venv stmt in
-            let (chan, vdoc, venv) = match res with
-                | Ok (v, venv) -> (stdout, Fc.Eval.Value.to_doc v, venv)
-                | Error err -> (stderr, PPrint.string "Runtime error:" ^/^ Fc.Eval.Error.to_doc err, venv) in
-            PPrint.ToChannel.pretty 1.0 80 chan (PPrint.hardline ^^ vdoc);
-            (tenv, venv)
-        ) (tenv, venv)
+        match FwdRefs.convert stmts with
+        | Ok stmts ->
+            stmts |> Vector.iter (fun stmt ->
+                let doc = Env.document tenv Fc.Term.Stmt.to_doc stmt ^^ PPrint.semi
+                    ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc typ
+                    ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
+                    |> PPrint.group in
+                PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc));
+
+            stmts |> Vector.fold (fun (tenv, venv) stmt ->
+                let res = Fc.Eval.run venv stmt in
+                let (chan, vdoc, venv) = match res with
+                    | Ok (v, venv) -> (stdout, Fc.Eval.Value.to_doc v, venv)
+                    | Error err -> (stderr, PPrint.string "Runtime error:" ^/^ Fc.Eval.Error.to_doc err, venv) in
+                PPrint.ToChannel.pretty 1.0 80 chan (PPrint.hardline ^^ vdoc);
+                (tenv, venv)
+            ) (tenv, venv)
+        | Error errors ->
+            errors |> CCVector.iter (fun err ->
+                PPrint.ToChannel.pretty 1.0 80 stderr (FwdRefs.error_to_doc err));
+            flush stderr;
+            envs
     end with
     | Typer.TypeError.TypeError (pos, err) ->
         flush stdout;
