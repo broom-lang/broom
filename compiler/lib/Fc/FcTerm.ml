@@ -391,6 +391,14 @@ end = struct
                 let expr' = f expr in
                 if expr' == expr then term else Patchable (ref expr') in
         if term' == term then expr else {expr with term = term'}
+
+    module Var = struct
+        type t = var
+
+        let compare (var : var) (var' : var) = Int.compare var.id var'.id
+    end
+
+    module VarSet = Set.Make(Var)
 end
 
 and Stmt : FcSigs.STMT

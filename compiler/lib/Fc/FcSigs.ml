@@ -90,6 +90,8 @@ module type EXPR = sig
     val patchable : t TxRef.rref -> t'
 
     val map_children : (t -> t) -> t -> t
+
+    module VarSet : Set.S with type elt = var
 end
 
 module type STMT = sig
