@@ -236,10 +236,7 @@ end = struct
 
     let at pos typ term = {term; pos; typ; parent = None}
 
-    let values vals =
-        if Array.length vals = 1
-        then (Array.get vals 0).term
-        else (Values vals)
+    let values vals = Values vals
 
     let focus focusee index = Focus {focusee; index}
     let fn universals param body = Fn {universals; param; body}

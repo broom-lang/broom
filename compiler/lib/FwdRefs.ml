@@ -21,6 +21,7 @@ let error_to_doc = function
 
 type shape =
     | Values of shape Vector.t
+    | Record of shape Name.Map.t
     | Closure of Support.t * shape
     | Scalar
     | Unknown
@@ -34,6 +35,24 @@ let rec join shape shape' = match shape with
                 (Sink.fold (||) false))
         | Unknown -> (shape, false)
         | _ -> failwith "unreachable")
+
+    | Record fields -> (match shape' with
+        | Record fields' ->
+            Stream.from (Source.seq (Name.Map.to_seq fields'))
+                |> Stream.map (fun (label, shape') ->
+                    let (shape, changed) = match Name.Map.find_opt label fields with
+                        | Some shape -> join shape shape'
+                        | None -> (shape', true) in
+                    ((label, shape), changed))
+                |> Stream.into (Sink.unzip
+                    (Sink.fold
+                        (fun fields (label, shape) -> Name.Map.add label shape fields)
+                        fields
+                    |> Sink.map (fun fields -> Record fields))
+                    (Sink.fold (||) false))
+        | Unknown -> (shape, false)
+        | _ -> failwith "unreachable")
+
     | Closure (clovers, codomain) -> (match shape' with
         | Closure (clovers', codomain') ->
             let (codomain, codomain_changed) = join codomain codomain' in
@@ -41,10 +60,12 @@ let rec join shape shape' = match shape with
             , codomain_changed || not (Support.equal clovers clovers') )
         | Unknown -> (shape, false)
         | _ -> failwith "unreachable")
+
     | Scalar -> (match shape' with
         | Scalar -> (shape, false)
         | Unknown -> (shape, false)
         | _ -> failwith "unreachable")
+
     | Unknown -> (match shape' with
         | Unknown -> (shape, false)
         | shape' -> (shape', true))
@@ -55,10 +76,21 @@ let rec extract_shape_support = function
         |> Stream.into (Sink.unzip
             (Sink.map (fun shapes -> Values shapes) (Vector.sink ()))
             (Sink.fold Support.union Support.empty))
+
+    | Record fields -> Stream.from (Source.seq (Name.Map.to_seq fields))
+        |> Stream.map (fun (label, shape) ->
+            let (shape, support) = extract_shape_support shape in
+            ((label, shape), support))
+        |> Stream.into (Sink.unzip
+            (Sink.fold (fun m (k, v) -> Name.Map.add k v m) Name.Map.empty
+            |> Sink.map (fun fields -> Record fields))
+            (Sink.fold Support.union Support.empty))
+
     | Closure (clovers, codomain) ->
         let (codomain, codomain_support) = extract_shape_support codomain in
         ( Closure (Support.empty, codomain)
         , Support.union clovers codomain_support )
+
     | (Scalar | Unknown) as shape -> (shape, Support.empty)
 
 type state = Uninitialized | Initialized
@@ -163,7 +195,7 @@ let analyzeStmts stmts =
               | _ -> Unknown)
             , support )
 
-        | Fn {universals = _; param; body} ->
+        | Fn {universals = _; param = _; body} ->
             let env = Env.push_fn env ctx in
             let (codomain, support) = shapeof env ctx body in
             (match ctx with
@@ -230,6 +262,48 @@ let analyzeStmts stmts =
                     |> Stream.map access
                     |> Stream.into (Sink.fold Support.union immediate_support) )
             | Naming -> (shape, immediate_support))
+
+        | Record fields ->
+            Stream.from (Source.array fields)
+            |> Stream.map (fun (label, expr) ->
+                let (shape, support) = shapeof env ctx expr in
+                ((label, shape), support))
+            |> Stream.into (Sink.unzip
+                (Sink.fold (fun m (k, v) -> Name.Map.add k v m) Name.Map.empty
+                |> Sink.map (fun fields -> Record fields))
+                (Sink.fold Support.union Support.empty))
+
+        | Where {base; fields} ->
+            let (base_shape, support) = shapeof env ctx base in
+            let base_fields = match base_shape with
+                | Record fields -> fields
+                | _ -> Name.Map.empty in
+            Stream.from (Source.array (Array1.to_array fields))
+            |> Stream.map (fun (label, expr) ->
+                let (shape, support) = shapeof env ctx expr in
+                ((label, shape), support))
+            |> Stream.into (Sink.unzip
+                (Sink.fold (fun m (k, v) -> Name.Map.add k v m) base_fields
+                |> Sink.map (fun fields -> Record fields))
+                (Sink.fold Support.union support))
+
+        | With {base; label; field} ->
+            let (base_shape, base_support) = shapeof env ctx base in
+            let (field_shape, field_support) = shapeof env ctx field in
+            let base_fields = match base_shape with
+                | Record fields -> fields
+                | _ -> Name.Map.empty in
+            ( Record (Name.Map.add label field_shape base_fields)
+            , Support.union base_support field_support )
+
+        | Select {selectee; label} ->
+            let (selectee_shape, support) = shapeof env ctx selectee in
+            (match selectee_shape with
+            | Record fields ->
+                (match Name.Map.find_opt label fields with
+                | Some field_shape -> (field_shape, support)
+                | None -> (Unknown, support))
+            | _ -> (Unknown, support))
 
         | LetType {typedefs = _; body = expr} | Axiom {axioms = _; body = expr}
         | Cast {castee = expr; coercion = _} | Pack {existentials = _; impl = expr} ->
