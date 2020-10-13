@@ -22,7 +22,7 @@ let (!) = TxRef.(!)
 
 let kindof_prim : Prim.t -> T.kind = function
     | Int -> T.aType
-    | Array -> Pi {universals = Vector.empty; domain = Right {edomain = T.aType; eff = EmptyRow}
+    | Array | Cell -> Pi {universals = Vector.empty; domain = Right {edomain = T.aType; eff = EmptyRow}
         ; codomain = T.aType}
     | SingleRep -> T.aType
     | Boxed -> Prim SingleRep

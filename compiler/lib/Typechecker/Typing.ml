@@ -33,7 +33,19 @@ let primop_typ =
     function
     | IAdd | ISub | IMul ->
         ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
-        , T.EmptyRow, T.Prim Prim.Int )
+        , T.EmptyRow, T.Prim Int )
+    | CellNew -> (* forall a . () -> __cell a *)
+        ( Vector.singleton T.aType, Vector.empty
+        , T.EmptyRow, T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}) )
+    | CellInit -> (* forall a . (__cell a, a) -> () *)
+        ( Vector.singleton T.aType
+        , Vector.of_list [ T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType})
+            ; Bv {depth = 0; sibli = 0; kind = T.aType} ]
+        , T.EmptyRow, T.Values Vector.empty )
+    | CellGet -> (* forall a . __cell a -> a *)
+        ( Vector.singleton T.aType
+        , Vector.singleton (T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}))
+        , T.EmptyRow, Bv {depth = 0; sibli = 0; kind = T.aType} )
     | Int ->
         (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim Int))
     | Type ->
@@ -123,6 +135,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         let {FExpr.vtyp = typ; _} as var = Env.find env expr.pos name in
         { term = FExpr.at expr.pos typ (FExpr.use var)
         ; eff = EmptyRow }
+
+    | AExpr.Wild -> failwith "TODO: elaborate _ expression"
 
     | AExpr.Const c ->
         {term = FExpr.at expr.pos (const_typ c) (FExpr.const c); eff = EmptyRow}
@@ -400,6 +414,12 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
         let var = FExpr.var name ptyp None in
         ({ppos = pat.pos; pterm = VarP var; ptyp}, (Vector.empty, ptyp), Vector.singleton var)
 
+    | AExpr.Wild ->
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
+        let ptyp = T.Uv (Env.uv env kind) in
+        let var = FExpr.fresh_var ptyp None in
+        ({ppos = pat.pos; pterm = VarP var; ptyp}, (Vector.empty, ptyp), Vector.singleton var)
+
     | AExpr.Proxy carrie ->
         let {TS.typ = carrie; kind} = K.kindof env {pat with v = carrie} in
         let ptyp : T.t = Proxy carrie in
@@ -458,6 +478,10 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
 
     | AExpr.Var name ->
         let var = FExpr.var name ptyp None in
+        ({ppos = pat.pos; pterm = VarP var; ptyp}, Vector.singleton var)
+
+    | AExpr.Wild ->
+        let var = FExpr.fresh_var ptyp None in
         ({ppos = pat.pos; pterm = VarP var; ptyp}, Vector.singleton var)
 
     | AExpr.Proxy carrie ->
