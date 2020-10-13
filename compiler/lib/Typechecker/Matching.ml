@@ -215,6 +215,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                             , Uv (sibling env (K.kindof_F pos env arg) uv)) )
                     | Prim pt -> (uv, Prim pt)
 
+                    | Exists _ -> failwith "unreachable: `Exists` as template of `articulate`"
                     | Fn _ -> failwith "unreachable: `Fn` as template of `articulate`"
                     | Bv _ -> failwith "unreachable: `Bv` as template of `articulate`" in
                 Env.set_uv env pos uv (Assigned typ);
@@ -326,7 +327,8 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         let body = E.at pos codomain (E.app expr universals arg) in
                         let body = coerce_codomain body in
                         E.at pos super (E.fn universals' param body))
-                    ; residual = ResidualMonoid.skolemized (Vector.map snd universals') residual })
+                    ; residual = ResidualMonoid.skolemized (Vector.map snd universals') residual }
+                | _ -> failwith "TODO: not fully explicit pi <:")
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
                 {coercion = Cf Fun.id; residual = empty})
@@ -431,14 +433,16 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     | T.App (callee, arg) ->
                         let (param, substitution, max_uv_level) = match arg with
                             | T.Ov ((name, kind), level) ->
-                                (kind, Name.Map.singleton name 0, level) in
+                                (kind, Name.Map.singleton name 0, level)
+                            | _ -> failwith "non-ov HKT arg" in
                         let+ (uv, callee) = leftmost_callee max_uv_level callee in
                         (uv, T.Fn (param, Env.close env substitution callee)) (* OPTIMIZE: `close`ing repeatedly *)
                     | Uv uv -> (match Env.get_uv env uv with
                         | Unassigned (_, _, level) ->
                             check_uv_assignee pos env uv level max_uv_level carrie;
                             Some (uv, carrie)
-                        | Assigned typ -> leftmost_callee max_uv_level typ) in
+                        | Assigned typ -> leftmost_callee max_uv_level typ)
+                    | _ -> failwith "FIXME: leftmost_callee" in
                 (match leftmost_callee Int.max_int carrie' with
                 | Some (uv, impl) ->
                     Env.set_uv env pos uv (Assigned impl);
@@ -572,6 +576,12 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
 = fun pos env typ typ' ->
     let open ResidualMonoid in
     match (typ, typ') with
+    | (Exists (existentials, body), _) -> (match typ' with
+        | Exists (existentials', body') -> failwith "TODO: unify existentials"
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
+
     | (Uv uv, typ') | (typ', Uv uv) ->
         (match Env.get_uv env uv with
         | Unassigned (_, kind, level) ->

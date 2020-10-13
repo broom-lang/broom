@@ -363,15 +363,21 @@ and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typ
     | _ -> failwith "unreachable: non-Pi `typ` in `check_fn`"
 
 and check_clause env domain codomain {params; body} =
-    let ((pat, body_env), eff) = match (domain, params) with
-        | (Ior.Left idomain, Left iparam) -> (check_param env idomain iparam, T.EmptyRow)
-        | (Right {edomain; eff}, Right eparam) -> (check_param env edomain eparam, eff)
-        | (Both (idomain, {edomain; eff}), Both (eparam, iparam)) ->
-            let (ipat, env) = check_param env idomain iparam in
-            let (epat, env) = check_param env edomain eparam in
-            ( ({FExpr.ppos = ipat.ppos; pterm = FExpr.ValuesP (Vector.of_list [ipat; epat])
-                ; ptyp = Values (Vector.of_list [ipat.ptyp; epat.ptyp])}, env)
-            , eff ) in
+    let ((pat, body_env), eff) = match domain with
+        | Ior.Left idomain -> (match params with
+            | Left iparam -> (check_param env idomain iparam, T.EmptyRow)
+            | _ -> failwith "expected just implicit param")
+        | Right {edomain; eff} -> (match params with
+            | Right eparam -> (check_param env edomain eparam, eff)
+            | _ -> failwith "expected just explicit param")
+        | Both (idomain, {edomain; eff}) -> (match params with
+            | Both (eparam, iparam) ->
+                let (ipat, env) = check_param env idomain iparam in
+                let (epat, env) = check_param env edomain eparam in
+                ( ({FExpr.ppos = ipat.ppos; pterm = FExpr.ValuesP (Vector.of_list [ipat; epat])
+                    ; ptyp = Values (Vector.of_list [ipat.ptyp; epat.ptyp])}, env)
+                , eff )
+            | _ -> failwith "expected both implicit and explicit param") in
     let {TS.term = body; eff = body_eff} = check_abs body_env codomain body in
     ignore (M.solving_unify body.pos env body_eff eff);
     {pat; body}

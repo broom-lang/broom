@@ -319,9 +319,8 @@ let analyzeStmts stmts =
 
         let env = Env.empty in
         stmts |> Vector.iter (function
-            | S.Expr expr ->
-                let (shape, support) = shapeof env Escaping expr in
-                ())
+            | S.Def _ -> failwith "TODO: S.Def FwdRefs analysis"
+            | S.Expr expr -> ignore (shapeof env Escaping expr))
     done;
 
     if CCVector.length errors = 0
@@ -409,7 +408,8 @@ let emitStmts stmts shapes =
         | Patchable _ -> E.map_children emit expr in
 
     stmts |> Vector.map (function
-        | S.Expr expr -> S.Expr (emit expr))
+        | S.Def _ -> failwith "TODO: S.Def FwdRefs emission"
+        | Expr expr -> S.Expr (emit expr))
 
 (* --- *)
 

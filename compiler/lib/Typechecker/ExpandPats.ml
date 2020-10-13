@@ -90,7 +90,8 @@ let rec matcher' : Util.span -> T.t -> Automaton.t -> var Vector.t -> pat Matrix
                 |> Sink.premap (fun ((pat : pat), (matchee : var)) -> match pat.pterm with
                     | VarP var ->
                         let use = E.at pat.ppos matchee.vtyp (E.use matchee) in
-                        (pat.ppos, var, use))
+                        (pat.ppos, var, use)
+                    | _ -> failwith "unreachable")
                 |> Sink.prefilter (fun (pat, _) -> is_named pat))) in
         if coli < Vector.length matchees then begin
             let row = Stream.concat
@@ -144,6 +145,11 @@ let rec matcher' : Util.span -> T.t -> Automaton.t -> var Vector.t -> pat Matrix
                 let node : State.node = Destructure body in
                 Automaton.add states var.name {var; refcount = 1; frees = Some matchees; defs; node};
                 var
+
+            | Fn _ | Prim (Cell | SingleRep | Boxed | TypeIn | RowOf)
+            | EmptyRow | PromotedValues _ | PromotedArray _ -> failwith "unreachable"
+
+            | _ -> failwith "TODO: pattern expansion"
 
         end else begin
             let acceptor = Vector.get acceptors 0 in

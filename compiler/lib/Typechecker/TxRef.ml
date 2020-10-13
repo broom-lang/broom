@@ -27,7 +27,7 @@ module Log = struct
                 ref := v;
                 loop refs vals memento (i - 1)
             end in
-        fun ({nesting = _; refs; vals} as log) memento ->
+        fun ({nesting = _; refs; vals; id_counter = _} as log) memento ->
             loop refs vals memento (CCVector.length refs - 1);
             CCVector.truncate refs memento;
             CCVector.truncate vals memento;
