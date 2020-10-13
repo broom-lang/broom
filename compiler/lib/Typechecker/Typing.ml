@@ -346,7 +346,7 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
 
 and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typing
 = fun env typ pos clauses -> match typ with
-    | T.Pi {universals; domain; codomain} ->
+    | T.Pi {universals = _; domain; codomain} -> (* FIXME: use `universals` *)
         (match Vector1.of_vector clauses with
         | Some clauses ->
             let clauses = Vector1.map (check_clause env domain codomain) clauses in

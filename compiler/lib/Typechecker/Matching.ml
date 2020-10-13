@@ -165,11 +165,11 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
     let articulate pos env uv_typ template = match uv_typ with
         | T.Uv uv ->
             (match Env.get_uv env uv with
-            | Unassigned (_, kind, level) ->
+            | Unassigned (_, _, level) -> (* FIXME: use uv kind *)
                 let (uv, typ) = match template with
                     | T.Uv uv' ->
                         (match Env.get_uv env uv' with
-                        | Unassigned (_, kind', level') ->
+                        | Unassigned (_, _, level') -> (* FIXME: use uv kind *)
                             if level' <= level
                             then (uv, template)
                             else (uv', uv_typ)
@@ -583,7 +583,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
 
     | (Uv uv, typ') | (typ', Uv uv) ->
         (match Env.get_uv env uv with
-        | Unassigned (_, kind, level) ->
+        | Unassigned (_, _, level) -> (* FIXME: use uv kind *)
             check_uv_assignee pos env uv level Int.max_int typ';
             Env.set_uv env pos uv (Assigned typ');
             {coercion = None; residual = empty}
