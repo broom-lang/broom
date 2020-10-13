@@ -81,14 +81,6 @@ module Env = struct
             | None -> failwith "compiler bug: tried to set unbound variable at runtime")
 end
 
-module Error = struct
-    type t = |
-
-    let to_doc _ = failwith "unreachable"
-end
-
-exception RuntimeException of Error.t
-
 let match_failure () = failwith "compiler bug: pattern matching failed at runtime"
 
 (* The interpreter is written in CPS because control effects need first-class continuations: *)
@@ -180,7 +172,8 @@ let rec eval : Env.t -> cont -> expr -> Value.t
                 end else match_failure () in
             eval env (eval_clause 0) matchee)
 
-    | Let {def = (_, {name; _}, vexpr); body} ->
+    | Let {def = (_, {name; _}, vexpr); body}
+    | Unpack {existentials = _; var = {name; _}; value = vexpr; body} ->
         let k v = 
             let env = Env.push env in
             Env.add env name v;
@@ -199,14 +192,9 @@ let rec eval : Env.t -> cont -> expr -> Value.t
             end else eval env k body in
         define 0
 
-    | Unpack {existentials = _; var = {name; _}; value = vexpr; body} ->
-        let k v =
-            let env = Env.push env in
-            eval env k body in
-        eval env k vexpr
-
     | LetType {body = expr; _} | Axiom {body = expr; _}
     | Cast {castee = expr; _} | Pack {impl = expr; _} -> eval env k expr
+
     | Use {var = {name; _}; _} -> k (Env.find env name)
 
     | Record fields -> (match Array.length fields with
@@ -275,16 +263,13 @@ and bind : Env.t -> cont' -> cont' -> pat -> cont
 
 (* # Public API Functions *)
 
-let interpret env expr =
-    try Ok (eval env exit expr)
-    with RuntimeException err -> Error err
+let interpret env expr = eval env exit expr
 
 let run env (stmt : stmt) =
     let env = Env.copy env in
-    try match stmt with
-        | Def (_, {name; _}, expr) ->
-            let k v = Env.add env name v; v in
-            Ok (eval env k expr, env)
-        | Expr expr -> Ok (eval env exit expr, env)
-    with RuntimeException err -> Error err
+    match stmt with
+    | Def (_, {name; _}, expr) ->
+        let k v = Env.add env name v; v in
+        eval env k expr, env
+    | Expr expr -> (eval env exit expr, env)
 

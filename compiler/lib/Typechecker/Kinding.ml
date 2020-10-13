@@ -50,8 +50,10 @@ let rec kindof_F pos env : T.t -> T.kind = function
     | App (callee, arg) ->
         (match kindof_F pos env callee with
         | Pi {universals; domain = Right {edomain = domain; eff = _}; codomain} ->
-            check_F pos env domain arg;
-            codomain
+            if Vector.length universals = 0 then begin
+                check_F pos env domain arg;
+                codomain
+            end else failwith "TODO: universals in type application"
         | _ -> failwith "unreachable: invalid type application in `kindof_F`.")
     | Ov ((_, kind), _) -> kind
     | Bv {kind; _} -> kind
@@ -79,7 +81,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
         | Pi {domain; codomain} -> elab_pi env domain codomain
 
         | Record decls ->
-            let {TS.typ = row; kind = row_kind} = elab_row env typ.pos decls in
+            let {TS.typ = row; kind = _} = elab_row env typ.pos decls in
             let typ' = T.Record row in
             {typ = typ'; kind = kindof_F typ.pos env typ'}
 
@@ -189,14 +191,14 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
             let (pat, semiabs, defs') = C.elaborate_pat env {expr with v = Values Vector.empty} in
             (pat, semiabs, defs', {expr with v = AType.Values Vector.empty})
 
-    and elaborate_field env (defs, (existentials, lhs), rhs) decl =
+    and elaborate_field env (defs, (_, lhs), rhs) decl =
         let pos = AStmt.pos decl in
         ignore (
             if Vector.length defs > 0
             then Env.find_rhst env pos (Vector.get defs 0).FExpr.name
             else begin
                 let {TS.typ = rhs; kind = _} as kinding = kindof env rhs in
-                let (existentials', rhs) = reabstract env rhs in
+                let (_, rhs) = reabstract env rhs in
                 ignore (M.solving_subtype pos env rhs lhs);
                 kinding
             end) in
@@ -253,7 +255,7 @@ and eval env typ =
 
     and apply callee arg = match callee with
         (* NOTE: Arg kinds do not need to be checked here because all `App`s originate from functors: *)
-        | T.Fn (param, body) -> eval (Env.expose env (Vector.singleton arg) body)
+        | T.Fn (_, body) -> eval (Env.expose env (Vector.singleton arg) body)
         | Ov _ | App _ | Prim _ -> Some (T.App (callee, arg), None)
         | Uv uv ->
             (match Env.get_uv env uv with

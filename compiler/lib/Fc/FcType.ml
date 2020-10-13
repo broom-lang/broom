@@ -182,9 +182,6 @@ and Typ : FcTypeSigs.TYPE
             | Unassigned _ -> uv_to_doc s uv)
         | arg -> to_doc s arg
 
-    and field_to_doc s {label; typ} =
-        PPrint.string label ^/^ PPrint.colon ^/^ to_doc s typ
-
     and template_to_doc s = function
         | ValuesL length ->
             PPrint.surround_separate 4 0 (PPrint.parens PPrint.empty)

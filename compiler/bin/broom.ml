@@ -26,11 +26,8 @@ let ep ((tenv, venv) as envs) stmt =
                 PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc));
 
             stmts |> Vector.fold (fun (tenv, venv) stmt ->
-                let res = Fc.Eval.run venv stmt in
-                let (chan, vdoc, venv) = match res with
-                    | Ok (v, venv) -> (stdout, Fc.Eval.Value.to_doc v, venv)
-                    | Error err -> (stderr, PPrint.string "Runtime error:" ^/^ Fc.Eval.Error.to_doc err, venv) in
-                PPrint.ToChannel.pretty 1.0 80 chan (PPrint.hardline ^^ vdoc);
+                let (v, venv) = Fc.Eval.run venv stmt in
+                PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ Fc.Eval.Value.to_doc v);
                 (tenv, venv)
             ) (tenv, venv)
         | Error errors ->

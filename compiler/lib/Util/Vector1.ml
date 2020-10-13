@@ -22,7 +22,6 @@ let append = Vector.append
 
 let fold = Vector.fold
 let foldi = Vector.foldi
-let for_all = Vector.for_all
 let exists = Vector.exists
 let map = Vector.map
 let mapi = Vector.mapi

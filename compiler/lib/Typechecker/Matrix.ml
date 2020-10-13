@@ -53,7 +53,7 @@ let set_row rowi r {elems; width; height} =
         else raise (Invalid_argument "set_row: wrong row length")
     end else raise (Invalid_argument "set_row: row index out of bounds")
 
-let col coli {elems; width; height} =
+let col coli {elems; width; height = _} =
     if 0 <= coli && coli < width
     then Some (Streaming.Source.make
         ~init: (fun () -> coli)
@@ -105,7 +105,7 @@ let remove_col coli {elems; width; height} =
         |> Vector.of_array_unsafe
     ; width = width - 1; height }
 
-let select_rows rowis ({elems; width; height = _} as mat) = 
+let select_rows rowis ({elems = _; width; height = _} as mat) = 
     let height = IntSet.cardinal rowis in
     { elems = Stream.from (Source.seq (IntSet.to_seq rowis))
         |> Stream.flat_map (fun rowi -> match row rowi mat with

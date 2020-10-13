@@ -1,5 +1,4 @@
 let (^^) = PPrint.(^^)
-let (^/^) = PPrint.(^/^)
 
 (* FIXME: Printing syntax differs from parsed syntax: *)
 

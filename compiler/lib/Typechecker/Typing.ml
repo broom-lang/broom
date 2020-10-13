@@ -89,7 +89,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
             let (uvs, domain, codomain) = Env.instantiate_arrow env universals domain codomain in
             let arg = check_args env expr.pos domain callee_eff args in
             (match codomain with
-            | Exists (existentials, codomain) -> failwith "TODO: existential codomain in App"
+            | Exists _ -> failwith "TODO: existential codomain in App"
             | _ ->
                 { term = FExpr.at expr.pos codomain
                     (FExpr.app (coerce callee) (Vector.map (fun uv -> T.Uv uv) uvs) arg)
@@ -128,7 +128,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         check_abs env typ expr
 
     | AExpr.Proxy typ ->
-        let {TS.typ; kind} = K.kindof env {v = typ; pos = expr.pos} in
+        let {TS.typ; kind = _} = K.kindof env {v = typ; pos = expr.pos} in
         {term = FExpr.at expr.pos (Proxy typ) (FExpr.proxy typ); eff = EmptyRow}
 
     | AExpr.Var name ->
@@ -145,14 +145,14 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typing
 = fun env pos clauses -> match Vector.to_seq clauses () with
     | Cons (clause, clauses') ->
         let (env, universals) = Env.push_existential env in
-        let (domain, {TS.term = clause; eff}) = elaborate_clause env clause in
+        let (domain, {TS.term = clause; eff = _}) = elaborate_clause env clause in
         let codomain = clause.FExpr.body.typ in
         let clauses' = Seq.map (check_clause env domain codomain) clauses' in
         let clauses = Vector.of_seq (fun () -> Seq.Cons (clause, clauses')) in
         let domain_t : T.t = match domain with
             | Ior.Left idomain -> idomain
             | Right {T.edomain; eff = _} -> edomain
-            | Both (idomain, {edomain; eff}) ->
+            | Both (idomain, {edomain; eff = _}) ->
                 Values (Vector.of_list [idomain; edomain]) in
         let param = FExpr.fresh_var domain_t None in
         let matchee = FExpr.at pos param.vtyp (FExpr.use param) in
@@ -174,20 +174,21 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typing
     | Nil -> failwith "TODO: clauseless fn"
 
 and elaborate_clause env {params; body} =
-    let (pat, domain, env) = match params with
+    let (pat, domain, eff, env) = match params with
         | Left ipat ->
             let (param, domain, env) = elaborate_param env ipat in
-            (param, Ior.Left domain, env)
+            (param, Ior.Left domain, T.EmptyRow, env)
         | Right epat ->
             let (param, domain, env) = elaborate_param env epat in
-            (param, Right domain, env)
+            (param, Right domain, T.Uv (Env.uv env T.aRow), env)
         | Both (ipat, epat) ->
             let (iparam, idomain, env) = elaborate_param env ipat in
             let (eparam, edomain, env) = elaborate_param env epat in
             ( { FExpr.ppos = iparam.ppos; pterm = FExpr.ValuesP (Vector.of_list [iparam; eparam])
                 ; ptyp = Values (Vector.of_list [iparam.ptyp; eparam.ptyp]) }
-            , Both (idomain, edomain), env ) in
-    let {TS.term = body; eff} = typeof env body in
+            , Both (idomain, edomain), T.Uv (Env.uv env T.aRow), env ) in
+    let {TS.term = body; eff = body_eff} = typeof env body in
+    ignore (M.solving_unify body.pos env eff body_eff);
     let domain = match domain with
         | Left idomain ->
             ignore (M.solving_unify body.pos env eff EmptyRow);
@@ -223,7 +224,7 @@ and check_args env pos domain eff args =
             let earg = check_arg env pos edomain eff earg in
             FExpr.at iarg.pos (Values (Vector.of_list [iarg.typ; earg.typ]))
                 (FExpr.values (Array.of_list [iarg; earg]))
-        | Right earg -> failwith "TODO: Both App args"
+        | Right _ -> failwith "TODO: Both App args"
         | Left _ -> failwith "missing explicit arg")
 
 (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
@@ -277,9 +278,9 @@ and elaborate_field env (pat, ((defs, semiabs, _), stmt)) : FStmt.def Stream.t =
         | AStmt.Expr {v = Var _; pos = _} -> failwith "TODO: field punning"
         | AStmt.Expr _ -> failwith "unreachable: invalid field in `elaborate_field`" in
     ignore (M.solving_unify expr.pos env eff EmptyRow);
-    elaborate_def env defs pos pat expr
+    elaborate_def defs pos pat expr
 
-and elaborate_def env defs pos (pat : FExpr.pat) expr : FStmt.def Stream.t =
+and elaborate_def defs pos (pat : FExpr.pat) expr : FStmt.def Stream.t =
     let typ : T.t = Values (Vector.map (fun (var : var) -> var.vtyp) defs) in
     let body = FExpr.at pat.ppos typ (FExpr.values (Stream.from (Vector.to_source defs)
         |> Stream.map (fun (var : var) -> FExpr.at pat.ppos var.vtyp (FExpr.use var))
@@ -302,7 +303,7 @@ and check_abs : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
 and implement : Env.t -> T.ov Vector.t * T.t -> AExpr.t with_pos -> FExpr.t typing
 = fun env (existentials, typ) expr ->
     if Vector.length existentials > 0 then begin
-        let axiom_bindings = Vector.map (fun (((name, kind), _) as param) ->
+        let axiom_bindings = Vector.map (fun (((_, kind), _) as param) ->
             (Name.fresh (), param, Env.uv env kind)
         ) existentials in
         let env = Env.push_axioms env axiom_bindings in
@@ -427,7 +428,7 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
         ({ppos = pat.pos; pterm = VarP var; ptyp}, (Vector.empty, ptyp), Vector.singleton var)
 
     | AExpr.Proxy carrie ->
-        let {TS.typ = carrie; kind} = K.kindof env {pat with v = carrie} in
+        let {TS.typ = carrie; kind = _} = K.kindof env {pat with v = carrie} in
         let ptyp : T.t = Proxy carrie in
         ({ppos = pat.pos; pterm = ProxyP carrie; ptyp}, (Vector.empty, ptyp), Vector.empty)
 
@@ -491,7 +492,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
         ({ppos = pat.pos; pterm = VarP var; ptyp}, Vector.singleton var)
 
     | AExpr.Proxy carrie ->
-        let {TS.typ = carrie; kind} = K.kindof env {pat with v = carrie} in
+        let {TS.typ = carrie; kind = _} = K.kindof env {pat with v = carrie} in
         let _ = M.solving_unify pat.pos env ptyp (Proxy carrie) in
         ({ppos = pat.pos; pterm = ProxyP carrie; ptyp}, Vector.empty)
 
@@ -515,7 +516,7 @@ let check_stmt : Env.t -> AStmt.t -> FStmt.t Vector.t typing * T.t * Env.t
     | AStmt.Def (pos, pat, expr) ->
         let {term = expr; eff} : FExpr.t typing = typeof env expr in
         let (pat, vars) = check_pat env expr.typ pat in
-        let defs = elaborate_def env vars pos pat expr
+        let defs = elaborate_def vars pos pat expr
             |> Stream.map (fun def -> FStmt.Def def)
             |> Stream.into (Vector.sink ()) in
         ({term = defs; eff}, expr.typ, Vector.fold Env.push_val env vars)

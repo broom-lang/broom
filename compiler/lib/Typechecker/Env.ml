@@ -304,11 +304,11 @@ let find (env : t) pos name =
         | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some (var, binding) ->
                 (match !binding with
-                | WhiteT ((existentials, lhs), rhs) ->
+                | WhiteT ((_, lhs), rhs) ->
                     let env = {env with scopes} in
                     TxRef.set env.tx_log binding GreyT;
                     let {TS.typ = rhs; kind = _} as kinding = K.kindof env rhs in
-                    let (existentials', rhs) = reabstract env rhs in
+                    let (_, rhs) = reabstract env rhs in
                     ignore (M.solving_subtype pos env rhs lhs);
                     TxRef.set env.tx_log binding (BlackT kinding);
                     TxRef.set env.tx_log fields (var :: !fields)
@@ -341,7 +341,7 @@ let find_rhs (env : t) pos name =
                 | Grey -> failwith "compiler bug: `Env.find_rlhs` found `Grey` binding"
                 | Black typing -> typing)
             | None -> find scopes')
-        | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
+        | Row (bindings, _) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some _ -> failwith "compiler bug: `Env.find_rhs` found `Row` scope."
             | None -> find scopes')
         | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
@@ -356,17 +356,17 @@ let find_rhst (env : t) pos name =
             if name' = name
             then failwith "compiler bug: `Env.find_rhst` found `Val` scope"
             else find scopes
-        | Vals (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some (typ, binding) -> failwith "compiler bug: `Env.find_rhst` found `Vals` scope."
+        | Vals (bindings, _) :: scopes' -> (match Name.Map.find_opt name bindings with
+            | Some _ -> failwith "compiler bug: `Env.find_rhst` found `Vals` scope."
             | None -> find scopes')
         | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some (var, binding) ->
                 (match !binding with
-                | WhiteT ((existentials, lhs), rhs) ->
+                | WhiteT ((_, lhs), rhs) ->
                     let env = {env with scopes} in
                     TxRef.set env.tx_log binding GreyT;
                     let {TS.typ = rhs; kind = _} as kinding = K.kindof env rhs in
-                    let (existentials', rhs) = reabstract env rhs in
+                    let (_, rhs) = reabstract env rhs in
                     ignore (M.solving_subtype pos env rhs lhs);
                     TxRef.set env.tx_log binding (BlackT kinding);
                     TxRef.set env.tx_log fields (var :: !fields);

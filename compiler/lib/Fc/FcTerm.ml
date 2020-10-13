@@ -6,9 +6,6 @@ module Make (Type : FcSigs.TYPE) : FcSigs.TERM
 
 module Type = Type
 
-type typ = Type.typ
-type coercion = Type.coercion
-
 let (^^) = PPrint.(^^)
 let (^/^) = PPrint.(^/^)
 

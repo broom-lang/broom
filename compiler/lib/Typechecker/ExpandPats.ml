@@ -1,13 +1,11 @@
 open Streaming
 
-type 'a with_pos = 'a Util.with_pos
 module T = Fc.Type
 module E = Fc.Term.Expr
 type var = E.var
 type expr = E.t
 type pat = E.pat
 type clause = E.clause
-type stmt = Fc.Term.Stmt.t
 type def = Fc.Term.Stmt.def
 
 (* TODO: Roll back eager `letrec` generation,
@@ -181,7 +179,7 @@ let rec emit' : Util.span -> T.t -> Automaton.t -> E.def Name.Hashtbl.t -> Name.
     let {State.var; refcount; frees; defs; node} = Automaton.find states state_name in
     if Name.Hashtbl.mem shareds state_name then begin (* TODO: DRY: *)
         let frees = Option.get frees in
-        let domain : T.t = Values (Vector.map (fun {E.name = _; vtyp} -> vtyp) frees) in
+        let domain : T.t = Values (Vector.map (fun (fv : var) -> fv.vtyp) frees) in
         let ftyp = T.Pi { universals = Vector.empty
             ; domain = Ior.Right { edomain = domain 
                 ; eff = EmptyRow } (* NOTE: effect does not matter any more... *)
@@ -206,7 +204,7 @@ let rec emit' : Util.span -> T.t -> Automaton.t -> E.def Name.Hashtbl.t -> Name.
         else begin
             let pos = body.pos in
             let frees = Option.get frees in
-            let domain : T.t = Values (Vector.map (fun {E.name = _; vtyp} -> vtyp) frees) in
+            let domain : T.t = Values (Vector.map (fun (fv : var) -> fv.vtyp) frees) in
             let ftyp = T.Pi { universals = Vector.empty
                 ; domain = Ior.Right { edomain = domain 
                     ; eff = EmptyRow } (* NOTE: effect does not matter any more... *)

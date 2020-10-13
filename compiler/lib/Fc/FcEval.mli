@@ -20,12 +20,6 @@ module Value : sig
     val to_doc : t -> PPrint.document
 end
 
-module Error : sig
-    type t
-
-    val to_doc : t -> PPrint.document
-end
-
-val interpret : Env.t -> expr -> (Value.t, Error.t) Result.t
-val run : Env.t -> stmt -> (Value.t * Env.t, Error.t) Result.t
+val interpret : Env.t -> expr -> Value.t
+val run : Env.t -> stmt -> Value.t * Env.t
 

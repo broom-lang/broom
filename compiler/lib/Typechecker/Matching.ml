@@ -22,7 +22,6 @@ type env = Env.t
 type span = Util.span
 type coercer = TyperSigs.coercer
 
-type 'a with_pos = 'a Util.with_pos
 type 'a matching = {coercion : 'a; residual : Residual.t option}
 
 let ref = TxRef.ref
@@ -57,7 +56,7 @@ let pull_row pos env label' typ : T.coercion option * T.t * T.t =
         | None -> failwith "TODO: pull_row None" in
     pull typ
 
-let rec match_rows : Util.span -> Env.t -> T.t -> T.t -> Name.t CCVector.ro_vector
+let match_rows : Util.span -> Env.t -> T.t -> T.t -> Name.t CCVector.ro_vector
     * T.coercion option * T.t * T.t CCVector.ro_vector
     * T.t * T.t CCVector.ro_vector * T.coercion option
 = fun pos env row row' ->
@@ -83,14 +82,14 @@ let rec match_rows : Util.span -> Env.t -> T.t -> T.t -> Name.t CCVector.ro_vect
 
 (* # Focalization *)
 
-let rec focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
+let focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
 = fun pos env typ template ->
     let articulate_template uv_typ template = match uv_typ with
         | T.Uv uv ->
             (match Env.get_uv env uv with
             | Unassigned _ ->
                 let (uv, typ) = match template with
-                    | T.ValuesL min_width -> failwith "cannot articulate tuple; width unknown"
+                    | T.ValuesL _ -> failwith "cannot articulate tuple; width unknown"
                     | PiL _ ->
                         let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind)) in
                         let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind)) in
@@ -576,8 +575,8 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
 = fun pos env typ typ' ->
     let open ResidualMonoid in
     match (typ, typ') with
-    | (Exists (existentials, body), _) -> (match typ' with
-        | Exists (existentials', body') -> failwith "TODO: unify existentials"
+    | (Exists _, _) -> (match typ' with
+        | Exists _ -> failwith "TODO: unify existentials"
         | _ ->
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})
@@ -653,9 +652,8 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})
 
-    | (Pi {universals; domain; codomain}, _) -> (match typ' with
-        | Pi {universals = universals'; domain = domain'; codomain = codomain'} ->
-            failwith "TODO: unify Pi"
+    | (Pi _, _) -> (match typ' with
+        | Pi _ -> failwith "TODO: unify Pi"
         | _ ->
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})
@@ -767,7 +765,7 @@ and check_uv_assignee pos env uv level max_uv_level typ =
         | PromotedArray typs -> Vector.iter check typs
         | PromotedValues typs -> Vector.iter check typs
         | Values typs -> Vector.iter check typs
-        | Pi {universals; domain; codomain} ->
+        | Pi {universals = _; domain; codomain} ->
             Ior.biter check (fun {T.edomain; eff} -> check edomain; check eff) domain;
             check codomain
         | Record row -> check row
