@@ -12,6 +12,7 @@ module Value = struct
         | Fn of ((t -> t) -> t -> t)
         | Record of t Name.Map.t
         | Proxy
+        | Cell of t option ref
         | Int of int
 
     let rec to_doc = function
@@ -26,6 +27,9 @@ module Value = struct
                 PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
                 field_to_doc (Name.Map.bindings fields)
         | Proxy -> PPrint.brackets PPrint.underscore
+        | Cell v -> PPrint.sharp ^^ PPrint.angles (PPrint.string "cell" ^/^ match !v with
+            | Some contents -> to_doc contents
+            | None -> PPrint.string "uninitialized")
         | Int n -> PPrint.string (Int.to_string n)
 end
 
@@ -140,6 +144,25 @@ let rec eval : Env.t -> cont -> expr -> Value.t
                         | _ -> failwith "unreachable"))
                     | _ -> failwith "compiler bug: invalid primop args")
                 | _ -> failwith "compiler bug: invalid primop arg")
+            | CellNew -> Cell (ref None)
+            | CellInit -> (match arg with
+                | Tuple args when Vector.length args = 2 ->
+                    (match (Vector.get args 0, Vector.get args 1) with
+                    | (Cell cell, v) -> (match !cell with
+                        | None -> cell := Some v; Tuple Vector.empty
+                        | Some _ ->
+                            failwith "compiler bug: cellInit on initialized cell at runtime")
+                    | _ -> failwith "compiler bug: cellInit on non-cell at runtime")
+                | _ -> failwith "compiler bug: invalid primop arg")
+            | CellGet -> (match arg with
+                | Tuple args when Vector.length args = 1 ->
+                    (match Vector.get args 0 with
+                    | Cell cell -> (match !cell with
+                        | Some v -> v
+                        | None ->
+                            failwith "compiler bug: cellGet on uninitialized cell at runtime")
+                    | _ -> failwith "compiler bug: cellGet on non-cell at runtime")
+                | _ -> failwith "compiler bug: invalid primop arg")
             | Int | Type -> k Proxy in
         eval env apply_primop arg
 
@@ -248,6 +271,7 @@ and bind : Env.t -> cont' -> cont' -> pat -> cont
     | ConstP (Int n) -> (match v with
         | Int n' when n' = n -> then_k ()
         | _ -> else_k ())
+    | ValuesP _ | ProxyP _ -> failwith "unreachable"
 
 (* # Public API Functions *)
 
