@@ -91,8 +91,8 @@ let focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
                 let (uv, typ) = match template with
                     | T.ValuesL _ -> failwith "cannot articulate tuple; width unknown"
                     | PiL _ ->
-                        let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind)) in
-                        let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind)) in
+                        let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
+                        let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
                         (uv, T.Pi { universals = Vector.of_list []
                                 ; domain = Right { edomain = T.Uv (sibling env dkind uv)
                                     ; eff = Uv (sibling env T.aRow uv) }
@@ -195,8 +195,8 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                             T.Uv (sibling env (K.kindof_F pos env typ) uv)
                         ) typs))
                     | Pi _ ->
-                        let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind)) in
-                        let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.aKind)) in
+                        let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
+                        let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
                         (uv, Pi { universals = Vector.of_list []
                                 ; domain = Right { edomain = T.Uv (sibling env dkind uv)
                                     ; eff = Uv (sibling env T.aRow uv) }
