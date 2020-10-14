@@ -33,3 +33,9 @@ module FwdRefs = FwdRefs.Make (Hashtbl.Make (struct
     let hash = Hashtbl.hash
 end))
 
+module Cps = struct
+    include Cps
+
+    module Convert = CpsConvert
+end
+

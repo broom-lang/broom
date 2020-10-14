@@ -88,7 +88,10 @@ let ltp filename =
 
             match FwdRefs.convert program with
             | Ok program ->
-                PPrint.ToChannel.pretty 1.0 80 stdout (Typer.Env.document tenv Fc.Program.to_doc program)
+                PPrint.ToChannel.pretty 1.0 80 stdout (Typer.Env.document tenv Fc.Program.to_doc program);
+
+                let program = Cps.Convert.convert (Fc.Type.Prim Int) program in
+                PPrint.ToChannel.pretty 1.0 80 stdout (Cps.Program.to_doc program);
             | Error errors ->
                 errors |> CCVector.iter (fun err ->
                     PPrint.ToChannel.pretty 1.0 80 stderr (FwdRefs.error_to_doc err));
