@@ -48,6 +48,9 @@ let to_source xs =
         else None
     )
 
+let to_array xs =
+    Stream.from (to_source xs) |> Stream.into (Sink.buffer (length xs))
+
 let build vec = of_array_unsafe (CCVector.to_array vec)
 
 let sink () = Sink.make

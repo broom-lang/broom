@@ -38,6 +38,7 @@ module type STMT = sig
 
     val pos : t -> Util.span
 
+    val def_to_doc : def -> PPrint.document
     val to_doc : t -> PPrint.document
 end
 

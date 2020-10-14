@@ -26,14 +26,14 @@ module type TYPING = sig
     type env
 
     val typeof : env -> Ast.Term.Expr.t with_pos -> Fc.Term.Expr.t typing
+    val check : env -> typ -> Ast.Term.Expr.t with_pos -> Fc.Term.Expr.t typing
     val implement : env -> (Fc.Type.ov Vector.t * Fc.Type.t) -> Ast.Term.Expr.t with_pos
         -> Fc.Term.Expr.t typing
-    val deftype : env -> Ast.Term.Stmt.def -> Fc.Term.Expr.def typing
+    val check_defs : env -> Ast.Term.Stmt.def Vector.t -> Fc.Term.Stmt.def Vector.t * env
     val check_stmt : env -> Ast.Term.Stmt.t -> Fc.Term.Stmt.t Vector.t typing * Fc.Type.t * env
     (* HACK: (?): *)
     val elaborate_pat : env -> Ast.Term.Expr.pat with_pos ->
         Fc.Term.Expr.pat * (Fc.Type.ov Vector.t * Fc.Type.t) * Fc.Term.Expr.var Vector.t
-    val lookup : span -> env -> Name.t -> Fc.Term.Expr.var
 end
 
 module type MATCHING = sig
@@ -51,6 +51,7 @@ module type ENV = sig
 
     type t
 
+    val program : unit -> t
     val interactive : unit -> t
     val eval : unit -> t
 
@@ -74,6 +75,8 @@ module type ENV = sig
     val generate : t -> T.binding -> T.binding * T.level
 
     val get_implementation : t -> T.ov -> (Name.t * T.ov * uv) option
+
+    val type_fns : t -> T.binding Vector.t
 
     val uv : t -> T.kind -> uv
     val sibling : t -> T.kind -> uv -> uv

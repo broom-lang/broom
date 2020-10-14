@@ -1,6 +1,3 @@
-type expr = Fc.Term.Expr.t
-type stmt = Fc.Term.Stmt.t
-
 module Env : sig
     type t
 
@@ -20,6 +17,5 @@ module Value : sig
     val to_doc : t -> PPrint.document
 end
 
-val interpret : Env.t -> expr -> Value.t
-val run : Env.t -> stmt -> Value.t * Env.t
+val run : Env.t -> Fc.Program.t -> Value.t * Env.t
 

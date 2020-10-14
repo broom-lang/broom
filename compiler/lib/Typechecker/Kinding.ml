@@ -34,7 +34,7 @@ let kindof_prim : Prim.t -> T.kind = function
 let rec kindof_F pos env : T.t -> T.kind = function
     | Exists (_, body) -> kindof_F pos env body
     | PromotedArray typs ->
-        let el_kind = if Vector.length typs = 0
+        let el_kind = if Vector.length typs > 0
             then kindof_F pos env (Vector.get typs 0)
             else Uv (Env.uv env T.aKind) in
         App (Prim Array, el_kind)

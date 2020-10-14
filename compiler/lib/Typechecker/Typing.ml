@@ -227,6 +227,39 @@ and check_args env pos domain eff args =
         | Right _ -> failwith "TODO: Both App args"
         | Left _ -> failwith "missing explicit arg")
 
+and check_defs env defs =
+    let pats = CCVector.create () in
+    let bindings = CCVector.create () in
+    let _ = Vector.fold (fun env def ->
+        let (pat, semiabs, vars, expr) = analyze_def env def in
+        CCVector.push pats pat;
+        CCVector.push bindings (vars, semiabs, expr);
+        Vector.fold Env.push_val env vars
+    ) env defs in
+    let pats = Vector.build pats in
+    (* OPTIMIZE: Fields accumulator is not needed here, as `_` shows: *)
+    let (env, _) = Env.push_rec env (CCVector.freeze bindings) in
+
+    ( Source.zip (Source.seq (CCVector.to_seq bindings))
+            (Vector.to_source defs)
+        |> Source.zip (Vector.to_source pats)
+        |> Stream.from
+        |> Stream.flat_map (elaborate_def env)
+        |> Stream.into (Vector.sink ())
+    , env )
+
+and analyze_def env (_, pat, expr) =
+    let (pat, semiabs, defs) = elaborate_pat env pat in
+    (pat, semiabs, defs, expr)
+
+and elaborate_def env (pat, ((vars, semiabs, _), (pos, _, expr))) : FStmt.def Stream.t =
+    let {TS.term = expr; eff} =
+        if Vector.length vars > 0
+        then Env.find_rhs env pos (Vector.get vars 0).name
+        else implement env semiabs expr in
+    ignore (M.solving_unify expr.pos env eff EmptyRow);
+    expand_def vars pos pat expr
+
 (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
 and typeof_record env pos stmts =
     let pats = CCVector.create () in
@@ -259,9 +292,7 @@ and typeof_record env pos stmts =
     {term = FExpr.at pos typ (FExpr.letrec stmts term); eff = T.EmptyRow}
 
 and analyze_field env = function
-    | AStmt.Def (_, pat, expr) ->
-        let (pat, semiabs, defs) = elaborate_pat env pat in
-        (pat, semiabs, defs, expr)
+    | AStmt.Def def -> analyze_def env def
     | AStmt.Expr {v = Var _; pos = _} -> failwith "TODO: field punning"
     | AStmt.Expr expr as field ->
         Env.reportError env expr.pos (Err.InvalidField field);
@@ -278,9 +309,9 @@ and elaborate_field env (pat, ((defs, semiabs, _), stmt)) : FStmt.def Stream.t =
         | AStmt.Expr {v = Var _; pos = _} -> failwith "TODO: field punning"
         | AStmt.Expr _ -> failwith "unreachable: invalid field in `elaborate_field`" in
     ignore (M.solving_unify expr.pos env eff EmptyRow);
-    elaborate_def defs pos pat expr
+    expand_def defs pos pat expr
 
-and elaborate_def defs pos (pat : FExpr.pat) expr : FStmt.def Stream.t =
+and expand_def defs pos (pat : FExpr.pat) expr : FStmt.def Stream.t =
     let typ : T.t = Values (Vector.map (fun (var : var) -> var.vtyp) defs) in
     let body = FExpr.at pat.ppos typ (FExpr.values (Stream.from (Vector.to_source defs)
         |> Stream.map (fun (var : var) -> FExpr.at pat.ppos var.vtyp (FExpr.use var))
@@ -509,14 +540,12 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
 
 (* # Statement Typing *)
 
-let deftype _ = failwith "TODO: deftype"
-
 let check_stmt : Env.t -> AStmt.t -> FStmt.t Vector.t typing * T.t * Env.t
 = fun env -> function
     | AStmt.Def (pos, pat, expr) ->
         let {term = expr; eff} : FExpr.t typing = typeof env expr in
         let (pat, vars) = check_pat env expr.typ pat in
-        let defs = elaborate_def vars pos pat expr
+        let defs = expand_def vars pos pat expr
             |> Stream.map (fun def -> FStmt.Def def)
             |> Stream.into (Vector.sink ()) in
         ({term = defs; eff}, expr.typ, Vector.fold Env.push_val env vars)
@@ -524,10 +553,6 @@ let check_stmt : Env.t -> AStmt.t -> FStmt.t Vector.t typing * T.t * Env.t
     | AStmt.Expr expr ->
         let typing = typeof env expr in
         ({typing with term = Vector.singleton (FStmt.Expr typing.term)}, typing.term.typ, env)
-
-(* # Lookup *)
-
-let lookup _ = failwith "TODO: lookup"
 
 end
 

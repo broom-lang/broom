@@ -125,3 +125,15 @@ module type TERM = sig
         with type var = Expr.var)
 end
 
+module type PROGRAM = sig
+    module Type : TYPE
+    module Term : TERM
+
+    type t =
+        { type_fns : Type.binding Vector.t
+        ; defs : Term.Stmt.def Vector.t
+        ; main : Term.Expr.t }
+
+    val to_doc : Type.subst -> t -> PPrint.document
+end
+

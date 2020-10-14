@@ -174,9 +174,10 @@ end = struct
         access (fun state -> Instant state) scopes
 end
 
-let analyzeStmts stmts =
+let analyze expr =
     let errors = CCVector.create () in
     let report_error = CCVector.push errors in
+    let env = Env.empty in
     let shapes = Shapes.create () in
     let changed = ref true in (* true so that we get at least one iteration *)
 
@@ -316,11 +317,7 @@ let analyzeStmts stmts =
     while !changed do
         changed := false;
         CCVector.clear errors;
-
-        let env = Env.empty in
-        stmts |> Vector.iter (function
-            | S.Def _ -> failwith "TODO: S.Def FwdRefs analysis"
-            | S.Expr expr -> ignore (shapeof env Escaping expr))
+        ignore (shapeof env Escaping expr)
     done;
 
     if CCVector.length errors = 0
@@ -365,7 +362,7 @@ end = struct
         | None -> Backward (* NOTE: nonrecursively bound *)
 end
 
-let emitStmts stmts shapes =
+let emit shapes expr =
     let vrs = VarRefs.create (Shapes.length shapes) in
 
     let rec emit (expr : E.t) = match expr.term with
@@ -406,16 +403,23 @@ let emitStmts stmts shapes =
         | Cast _ | Pack _ | Unpack _ | Fn _ | App _ | PrimApp _
         | Values _ | Focus _ | Record _ | Where _ | With _ | Select _ | Proxy _ | Const _
         | Patchable _ -> E.map_children emit expr in
-
-    stmts |> Vector.map (function
-        | S.Def _ -> failwith "TODO: S.Def FwdRefs emission"
-        | Expr expr -> S.Expr (emit expr))
+    emit expr
 
 (* --- *)
 
-let convert stmts =
-    analyzeStmts stmts
-    |> Result.map (emitStmts stmts)
+let convert ({type_fns; defs; main} : Fc.Program.t) =
+    let start_pos =
+        if Vector.length defs > 0
+        then (let (pos, _, _) = Vector.get defs 0 in pos)
+        else main.pos in
+    let pos = (fst start_pos, snd main.pos) in
+    let expr = E.at pos main.typ (E.letrec (Vector.to_array defs) main) in
+    analyze expr |> Result.map (fun shapes ->
+        match emit shapes expr with
+        | {E.term = Letrec {defs; body}; _} ->
+            {Fc.Program.type_fns; defs = Vector.of_array_unsafe (Array1.to_array defs); main = body}
+        | expr -> {Fc.Program.type_fns; defs = Vector.empty; main = expr}
+    )
 
 end
 

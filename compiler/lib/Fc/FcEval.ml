@@ -265,11 +265,13 @@ and bind : Env.t -> cont' -> cont' -> pat -> cont
 
 let interpret env expr = eval env exit expr
 
-let run env (stmt : stmt) =
+let run env ({type_fns = _; defs; main} : Fc.Program.t) =
     let env = Env.copy env in
-    match stmt with
-    | Def (_, {name; _}, expr) ->
-        let k v = Env.add env name v; v in
-        eval env k expr, env
-    | Expr expr -> (eval env exit expr, env)
+    let pos =
+        ( (if Vector.length defs > 0
+          then (let (pos, _, _) = Vector.get defs 0 in fst pos)
+          else fst main.pos)
+        , snd main.pos ) in
+    let expr = Expr.at pos main.typ (Expr.letrec (Vector.to_array defs) main) in
+    (eval env exit expr, env)
 

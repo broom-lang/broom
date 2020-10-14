@@ -12,24 +12,30 @@ let prompt = name ^ "> "
 
 let eval_envs () = (Typer.Env.eval (), Fc.Eval.Env.eval ())
 
-let ep ((tenv, venv) as envs) stmt =
+let ep ((tenv, venv) as envs) (stmt : Ast.Term.Stmt.t) =
     try begin
-        let ({TS.term = stmts; TS.eff}, typ, tenv) = Typer.check_stmt tenv stmt in
+        let (program, eff) : Fc.Program.t * Fc.Type.t = match stmt with
+            | Def def ->
+                ( Typer.check_program tenv (Vector.singleton def)
+                    {v = Values Vector.empty; pos = Ast.Term.Stmt.pos stmt}
+                , Fc.Type.EmptyRow )
+            | Expr expr ->
+                let {TS.term; eff} = Typer.typeof tenv expr in
+                ( { type_fns = Env.type_fns tenv (* FIXME: gets all typedefs ever seen *)
+                  ; defs = Vector.empty; main = term }
+                , eff ) in
 
-        match FwdRefs.convert stmts with
-        | Ok stmts ->
-            stmts |> Vector.iter (fun stmt ->
-                let doc = Env.document tenv Fc.Term.Stmt.to_doc stmt ^^ PPrint.semi
-                    ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc typ
-                    ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
-                    |> PPrint.group in
-                PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc));
+        match FwdRefs.convert program with
+        | Ok program ->
+            let doc = Env.document tenv Fc.Program.to_doc program
+                ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc program.main.typ
+                ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
+                |> PPrint.group in
+            PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc);
 
-            stmts |> Vector.fold (fun (tenv, venv) stmt ->
-                let (v, venv) = Fc.Eval.run venv stmt in
-                PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ Fc.Eval.Value.to_doc v);
-                (tenv, venv)
-            ) (tenv, venv)
+            let (v, venv) = Fc.Eval.run venv program in
+            PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ Fc.Eval.Value.to_doc v);
+            (tenv, venv)
         | Error errors ->
             errors |> CCVector.iter (fun err ->
                 PPrint.ToChannel.pretty 1.0 80 stderr (FwdRefs.error_to_doc err));
@@ -45,7 +51,7 @@ let ep ((tenv, venv) as envs) stmt =
 
 let rep envs input =
     try
-        let stmts = Parse.parse_commands_exn input in
+        let stmts = Parse.parse_stmts_exn input in
         let doc = PPrint.group (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) Ast.Term.Stmt.to_doc
             (Vector.to_list stmts)) in
         PPrint.ToChannel.pretty 1.0 80 stdout doc;
@@ -58,6 +64,44 @@ let rep envs input =
         | SedlexMenhir.ParseError err ->
             prerr_endline (SedlexMenhir.string_of_ParseError err);
             envs
+
+let ltp filename =
+    let input = open_in filename in
+    let tenv = Typer.Env.program () in
+    Fun.protect (fun () ->
+        let input = Sedlexing.Utf8.from_channel input in
+        try
+            let defs = Parse.parse_defs_exn input in
+            let doc = PPrint.group (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) Ast.Term.Stmt.def_to_doc
+                (Vector.to_list defs)) in
+            PPrint.ToChannel.pretty 1.0 80 stdout doc;
+            print_newline ();
+
+            let program =
+                let pos = match Vector1.of_vector defs with
+                    | Some defs -> let ((_, pos), _, _) = (Vector1.get defs 0) in pos
+                    | None -> {Lexing.pos_fname = filename; pos_lnum = 1; pos_bol = 0; pos_cnum = 0} in
+                let pos = (pos, pos) in 
+                Typer.check_program tenv defs
+                {pos; v = App ( {pos; v = Var (Name.of_string "main")}
+                    , Right {pos; v = Values Vector.empty} )} in
+
+            match FwdRefs.convert program with
+            | Ok program ->
+                PPrint.ToChannel.pretty 1.0 80 stdout (Typer.Env.document tenv Fc.Program.to_doc program)
+            | Error errors ->
+                errors |> CCVector.iter (fun err ->
+                    PPrint.ToChannel.pretty 1.0 80 stderr (FwdRefs.error_to_doc err));
+                flush stderr
+        with
+        | SedlexMenhir.ParseError err ->
+            prerr_endline (SedlexMenhir.string_of_ParseError err);
+        | Typer.TypeError.TypeError (pos, err) ->
+            flush stdout;
+            PPrint.ToChannel.pretty 1.0 80 stderr
+                (PPrint.hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ PPrint.hardline);
+            flush stderr;
+    ) ~finally: (fun () -> close_in input)
 
 let lep envs filename =
     let input = open_in filename in
@@ -76,6 +120,15 @@ let repl () =
     print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
     loop (Typer.Env.interactive (), Fc.Eval.Env.interactive ())
 
+let check_t =
+    let doc = "typecheck program" in
+    let filename =
+        let docv = "FILENAME" in
+        let doc = "entry point filename" in
+        C.Arg.(value & pos 0 string "" & info [] ~docv ~doc) in
+    ( C.Term.(const ignore $ (const ltp $ filename))
+    , C.Term.info "check" ~doc )
+
 let eval_t =
     let doc = "evaluate statements" in
     let expr =
@@ -87,11 +140,12 @@ let eval_t =
 
 let script_t =
     let doc = "evaluate statements from file" in
-    let expr =
+    let filename =
         let docv = "FILENAME" in
         let doc = "the file to evaluate" in
         C.Arg.(value & pos 0 string "" & info [] ~docv ~doc) in
-    (C.Term.(const ignore $ (const lep $ (const eval_envs $ const ()) $ expr)), C.Term.info "script" ~doc)
+    ( C.Term.(const ignore $ (const lep $ (const eval_envs $ const ()) $ filename))
+    , C.Term.info "script" ~doc )
 
 let repl_t =
     let doc = "interactive evaluation loop" in
@@ -103,5 +157,5 @@ let default_t =
 
 let () =
     Hashtbl.randomize ();
-    C.Term.exit (C.Term.eval_choice default_t [repl_t; script_t; eval_t])
+    C.Term.exit (C.Term.eval_choice default_t [check_t; repl_t; script_t; eval_t])
 

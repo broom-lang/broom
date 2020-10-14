@@ -53,6 +53,12 @@ let raiseError pos error = raise (TypeError.TypeError (pos, error))
 
 let initial_level = 1
 
+let program () =
+    { errorHandler = raiseError
+    ; tx_log = Fc.Uv.new_subst ()
+    ; scopes = [Hoisting (ref [], initial_level)]
+    ; level = initial_level }
+
 let interactive () =
     { errorHandler = raiseError
     ; tx_log = Fc.Uv.new_subst ()
@@ -130,6 +136,13 @@ let get_implementation (env : t) (((name, _), _) : T.ov) =
         | _ :: scopes -> get scopes
         | [] -> None
     in get env.scopes
+
+let type_fns (env : t) = match env.scopes with
+    | [Hoisting (ovs, _)] ->
+        let tfns = CCVector.create () in
+        List.iter (fun (binding, _) -> CCVector.push tfns binding) !ovs;
+        Vector.build tfns
+    | _ -> failwith "compiler bug: type_fns on non-toplevel environment"
 
 let uv (env : t) kind = Fc.Uv.make env.tx_log kind env.level
 

@@ -31,9 +31,9 @@ let to_arg args pos =
 %token <string> STRING
 %token <int> INT
 
-%start program commands
-%type <Ast.Term.Stmt.def Vector.t> program
-%type <Ast.Term.Stmt.t Vector.t> commands
+%start defs stmts
+%type <Ast.Term.Stmt.def Vector.t> defs
+%type <Ast.Term.Stmt.t Vector.t> stmts
 
 %%
 
@@ -49,9 +49,9 @@ trailer(init, separator, item, terminator) : init trail(separator, item, termina
 
 (* # Entry Points *)
 
-program : trail(";", def, EOF) { $1 }
+defs : trail(";", def, EOF) { $1 }
 
-commands : trail(";", stmt, EOF) { $1 }
+stmts : trail(";", stmt, EOF) { $1 }
 
 (* # Definitions & Statements *)
 

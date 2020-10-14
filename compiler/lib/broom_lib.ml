@@ -1,6 +1,9 @@
 module Vector = Vector (* HACK *)
+module Vector1 = Vector1
 
 module Util = Util (* HACK *)
+
+module Name = Name
 
 module Ast = Ast
 module Fc = struct
@@ -12,9 +15,13 @@ end
 module SedlexMenhir = SedlexMenhir
 
 module Parse = struct
-    let parse_commands_exn input =
+    let parse_defs_exn input =
         SedlexMenhir.create_lexbuf input
-        |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.commands
+        |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.defs
+
+    let parse_stmts_exn input =
+        SedlexMenhir.create_lexbuf input
+        |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.stmts
 end
 
 module TyperSigs = TyperSigs (* HACK *)

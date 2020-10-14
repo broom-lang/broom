@@ -5,6 +5,6 @@ module Make (IntHashtbl : Hashtbl.S with type key = int) : sig
 
     val error_to_doc : error -> PPrint.document
 
-    val convert : Fc.Term.Stmt.t Vector.t -> (Fc.Term.Stmt.t Vector.t, error CCVector.ro_vector) Result.t
+    val convert : Fc.Program.t -> (Fc.Program.t, error CCVector.ro_vector) Result.t
 end
 
