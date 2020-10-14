@@ -1,7 +1,6 @@
 module Expr = Fc.Term.Expr
 type expr = Expr.t
 type pat = Expr.pat
-type stmt = Fc.Term.Stmt.t
 
 let (^^) = PPrint.(^^)
 let (^/^) = PPrint.(^/^)
@@ -262,8 +261,6 @@ and bind : Env.t -> cont' -> cont' -> pat -> cont
     | ValuesP _ | ProxyP _ -> failwith "unreachable"
 
 (* # Public API Functions *)
-
-let interpret env expr = eval env exit expr
 
 let run env ({type_fns = _; defs; main} : Fc.Program.t) =
     let env = Env.copy env in
