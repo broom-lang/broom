@@ -9,6 +9,8 @@ module type TYPE = sig
         | PromotedValues of t Vector.t
         | PromotedArray of t Vector.t
         | Pi of {universals : kind Vector.t; domain : t Vector.t}
+        | Record of t
+        | With of {base : t; label : Name.t; field : t}
         | EmptyRow
         | Prim of Prim.t
 
@@ -22,8 +24,14 @@ module type EXPR = sig
     module Id : Id.S
 
     type t' =
+        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; args : Id.t Vector.t}
         | Values of Id.t Vector.t
         | Focus of {focusee : Id.t; index : int}
+        | Record of (Name.t * Id.t) Vector.t
+        | With of {base : Id.t; label: Name.t; field : Id.t}
+        | Where of {base : Id.t; fields : (Name.t * Id.t) Vector.t}
+        | Select of {selectee : Id.t; field : Name.t}
+        | Proxy of Type.t
         | Label of cont_id
         | Param of {label : cont_id; index : int}
         | Const of Const.t
@@ -37,14 +45,25 @@ module type EXPR = sig
     val to_doc : t -> PPrint.document
 end
 
+module type PATTERN = sig
+    type t =
+        | Wild
+
+    val to_doc : t -> PPrint.document
+end
+
 module type TRANSFER = sig
     module Type : TYPE
+    module Pattern : PATTERN
     type expr_id
     type cont_id
+
+    type clause = {pat : Pattern.t; dest : cont_id}
 
     type t' =
         | Goto of {callee : cont_id; universals : Type.t Vector.t; args : expr_id Vector.t}
         | Jump of {callee : expr_id; universals : Type.t Vector.t; args : expr_id Vector.t}
+        | Match of {matchee : expr_id; clauses : clause Vector.t}
         | Return of Type.t Vector.t * expr_id Vector.t
 
     type t = {pos : span; term : t'}

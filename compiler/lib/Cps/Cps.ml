@@ -11,6 +11,8 @@ module Type = struct
         | PromotedValues of t Vector.t
         | PromotedArray of t Vector.t
         | Pi of {universals : kind Vector.t; domain : t Vector.t}
+        | Record of t
+        | With of {base : t; label : Name.t; field : t}
         | EmptyRow
         | Prim of Prim.t
 
@@ -42,6 +44,12 @@ module Type = struct
                     lparen (comma ^^ break 1) rparen
                     to_doc (Vector.to_list domain))
 
+        | Record row -> braces (to_doc row)
+
+        | With {base; label; field} ->
+            infix 4 1 (string "with") (to_doc base)
+                (infix 4 1 equals (Name.to_doc label) (to_doc field))
+
         | EmptyRow -> parens bar
         | Prim p -> string "__" ^^ Prim.to_doc p
 end
@@ -63,8 +71,14 @@ module Expr = struct
     end
 
     type t' =
+        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; args : Id.t Vector.t}
         | Values of Id.t Vector.t
         | Focus of {focusee : Id.t; index : int}
+        | Record of (Name.t * Id.t) Vector.t
+        | With of {base : Id.t; label: Name.t; field : Id.t}
+        | Where of {base : Id.t; fields : (Name.t * Id.t) Vector.t}
+        | Select of {selectee : Id.t; field : Name.t}
+        | Proxy of Type.t
         | Label of cont_id
         | Param of {label : cont_id; index : int}
         | Const of Const.t
@@ -75,16 +89,46 @@ module Expr = struct
         ; typ : Type.t
         ; term : t' }
 
+    let field_to_doc (label, field) =
+        PPrint.(infix 4 1 equals (Name.to_doc label) (Id.to_doc field))
+
     let to_doc (expr : t) =
         let open PPrint in
         match expr.term with
+        | PrimApp {op; universals; args} ->
+            prefix 4 1 (string "__" ^^ Primop.to_doc op)
+                (surround_separate_map 4 0 empty
+                    langle (comma ^^ break 1) (rangle ^^ blank 1)
+                    Type.to_doc (Vector.to_list universals)
+                ^^ surround_separate_map 4 0 (parens empty)
+                    lparen (comma ^^ break 1) rparen
+                    Id.to_doc (Vector.to_list args))
+
         | Values values ->
             surround_separate_map 4 0 (parens empty)
                 lparen (comma ^^ break 1) rparen
                 Id.to_doc (Vector.to_list values)
 
+        | Record fields ->
+            surround_separate_map 4 0 (braces empty)
+                lbrace (comma ^^ break 1) rbrace
+                field_to_doc (Vector.to_list fields)
+
+        | With {base; label; field} ->
+            infix 4 1 (string "with") (Id.to_doc base)
+                (infix 4 1 equals (Name.to_doc label) (Id.to_doc field))
+
+        | Where {base; fields} ->
+            infix 4 1 (string "where") (Id.to_doc base)
+                (surround_separate_map 4 0 (braces empty)
+                    lbrace (comma ^^ break 1) rbrace
+                    field_to_doc (Vector.to_list fields))
+
         | Focus {focusee; index} ->
             infix 4 1 dot (Id.to_doc focusee) (string (Int.to_string index))
+        | Select {selectee; field} -> 
+            infix 4 1 dot (Id.to_doc selectee) (Name.to_doc field)
+        | Proxy typ -> brackets (equals ^^ blank 1 ^^ Type.to_doc typ)
         | Label label -> ContId.to_doc label
         | Param {label; index} ->
             infix 4 1 sharp (ContId.to_doc label) (string (Int.to_string index))
@@ -96,14 +140,28 @@ module Expr = struct
             (to_doc expr)
 end
 
+module Pattern = struct
+    type t =
+        | Wild
+
+    let to_doc pat =
+        let open PPrint in
+        match pat with
+        | Wild -> underscore
+end
+
 module Transfer = struct
     module Type = Type
+    module Pattern = Pattern
     type expr_id = Expr.Id.t
     type cont_id = ContId.t
+
+    type clause = {pat : Pattern.t; dest : cont_id}
 
     type t' =
         | Goto of {callee : cont_id; universals : Type.t Vector.t; args : expr_id Vector.t}
         | Jump of {callee : expr_id; universals : Type.t Vector.t; args : expr_id Vector.t}
+        | Match of {matchee : expr_id; clauses : clause Vector.t}
         | Return of Type.t Vector.t * expr_id Vector.t
 
     type t = {pos : span; term : t'}
@@ -117,6 +175,10 @@ module Transfer = struct
             lparen (comma ^^ break 1) rparen
             Expr.Id.to_doc (Vector.to_list args)
 
+    let clause_to_doc {pat; dest} =
+        PPrint.(prefix 4 1 bar
+            (infix 4 1 (string "=>") (Pattern.to_doc pat) (ContId.to_doc dest)))
+
     let to_doc (transfer : t) =
         let open PPrint in
         match transfer.term with
@@ -127,6 +189,11 @@ module Transfer = struct
         | Jump {universals; callee; args} ->
             prefix 4 1 (string "jump" ^^ blank 1 ^^ Expr.Id.to_doc callee)
                 (args_to_doc universals args)
+
+        | Match {matchee; clauses} ->
+            string "match" ^^ blank 1 ^^ Expr.Id.to_doc matchee ^^ blank 1
+            ^^ surround_separate_map 4 0 (braces empty)
+                lbrace hardline rbrace clause_to_doc (Vector.to_list clauses)
 
         | Return (universals, args) ->
             prefix 4 1 (string "return") (args_to_doc universals args)

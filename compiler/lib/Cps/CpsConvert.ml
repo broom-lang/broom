@@ -44,6 +44,9 @@ let convert_typ state_typ =
                 ; Type.Pi {universals = Vector.empty
                     ; domain = Vector.of_list [state_typ; convert codomain]}
                 ; domain ]}
+        | Record row -> Record (convert row)
+        | With {base; label; field} ->
+            With {base = convert base; label; field = convert field}
         | EmptyRow -> EmptyRow
         | Prim p -> Prim p
         | Uv r -> match Fc.Uv.get log r with
@@ -125,6 +128,17 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                         convert parent state k env arg } in
             convert parent state k env callee
 
+        | PrimApp {op; universals; arg} -> (* FIXME: thread `state` when necessary *)
+            let k = FnK {pos = arg.pos; domain = convert_typ arg.typ
+                ; f = fun ~parent ~state ~value: arg ->
+                    Builder.express builder {pos = expr.pos; cont = parent
+                        ; typ = convert_typ expr.typ
+                        ; term = PrimApp {op
+                            ; universals = Vector.map convert_typ universals
+                            ; args = Vector.singleton arg}}
+                    |> continue k parent state } in
+            convert parent state k env arg
+
         | Let {def = (_, ({id; _} as var), value); body} ->
             let k = FnK {pos = value.pos; domain = convert_typ value.typ
                 ; f = fun ~parent ~state ~value ->
@@ -146,10 +160,71 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
 
         | Use {var = {id; _}; expr = _} -> continue k parent state (Env.find env id)
 
+        | Record fields ->
+            let rec convert_fields state i fields' =
+                if i < Array.length fields then begin
+                    let (label, field) = Array.get fields i in
+                    let k = FnK {pos = field.pos; domain = convert_typ field.typ
+                        ; f = fun ~parent: _ ~state ~value: field' ->
+                            convert_fields state (i + 1) ((label, field') :: fields') } in
+                    convert parent state k env field
+                end else
+                    Builder.express builder {pos = expr.pos; cont = parent
+                        ; typ = convert_typ expr.typ
+                        ; term = Record (Vector.of_list (List.rev fields')) } (* OPTIMIZE *)
+                    |> continue k parent state in
+            convert_fields state 0 []
+
+        | With {base; label; field} ->
+            let k = FnK {pos = expr.pos; domain = convert_typ base.typ
+                ; f = fun ~parent ~state ~value: base ->
+                    let k = FnK {pos = expr.pos; domain = convert_typ field.typ
+                        ; f = fun ~parent ~state ~value: field ->
+                            Builder.express builder {pos = expr.pos; cont = parent
+                                ; typ = convert_typ expr.typ; term = With {base; label; field}}
+                            |> continue k parent state } in
+                    convert parent state k env field} in
+            convert parent state k env base
+
+        | Where {base; fields} ->
+            let k = FnK {pos = expr.pos; domain = convert_typ base.typ
+                ; f = fun ~parent ~state ~value: base ->
+                    let rec convert_fields state i fields' =
+                        if i < Array1.length fields then begin
+                            let (label, field) = Array1.get fields i in
+                            let k = FnK {pos = field.pos; domain = convert_typ field.typ
+                                ; f = fun ~parent: _ ~state ~value: field' ->
+                                    convert_fields state (i + 1) ((label, field') :: fields') } in
+                            convert parent state k env field
+                        end else
+                            Builder.express builder {pos = expr.pos; cont = parent
+                                ; typ = convert_typ expr.typ
+                                ; term = Where {base
+                                    ; fields = Vector.of_list (List.rev fields')}} (* OPTIMIZE *)
+                            |> continue k parent state in
+                    convert_fields state 0 [] } in
+            convert parent state k env base
+
+        | Select {selectee; label} ->
+                let k = FnK {pos = expr.pos; domain = convert_typ selectee.typ
+                    ; f = fun ~parent ~state ~value: selectee ->
+                        Builder.express builder {pos = expr.pos; cont = parent
+                            ; typ = convert_typ expr.typ
+                            ; term = Select {selectee; field = label}}
+                        |> continue k parent state} in
+            convert parent state k env selectee
+
+        | Proxy typ ->
+            Builder.express builder {pos = expr.pos; cont = parent; typ = convert_typ expr.typ
+                ; term = Proxy (convert_typ typ)}
+            |> continue k parent state
+
         | Const c ->
             let typ = convert_typ expr.typ in
             Builder.express builder {pos = expr.pos; cont = parent; typ; term = Const c}
             |> continue k parent state
+
+        | Patchable r -> TxRef.(convert parent state k env !r)
 
     and continue k parent state value = match k with
         | FnK {pos = _; domain = _; f} -> f ~parent ~state ~value
