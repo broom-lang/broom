@@ -7,6 +7,7 @@ module Expr : S.EXPR
 
 module Transfer : S.TRANSFER
     with type expr_id = Expr.Id.t
+    with type cont_id = Expr.cont_id
     with module Type = Type
 
 module Cont : S.CONT

@@ -19,9 +19,9 @@ module Program = struct
 
     let to_doc s {type_fns; defs; main} =
         let open PPrint in
-        separate_map (break 1) (type_fn_to_doc s) (Vector.to_list type_fns)
-        ^/^ separate_map (semi ^^ break 1) (fun def -> Term.Stmt.def_to_doc s def ^^ semi)
+        separate_map (twice hardline) (type_fn_to_doc s) (Vector.to_list type_fns)
+        ^/^ separate_map (twice hardline) (fun def -> Term.Stmt.def_to_doc s def ^^ semi)
             (Vector.to_list defs)
-        ^/^ Term.Expr.to_doc s main
+        ^^ twice (twice hardline) ^^ Term.Expr.to_doc s main
 end
 

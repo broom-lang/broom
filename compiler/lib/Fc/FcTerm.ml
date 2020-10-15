@@ -7,7 +7,6 @@ module Make (Type : FcSigs.TYPE) : FcSigs.TERM
 module Type = Type
 
 let (^^) = PPrint.(^^)
-let (^/^) = PPrint.(^/^)
 
 module rec Expr : sig
     include FcSigs.EXPR
@@ -83,101 +82,100 @@ end = struct
 
     let use_to_doc (use : use) = var_to_doc use.var
 
-    let rec to_doc s (expr : t) = match expr.term with
+    let rec to_doc s (expr : t) =
+        let open PPrint in
+        match expr.term with
         | Values exprs ->
-            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
-                PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+            surround_separate_map 4 0 (parens empty)
+                lparen (comma ^^ break 1) rparen
                 (to_doc s) (Array.to_list exprs)
         | Focus {focusee; index} ->
-            selectee_to_doc s focusee ^^ PPrint.dot ^^ PPrint.string (Int.to_string index)
+            selectee_to_doc s focusee ^^ dot ^^ string (Int.to_string index)
         | Fn {universals; param; body} ->
-            PPrint.prefix 4 1
-                (PPrint.string "fun"
-                     ^^ (PPrint.surround_separate_map 4 0 PPrint.empty
-                             (PPrint.blank 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
-                             (Type.binding_to_doc s) (Vector.to_list universals)
-                         ^^ PPrint.blank 1 ^^ def_to_doc s param)
-                     ^^ PPrint.blank 1 ^^ PPrint.string "->")
-                (to_doc s body)
+            string "fun"
+            ^^ surround_separate_map 4 0 empty
+                    (blank 1 ^^ langle) (comma ^^ break 1) rangle
+                    (Type.binding_to_doc s) (Vector.to_list universals)
+            ^^ blank 1 ^^ def_to_doc s param ^^ blank 1
+            ^^ surround 4 1 lbrace (to_doc s body) rbrace 
         | Let {def; body} ->
-            PPrint.surround 4 1 (PPrint.string "let") (Stmt.def_to_doc s def) (PPrint.string "in")
-                ^/^ to_doc s body
+            surround 4 1 (string "let" ^^ blank 1 ^^ lbrace)
+                (Stmt.def_to_doc s def ^^ semi ^^ hardline ^^ to_doc s body)
+                rbrace
         | Letrec {defs; body} ->
-            PPrint.group(
-                PPrint.surround 4 1 (PPrint.string "letrec")
-                    (PPrint.align (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1)
-                                        (Stmt.def_to_doc s) (Array1.to_list defs)))
-                    (PPrint.string "in")
-                ^/^ to_doc s body)
+            surround 4 1 (string "letrec" ^^ blank 1 ^^ lbrace)
+                (separate_map (semi ^^ hardline)
+                    (Stmt.def_to_doc s) (Array1.to_list defs)
+                ^^ semi ^^ hardline ^^ to_doc s body)
+                rbrace
         | LetType {typedefs; body} ->
-            PPrint.group(
-                PPrint.surround 4 1 (PPrint.string "let type")
-                    (PPrint.align (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1)
-                                        (Type.binding_to_doc s) (Vector1.to_list typedefs)))
-                    (PPrint.string "in")
-                ^/^ to_doc s body)
+            surround 4 1 (string "letrec" ^^ blank 1 ^^ lbrace)
+                (separate_map (semi ^^ hardline)
+                    (Type.binding_to_doc s) (Vector1.to_list typedefs)
+                ^^ semi ^^ hardline ^^ to_doc s body)
+                rbrace
         | Match {matchee; clauses} ->
-            let start = PPrint.string "match" ^^ PPrint.blank 1 ^^ to_doc s matchee in
-            PPrint.surround_separate_map 4 1 (start ^/^ PPrint.string "end")
-                start (PPrint.break 1) (PPrint.string "end")
+            let start = string "match" ^^ blank 1 ^^ to_doc s matchee ^^ blank 1 ^^ lbrace in
+            surround_separate_map 4 1 (start ^^ rbrace)
+                start (break 1) (string "end")
                 (clause_to_doc s) (Vector.to_list clauses)
         | App {callee; universals; arg} ->
-            PPrint.align (to_doc s callee
-                          ^^ PPrint.surround_separate_map 4 0 PPrint.empty
-                                (PPrint.break 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
-                                (Type.to_doc s) (Vector.to_list universals)
-                          ^/^ to_doc s arg)
+            prefix 4 1 (to_doc s callee)
+                (surround_separate_map 4 0 empty
+                    (break 1 ^^ langle) (comma ^^ break 1) (rangle ^^ break 1)
+                    (Type.to_doc s) (Vector.to_list universals)
+                ^^ to_doc s arg)
         | PrimApp {op; universals; arg} ->
-            PPrint.align (PPrint.string "__" ^^ Primop.to_doc op
-                          ^^ PPrint.surround_separate_map 4 0 PPrint.empty
-                                (PPrint.break 1 ^^ PPrint.langle) (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
-                                (Type.to_doc s) (Vector.to_list universals)
-                          ^/^ to_doc s arg)
+            prefix 4 1 (string "__" ^^ Primop.to_doc op)
+                (surround_separate_map 4 0 empty
+                    (break 1 ^^ langle) (comma ^^ break 1) (rangle ^^ break 1)
+                    (Type.to_doc s) (Vector.to_list universals)
+                ^^ to_doc s arg)
         | Axiom {axioms; body} ->
-            PPrint.group(
-                PPrint.surround 4 1 (PPrint.string "axiom")
-                    (PPrint.align (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) (axiom_to_doc s)
+            group(
+                surround 4 1 (string "axiom")
+                    (align (separate_map (semi ^^ break 1) (axiom_to_doc s)
                         (Vector1.to_list axioms)))
-                    (PPrint.string "in")
+                    (string "in")
                 ^/^ to_doc s body)
         | Cast {castee; coercion} ->
-            PPrint.infix 4 1 (PPrint.string "|>") (castee_to_doc s castee) (Type.coercion_to_doc s coercion)
+            infix 4 1 (string "|>") (castee_to_doc s castee) (Type.coercion_to_doc s coercion)
         | Pack {existentials; impl} ->
-            PPrint.string "pack" ^^ PPrint.blank 1
-                ^^ PPrint.surround_separate 4 0 PPrint.empty
-                    PPrint.langle (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
+            string "pack" ^^ blank 1
+                ^^ surround_separate 4 0 empty
+                    langle (comma ^^ break 1) rangle
                     (Vector1.to_list (Vector1.map (Type.to_doc s) existentials) @ [to_doc s impl])
         | Unpack {existentials; var; value; body} ->
-            PPrint.group(
-                PPrint.surround 4 1
-                    (PPrint.string "unpack" ^^ PPrint.blank 1
-                        ^^ PPrint.surround_separate 4 0 PPrint.empty
-                            PPrint.langle (PPrint.comma ^^ PPrint.break 1) PPrint.rangle
+            group(
+                surround 4 1
+                    (string "unpack" ^^ blank 1
+                        ^^ surround_separate 4 0 empty
+                            langle (comma ^^ break 1) rangle
                             (Vector1.to_list (Vector1.map (Type.binding_to_doc s) existentials)
                                 @ [def_to_doc s var])
-                        ^^ PPrint.blank 1 ^^ PPrint.equals)
+                        ^^ blank 1 ^^ equals)
                     (to_doc s value)
-                    (PPrint.string "in")
+                    (string "in")
                 ^/^ to_doc s body)
         | Record fields ->
-            PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
-                PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
-                (fun (label, field) -> PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
+            surround_separate_map 4 0 (braces empty)
+                lbrace (comma ^^ break 1) rbrace
+                (fun (label, field) -> infix 4 1 equals (Name.to_doc label) (to_doc s field))
                 (Array.to_list fields)
         | Where {base; fields} ->
-            PPrint.infix 4 1 (PPrint.string "where")
+            infix 4 1 (string "where")
                 (to_doc s base)
-                (PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
-                    PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
+                (surround_separate_map 4 0 (braces empty)
+                    lbrace (comma ^^ break 1) rbrace
                     (fun (label, field) ->
-                        PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
+                        infix 4 1 equals (Name.to_doc label) (to_doc s field))
                     (Array1.to_list fields))
         | With {base; label; field} ->
-            PPrint.infix 4 1 (PPrint.string "with") (base_to_doc s base)
-                (PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc s field))
+            infix 4 1 (string "with") (base_to_doc s base)
+                (infix 4 1 equals (Name.to_doc label) (to_doc s field))
         | Select {selectee; label} ->
-            PPrint.prefix 4 0 (selectee_to_doc s selectee) (PPrint.dot ^^ Name.to_doc label)
-        | Proxy typ -> PPrint.brackets (Type.to_doc s typ)
+            prefix 4 0 (selectee_to_doc s selectee) (dot ^^ Name.to_doc label)
+        | Proxy typ -> brackets (Type.to_doc s typ)
         | Use use -> use_to_doc use
         | Const c -> Const.to_doc c
         | Patchable r -> TxRef.(to_doc s !r)
