@@ -241,11 +241,17 @@ end = struct
     let primapp op universals arg = PrimApp {op; universals; arg}
 
     let let' defs body = match Array1.of_array defs with
-        | Some defs -> Let {defs; body}
+        | Some defs -> (match body.term with
+            | Let {defs = defs'; body} -> Let {defs = Array1.append defs defs'; body}
+            | _ -> Let {defs; body})
         | None -> body.term
 
     let letrec defs body = match Array1.of_array defs with
-        | Some defs -> Letrec {defs; body}
+        | Some defs -> (match body.term with
+            | Letrec {defs = defs'; body} ->
+                (* NOTE: expects alphatization, would be unsound otherwise: *)
+                Letrec {defs = Array1.append defs defs'; body}
+            | _ -> Letrec {defs; body})
         | None -> body.term
 
     let match' matchee clauses = Match {matchee; clauses}
@@ -278,31 +284,31 @@ end = struct
     let map_children f (expr : t) =
         let term = expr.term in
         let term' = match term with
-            | Values lets ->
-                let lets' = Array.map f lets in
+            | Values vals ->
+                let vals' = Array.map f vals in
                 let noop = Stream.from (Source.zip_with (==)
-                        (Source.array lets') (Source.array lets))
+                        (Source.array vals') (Source.array vals))
                     |> Stream.into (Sink.all ~where: Fun.id) in
-                if noop then term else Values lets'
+                if noop then term else values vals'
 
             | Focus {focusee; index} ->
                 let focusee' = f focusee in
-                if focusee' == focusee then term else Focus {focusee = focusee'; index}
+                if focusee' == focusee then term else focus focusee' index
 
             | Fn {universals; param; body} ->
                 let body' = f body in
-                if body' == body then term else Fn {universals; param; body = body'}
+                if body' == body then term else fn universals param body'
 
             | App {callee; universals; arg} ->
                 let callee' = f callee in
                 let arg' = f arg in
                 if callee' == callee && arg' == arg
                 then term
-                else App {callee = callee'; universals; arg = arg'}
+                else app callee' universals arg'
 
             | PrimApp {op; universals; arg} ->
                 let arg' = f arg in
-                if arg' == arg then term else PrimApp {op; universals; arg = arg'}
+                if arg' == arg then term else primapp op universals arg'
 
             | Let {defs; body} ->
                 let defs' = Array1.map (fun (pos, def, expr) -> (pos, def, f expr)) defs in
@@ -312,7 +318,7 @@ end = struct
                         (Array1.to_source defs') (Array1.to_source defs))
                     |> Stream.into (Sink.all ~where: Fun.id)
                 then term
-                else Let {defs = defs'; body = body'}
+                else let' (Array1.to_array defs') body'
 
             | Letrec {defs; body} ->
                 let defs' = Array1.map (fun (pos, def, expr) -> (pos, def, f expr)) defs in
@@ -322,7 +328,7 @@ end = struct
                         (Array1.to_source defs') (Array1.to_source defs))
                     |> Stream.into (Sink.all ~where: Fun.id)
                 then term
-                else Letrec {defs = defs'; body = body'}
+                else letrec (Array1.to_array defs') body'
 
             | LetType {typedefs; body} ->
                 let body' = f body in
@@ -334,25 +340,25 @@ end = struct
 
             | Cast {castee; coercion} ->
                 let castee' = f castee in
-                if castee' == castee then term else Cast {castee = castee'; coercion}
+                if castee' == castee then term else cast castee' coercion
 
             | Pack {existentials; impl} ->
                 let impl' = f impl in
-                if impl' == impl then term else Pack {existentials; impl = impl'}
+                if impl' == impl then term else pack (Vector1.to_vector existentials) impl'
 
             | Unpack {existentials; var; value; body} ->
                 let value' = f value in
                 let body' = f body in
                 if value' == value && body' == body
                 then term
-                else Unpack {existentials; var; value = value'; body = body'}
+                else unpack existentials var value' body'
 
             | Record fields ->
                 let fields' = Array.map (fun (label, field) -> (label, f field)) fields in
                 let noop = Stream.from (Source.zip_with (fun (_, expr') (_, expr) -> expr' == expr)
                         (Source.array fields') (Source.array fields))
                     |> Stream.into (Sink.all ~where: Fun.id) in
-                if noop then term else Record fields'
+                if noop then term else record fields'
 
             | With {base; label; field} ->
                 let base' = f base in
@@ -367,11 +373,11 @@ end = struct
                         (Array1.to_source fields') (Array1.to_source fields))
                     |> Stream.into (Sink.all ~where: Fun.id)
                 then term
-                else Where {base = base'; fields = fields'}
+                else where base' (Array1.to_array fields')
 
             | Select {selectee; label} ->
                 let selectee' = f selectee in
-                if selectee' == selectee then term else Select {selectee = selectee'; label}
+                if selectee' == selectee then term else select selectee' label
 
             | Match {matchee; clauses} ->
                 let matchee' = f matchee in
@@ -381,7 +387,7 @@ end = struct
                         (Vector.to_source clauses') (Vector.to_source clauses))
                     |> Stream.into (Sink.all ~where: Fun.id)
                 then term
-                else Match {matchee = matchee'; clauses = clauses'}
+                else match' matchee' clauses'
 
             | Proxy _ | Use _ | Const _ -> term
 
@@ -389,7 +395,7 @@ end = struct
                 let open TxRef in
                 let expr = !rref in
                 let expr' = f expr in
-                if expr' == expr then term else Patchable (ref expr') in
+                if expr' == expr then term else patchable (ref expr') in
         if term' == term then expr else {expr with term = term'}
 
     module Var = struct
