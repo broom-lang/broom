@@ -142,12 +142,12 @@ end
 
 module Pattern = struct
     type t =
+        | Const of Const.t
         | Wild
 
-    let to_doc pat =
-        let open PPrint in
-        match pat with
-        | Wild -> underscore
+    let to_doc = function
+        | Const c -> Const.to_doc c
+        | Wild -> PPrint.underscore
 end
 
 module Transfer = struct
@@ -224,7 +224,7 @@ module Cont = struct
             lparen (comma ^^ break 1) rparen
             Type.to_doc (Vector.to_list params)
         ^^ blank 1 ^^ surround 4 1
-            lbrace (exprs_doc ^^ semi ^^ hardline ^^ Transfer.to_doc body) rbrace
+            lbrace (exprs_doc ^^ Transfer.to_doc body) rbrace
 
     let def_to_doc id cont ~exprs_doc =
         PPrint.(Id.to_doc id ^^ blank 1 ^^ equals ^^ blank 1 ^^ to_doc cont ~exprs_doc)
@@ -262,7 +262,7 @@ module Program = struct
             | None -> ()
         ) exprs;
         let cont_exprs_doc id =
-            separate_map (semi ^^ hardline) (fun (id, expr) -> Expr.def_to_doc id expr)
+            concat_map (fun (id, expr) -> Expr.def_to_doc id expr ^^ semi ^^ hardline)
                 (Cont.Id.Hashtbl.find_opt cont_exprs id |> Option.value ~default: []) in
 
         separate_map (twice hardline) (fun typedef ->

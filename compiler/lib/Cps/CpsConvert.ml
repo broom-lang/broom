@@ -160,6 +160,22 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
 
         | Use {var = {id; _}; expr = _} -> continue k parent state (Env.find env id)
 
+        | Match {matchee; clauses} ->
+            let k = FnK { pos = expr.pos; domain = convert_typ matchee.typ
+                ; f = fun ~parent ~state ~value: matchee ->
+                    let join = trivialize_cont k in
+                    let clauses = clauses |> Vector.map (fun {FExpr.pat; body} ->
+                        let (pat, env) = convert_pattern env pat in
+                        let transfer = convert parent state join env body in
+                        let dest = Cont.Id.fresh () in
+                        let cont : Cont.t = {pos = body.pos; name = None
+                            ; universals = Vector.empty; params = Vector.empty
+                            ; body = transfer } in
+                        Builder.add_cont builder dest cont;
+                        {Transfer.pat; dest}) in
+                    {pos = expr.pos; term = Match {matchee; clauses}} } in
+            convert parent state k env matchee
+
         | Record fields ->
             let rec convert_fields state i fields' =
                 if i < Array.length fields then begin
@@ -225,6 +241,12 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
             |> continue k parent state
 
         | Patchable r -> TxRef.(convert parent state k env !r)
+
+    and convert_pattern env pat : Pattern.t * Env.t = match pat.pterm with
+        | ConstP c -> (Const c, env)
+        | WildP -> (Wild, env)
+        | VarP _ | ValuesP _ | ProxyP _ ->
+            failwith "compiler bug: unexpanded pattern in CPS conversion"
 
     and continue k parent state value = match k with
         | FnK {pos = _; domain = _; f} -> f ~parent ~state ~value

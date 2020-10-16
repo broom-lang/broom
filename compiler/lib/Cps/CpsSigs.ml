@@ -47,6 +47,7 @@ end
 
 module type PATTERN = sig
     type t =
+        | Const of Const.t
         | Wild
 
     val to_doc : t -> PPrint.document

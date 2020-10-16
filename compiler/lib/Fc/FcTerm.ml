@@ -117,7 +117,7 @@ end = struct
         | Match {matchee; clauses} ->
             let start = string "match" ^^ blank 1 ^^ to_doc s matchee ^^ blank 1 ^^ lbrace in
             surround_separate_map 4 1 (start ^^ rbrace)
-                start (break 1) (string "end")
+                start (break 1) rbrace
                 (clause_to_doc s) (Vector.to_list clauses)
         | App {callee; universals; arg} ->
             prefix 4 1 (to_doc s callee)
