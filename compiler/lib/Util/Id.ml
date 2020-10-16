@@ -4,6 +4,7 @@ module type S = sig
     val fresh : unit -> t
     val equal : t -> t -> bool
 
+    val to_string : t -> string
     val to_doc : t -> PPrint.document
 
     module HashMap : CCHashTrie.S with type key = t

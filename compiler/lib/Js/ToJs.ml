@@ -8,9 +8,15 @@ let emit program =
     let usecounts = Program.usecounts program in
     let usecount id = Expr.Id.HashMap.get_exn id usecounts in
 
+    let counter = ref 0 in
+    let fresh () =
+        let i = !counter in
+        counter := i + 1;
+        string ("y$" ^ Int.to_string i) in
+
     let expr_vars = Expr.Id.Hashtbl.create 0 in
     let define (id : Expr.Id.t) =
-        let doc = string ("v$" ^ Int.to_string (id :> int)) in
+        let doc = string ("x$" ^ Int.to_string (id :> int)) in
         Expr.Id.Hashtbl.add expr_vars id doc;
         doc in
     let expr_var = Expr.Id.Hashtbl.find_opt expr_vars in
@@ -58,10 +64,24 @@ let emit program =
                                 Name.to_doc label ^^ colon ^^ blank 1 ^^ emit_expr field)
                             (Vector.to_list fields)
 
+                    | Where {base; fields} ->
+                        let base_name = fresh () in
+                        let stmt = infix 4 1 equals
+                            (string "var" ^^ blank 1 ^^ base_name)
+                            (string "Object.assign"
+                            ^^ parens (braces empty ^^ comma ^^ break 1 ^^ emit_expr base)) in
+                        CCVector.push stmts stmt;
+                        Vector.iter (fun (label, field) ->
+                            let stmt = infix 4 1 equals (base_name ^^ dot ^^ Name.to_doc label)
+                                (emit_expr field) in
+                            CCVector.push stmts stmt
+                        ) fields;
+                        base_name
+
                     | Select {selectee; field} -> (* OPTIMIZE: parens not always necessary *)
                         prefix 4 0 (parens (emit_expr selectee)) (dot ^^ Name.to_doc field)
 
-                    | Proxy _ -> string "void 0"
+                    | Proxy _ -> string "void 0" (* OPTIMIZE: empty unboxed tuple = erase *)
 
                     | Param {label; index} -> emit_param label index
                     | Label label ->

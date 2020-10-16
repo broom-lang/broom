@@ -318,7 +318,7 @@ module Program = struct
             let counts = visit_expr counts id in
             Exprs.update_mut ~id: transient id counts ~f: (function
                 | Some n -> Some (n + 1)
-                | None -> Some 0)
+                | None -> Some 1)
 
         and visit_clause counts {Transfer.pat = _; dest} =
             visit_cont counts dest
