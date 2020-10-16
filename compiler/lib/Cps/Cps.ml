@@ -1,3 +1,5 @@
+open Streaming
+
 module S = CpsSigs
 
 type span = Util.span
@@ -279,6 +281,67 @@ module Program = struct
             |> List.filter (fun (id, _) -> not (Cont.Id.equal id main)))
         ^^ twice hardline ^^ Cont.def_to_doc main (Conts.get_exn main conts)
             ~exprs_doc: (cont_exprs_doc main)
+
+    let exports {type_fns = _; exprs = _; conts = _; main} = Source.single main
+
+    let cont (program : t) label = Conts.get_exn label program.conts
+
+    let expr (program : t) id = Exprs.get_exn id program.exprs
+
+    let usecounts ({type_fns = _; exprs = _; conts = _; main} as program) =
+        let transient = CCHashTrie.Transient.create () in
+        let visited = Cont.Id.HashSet.create 0 in
+
+        let rec visit_use counts id =
+            let visit_expr counts id =
+                if Exprs.mem id counts
+                then counts
+                else begin
+                    let {Expr.pos = _; typ = _; cont = _; term} = expr program id in
+                    match term with
+                    | PrimApp {op = _; universals = _; args = children}
+                    | Values children -> Vector.fold visit_use counts children
+                    | Focus {focusee = child; index = _}
+                    | Select {selectee = child; field = _} -> visit_use counts child
+                    | Record fields -> Vector.fold (fun counts (_, child) ->
+                            visit_use counts child
+                        ) counts fields
+                    | Where {base; fields} -> Vector.fold (fun counts (_, child) ->
+                            visit_use counts child
+                        ) (visit_use counts base) fields
+                    | With {base; label = _; field} -> visit_use (visit_use counts base) field
+                    | Label label
+                    | Param {label; index = _} -> visit_cont counts label
+                    | Proxy _ | Const _ -> counts
+                end in
+
+            let counts = visit_expr counts id in
+            Exprs.update_mut ~id: transient id counts ~f: (function
+                | Some n -> Some (n + 1)
+                | None -> Some 0)
+
+        and visit_clause counts {Transfer.pat = _; dest} =
+            visit_cont counts dest
+
+        and visit_transfer counts {Transfer.pos = _; term} = match term with
+            | Goto {universals = _; callee = _; args}
+            | Return (_, args) -> Vector.fold visit_use counts args
+            | Jump {universals = _; callee; args} ->
+                Vector.fold visit_use (visit_use counts callee) args
+            | Match {matchee; clauses} ->
+                Vector.fold visit_clause (visit_use counts matchee) clauses
+
+        and visit_cont counts label =
+            if Cont.Id.HashSet.mem visited label
+            then counts
+            else begin
+                Cont.Id.HashSet.insert visited label;
+                let {Cont.pos = _; name = _; universals = _; params = _; body} =
+                    cont program label in
+                visit_transfer counts body
+            end in
+
+        visit_cont Exprs.empty main
 
     module Builder = struct
         let create type_fns =

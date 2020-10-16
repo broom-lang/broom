@@ -98,6 +98,12 @@ module type PROGRAM = sig
 
     val to_doc : t -> PPrint.document
 
+    val exports : t -> Cont.Id.t Streaming.Source.t
+    val cont : t -> Cont.Id.t -> Cont.t
+    val expr : t -> Expr.Id.t -> Expr.t
+
+    val usecounts : t -> int Expr.Id.HashMap.t
+
     module Builder : sig
         val create : Fc.Type.binding Vector.t -> builder
         val express : builder -> Expr.t -> Expr.Id.t

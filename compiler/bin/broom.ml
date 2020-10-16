@@ -66,6 +66,7 @@ let rep envs input =
             envs
 
 let ltp filename =
+    let open PPrint in
     let input = open_in filename in
     let tenv = Typer.Env.program () in
     Fun.protect (fun () ->
@@ -91,7 +92,9 @@ let ltp filename =
                 PPrint.ToChannel.pretty 1.0 80 stdout (Typer.Env.document tenv Fc.Program.to_doc program);
 
                 let program = Cps.Convert.convert (Fc.Type.Prim Int) program in
-                PPrint.ToChannel.pretty 1.0 80 stdout (Cps.Program.to_doc program);
+                PPrint.ToChannel.pretty 1.0 80 stdout (Cps.Program.to_doc program ^^ twice hardline);
+                let js = ToJs.emit program in
+                PPrint.ToChannel.pretty 1.0 80 stdout js
             | Error errors ->
                 errors |> CCVector.iter (fun err ->
                     PPrint.ToChannel.pretty 1.0 80 stderr (FwdRefs.error_to_doc err));

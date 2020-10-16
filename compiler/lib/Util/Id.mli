@@ -1,5 +1,5 @@
 module type S = sig
-    type t
+    type t = private int
 
     val fresh : unit -> t
     val equal : t -> t -> bool
@@ -8,6 +8,7 @@ module type S = sig
 
     module HashMap : CCHashTrie.S with type key = t
     module Hashtbl : Hashtbl.S with type key = t
+    module HashSet : CCHashSet.S with type elt = t
 end
 
 module Make () : S

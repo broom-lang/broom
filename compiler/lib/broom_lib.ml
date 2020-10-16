@@ -39,3 +39,5 @@ module Cps = struct
     module Convert = CpsConvert
 end
 
+module ToJs = ToJs
+
