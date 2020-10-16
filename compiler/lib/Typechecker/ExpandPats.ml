@@ -8,17 +8,17 @@ type pat = E.pat
 type clause = E.clause
 type def = Fc.Term.Stmt.def
 
-(* TODO: Roll back eager `letrec` generation,
+(* TODO: Roll back eager `let` generation,
     `|Foo, 'Foo x|->` can be handled by substituting temp instead, i.e. `'Foo#0 x#1` *)
 (* TODO: `let {(x, y) = ...; ...}` should produce
-    `letrec t#42 = ...; x = t#42.0; y = t#42.1; in ...` or at least
-    `letrec t#42 = ...; x#43 = t#42.0; y#44 = t#42.1; x = x#43; y = y#44; in ...`  instead of the silly
-    `letrec
-        t#45 = letrec t#42 = ...; x#43 = t#42.0; y#44 = t#42.1; in (x#43, y#44) end
+    `let t#42 = ...; x = t#42.0; y = t#42.1; in ...` or at least
+    `let t#42 = ...; x#43 = t#42.0; y#44 = t#42.1; x = x#43; y = y#44; in ...`  instead of the silly
+    `let
+        t#45 = let t#42 = ...; x#43 = t#42.0; y#44 = t#42.1; in (x#43, y#44) end
         x = t#45.0; y = t#45.1;
      in ...`
-     Flattening `letrec x = letrec y = ...; z = ...; in ...;` into
-     `letrec y = ...; z = ...; x = ...;` and eliding the final tuple when pattern was purely
+     Flattening `let x = let y = ...; z = ...; in ...;` into
+     `let y = ...; z = ...; x = ...;` and eliding the final tuple when pattern was purely
      destructuring (i.e. no or patterns, so no `match`es are generated) should suffice as MVP. *)
 (* TODO: Also deduplicate internal nodes as in Pettersson paper *)
 (* TODO: Don't even need nested patterns in Fc since this unnests them immediately (?) *)
@@ -198,6 +198,8 @@ let rec emit' : Util.span -> T.t -> Automaton.t -> E.def Name.Hashtbl.t -> Name.
                             {E.pat; body = emit' pos codomain states shareds target.name})))
             | Destructure body -> emit' pos codomain states shareds body.name
             | Final {index = _; body} -> body in
+        (* FIXME: use `let'` but that breaks FwdRefs ATM.
+         * Prerequisite: fix ExpandPats' emitting multiple defs of same `var` due to 'eager letrec generation'. *)
         let body = {body with term = E.letrec defs body} in
         if refcount = 1
         then body
@@ -233,5 +235,5 @@ let expand_clauses : Util.span -> T.t -> expr -> clause Vector.t -> expr
     let var = E.fresh_var matchee.typ (Some matchee) in
     let (states, start) = matcher pos codomain var clauses in
     let body = emit pos codomain states start.name in
-    E.at pos codomain (E.let' (pos, var, matchee) body)
+    E.at pos codomain (E.let' [|(pos, var, matchee)|] body)
 

@@ -216,7 +216,6 @@ let analyze expr =
             let (_, support) = shapeof env Escaping arg in
             (Unknown, support)
 
-        | Let {def = (_, {id; _}, value); body}
         | Unpack {existentials = _; var = {id; _}; value; body} ->
             let (def_shape, def_support) = shapeof env Naming value in
             (* Need `let changed'` because `&&` is short-circuiting: *)
@@ -233,10 +232,21 @@ let analyze expr =
                 (Sink.fold (fun shape shape' -> fst (join shape shape')) Unknown)
                 (Sink.fold Support.union support))
 
+        | Let {defs; body} ->
+            let defs_support = Array1.fold_left (fun support (_, ({id; _} : E.var), value) ->
+                let (shape, def_support) = shapeof env Naming value in
+                (* Need `let changed'` because `&&` is short-circuiting: *)
+                let changed' = Shapes.refine shapes id shape in
+                changed := !changed && changed';
+                Support.union support def_support
+            ) Support.empty defs in
+            let (shape, body_support) = shapeof env ctx body in
+            (shape, Support.union defs_support body_support)
+
         | Letrec {defs; body} ->
             let env = Env.push_letrec env defs in
-            let defs_support = Array1.fold_left (fun support (_, ({id; _} : E.var), expr) ->
-                let (shape, def_support) = shapeof env Naming expr in
+            let defs_support = Array1.fold_left (fun support (_, ({id; _} : E.var), value) ->
+                let (shape, def_support) = shapeof env Naming value in
                 (* Need `let changed'` because `&&` is short-circuiting: *)
                 let changed' = Shapes.refine shapes id shape in
                 changed := !changed && changed';
@@ -368,17 +378,13 @@ let emit shapes expr =
     let rec emit (expr : E.t) = match expr.term with
         | Letrec {defs; body} ->
             defs |> Array1.iter (fun (_, var, _) -> VarRefs.add vrs var);
-            let (defs, defs_changed) = Stream.from (Array1.to_source defs)
-                |> Stream.map (fun ((pos, var, value) as def) ->
+            let defs = Stream.from (Array1.to_source defs)
+                |> Stream.map (fun (pos, var, value) ->
                     let value' = emit value in
                     VarRefs.initialize vrs var;
-                    if value' == value
-                    then (def, false)
-                    else ((pos, var, value'), true))
-                |> Stream.into (Sink.unzip
-                    (Sink.buffer (Array1.length defs))
-                    (Sink.fold (||) false)) in
-            let body' = emit body in
+                    (pos, var, value'))
+                |> Stream.into (Sink.buffer (Array1.length defs)) in
+            let body = emit body in
             let cell_defs = Stream.from (Source.array defs)
                 |> Stream.flat_map (fun (pos, var, _) -> match VarRefs.find vrs var with
                     | Backward -> Stream.empty
@@ -389,9 +395,7 @@ let emit shapes expr =
                         Stream.single (pos, cell, value)
                     | Forward _ -> failwith "unreachable")
                 |> Stream.into Sink.array in
-            if not defs_changed && body' == body && Array.length cell_defs = 0
-            then expr
-            else E.at expr.pos expr.typ (E.letrec (Array.append cell_defs defs) body)
+            E.at expr.pos expr.typ (E.let' (Array.append cell_defs defs) body)
 
         | Use {var; expr = _} -> (match VarRefs.find vrs var with
             | Forward {cell} ->
@@ -416,7 +420,7 @@ let convert ({type_fns; defs; main} : Fc.Program.t) =
     let expr = E.at pos main.typ (E.letrec (Vector.to_array defs) main) in
     analyze expr |> Result.map (fun shapes ->
         match emit shapes expr with
-        | {E.term = Letrec {defs; body}; _} ->
+        | {E.term = Let {defs; body}; _} ->
             {Fc.Program.type_fns; defs = Vector.of_array_unsafe (Array1.to_array defs); main = body}
         | expr -> {Fc.Program.type_fns; defs = Vector.empty; main = expr}
     )

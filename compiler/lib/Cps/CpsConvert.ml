@@ -65,7 +65,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
               else fst main_body.pos)
             , snd main_body.pos ) in
         let codomain = main_body.typ in
-        (pos, FExpr.at pos codomain (FExpr.letrec (Vector.to_array defs) main_body)) in
+        (pos, FExpr.at pos codomain (FExpr.let' (Vector.to_array defs) main_body)) in
 
     let rec convert parent state k env (expr : FExpr.t) = match expr.term with
         | Values values ->
@@ -139,14 +139,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                     |> continue k parent state } in
             convert parent state k env arg
 
-        | Let {def = (_, ({id; _} as var), value); body} ->
-            let k = FnK {pos = value.pos; domain = convert_typ value.typ
-                ; f = fun ~parent ~state ~value ->
-                    let env = Env.add env id value in
-                    convert parent state k env body } in
-            convert parent state k env value
-
-        | Letrec {defs; body} -> (* TODO: become unreachable after FwdRefs ceases emitting letrecs *)
+        | Let {defs; body} ->
             let rec convert_defs state i env =
                 if i < Array1.length defs then begin
                     let (_, ({id; _} as var), value) : Stmt.def = Array1.get defs i in
@@ -241,6 +234,8 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
             |> continue k parent state
 
         | Patchable r -> TxRef.(convert parent state k env !r)
+
+        | Letrec _ -> failwith "compiler bug: encountered `letrec` in CPS conversion"
 
     and convert_pattern env pat : Pattern.t * Env.t = match pat.pterm with
         | ConstP c -> (Const c, env)

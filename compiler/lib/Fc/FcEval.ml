@@ -171,7 +171,6 @@ let rec eval : Env.t -> cont -> expr -> Value.t
                 end else match_failure () in
             eval env (eval_clause 0) matchee)
 
-    | Let {def = (_, {name; _}, vexpr); body}
     | Unpack {existentials = _; var = {name; _}; value = vexpr; body} ->
         let k v = 
             let env = Env.push env in
@@ -179,7 +178,7 @@ let rec eval : Env.t -> cont -> expr -> Value.t
             eval env k body in
         eval env k vexpr
 
-    | Letrec {defs; body} ->
+    | Let {defs; body} ->
         let env = Env.push env in
         let rec define i =
             if i < Array1.length defs then begin
@@ -251,6 +250,8 @@ let rec eval : Env.t -> cont -> expr -> Value.t
 
     | Patchable eref -> TxRef.(eval env k !eref)
 
+    | Letrec _ -> failwith "compiler bug: encountered `letrec` at runtime"
+
 and bind : Env.t -> cont' -> cont' -> pat -> cont
 = fun env then_k else_k pat v -> match pat.pterm with
     | VarP {name; _} -> Env.add env name v; then_k ()
@@ -269,6 +270,6 @@ let run env ({type_fns = _; defs; main} : Fc.Program.t) =
           then (let (pos, _, _) = Vector.get defs 0 in fst pos)
           else fst main.pos)
         , snd main.pos ) in
-    let expr = Expr.at pos main.typ (Expr.letrec (Vector.to_array defs) main) in
+    let expr = Expr.at pos main.typ (Expr.let' (Vector.to_array defs) main) in
     (eval env exit expr, env)
 

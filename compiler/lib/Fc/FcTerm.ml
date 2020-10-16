@@ -39,7 +39,7 @@ end = struct
         | App of {mutable callee : t; universals : Type.t Vector.t; mutable arg : t}
         | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t}
 
-        | Let of {def : def; mutable body : t}
+        | Let of {defs : def Array1.t; mutable body : t}
         | Letrec of {defs : def Array1.t; mutable body : t}
         | LetType of {typedefs : Type.binding Vector1.t; mutable body : t}
         | Match of {mutable matchee : t; clauses : clause Vector.t}
@@ -98,9 +98,11 @@ end = struct
                     (Type.binding_to_doc s) (Vector.to_list universals)
             ^^ blank 1 ^^ def_to_doc s param ^^ blank 1
             ^^ surround 4 1 lbrace (to_doc s body) rbrace 
-        | Let {def; body} ->
+        | Let {defs; body} ->
             surround 4 1 (string "let" ^^ blank 1 ^^ lbrace)
-                (Stmt.def_to_doc s def ^^ semi ^^ hardline ^^ to_doc s body)
+                (separate_map (semi ^^ hardline)
+                    (Stmt.def_to_doc s) (Array1.to_list defs)
+                ^^ semi ^^ hardline ^^ to_doc s body)
                 rbrace
         | Letrec {defs; body} ->
             surround 4 1 (string "letrec" ^^ blank 1 ^^ lbrace)
@@ -237,7 +239,10 @@ end = struct
     let fn universals param body = Fn {universals; param; body}
     let app callee universals arg = App {callee; universals; arg}
     let primapp op universals arg = PrimApp {op; universals; arg}
-    let let' def body = Let {def; body}
+
+    let let' defs body = match Array1.of_array defs with
+        | Some defs -> Let {defs; body}
+        | None -> body.term
 
     let letrec defs body = match Array1.of_array defs with
         | Some defs -> Letrec {defs; body}
@@ -299,12 +304,15 @@ end = struct
                 let arg' = f arg in
                 if arg' == arg then term else PrimApp {op; universals; arg = arg'}
 
-            | Let {def = (pos, def, expr); body} ->
-                let expr' = f expr in
+            | Let {defs; body} ->
+                let defs' = Array1.map (fun (pos, def, expr) -> (pos, def, f expr)) defs in
                 let body' = f body in
-                if expr' == expr && body' == body
+                if body' == body
+                    && Stream.from (Source.zip_with (fun (_, _, expr') (_, _, expr) -> expr' == expr)
+                        (Array1.to_source defs') (Array1.to_source defs))
+                    |> Stream.into (Sink.all ~where: Fun.id)
                 then term
-                else Let {def = (pos, def, expr'); body = body'}
+                else Let {defs = defs'; body = body'}
 
             | Letrec {defs; body} ->
                 let defs' = Array1.map (fun (pos, def, expr) -> (pos, def, f expr)) defs in

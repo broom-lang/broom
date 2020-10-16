@@ -293,7 +293,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                             let use = E.at pos typ (E.use var) in
                             coerce (E.at pos typ (E.focus use i))
                         ) |> CCVector.to_array)) in
-                        E.at pos super (E.let' (pos, var, expr) body))
+                        E.at pos super (E.let' [|(pos, var, expr)|] body))
                     ; residual }
                 end else failwith "<: tuple lengths"
             | _ ->
@@ -362,7 +362,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         let selection = E.at pos super (E.select selectee label) in
                         (label, coerce selection) in
                     let body = E.at pos super (E.record (Array.init fields_len field)) in
-                    E.at pos super (E.let' (pos, var, expr) body))
+                    E.at pos super (E.let' [|(pos, var, expr)|] body))
                 | _ -> (fun expr ->
                     let var = E.fresh_var typ (Some expr) in
                     let field i =
@@ -374,7 +374,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         (label, coerce selection) in
                     let base = E.at pos typ (E.use var) in
                     let body = E.at pos super (E.where base (Array.init fields_len field)) in
-                    E.at pos super (E.let' (pos, var, expr) body)) in
+                    E.at pos super (E.let' [|(pos, var, expr)|] body)) in
 
                 { coercion = (match (co, super_co) with
                     | (Some co, Some super_co) ->
