@@ -235,5 +235,5 @@ let expand_clauses : Util.span -> T.t -> expr -> clause Vector.t -> expr
     let var = E.fresh_var matchee.typ (Some matchee) in
     let (states, start) = matcher pos codomain var clauses in
     let body = emit pos codomain states start.name in
-    E.at pos codomain (E.let' [|(pos, var, matchee)|] body)
+    E.at pos codomain (E.let' [|Def (pos, var, matchee)|] body)
 

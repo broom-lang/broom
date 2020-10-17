@@ -233,12 +233,16 @@ let analyze expr =
                 (Sink.fold Support.union support))
 
         | Let {defs; body} ->
-            let defs_support = Array1.fold_left (fun support (_, ({id; _} : E.var), value) ->
-                let (shape, def_support) = shapeof env Naming value in
-                (* Need `let changed'` because `&&` is short-circuiting: *)
-                let changed' = Shapes.refine shapes id shape in
-                changed := !changed && changed';
-                Support.union support def_support
+            let defs_support = Array1.fold_left (fun support -> function
+                | S.Def (_, ({id; _} : E.var), value) ->
+                    let (shape, def_support) = shapeof env Naming value in
+                    (* Need `let changed'` because `&&` is short-circuiting: *)
+                    let changed' = Shapes.refine shapes id shape in
+                    changed := !changed && changed';
+                    Support.union support def_support
+                | S.Expr expr ->
+                    let (_, support') = shapeof env Naming expr in
+                    Support.union support support'
             ) Support.empty defs in
             let (shape, body_support) = shapeof env ctx body in
             (shape, Support.union defs_support body_support)
@@ -356,7 +360,7 @@ end = struct
     let add vrs (var : E.var) = IntHashtbl.add vrs var.id None
 
     let initialize vrs (var : E.var) =
-        let state =  match IntHashtbl.find vrs var.id with
+        let state = match IntHashtbl.find vrs var.id with
             | Some (Forward {cell}) -> WasForward {cell}
             | Some Backward | None -> Backward
             | Some (WasForward _) -> failwith "unreachable" in
@@ -379,21 +383,33 @@ let emit shapes expr =
         | Letrec {defs; body} ->
             defs |> Array1.iter (fun (_, var, _) -> VarRefs.add vrs var);
             let defs = Stream.from (Array1.to_source defs)
-                |> Stream.map (fun (pos, var, value) ->
-                    let value' = emit value in
+                |> Stream.flat_map (fun (pos, var, value) ->
+                    let value = emit value in
                     VarRefs.initialize vrs var;
-                    (pos, var, value'))
-                |> Stream.into (Sink.buffer (Array1.length defs)) in
+                    match VarRefs.find vrs var with
+                    | WasForward {cell} ->
+                        Stream.double (S.Def (pos, var, value))
+                            (Expr (E.at pos (Values Vector.empty) (E.primapp CellInit
+                                (Vector.singleton value.typ)
+                                (E.at pos (Values (Vector.of_list [cell.vtyp; value.typ]))
+                                    (E.values (Array.of_list [
+                                        E.at pos cell.vtyp (E.use cell)
+                                        ; E.at value.pos value.typ (E.use var)]))))))
+                    | Backward -> Stream.single (S.Def (pos, var, value))
+                    | Forward _ -> failwith "unreachable")
+                |> Stream.into Sink.array in
             let body = emit body in
             let cell_defs = Stream.from (Source.array defs)
-                |> Stream.flat_map (fun (pos, var, _) -> match VarRefs.find vrs var with
-                    | Backward -> Stream.empty
-                    | WasForward {cell} ->
-                        let arg = E.at pos (Values Vector.empty)
-                            (E.values (Array.init 0 (fun _ -> failwith "unreachable"))) in
-                        let value = E.at pos cell.vtyp (E.primapp CellNew Vector.empty arg) in
-                        Stream.single (pos, cell, value)
-                    | Forward _ -> failwith "unreachable")
+                |> Stream.flat_map (function
+                    | S.Def (pos, var, _) -> (match VarRefs.find vrs var with
+                        | Backward -> Stream.empty
+                        | WasForward {cell} ->
+                            let arg = E.at pos (Values Vector.empty)
+                                (E.values (Array.init 0 (fun _ -> failwith "unreachable"))) in
+                            let value = E.at pos cell.vtyp (E.primapp CellNew Vector.empty arg) in
+                            Stream.single (S.Def (pos, cell, value))
+                        | Forward _ -> failwith "unreachable")
+                    | Expr _ -> Stream.empty)
                 |> Stream.into Sink.array in
             E.at expr.pos expr.typ (E.let' (Array.append cell_defs defs) body)
 
@@ -418,11 +434,8 @@ let convert ({type_fns; defs; main} : Fc.Program.t) =
         else main.pos in
     let pos = (fst start_pos, snd main.pos) in
     let expr = E.at pos main.typ (E.letrec (Vector.to_array defs) main) in
-    analyze expr |> Result.map (fun shapes ->
-        match emit shapes expr with
-        | {E.term = Let {defs; body}; _} ->
-            {Fc.Program.type_fns; defs = Vector.of_array_unsafe (Array1.to_array defs); main = body}
-        | expr -> {Fc.Program.type_fns; defs = Vector.empty; main = expr}
+    analyze expr |> Result.map (fun shapes -> (* TODO: get rid of `defs` to begin with?: *)
+        {Fc.Program.type_fns; defs = Vector.empty; main = emit shapes expr}
     )
 
 end

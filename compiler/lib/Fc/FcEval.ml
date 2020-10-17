@@ -1,4 +1,5 @@
 module Expr = Fc.Term.Expr
+module Stmt = Fc.Term.Stmt
 type expr = Expr.t
 type pat = Expr.pat
 
@@ -181,13 +182,16 @@ let rec eval : Env.t -> cont -> expr -> Value.t
     | Let {defs; body} ->
         let env = Env.push env in
         let rec define i =
-            if i < Array1.length defs then begin
-                let (_, {Expr.name; _}, vexpr) = Array1.get defs i in
-                let k v =
-                    Env.add env name v;
-                    define (i + 1) in
-                eval env k vexpr
-            end else eval env k body in
+            if i < Array1.length defs then match Array1.get defs i with
+                | Def (_, {Expr.name; _}, vexpr) ->
+                    let k v =
+                        Env.add env name v;
+                        define (i + 1) in
+                    eval env k vexpr
+                | Expr expr ->
+                    let k _ = define (i + 1) in
+                    eval env k expr
+            else eval env k body in
         define 0
 
     | LetType {body = expr; _} | Axiom {body = expr; _}
@@ -270,6 +274,7 @@ let run env ({type_fns = _; defs; main} : Fc.Program.t) =
           then (let (pos, _, _) = Vector.get defs 0 in fst pos)
           else fst main.pos)
         , snd main.pos ) in
-    let expr = Expr.at pos main.typ (Expr.let' (Vector.to_array defs) main) in
+    let defs = defs |> Vector.to_array |> Array.map (fun def -> Stmt.Def def) in
+    let expr = Expr.at pos main.typ (Expr.let' defs main) in
     (eval env exit expr, env)
 

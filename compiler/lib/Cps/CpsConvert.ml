@@ -48,6 +48,7 @@ let convert_typ state_typ =
         | With {base; label; field} ->
             With {base = convert base; label; field = convert field}
         | EmptyRow -> EmptyRow
+        | App (callee, arg) -> App (convert callee, convert arg)
         | Prim p -> Prim p
         | Uv r -> match Fc.Uv.get log r with
             | Assigned typ -> convert typ
@@ -65,7 +66,8 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
               else fst main_body.pos)
             , snd main_body.pos ) in
         let codomain = main_body.typ in
-        (pos, FExpr.at pos codomain (FExpr.let' (Vector.to_array defs) main_body)) in
+        let defs = defs |> Vector.to_array |> Array.map (fun def -> Stmt.Def def) in
+        (pos, FExpr.at pos codomain (FExpr.let' defs main_body)) in
 
     let rec convert parent state k env (expr : FExpr.t) = match expr.term with
         | Values values ->
@@ -141,14 +143,19 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
 
         | Let {defs; body} ->
             let rec convert_defs state i env =
-                if i < Array1.length defs then begin
-                    let (_, ({id; _} as var), value) : Stmt.def = Array1.get defs i in
-                    let k = FnK {pos = value.pos; domain = convert_typ value.typ
-                        ; f = fun ~parent: _ ~state ~value ->
-                            let env = Env.add env id value in
-                            convert_defs state (i + 1) env } in
-                    convert parent state k env value
-                end else convert parent state k env body in
+                if i < Array1.length defs then match Array1.get defs i with
+                    | Def (_, ({id; _} as var), value) ->
+                        let k = FnK {pos = value.pos; domain = convert_typ value.typ
+                            ; f = fun ~parent: _ ~state ~value ->
+                                let env = Env.add env id value in
+                                convert_defs state (i + 1) env } in
+                        convert parent state k env value
+                    | Expr expr ->
+                        let k = FnK {pos = expr.pos; domain = convert_typ expr.typ
+                            ; f = fun ~parent: _ ~state ~value: _ ->
+                                convert_defs state (i + 1) env} in
+                        convert parent state k env expr
+                else convert parent state k env body in
             convert_defs state 0 env
 
         | Use {var = {id; _}; expr = _} -> continue k parent state (Env.find env id)

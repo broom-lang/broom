@@ -4,6 +4,7 @@ module type EXPR = sig
     module Type : TYPE
 
     type def
+    type stmt
 
     and var =
         { id : int; name : Name.t; vtyp : Type.t
@@ -25,7 +26,7 @@ module type EXPR = sig
         | App of {mutable callee : t; universals : Type.t Vector.t; mutable arg : t}
         | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t}
 
-        | Let of {defs : def Array1.t; mutable body : t}
+        | Let of {defs : stmt Array1.t; mutable body : t}
         | Letrec of {defs : def Array1.t; mutable body : t}
         | LetType of {typedefs : Type.binding Vector1.t; mutable body : t}
         | Match of {mutable matchee : t; clauses : clause Vector.t}
@@ -74,7 +75,7 @@ module type EXPR = sig
     val fn : Type.binding Vector.t -> var -> t -> t'
     val app : t -> Type.t Vector.t -> t -> t'
     val primapp : Primop.t -> Type.t Vector.t -> t -> t'
-    val let' : def Array.t -> t -> t'
+    val let' : stmt Array.t -> t -> t'
     val letrec : def Array.t -> t -> t'
     val axiom : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector.t -> t -> t'
     val match' : t -> clause Vector.t -> t'
@@ -117,7 +118,8 @@ module type TERM = sig
 
     module rec Expr : (EXPR
         with module Type = Type
-        with type def = Stmt.def)
+        with type def = Stmt.def
+        with type stmt = Stmt.t)
 
     and Stmt : (STMT
         with module Type = Type

@@ -80,9 +80,9 @@ let ltp filename =
 
             let program =
                 let pos = match Vector1.of_vector defs with
-                    | Some defs -> let ((_, pos), _, _) = (Vector1.get defs 0) in pos
+                    | Some defs -> let ((_, pos), _, _) = Vector1.get defs 0 in pos
                     | None -> {Lexing.pos_fname = filename; pos_lnum = 1; pos_bol = 0; pos_cnum = 0} in
-                let pos = (pos, pos) in 
+                let pos = (pos, pos) in
                 Typer.check_program tenv defs
                     {pos; v = App ( {pos; v = Var (Name.of_string "main")}
                         , Right {pos; v = Values Vector.empty} )} in

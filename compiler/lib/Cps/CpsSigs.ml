@@ -12,6 +12,7 @@ module type TYPE = sig
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
+        | App of t * t
         | Prim of Prim.t
 
     val to_doc : t -> PPrint.document
