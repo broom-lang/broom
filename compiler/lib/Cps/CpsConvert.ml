@@ -166,14 +166,18 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                     let join = trivialize_cont k in
                     let clauses = clauses |> Vector.map (fun {FExpr.pat; body} ->
                         let (pat, env) = convert_pattern env pat in
-                        let transfer = convert parent state join env body in
-                        let dest = Cont.Id.fresh () in
-                        let cont : Cont.t = {pos = body.pos; name = None
-                            ; universals = Vector.empty; params = Vector.empty
-                            ; body = transfer } in
-                        Builder.add_cont builder dest cont;
-                        {Transfer.pat; dest}) in
-                    {pos = expr.pos; term = Match {matchee; clauses}} } in
+                        let branch = Cont.Id.fresh () in
+                        let cont : Cont.t = 
+                            let parent = Some branch in
+                            let state = Builder.express builder {pos = body.pos; cont = parent; typ = state_typ
+                                ; term = Param {label = branch; index = 0}} in
+                            let transfer = convert parent state join env body in
+                            {pos = body.pos; name = None
+                                ; universals = Vector.empty; params = Vector.singleton state_typ
+                                ; body = transfer } in
+                        Builder.add_cont builder branch cont;
+                        {Transfer.pat; dest = branch}) in
+                    {pos = expr.pos; term = Match {matchee; state; clauses}} } in
             convert parent state k env matchee
 
         | Record fields ->

@@ -65,7 +65,7 @@ module type TRANSFER = sig
     type t' =
         | Goto of {callee : cont_id; universals : Type.t Vector.t; args : expr_id Vector.t}
         | Jump of {callee : expr_id; universals : Type.t Vector.t; args : expr_id Vector.t}
-        | Match of {matchee : expr_id; clauses : clause Vector.t}
+        | Match of {matchee : expr_id; state : expr_id; clauses : clause Vector.t}
         | Return of Type.t Vector.t * expr_id Vector.t
 
     type t = {pos : span; term : t'}

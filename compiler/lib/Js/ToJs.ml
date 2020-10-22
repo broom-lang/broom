@@ -134,7 +134,7 @@ let emit program =
                     lparen (comma ^^ blank 1) rparen
                     emit_expr (Vector.to_list args)
 
-            | Match {matchee; clauses} ->
+            | Match {matchee; state; clauses} ->
                 string "switch" ^^ blank 1 ^^ parens (emit_expr matchee) ^^ blank 1
                 ^^ surround_separate_map 0 0 (braces empty)
                     lbrace (break 1 ^^ string "break" ^^ semi ^^ break 1) rbrace

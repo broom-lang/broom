@@ -166,7 +166,7 @@ module Transfer = struct
     type t' =
         | Goto of {callee : cont_id; universals : Type.t Vector.t; args : expr_id Vector.t}
         | Jump of {callee : expr_id; universals : Type.t Vector.t; args : expr_id Vector.t}
-        | Match of {matchee : expr_id; clauses : clause Vector.t}
+        | Match of {matchee : expr_id; state : expr_id; clauses : clause Vector.t}
         | Return of Type.t Vector.t * expr_id Vector.t
 
     type t = {pos : span; term : t'}
@@ -195,8 +195,10 @@ module Transfer = struct
             prefix 4 1 (string "jump" ^^ blank 1 ^^ Expr.Id.to_doc callee)
                 (args_to_doc universals args)
 
-        | Match {matchee; clauses} ->
-            string "match" ^^ blank 1 ^^ Expr.Id.to_doc matchee ^^ blank 1
+        | Match {matchee; state; clauses} ->
+            string "match" ^^ blank 1 ^^
+            parens (Expr.Id.to_doc state ^^ comma ^^ blank 1
+                ^^ Expr.Id.to_doc matchee) ^^ blank 1
             ^^ surround_separate_map 4 0 (braces empty)
                 lbrace hardline rbrace clause_to_doc (Vector.to_list clauses)
 
@@ -323,16 +325,16 @@ module Program = struct
                 | Some n -> Some (n + 1)
                 | None -> Some 1)
 
-        and visit_clause counts {Transfer.pat = _; dest} =
-            visit_cont counts dest
+        and visit_clause counts {Transfer.pat = _; dest} = visit_cont counts dest
 
         and visit_transfer counts {Transfer.pos = _; term} = match term with
             | Goto {universals = _; callee = _; args}
             | Return (_, args) -> Vector.fold visit_use counts args
             | Jump {universals = _; callee; args} ->
                 Vector.fold visit_use (visit_use counts callee) args
-            | Match {matchee; clauses} ->
-                Vector.fold visit_clause (visit_use counts matchee) clauses
+            | Match {matchee; state; clauses} ->
+                let counts = visit_use (visit_use counts matchee) state in
+                Vector.fold visit_clause counts clauses
 
         and visit_cont counts label =
             if Cont.Id.HashSet.mem visited label
