@@ -23,8 +23,6 @@ type 'a typing = 'a TS.typing
 
 let (!) = TxRef.(!)
 
-(* FIXME: sort `pat_vars` on .id as `tmp_vars` are sorted by pat_var .id in ExpandPats. *)
-
 (* # Synthesis *)
 
 let const_typ c = T.Prim (match c with
@@ -147,12 +145,12 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typing
 = fun env pos clauses -> match Vector.to_seq clauses () with
     | Cons (clause, clauses') ->
         let (env, universals) = Env.push_existential env in
-        let (domain, {TS.term = clause; eff = _}, pat_vars) = elaborate_clause env clause in
+        let (domain, {TS.term = clause; eff = _}) = elaborate_clause env clause in
         let codomain = clause.FExpr.body.typ in
         let clauses' = Seq.map (check_clause env domain codomain) clauses' in
-        let clauses = Vector.of_seq (fun () -> Seq.Cons ((clause, pat_vars), clauses')) in
-        let clauses = clauses |> Vector.map (fun ({FExpr.pat; body = _} as clause, pat_vars) ->
-            {ExpandPats.pat; emit = emit_clause_body clause pat_vars}
+        let clauses = Vector.of_seq (fun () -> Seq.Cons (clause, clauses')) in
+        let clauses = clauses |> Vector.map (fun ({FExpr.pat; body = _} as clause) ->
+            {ExpandPats.pat; emit = emit_clause_body clause}
         ) in
         let domain_t : T.t = match domain with
             | Ior.Left idomain -> idomain
@@ -179,20 +177,19 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typing
     | Nil -> failwith "TODO: clauseless fn"
 
 and elaborate_clause env {params; body} =
-    let (pat, domain, eff, pat_vars, env) = match params with
+    let (pat, domain, eff, env) = match params with
         | Left ipat ->
-            let (param, domain, vars, env) = elaborate_param env ipat in
-            (param, Ior.Left domain, T.EmptyRow, vars, env)
+            let (param, domain, env) = elaborate_param env ipat in
+            (param, Ior.Left domain, T.EmptyRow, env)
         | Right epat ->
-            let (param, domain, vars, env) = elaborate_param env epat in
-            (param, Right domain, T.Uv (Env.uv env T.aRow), vars, env)
+            let (param, domain, env) = elaborate_param env epat in
+            (param, Right domain, T.Uv (Env.uv env T.aRow), env)
         | Both (ipat, epat) ->
-            let (iparam, idomain, ivars, env) = elaborate_param env ipat in
-            let (eparam, edomain, evars, env) = elaborate_param env epat in
+            let (iparam, idomain, env) = elaborate_param env ipat in
+            let (eparam, edomain, env) = elaborate_param env epat in
             ( { FExpr.ppos = iparam.ppos; pterm = FExpr.ValuesP (Vector.of_list [iparam; eparam])
                 ; ptyp = Values (Vector.of_list [iparam.ptyp; eparam.ptyp]) }
-            , Both (idomain, edomain), T.Uv (Env.uv env T.aRow)
-            , Vector.append ivars evars, env ) in
+            , Both (idomain, edomain), T.Uv (Env.uv env T.aRow), env ) in
     let {TS.term = body; eff = body_eff} = typeof env body in
     ignore (M.solving_unify body.pos env eff body_eff);
     let domain = match domain with
@@ -201,7 +198,7 @@ and elaborate_clause env {params; body} =
             Ior.Left idomain
         | Right edomain -> Right {T.edomain; eff}
         | Both (idomain, edomain) -> Both (idomain, {T.edomain; eff}) in
-    (domain, {term = {FExpr.pat; body}; eff}, pat_vars)
+    (domain, {term = {FExpr.pat; body}; eff})
 
 and check_args env pos domain eff args =
     let check_arg env pos domain eff arg =
@@ -233,11 +230,7 @@ and check_args env pos domain eff args =
         | Right _ -> failwith "TODO: Both App args"
         | Left _ -> failwith "missing explicit arg")
 
-and emit_clause_body {FExpr.pat; body} pat_vars =
-    let pat_vars =
-        let vars = Vector.to_array pat_vars in
-        Array.sort (fun (var : var) (var' : var) -> Int.compare var.id var'.id) vars;
-        Vector.of_array_unsafe vars in
+and emit_clause_body {FExpr.pat; body} =
     let pos = pat.ppos in
     fun ctx tmp_vars -> match ctx with
         | Inline ->
@@ -290,7 +283,9 @@ and emit_clause_body {FExpr.pat; body} pat_vars =
                 FExpr.at pos codomain (FExpr.app (FExpr.at pos ftyp (FExpr.use dest)) Vector.empty
                     (FExpr.at pos domain (FExpr.use tmp_var)))
             end else begin
-                let domain : T.t = Values (Vector.map (fun (var : var) -> var.vtyp) pat_vars) in
+                let domain : T.t = Values (Vector.map (fun (vars : ExpandPats.final_naming) ->
+                    vars.tmp_var.vtyp
+                ) tmp_vars) in
                 let ftyp = T.Pi { universals = Vector.empty
                     ; domain = Ior.Right { edomain = domain 
                         ; eff = EmptyRow } (* NOTE: effect does not matter any more... *)
@@ -474,8 +469,8 @@ and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typ
         (match Vector1.of_vector clauses with
         | Some clauses ->
             let clauses = clauses |> Vector1.map (fun clause ->
-                let (clause, pat_vars) = check_clause env domain codomain clause in
-                {ExpandPats.pat = clause.FExpr.pat; emit = emit_clause_body clause pat_vars}
+                let clause = check_clause env domain codomain clause in
+                {ExpandPats.pat = clause.FExpr.pat; emit = emit_clause_body clause}
             ) in
             let domain = match domain with
                 | Left idomain -> idomain
@@ -491,7 +486,7 @@ and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typ
     | _ -> failwith "unreachable: non-Pi `typ` in `check_fn`"
 
 and check_clause env domain codomain {params; body} =
-    let ((pat, pat_vars, body_env), eff) = match domain with
+    let ((pat, body_env), eff) = match domain with
         | Ior.Left idomain -> (match params with
             | Left iparam -> (check_param env idomain iparam, T.EmptyRow)
             | _ -> failwith "expected just implicit param")
@@ -500,16 +495,15 @@ and check_clause env domain codomain {params; body} =
             | _ -> failwith "expected just explicit param")
         | Both (idomain, {edomain; eff}) -> (match params with
             | Both (eparam, iparam) ->
-                let (ipat, ivars, env) = check_param env idomain iparam in
-                let (epat, evars, env) = check_param env edomain eparam in
+                let (ipat, env) = check_param env idomain iparam in
+                let (epat, env) = check_param env edomain eparam in
                 ( ({FExpr.ppos = ipat.ppos; pterm = FExpr.ValuesP (Vector.of_list [ipat; epat])
-                    ; ptyp = Values (Vector.of_list [ipat.ptyp; epat.ptyp])}
-                  , Vector.append ivars evars, env)
+                    ; ptyp = Values (Vector.of_list [ipat.ptyp; epat.ptyp])}, env)
                 , eff )
             | _ -> failwith "expected both implicit and explicit param") in
     let {TS.term = body; eff = body_eff} = check_abs body_env codomain body in
     ignore (M.solving_unify body.pos env body_eff eff);
-    ({pat; body}, pat_vars)
+    {pat; body}
 
 (* # Patterns *)
 
@@ -517,7 +511,7 @@ and check_clause env domain codomain {params; body} =
 
 and elaborate_param env param =
     let (param, (_, typ), vars) = elaborate_pat env param in
-    (param, typ, vars, Vector.fold Env.push_val env vars)
+    (param, typ, Vector.fold Env.push_val env vars)
 
 and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector.t =
     let elaborate_pats env pats =
@@ -580,7 +574,7 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
 
 and check_param env domain param =
     let (param, vars) = check_pat env domain param in
-    (param, vars, Vector.fold Env.push_val env vars)
+    (param, Vector.fold Env.push_val env vars)
 
 (* TODO: use coercions (and subtyping ?): *)
 and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vector.t
