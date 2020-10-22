@@ -92,6 +92,7 @@ module type EXPR = sig
 
     val map_children : (t -> t) -> t -> t
 
+    module Var : Set.OrderedType with type t = var
     module VarSet : Set.S with type elt = var
 end
 

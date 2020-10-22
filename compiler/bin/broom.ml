@@ -86,6 +86,7 @@ let ltp filename =
                 Typer.check_program tenv defs
                     {pos; v = App ( {pos; v = Var (Name.of_string "main")}
                         , Right {pos; v = Values Vector.empty} )} in
+            PPrint.ToChannel.pretty 1.0 80 stdout (Typer.Env.document tenv Fc.Program.to_doc program);
 
             match FwdRefs.convert program with
             | Ok program ->
