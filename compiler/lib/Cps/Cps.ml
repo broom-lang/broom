@@ -97,9 +97,9 @@ module Expr = struct
     let field_to_doc (label, field) =
         PPrint.(infix 4 1 equals (Name.to_doc label) (Id.to_doc field))
 
-    let to_doc (expr : t) =
+    let term_to_doc term =
         let open PPrint in
-        match expr.term with
+        match term with
         | PrimApp {op; universals; args} ->
             prefix 4 1 (string "__" ^^ Primop.to_doc op)
                 (surround_separate_map 4 0 empty
@@ -139,10 +139,68 @@ module Expr = struct
             infix 4 1 sharp (ContId.to_doc label) (string (Int.to_string index))
         | Const c -> Const.to_doc c
 
+    let to_doc expr = term_to_doc expr.term
+
     let def_to_doc id expr =
         let open PPrint in
         infix 4 1 equals (infix 4 1 colon (Id.to_doc id) (Type.to_doc expr.typ))
             (to_doc expr)
+
+    let iter_labels f expr = match expr.term with
+        | Label label | Param {label; index = _} -> f label
+        | Values _ | Focus _ | PrimApp _ | Record _ | With _ | Where _ | Select _ | Proxy _
+        | Const _ -> ()
+
+    let iter_uses f expr = match expr.term with
+        | Values args | PrimApp {universals = _; op = _; args} -> Vector.iter f args
+        | Record fields -> Vector.iter (fun (_, use) -> f use) fields
+        | Where {base; fields} -> f base; Vector.iter (fun (_, use) -> f use) fields
+        | With {base; label = _; field} -> f base; f field
+        | Focus {focusee = use; index = _} | Select {selectee = use; field = _} -> f use
+        | Proxy _ | Label _ | Param _ | Const _ -> ()
+
+    let map_uses f term = match term with
+        | Values args ->
+            let (noop, args) = Stream.from (Vector.to_source args)
+                |> Stream.map (fun arg -> let arg' = f arg in (arg' == arg, arg'))
+                |> Stream.into (Sink.unzip (Sink.fold (&&) true) (Vector.sink ())) in
+            if noop then term else Values args
+
+        | PrimApp {universals; op; args} ->
+            let (noop, args) = Stream.from (Vector.to_source args)
+                |> Stream.map (fun arg -> let arg' = f arg in (arg' == arg, arg'))
+                |> Stream.into (Sink.unzip (Sink.fold (&&) true) (Vector.sink ())) in
+            if noop then term else PrimApp {universals; op; args}
+
+        | Record fields ->
+            let (noop, fields) = Stream.from (Vector.to_source fields)
+                |> Stream.map (fun (k, v) -> let v' = f v in (v' == v, (k, v')))
+                |> Stream.into (Sink.unzip (Sink.fold (&&) true) (Vector.sink ())) in
+            if noop then term else Record fields
+
+        | Where {base; fields} ->
+            let base' = f base in
+            let (noop, fields) = Stream.from (Vector.to_source fields)
+                |> Stream.map (fun (k, v) -> let v' = f v in (v' == v, (k, v')))
+                |> Stream.into (Sink.unzip (Sink.fold (&&) true) (Vector.sink ())) in
+            if base' == base && noop then term else Where {base = base'; fields}
+
+        | With {base; label; field} ->
+            let base' = f base in
+            let field' = f field in
+            if base' == base && field' == field
+            then term
+            else With {base = base'; label; field = field'}
+
+        | Focus {focusee; index} ->
+            let focusee' = f focusee in
+            if focusee' == focusee then term else Focus {focusee = focusee'; index}
+
+        | Select {selectee; field} ->
+            let selectee' = f selectee in
+            if selectee' == selectee then term else Select {selectee = selectee'; field}
+
+        | Proxy _ | Label _ | Param _ | Const _ -> term
 end
 
 module Pattern = struct
@@ -204,6 +262,18 @@ module Transfer = struct
 
         | Return (universals, args) ->
             prefix 4 1 (string "return") (args_to_doc universals args)
+
+    let iter_labels f (transfer : t) = match transfer.term with
+        | Goto {universals = _; callee; args = _} -> f callee
+        | Match {matchee = _; state = _; clauses} ->
+            Vector.iter (fun {pat = _; dest} -> f dest) clauses
+        | Jump _ | Return _ -> ()
+
+    let iter_uses f (transfer : t) = match transfer.term with
+        | Goto {universals = _; callee = _; args} -> Vector.iter f args
+        | Jump {universals = _; callee; args} -> f callee; Vector.iter f args
+        | Match {matchee; state; clauses} -> f matchee; f state
+        | Return (_, args) -> Vector.iter f args
 end
 
 module Cont = struct
@@ -287,11 +357,17 @@ module Program = struct
         ^^ twice hardline ^^ Cont.def_to_doc main (Conts.get_exn main conts)
             ~exprs_doc: (cont_exprs_doc main)
 
+    let type_fns (program : t) = program.type_fns
+
     let exports {type_fns = _; exprs = _; conts = _; main} = Source.single main
 
     let cont (program : t) label = Conts.get_exn label program.conts
 
     let expr (program : t) id = Exprs.get_exn id program.exprs
+
+    let exprs (program : t) =
+        let gen = Exprs.to_gen program.exprs in
+        Stream.unfold () (fun () -> gen () |> Option.map (fun kv -> (kv, ())))
 
     let usecounts ({type_fns = _; exprs = _; conts = _; main} as program) =
         let transient = CCHashTrie.Transient.create () in

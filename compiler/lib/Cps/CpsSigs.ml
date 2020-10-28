@@ -16,6 +16,7 @@ module type TYPE = sig
         | Prim of Prim.t
 
     val to_doc : t -> PPrint.document
+    val param_to_doc : param -> PPrint.document
 end
 
 module type EXPR = sig
@@ -44,6 +45,10 @@ module type EXPR = sig
         ; term : t' }
 
     val to_doc : t -> PPrint.document
+    val term_to_doc : t' -> PPrint.document
+    val iter_labels : (cont_id -> unit) -> t -> unit
+    val iter_uses : (Id.t -> unit) -> t -> unit
+    val map_uses : (Id.t -> Id.t) -> t' -> t'
 end
 
 module type PATTERN = sig
@@ -71,6 +76,8 @@ module type TRANSFER = sig
     type t = {pos : span; term : t'}
 
     val to_doc : t -> PPrint.document
+    val iter_labels : (cont_id -> unit) -> t -> unit
+    val iter_uses : (expr_id -> unit) -> t -> unit
 end
 
 module type CONT = sig
@@ -99,14 +106,16 @@ module type PROGRAM = sig
 
     val to_doc : t -> PPrint.document
 
+    val type_fns : t -> Type.param Vector.t
     val exports : t -> Cont.Id.t Streaming.Source.t
     val cont : t -> Cont.Id.t -> Cont.t
     val expr : t -> Expr.Id.t -> Expr.t
+    val exprs : t -> (Expr.Id.t * Expr.t) Streaming.Stream.t
 
     val usecounts : t -> int Expr.Id.HashMap.t
 
     module Builder : sig
-        val create : Fc.Type.binding Vector.t -> builder
+        val create : Type.param Vector.t -> builder
         val express : builder -> Expr.t -> Expr.Id.t
         val add_cont : builder -> Cont.Id.t -> Cont.t -> unit
         val build : builder -> Cont.Id.t -> t

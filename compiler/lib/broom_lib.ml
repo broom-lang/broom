@@ -39,5 +39,8 @@ module Cps = struct
     module Convert = CpsConvert
 end
 
+module Cfg = Cfg
+module ScheduleData = ScheduleData
+
 module ToJs = ToJs
 
