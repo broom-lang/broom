@@ -1,3 +1,5 @@
+open Streaming
+
 type span = Util.span
 
 module Type = Cps.Type
@@ -6,6 +8,13 @@ module Expr = struct
     type t = Cps.Expr.t'
 
     let to_doc = Cps.Expr.term_to_doc
+
+    let is_pure : t -> bool = function
+        | Values _ | Focus _ | Record _ | With _ | Where _ | Select _
+        | Proxy _ | Label _ | Param _ | Const _ -> true
+
+    let iter_uses = Cps.Expr.iter_uses'
+    let iter_labels = Cps.Expr.iter_labels'
 
     module Id = Cps.Expr.Id
 end
@@ -27,10 +36,17 @@ module Stmt = struct
                 (infix 4 1 colon (Expr.Id.to_doc var) (Type.to_doc typ))
                 (Expr.to_doc expr))
         | Expr expr -> Expr.to_doc expr
+
+    let iter_uses f (stmt : t) = match stmt.term with
+        | Def (_, expr) | Expr expr -> Expr.iter_uses f expr
+
+    let iter_labels f (stmt : t) = match stmt.term with
+        | Def (_, expr) | Expr expr -> Expr.iter_labels f expr
 end
 
 module Transfer = struct
     module Type = Type
+    module Pattern = Cps.Pattern
     type expr_id = Expr.Id.t
     type cont_id = Cps.ContId.t
 
@@ -76,6 +92,19 @@ module Transfer = struct
 
         | Return (universals, args) ->
             prefix 4 1 (string "return") (args_to_doc universals args)
+
+
+    let iter_labels f (transfer : t) = match transfer.term with
+        | Goto {universals = _; callee; args = _} -> f callee
+        | Match {matchee = _; clauses} ->
+            Vector.iter (fun {Cps.Transfer.pat = _; dest} -> f dest) clauses
+        | Jump _ | Return _ -> ()
+
+    let iter_uses f (transfer : t) = match transfer.term with
+        | Goto {universals = _; callee = _; args} -> Vector.iter f args
+        | Jump {universals = _; callee; args} -> f callee; Vector.iter f args
+        | Match {matchee; clauses = _} -> f matchee
+        | Return (_, args) -> Vector.iter f args
 end
 
 
@@ -162,6 +191,10 @@ module Program = struct
         ) (Conts.to_list conts
             |> List.filter (fun (id, _) -> not (Cont.Id.equal id main)))
         ^^ twice hardline ^^ Cont.def_to_doc main (Conts.get_exn main conts)
+
+    let exports program = Source.single program.main
+
+    let cont program label = Conts.get_exn label program.conts
 
     type builder =
         { type_fns : Type.param Vector.t

@@ -1,25 +1,68 @@
 open Streaming
-open Cps
+open Cfg
 open PPrint
+
+module Uses = Expr.Id.Hashtbl
+
+let count_uses_by_cont program =
+    let counts = Expr.Id.Hashtbl.create 0 in
+    let visited = Cont.Id.HashSet.create 0 in
+
+    let visit_use parent use =
+        let use_counts = match Expr.Id.Hashtbl.find_opt counts use with
+            | Some use_counts -> use_counts
+            | None ->
+                let use_counts = Cont.Id.Hashtbl.create 1 in
+                Expr.Id.Hashtbl.add counts use use_counts;
+                use_counts in
+        let count = match Cont.Id.Hashtbl.find_opt use_counts parent with
+            | Some n -> n
+            | None -> 0 in
+        Cont.Id.Hashtbl.add use_counts parent (count + 1) in
+
+    let rec visit_stmt parent stmt =
+        Stmt.iter_labels visit_label stmt;
+        Stmt.iter_uses (visit_use parent) stmt
+
+    and visit_transfer parent transfer =
+        Transfer.iter_labels visit_label transfer;
+        Transfer.iter_uses (visit_use parent) transfer
+
+    and visit_label label =
+        if Cont.Id.HashSet.mem visited label
+        then ()
+        else begin
+            Cont.Id.HashSet.insert visited label;
+            let {Cont.pos = _; name = _; universals = _; params = _; stmts; transfer} =
+                Program.cont program label in
+            Vector.iter (visit_stmt label) stmts;
+            visit_transfer label transfer
+        end in
+
+    Source.each visit_label (Program.exports program);
+    counts
 
 (* OPTIMIZE: Get rid of intermediate lists *)
 
 let emit program =
-    let usecounts = Program.usecounts program in
-    let usecount id = Expr.Id.HashMap.get_exn id usecounts in
+    let usecounts = count_uses_by_cont program in
+    let is_inlineable parent var expr =
+        if Expr.is_pure expr then
+            match Expr.Id.Hashtbl.find_opt usecounts var with
+            | Some var_usecounts ->
+                Cont.Id.Hashtbl.find_opt var_usecounts parent
+                |> Option.value ~default: 0
+                |> (=) 1
+            | None -> false
+        else false in
 
+(*
     let counter = ref 0 in
     let fresh () =
         let i = !counter in
         counter := i + 1;
         string ("y$" ^ Int.to_string i) in
-
-    let expr_vars = Expr.Id.Hashtbl.create 0 in
-    let define (id : Expr.Id.t) =
-        let doc = string ("x$" ^ Int.to_string (id :> int)) in
-        Expr.Id.Hashtbl.add expr_vars id doc;
-        doc in
-    let expr_var = Expr.Id.Hashtbl.find_opt expr_vars in
+*)
 
     let param_docs = Cont.Id.Hashtbl.create 0 in
     let add_param_docs label fn_name n =
@@ -29,6 +72,14 @@ let emit program =
         Cont.Id.Hashtbl.add param_docs label docs;
         docs in
     let emit_param label i = Vector.get (Cont.Id.Hashtbl.find param_docs label) i in
+
+    let uses = Uses.create 0 in
+    let add_var_name (var : Expr.Id.t) =
+        let doc = string ("x$" ^ Int.to_string (var :> int)) in
+        Uses.add uses var doc;
+        doc in
+    let add_var_expr = Uses.add uses in
+    let emit_use = Uses.find uses in
 
     let emit_label (label : Cont.Id.t) =
         let {name; _} : Cont.t = Program.cont program label in
@@ -40,125 +91,125 @@ let emit program =
     let emit_const : Const.t -> PPrint.document = function
         | Int n -> string (Int.to_string n) in
 
-    let rec emit_transfer parent (transfer : Transfer.t) =
-        let stmts = CCVector.create () in
+    let rec emit_transfer parent stmts (transfer : Transfer.t) =
+        let emit_expr : Expr.t -> PPrint.document = function
+            | Values vals -> (* OPTIMIZE: unbox tuples (in an earlier pass) *)
+                surround_separate_map 4 0 (brackets empty)
+                    lbracket (comma ^^ break 1) rbracket
+                    emit_use (Vector.to_list vals)
 
-        let rec emit_expr id =
-            match expr_var id with
-            | Some var -> var
-            | None ->
-                let {Expr.pos = _; typ = _; cont = parent'; term} = Program.expr program id in
-                (* assert (Cont.Id.equal (Option.get parent') parent); FIXME *)
-                let var = if usecount id > 1 then Some (define id) else None in
-                let expr = match term with
-                    | Values vals -> (* OPTIMIZE: unbox tuples (in an earlier pass) *)
-                        surround_separate_map 4 0 (brackets empty)
-                            lbracket (comma ^^ break 1) rbracket
-                            emit_expr (Vector.to_list vals)
+            | Focus {focusee; index} -> (* OPTIMIZE: parens not always necessary *)
+                parens (emit_use focusee) ^^ brackets (string (Int.to_string index))
 
-                    | Focus {focusee; index} -> (* OPTIMIZE: parens not always necessary *)
-                        parens (emit_expr focusee) ^^ brackets (string (Int.to_string index))
+            | Record fields ->
+                surround_separate_map 4 0 (braces empty)
+                    lbrace (comma ^^ break 1) rbrace
+                    (fun (label, field) ->
+                        Name.to_doc label ^^ colon ^^ blank 1 ^^ emit_use field)
+                    (Vector.to_list fields)
 
-                    | Record fields ->
-                        surround_separate_map 4 0 (braces empty)
-                            lbrace (comma ^^ break 1) rbrace
-                            (fun (label, field) ->
-                                Name.to_doc label ^^ colon ^^ blank 1 ^^ emit_expr field)
-                            (Vector.to_list fields)
+(*
+            | Where {base; fields} ->
+                let base_name = fresh () in
+                let stmt = infix 4 1 equals
+                    (string "var" ^^ blank 1 ^^ base_name)
+                    (string "Object.assign"
+                    ^^ parens (braces empty ^^ comma ^^ break 1 ^^ emit_use base)) in
+                CCVector.push stmts stmt;
+                Vector.iter (fun (label, field) ->
+                    let stmt = infix 4 1 equals (base_name ^^ dot ^^ Name.to_doc label)
+                        (emit_use field) in
+                    CCVector.push stmts stmt
+                ) fields;
+                base_name
 
-                    | Where {base; fields} ->
-                        let base_name = fresh () in
-                        let stmt = infix 4 1 equals
-                            (string "var" ^^ blank 1 ^^ base_name)
-                            (string "Object.assign"
-                            ^^ parens (braces empty ^^ comma ^^ break 1 ^^ emit_expr base)) in
-                        CCVector.push stmts stmt;
-                        Vector.iter (fun (label, field) ->
-                            let stmt = infix 4 1 equals (base_name ^^ dot ^^ Name.to_doc label)
-                                (emit_expr field) in
-                            CCVector.push stmts stmt
-                        ) fields;
-                        base_name
+            | With {base; label; field} ->
+                let base_name = fresh () in
+                let stmt = infix 4 1 equals
+                    (string "var" ^^ blank 1 ^^ base_name)
+                    (string "Object.assign"
+                    ^^ parens (braces empty ^^ comma ^^ break 1 ^^ emit_use base)) in
+                CCVector.push stmts stmt;
+                let stmt = infix 4 1 equals (base_name ^^ dot ^^ Name.to_doc label)
+                    (emit_use field) in
+                CCVector.push stmts stmt;
+                base_name
+*)
 
-                    | With {base; label; field} ->
-                        let base_name = fresh () in
-                        let stmt = infix 4 1 equals
-                            (string "var" ^^ blank 1 ^^ base_name)
-                            (string "Object.assign"
-                            ^^ parens (braces empty ^^ comma ^^ break 1 ^^ emit_expr base)) in
-                        CCVector.push stmts stmt;
-                        let stmt = infix 4 1 equals (base_name ^^ dot ^^ Name.to_doc label)
-                            (emit_expr field) in
-                        CCVector.push stmts stmt;
-                        base_name
+            | Select {selectee; field} -> (* OPTIMIZE: parens not always necessary *)
+                prefix 4 0 (parens (emit_use selectee)) (dot ^^ Name.to_doc field)
 
-                    | Select {selectee; field} -> (* OPTIMIZE: parens not always necessary *)
-                        prefix 4 0 (parens (emit_expr selectee)) (dot ^^ Name.to_doc field)
+            | Proxy _ -> string "0" (* OPTIMIZE: empty unboxed tuple = erase *)
 
-                    | Proxy _ -> string "0" (* OPTIMIZE: empty unboxed tuple = erase *)
+            | Param {label; index} -> emit_param label index
+            | Label label -> (* TODO: Assumes Label node has not been duplicated; stop that *)
+                let cont = Program.cont program label in
+                let name_doc = emit_label label in
+                emit_fn label name_doc cont
 
-                    | Param {label; index} -> emit_param label index
-                    | Label label ->
-                        let cont = Program.cont program label in
-                        let name_doc = emit_label label in
-                        emit_fn label name_doc cont
+            | Const c -> emit_const c in
 
-                    | Const c -> emit_const c in
-                (match var with
-                | Some var ->
-                    let stmt = prefix 4 1
-                        (string "var" ^^ blank 1 ^^ var ^^ blank 1 ^^ equals) expr in
-                    CCVector.push stmts stmt;
-                    var
-                | None -> expr) in
-
-        let emit_clause {Transfer.pat; dest} =
-            let emit_pat = function
-                | Pattern.Const c -> emit_const c
+        let emit_clause ({pat; dest} : Transfer.clause) =
+            let emit_pat : Transfer.Pattern.t -> PPrint.document = function
+                | Const c -> string "case" ^^ blank 1 ^^ emit_const c
                 | Wild -> string "default" in
 
-            let {Cont.pos = _; name = _; universals = _; params; body} = Program.cont program dest in
-            string "case" ^^ blank 1 ^^ emit_pat pat ^^ colon ^^ blank 1
-            ^^ emit_block dest body ^^ semi in
+            let {Cont.pos = _; name = _; universals = _; params = _; stmts; transfer} =
+                Program.cont program dest in
+            emit_pat pat ^^ colon
+            ^^ nest 4 (hardline ^^ emit_transfer dest stmts transfer) in
 
+        let emit_stmt (stmt : Stmt.t) = match stmt.term with
+            | Def (var, expr) ->
+                let expr_doc = emit_expr expr in
+                if is_inlineable parent var expr
+                then begin
+                    add_var_expr var expr_doc;
+                    empty
+                end else begin
+                    let name = add_var_name var in
+                    infix 4 1 equals (string "var" ^^ blank 1 ^^ name)
+                        expr_doc ^^ semi ^^ break 1
+                end
+            | Expr expr -> emit_expr expr ^^ semi ^^ break 1 in
+
+        let stmts = concat_map emit_stmt (Vector.to_list stmts) in
         let transfer = match transfer.term with
             | Goto {callee; universals = _; args} ->
                 string "return" ^^ blank 1 ^^ parens (emit_label callee) (* OPTIMIZE: don't always need parens *)
                 ^^ surround_separate_map 4 0 (parens empty)
                     lparen (comma ^^ blank 1) rparen
-                    emit_expr (Vector.to_list args)
+                    emit_use (Vector.to_list args)
 
             | Jump {callee; universals = _; args} ->
-                string "return" ^^ blank 1 ^^ parens (emit_expr callee) (* OPTIMIZE: don't always need parens *)
+                string "return" ^^ blank 1 ^^ parens (emit_use callee) (* OPTIMIZE: don't always need parens *)
                 ^^ surround_separate_map 4 0 (parens empty)
                     lparen (comma ^^ blank 1) rparen
-                    emit_expr (Vector.to_list args)
+                    emit_use (Vector.to_list args)
 
-            | Match {matchee; state; clauses} ->
-                string "switch" ^^ blank 1 ^^ parens (emit_expr matchee) ^^ blank 1
+            | Match {matchee; clauses} ->
+                string "switch" ^^ blank 1 ^^ parens (emit_use matchee) ^^ blank 1
                 ^^ surround_separate_map 0 0 (braces empty)
-                    lbrace (break 1 ^^ string "break" ^^ semi ^^ break 1) rbrace
+                    lbrace (break 1) rbrace
                     emit_clause (Vector.to_list clauses)
 
             | Return (_, args) ->
                 string "return" ^^ blank 1 ^^ (Stream.from (Vector.to_source args)
-                    |> Stream.map emit_expr
+                    |> Stream.map emit_use
                     |> Stream.into Sink.list
                     |> surround_separate 4 0 (brackets empty)
                         lbracket (comma ^^ break 1) rbracket) in
+        stmts ^^ transfer ^^ semi
 
-        concat_map (fun stmt -> stmt ^^ semi ^^ break 1) (CCVector.to_list stmts)
-        ^^ transfer ^^ semi
+    and emit_block parent stmts transfer =
+        surround 4 1 lbrace (emit_transfer parent stmts transfer) rbrace
 
-    and emit_block parent transfer =
-        surround 4 1 lbrace (emit_transfer parent transfer) rbrace
-
-    and emit_fn label name_doc {Cont.pos = _; name = _; universals = _; params; body} =
+    and emit_fn label name_doc {Cont.pos = _; name = _; universals = _; params; stmts; transfer} =
         let param_docs = add_param_docs label name_doc (Vector.length params) in
         string "function" ^^ blank 1
         ^^ surround_separate 4 0 (parens empty) lparen (comma ^^ break 1) rparen
             (Vector.to_list param_docs) ^^ blank 1
-        ^^ emit_block label body in
+        ^^ emit_block label stmts transfer in
 
     let emit_export label =
         let cont = Program.cont program label in

@@ -6,6 +6,7 @@ module type EXPR = sig
     type t = Cps.Expr.t'
 
     val to_doc : t -> PPrint.document
+    val is_pure : t -> bool
 
     module Id = Cps.Expr.Id
 end
@@ -22,10 +23,13 @@ module type STMT = sig
     type t = {pos : span; typ : Type.t; term : t'}
 
     val to_doc : t -> PPrint.document
+    val iter_labels : (Cps.Cont.Id.t -> unit) -> t -> unit
+    val iter_uses : (Expr.Id.t -> unit) -> t -> unit
 end
 
 module type TRANSFER = sig
     module Type : TYPE
+    module Pattern = Cps.Pattern
     type expr_id
     type cont_id
 
@@ -40,6 +44,8 @@ module type TRANSFER = sig
     type t = {pos : span; term : t'}
 
     val to_doc : t -> PPrint.document
+    val iter_labels : (cont_id -> unit) -> t -> unit
+    val iter_uses : (expr_id -> unit) -> t -> unit
 end
 
 module type CONT = sig
@@ -69,6 +75,9 @@ module type PROGRAM = sig
     type builder
 
     val to_doc : t -> PPrint.document
+
+    val cont : t -> Cont.Id.t -> Cont.t
+    val exports : t -> Cont.Id.t Streaming.Source.t
 
     module Builder : sig
         val create : Fc.Type.binding Vector.t -> Cont.Id.t -> builder

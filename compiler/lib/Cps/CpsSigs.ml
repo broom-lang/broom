@@ -47,6 +47,8 @@ module type EXPR = sig
     val to_doc : t -> PPrint.document
     val term_to_doc : t' -> PPrint.document
     val iter_labels : (cont_id -> unit) -> t -> unit
+    val iter_labels' : (cont_id -> unit) -> t' -> unit
+    val iter_uses' : (Id.t -> unit) -> t' -> unit
     val iter_uses : (Id.t -> unit) -> t -> unit
     val map_uses : (Id.t -> Id.t) -> t' -> t'
 end

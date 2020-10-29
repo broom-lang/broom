@@ -1,2 +1,2 @@
-val emit : Cps.Program.t -> PPrint.document
+val emit : Cfg.Program.t -> PPrint.document
 

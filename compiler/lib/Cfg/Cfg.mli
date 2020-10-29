@@ -13,6 +13,7 @@ module Transfer : CfgSigs.TRANSFER
 module Cont : CfgSigs.CONT
     with module Type = Type
     with module Stmt = Stmt
+    with module Transfer = Transfer
     with module Id = Cps.Cont.Id
 
 module Program : CfgSigs.PROGRAM

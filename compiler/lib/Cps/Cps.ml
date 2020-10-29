@@ -146,18 +146,22 @@ module Expr = struct
         infix 4 1 equals (infix 4 1 colon (Id.to_doc id) (Type.to_doc expr.typ))
             (to_doc expr)
 
-    let iter_labels f expr = match expr.term with
+    let iter_labels' f = function
         | Label label | Param {label; index = _} -> f label
         | Values _ | Focus _ | PrimApp _ | Record _ | With _ | Where _ | Select _ | Proxy _
         | Const _ -> ()
 
-    let iter_uses f expr = match expr.term with
+    let iter_labels f expr = iter_labels' f expr.term
+
+    let iter_uses' f = function
         | Values args | PrimApp {universals = _; op = _; args} -> Vector.iter f args
         | Record fields -> Vector.iter (fun (_, use) -> f use) fields
         | Where {base; fields} -> f base; Vector.iter (fun (_, use) -> f use) fields
         | With {base; label = _; field} -> f base; f field
         | Focus {focusee = use; index = _} | Select {selectee = use; field = _} -> f use
         | Proxy _ | Label _ | Param _ | Const _ -> ()
+
+    let iter_uses f expr = iter_uses' f expr.term
 
     let map_uses f term = match term with
         | Values args ->
