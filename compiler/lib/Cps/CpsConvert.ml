@@ -130,16 +130,36 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                         convert parent state k env arg } in
             convert parent state k env callee
 
-        | PrimApp {op; universals; arg} -> (* FIXME: thread `state` when necessary *)
-            let k = FnK {pos = arg.pos; domain = convert_typ arg.typ
-                ; f = fun ~parent ~state ~value: arg ->
-                    Builder.express builder {pos = expr.pos; cont = parent
-                        ; typ = convert_typ expr.typ
-                        ; term = PrimApp {op
-                            ; universals = Vector.map convert_typ universals
-                            ; args = Vector.singleton arg}}
-                    |> continue k parent state } in
-            convert parent state k env arg
+        | PrimApp {op; universals; arg} ->
+            (match Primop.behaviour op with
+            | Pure ->
+                let k = FnK {pos = arg.pos; domain = convert_typ arg.typ
+                    ; f = fun ~parent ~state ~value: arg ->
+                        Builder.express builder {pos = expr.pos; cont = parent
+                            ; typ = convert_typ expr.typ
+                            ; term = PrimApp {op
+                                ; universals = Vector.map convert_typ universals
+                                ; args = Vector.singleton arg}}
+                        |> continue k parent state } in
+                convert parent state k env arg
+
+            | Impure ->
+                let codomain = convert_typ expr.typ in
+                let k = FnK {pos = arg.pos; domain = convert_typ arg.typ
+                    ; f = fun ~parent ~state ~value: arg ->
+                        let app = Builder.express builder {pos = expr.pos; cont = parent
+                            ; typ = Values (Vector.of_list [state_typ; codomain])
+                            ; term = PrimApp {op
+                                ; universals = Vector.map convert_typ universals
+                                ; args = Vector.of_list [state; arg]}} in
+                        let state = Builder.express builder {pos = expr.pos; cont = parent
+                            ; typ = state_typ
+                            ; term = Focus {focusee = app; index = 0}} in
+                        let result = Builder.express builder {pos = expr.pos; cont = parent
+                            ; typ = codomain
+                            ; term = Focus {focusee = app; index = 1}} in
+                        continue k parent state result } in
+                convert parent state k env arg)
 
         | Let {defs; body} ->
             let rec convert_defs state i env =
