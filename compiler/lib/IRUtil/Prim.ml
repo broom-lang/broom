@@ -1,11 +1,12 @@
 type t =
-    | Int
+    | Int | Bool
     | Array | Cell
     | SingleRep (* = *) | Boxed
     | TypeIn | RowOf
 
 let to_string = function
     | Int -> "int"
+    | Bool -> "bool"
     | Array -> "array"
     | Cell -> "cell"
     | SingleRep -> "singleRep"

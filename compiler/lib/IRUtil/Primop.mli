@@ -1,7 +1,8 @@
 module T = FcType.Type
 
 type t =
-    | IAdd | ISub | IMul
+    | IAdd | ISub | IMul | IDiv
+    | ILt | ILe | IGt | IGe | IEq
     | CellNew | CellInit | CellGet
     | Int
     | Type

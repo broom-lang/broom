@@ -14,6 +14,7 @@ module Value = struct
         | Proxy
         | Cell of t option ref
         | Int of int
+        | Bool of bool
 
     let rec to_doc = function
         | Tuple vs -> PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
@@ -31,6 +32,8 @@ module Value = struct
             | Some contents -> to_doc contents
             | None -> PPrint.string "uninitialized")
         | Int n -> PPrint.string (Int.to_string n)
+        | Bool true -> PPrint.string "True"
+        | Bool false -> PPrint.string "False"
 end
 
 module Env = struct
@@ -126,13 +129,26 @@ let rec eval : Env.t -> cont -> expr -> Value.t
 
     | PrimApp {op; universals = _; arg} ->
         let apply_primop (arg : Value.t) = match op with
-            | IAdd | ISub | IMul -> (match arg with
+            | IAdd | ISub | IMul | IDiv -> (match arg with
                 | Tuple args when Vector.length args = 2 ->
                     (match (Vector.get args 0, Vector.get args 1) with
                     | (Int a, Int b) -> k (Int (match op with
                         | IAdd -> a + b
                         | ISub -> a - b
                         | IMul -> a * b
+                        | IDiv -> a / b
+                        | _ -> failwith "unreachable"))
+                    | _ -> failwith "compiler bug: invalid primop args")
+                | _ -> failwith "compiler bug: invalid primop arg")
+            | ILt | ILe | IGt | IGe | IEq -> (match arg with
+                | Tuple args when Vector.length args = 2 ->
+                    (match (Vector.get args 0, Vector.get args 1) with
+                    | (Int a, Int b) -> k (Bool (match op with
+                        | ILt -> a < b
+                        | ILe -> a <= b
+                        | IGt -> a > b
+                        | IGe -> a >= b
+                        | IEq -> Int.equal a b
                         | _ -> failwith "unreachable"))
                     | _ -> failwith "compiler bug: invalid primop args")
                 | _ -> failwith "compiler bug: invalid primop arg")

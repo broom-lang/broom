@@ -1,5 +1,5 @@
 type t =
-    | Int
+    | Int | Bool
     | Array | Cell
     | SingleRep (* = *) | Boxed
     | TypeIn | RowOf

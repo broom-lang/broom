@@ -13,6 +13,7 @@ module Value : sig
         | Proxy
         | Cell of t option ref
         | Int of int
+        | Bool of bool
 
     val to_doc : t -> PPrint.document
 end

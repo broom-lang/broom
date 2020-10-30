@@ -31,9 +31,12 @@ let const_typ c = T.Prim (match c with
 let primop_typ =
     let open Primop in
     function
-    | IAdd | ISub | IMul ->
+    | IAdd | ISub | IMul | IDiv ->
         ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
         , T.EmptyRow, T.Prim Int )
+    | ILt | ILe | IGt | IGe | IEq ->
+        ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
+        , T.EmptyRow, T.Prim Bool )
     | CellNew -> (* forall a . () -> __cell a *)
         ( Vector.singleton T.aType, Vector.empty
         , T.EmptyRow, T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}) )

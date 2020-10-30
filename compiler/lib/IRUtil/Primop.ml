@@ -1,7 +1,8 @@
 module T = FcType.Type
 
 type t =
-    | IAdd | ISub | IMul
+    | IAdd | ISub | IMul | IDiv
+    | ILt | ILe | IGt | IGe | IEq
     | CellNew | CellInit | CellGet
     | Int
     | Type
@@ -10,6 +11,12 @@ let of_string = function
     | "iadd" -> Some IAdd
     | "isub" -> Some ISub
     | "imul" -> Some IMul
+    | "idiv" -> Some IDiv
+    | "ilt" -> Some ILt
+    | "ile" -> Some ILe
+    | "igt" -> Some IGt
+    | "ige" -> Some IGe
+    | "ieq" -> Some IEq
     | "cellNew" -> Some CellNew
     | "cellInit" -> Some CellInit
     | "cellGet" -> Some CellGet
@@ -22,6 +29,12 @@ let to_string op =
         | IAdd -> "iadd"
         | ISub -> "isub"
         | IMul -> "imul"
+        | IDiv -> "idiv"
+        | ILt -> "ilt"
+        | ILe -> "ile"
+        | IGt -> "igt"
+        | IGe -> "ige"
+        | IEq -> "ieq"
         | CellNew -> "cellNew"
         | CellInit -> "cellInit"
         | CellGet -> "cellGet"
