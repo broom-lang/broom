@@ -50,14 +50,14 @@ module IntMap = Map.Make(Int)
 let split_int : pat Matrix.t -> int -> pat Matrix.t * IntSet.t IntMap.t * IntSet.t
 = fun pats col ->
     let new_pat (pat : pat) = match pat.pterm with
-        | ConstP (Int _) -> {pat with pterm = WildP}
+        | ConstP (Int _) -> {pat with pterm = WildP (Name.of_string "")}
         | _ -> pat in
     let add_single singles n i = singles |> IntMap.update n (function
         | Some branch -> Some (IntSet.add i branch)
         | None -> Some (IntSet.singleton i)) in
     let step (singles, defaults) (i, (pat : pat)) = match pat.pterm with
         | ConstP (Int n) -> (add_single singles n i, defaults)
-        | VarP _ | WildP -> (singles, IntSet.add i defaults)
+        | VarP _ | WildP _ -> (singles, IntSet.add i defaults)
         | ValuesP _ | ProxyP _ -> failwith "unreachable" in
     let (col', (singles, defaults)) =
         Stream.from (Source.zip (Source.count 0) (Option.get (Matrix.col col pats)))
@@ -72,7 +72,7 @@ let split_int : pat Matrix.t -> int -> pat Matrix.t * IntSet.t IntMap.t * IntSet
 let split_tuple pats coli width =
     let subpats (pat : pat) = match pat.pterm with
         | ValuesP pats -> pats
-        | VarP _ | WildP -> Vector.init width (fun _ -> {pat with pterm = E.WildP})
+        | VarP _ | WildP _ -> Vector.init width (fun _ -> {pat with pterm = WildP (Name.of_string "")})
         | ProxyP _ | ConstP _ -> failwith "unreachable" in
     let cols' = Stream.from (Option.get (Matrix.col coli pats))
         |> Stream.map subpats
@@ -80,7 +80,7 @@ let split_tuple pats coli width =
     Matrix.hcat [Matrix.sub_cols 0 (Some coli) pats; cols'; Matrix.sub_cols (coli + 1) None pats]
 
 let is_trivial : pat -> bool = fun pat -> match pat.pterm with
-    | VarP _ | WildP | ProxyP _ -> true
+    | VarP _ | WildP _ | ProxyP _ -> true
     | ValuesP _ | ConstP _ -> false
 
 let is_named (pat : pat) = match pat.pterm with
@@ -111,7 +111,8 @@ let matcher pos typ matchee clauses =
                                 |> Stream.map (fun (n, rowis) ->
                                     ( {E.pterm = E.ConstP (Int n); ptyp = matchee.vtyp; ppos = pos}
                                     , rowis )))
-                            (Stream.single ( {E.pterm = E.WildP; ptyp = matchee.vtyp; ppos = pos}
+                            (Stream.single ( {E.pterm = WildP (Name.of_string ""); ptyp = matchee.vtyp
+                                    ; ppos = pos}
                                 , default_rowis ))
                         |> Stream.map clause
                         |> Stream.into (Vector.sink ()) in

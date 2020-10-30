@@ -23,7 +23,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Select of t with_pos * Name.t
             | Proxy of typ
             | Var of Name.t
-            | Wild
+            | Wild of Name.t
             | Const of Const.t
 
         and clause = {params : (pat with_pos, pat with_pos) Ior.t; body : t with_pos}
@@ -54,7 +54,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Select (record, label) -> to_doc record ^^ PPrint.dot ^^ Name.to_doc label
             | Proxy typ -> Type.to_doc {expr with v = typ}
             | Var name -> Name.to_doc name
-            | Wild -> PPrint.underscore
+            | Wild name -> PPrint.underscore ^^ Name.to_doc name
             | Const v -> Const.to_doc v
 
         and clause_to_doc {params; body} = match params with

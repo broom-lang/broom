@@ -270,7 +270,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
 
     and convert_pattern env pat : Pattern.t * Env.t = match pat.pterm with
         | ConstP c -> (Const c, env)
-        | WildP -> (Wild, env)
+        | WildP _ -> (Wild, env)
         | VarP _ | ValuesP _ | ProxyP _ ->
             failwith "compiler bug: unexpanded pattern in CPS conversion"
 

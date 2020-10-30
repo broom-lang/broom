@@ -16,7 +16,7 @@ module type EXPR = sig
         | Select of t with_pos * Name.t
         | Proxy of typ
         | Var of Name.t
-        | Wild
+        | Wild of Name.t
         | Const of Const.t
 
     and clause = {params : (pat with_pos, pat with_pos) Ior.t; body : t with_pos}

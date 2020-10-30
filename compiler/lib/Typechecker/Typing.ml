@@ -139,7 +139,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         { term = FExpr.at expr.pos typ (FExpr.use var)
         ; eff = EmptyRow }
 
-    | AExpr.Wild -> failwith "TODO: elaborate _ expression"
+    | AExpr.Wild _ -> failwith "TODO: elaborate _ expression"
 
     | AExpr.Const c ->
         {term = FExpr.at expr.pos (const_typ c) (FExpr.const c); eff = EmptyRow}
@@ -546,11 +546,10 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
         let var = FExpr.var name ptyp None in
         ({ppos = pat.pos; pterm = VarP var; ptyp}, (Vector.empty, ptyp), Vector.singleton var)
 
-    | AExpr.Wild ->
+    | AExpr.Wild name ->
         let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
         let ptyp = T.Uv (Env.uv env kind) in
-        let var = FExpr.fresh_var ptyp None in
-        ({ppos = pat.pos; pterm = VarP var; ptyp}, (Vector.empty, ptyp), Vector.singleton var)
+        ({ppos = pat.pos; pterm = WildP name; ptyp}, (Vector.empty, ptyp), Vector.empty)
 
     | AExpr.Proxy carrie ->
         let {TS.typ = carrie; kind = _} = K.kindof env {pat with v = carrie} in
@@ -612,9 +611,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
         let var = FExpr.var name ptyp None in
         ({ppos = pat.pos; pterm = VarP var; ptyp}, Vector.singleton var)
 
-    | AExpr.Wild ->
-        let var = FExpr.fresh_var ptyp None in
-        ({ppos = pat.pos; pterm = VarP var; ptyp}, Vector.singleton var)
+    | AExpr.Wild name -> ({ppos = pat.pos; pterm = WildP name; ptyp}, Vector.empty)
 
     | AExpr.Proxy carrie ->
         let {TS.typ = carrie; kind = _} = K.kindof env {pat with v = carrie} in
@@ -630,7 +627,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
 
     | AExpr.Fn _ ->
         Env.reportError env pat.pos (NonPattern pat.v);
-        ({ppos = pat.pos; pterm = WildP; ptyp}, Vector.empty)
+        ({ppos = pat.pos; pterm = WildP (Name.of_string ""); ptyp}, Vector.empty)
 
 (* # Statement Typing *)
 

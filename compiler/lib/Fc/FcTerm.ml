@@ -74,7 +74,7 @@ end = struct
         | ProxyP of Type.t
         | ConstP of Const.t
         | VarP of var
-        | WildP
+        | WildP of Name.t
 
     let var_to_doc (var : var) =
         Name.to_doc var.name ^^ PPrint.sharp ^^ PPrint.string (Int.to_string var.id)
@@ -221,7 +221,7 @@ end = struct
                 (pat_to_doc s) (Vector.to_list pats)
         | ProxyP typ -> PPrint.brackets (Type.to_doc s typ)
         | VarP var -> PPrint.parens (def_to_doc s var)
-        | WildP -> PPrint.underscore
+        | WildP name -> PPrint.underscore ^^ Name.to_doc name
         | ConstP c -> Const.to_doc c
 
     let id_counter = ref 0

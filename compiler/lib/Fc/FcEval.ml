@@ -275,7 +275,7 @@ let rec eval : Env.t -> cont -> expr -> Value.t
 and bind : Env.t -> cont' -> cont' -> pat -> cont
 = fun env then_k else_k pat v -> match pat.pterm with
     | VarP {name; _} -> Env.add env name v; then_k ()
-    | WildP -> then_k ()
+    | WildP _ -> then_k ()
     | ConstP (Int n) -> (match v with
         | Int n' when n' = n -> then_k ()
         | _ -> else_k ())

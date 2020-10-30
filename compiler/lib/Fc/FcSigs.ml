@@ -59,7 +59,7 @@ module type EXPR = sig
         | ProxyP of Type.t
         | ConstP of Const.t
         | VarP of var
-        | WildP
+        | WildP of Name.t
 
     val var_to_doc : var -> PPrint.document
     val to_doc : Type.subst -> t -> PPrint.document

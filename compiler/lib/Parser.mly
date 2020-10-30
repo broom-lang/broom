@@ -27,7 +27,7 @@ let to_arg args pos =
     LPAREN "(" RPAREN ")" LBRACKET "[" RBRACKET "]" LBRACE "{" RBRACE "}"
     EOF
 %token <string> DISJUNCTION "||" CONJUNCTION "&&" COMPARISON ADDITIVE MULTIPLICATIVE
-%token <string> PRIMOP WILD ID OP
+%token <string> PRIMOP WILD "_" ID OP
 %token <string> STRING
 %token <int> INT
 
@@ -156,7 +156,7 @@ nestable_without_pos :
     | "(" ":" typ tail(",", typ, ")") { proxy (Ast.Type.Values (Vector.of_list ($3 :: $4))) }
     | "(" ":" ")" { proxy (Values Vector.empty) }
     | ID { Var (Name.of_string $1) }
-    | WILD { failwith "TODO" }
+    | "_" { Wild (Name.of_string $1) }
     | INT { Const (Int $1) }
 
 clause : params expr { {params = $1; body = $2} }
