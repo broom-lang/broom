@@ -1,5 +1,7 @@
 module T = FcType.Type
 
+type behaviour = Pure | Impure | Branch
+
 type t =
     | IAdd | ISub | IMul | IDiv
     | ILt | ILe | IGt | IGe | IEq
@@ -43,4 +45,10 @@ let to_string op =
     name
 
 let to_doc op = PPrint.string (to_string op)
+
+let behaviour = function
+    | CellNew | Int | Type -> Pure
+    | CellInit | CellGet -> Impure
+    | IAdd | ISub | IMul | IDiv
+    | ILt | ILe | IGt | IGe | IEq -> Branch
 
