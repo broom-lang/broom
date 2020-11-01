@@ -6,6 +6,7 @@ type t =
     | InvalidField of Ast.Term.Stmt.t
     | Unbound of Name.t
     | Unusable of Fc.Type.template * typ
+    | TupleWidth of typ * int * Ast.Term.Expr.t * int
     | MissingField of typ * string
     | SubType of typ * typ
     | Unify of typ * typ

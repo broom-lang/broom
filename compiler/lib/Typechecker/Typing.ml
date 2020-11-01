@@ -33,28 +33,29 @@ let primop_typ =
     function
     | IAdd | ISub | IMul | IDiv ->
         ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
-        , T.EmptyRow, T.Prim Int )
+        , T.EmptyRow, Vector.of_list [T.Prim Int; Values Vector.empty] )
     | ILt | ILe | IGt | IGe | IEq ->
         ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
-        , T.EmptyRow, T.Prim Bool )
+        , T.EmptyRow, Vector.of_list [T.Values Vector.empty; Values Vector.empty] )
     | CellNew -> (* forall a . () -> __cell a *)
         ( Vector.singleton T.aType, Vector.empty
-        , T.EmptyRow, T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}) )
+        , T.EmptyRow
+        , Vector.singleton (T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType})) )
     | CellInit -> (* forall a . (__cell a, a) -> () *)
         ( Vector.singleton T.aType
         , Vector.of_list [ T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType})
             ; Bv {depth = 0; sibli = 0; kind = T.aType} ]
-        , T.EmptyRow, T.Values Vector.empty )
+        , T.EmptyRow, Vector.singleton (T.Values Vector.empty) )
     | CellGet -> (* forall a . __cell a -> a *)
         ( Vector.singleton T.aType
         , Vector.singleton (T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}))
-        , T.EmptyRow, Bv {depth = 0; sibli = 0; kind = T.aType} )
+        , T.EmptyRow, Vector.singleton (T.Bv {depth = 0; sibli = 0; kind = T.aType}) )
     | Int ->
-        (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim Int))
+        (Vector.empty, Vector.empty, T.EmptyRow, Vector.singleton (T.Proxy (Prim Int)))
     | Type ->
         ( Vector.empty, Vector.empty, T.EmptyRow
-        , T.Proxy (T.Exists (Vector1.singleton T.aType
-            , Proxy (Bv {depth = 0; sibli = 0; kind = T.aType}))) )
+        , Vector.singleton (T.Proxy (T.Exists (Vector1.singleton T.aType
+            , Proxy (Bv {depth = 0; sibli = 0; kind = T.aType})))) )
 
 let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
 = fun env expr -> match expr.v with
@@ -109,12 +110,48 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
 
     | AExpr.PrimApp (op, args) ->
         let (universals, domain, app_eff, codomain) = primop_typ op in
-        let (uvs, domain, codomain) =
-            Env.instantiate_arrow env universals (Right {edomain = Values domain; eff = app_eff})
-                codomain in
-        let arg = check_args env expr.pos domain app_eff args in
-        { term = FExpr.at expr.pos codomain (FExpr.primapp op (Vector.map (fun uv -> T.Uv uv) uvs) arg)
-        ; eff = app_eff }
+        if Vector.length codomain = 1 then begin
+            let codomain = Vector.get codomain 0 in
+            let (uvs, domain, codomain) =
+                Env.instantiate_arrow env universals (Right {edomain = Values domain; eff = app_eff})
+                    codomain in
+            let arg = check_args env expr.pos domain app_eff args in
+            { term = FExpr.at expr.pos codomain (FExpr.primapp' op (Vector.map (fun uv -> T.Uv uv) uvs) arg)
+            ; eff = app_eff }
+        end else begin
+            match args with
+            | Right args -> match args.v with
+                | Values args' when Vector.length args' = Vector.length domain + 1 ->
+                    let (uvs, domain, app_eff, codomain) =
+                        Env.instantiate_primop env universals domain app_eff codomain in
+                    let args'' = Stream.from (Vector.to_source args')
+                        |> Stream.take (Vector.length domain)
+                        |> Stream.into (Vector.sink ()) in
+                    let arg = check_args env expr.pos (Right {edomain = Values domain; eff = app_eff})
+                        app_eff (Right {args with v = Values args''}) in
+                    let (clauses, typ) = match (Vector.get args' (Vector.length domain)).v with
+                        | AExpr.Fn clauses when Vector.length clauses = Vector.length codomain ->
+                            let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
+                            let typ = T.Uv (Env.uv env kind) in
+                            ( Stream.from (Source.zip (Vector.to_source codomain) (Vector.to_source clauses))
+                              |> Stream.map (fun (codomain, {AExpr.params; body}) ->
+                                  match params with
+                                  | Right {v = Values params} when Vector.length params = 1 ->
+                                      let pat = Vector.get params 0 in
+                                      let (pat, vars) = check_pat env codomain pat in
+                                      let env = Vector.fold Env.push_val env vars in
+                                      let pat = match pat.pterm with
+                                          | VarP var -> Some var
+                                          | ValuesP pats when Vector.length pats = 0 -> None in
+                                      let {TS.term = prim_body; eff = body_eff} = check env typ body in
+                                      ignore (M.solving_unify body.pos env body_eff app_eff);
+                                      {FExpr.res = pat; prim_body})
+                              |> Stream.into (Vector.sink ())
+                            , typ ) in
+                    { term = FExpr.at expr.pos typ
+                        (FExpr.primapp op (Vector.map (fun uv -> T.Uv uv) uvs) arg clauses)
+                    ; eff = app_eff }
+        end
 
     | AExpr.Record stmts -> typeof_record env expr.pos stmts
 
@@ -448,13 +485,16 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
         let exprs' = CCVector.create () in
         let typs' = CCVector.create () in
         let eff : T.t = Uv (Env.uv env T.aRow) in
-        (* FIXME: raises on length mismatch: *)
-        Vector.iter2 (fun typ expr ->
+        let typ_width = Vector.length typs in
+        let expr_width = Vector.length exprs in
+        if expr_width = typ_width
+        then Vector.iter2 (fun typ expr ->
             let {TS.term = expr; eff = eff'} = check env typ expr in
             CCVector.push exprs' expr;
             CCVector.push typs' expr.typ;
             ignore (M.solving_unify expr.pos env eff' eff)
-        ) typs exprs;
+        ) typs exprs
+        else Env.reportError env expr.pos (TupleWidth (typ, typ_width, expr.v, expr_width));
         { term = FExpr.at expr.pos (Values (Vector.build typs'))
             (FExpr.values (CCVector.to_array exprs'))
         ; eff }

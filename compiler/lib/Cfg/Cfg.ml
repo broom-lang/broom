@@ -56,6 +56,8 @@ module Transfer = struct
         | Goto of {callee : cont_id; universals : Type.t Vector.t; args : expr_id Vector.t}
         | Jump of {callee : expr_id; universals : Type.t Vector.t; args : expr_id Vector.t}
         | Match of {matchee : expr_id; clauses : clause Vector.t}
+        | PrimApp of {op : Primop.t; universals : Type.t Vector.t
+            ; args : expr_id Vector.t; clauses : clause Vector.t}
         | Return of Type.t Vector.t * expr_id Vector.t
 
     type t = {pos : span; term : t'}
@@ -90,13 +92,25 @@ module Transfer = struct
             ^^ surround_separate_map 4 0 (braces empty)
                 lbrace hardline rbrace clause_to_doc (Vector.to_list clauses)
 
+        | PrimApp {op; universals; args; clauses} ->
+            prefix 4 1 (string "__" ^^ Primop.to_doc op)
+                (surround_separate_map 4 0 empty
+                    langle (comma ^^ break 1) (rangle ^^ blank 1)
+                    Type.to_doc (Vector.to_list universals)
+                ^^ surround_separate_map 4 0 (parens empty)
+                    lparen (comma ^^ break 1) (rparen ^^ blank 1)
+                    Expr.Id.to_doc (Vector.to_list args)
+                ^^ surround_separate_map 4 0 (braces empty)
+                    lbrace hardline rbrace clause_to_doc (Vector.to_list clauses))
+
         | Return (universals, args) ->
             prefix 4 1 (string "return") (args_to_doc universals args)
 
 
     let iter_labels f (transfer : t) = match transfer.term with
         | Goto {universals = _; callee; args = _} -> f callee
-        | Match {matchee = _; clauses} ->
+        | Match {matchee = _; clauses}
+        | PrimApp {op = _; universals = _; args = _; clauses} ->
             Vector.iter (fun {Cps.Transfer.pat = _; dest} -> f dest) clauses
         | Jump _ | Return _ -> ()
 
@@ -104,6 +118,7 @@ module Transfer = struct
         | Goto {universals = _; callee = _; args} -> Vector.iter f args
         | Jump {universals = _; callee; args} -> f callee; Vector.iter f args
         | Match {matchee; clauses = _} -> f matchee
+        | PrimApp {op = _; universals = _; args; clauses = _} -> Vector.iter f args
         | Return (_, args) -> Vector.iter f args
 end
 

@@ -86,7 +86,13 @@ let schedule program =
                 let matchee = emit_expr matchee in
                 let state = emit_expr state in
                 Vector.iter (emit_clause state) clauses;
-                Match {matchee; clauses} in
+                Match {matchee; clauses}
+
+            | PrimApp {op; universals; state; args; clauses} ->
+                let state = emit_expr state in
+                let args = Vector.map emit_expr args in
+                Vector.iter (emit_clause state) clauses;
+                PrimApp {op; universals; args; clauses} in
         {pos; term}
 
     and emit_clause state' {pat = _; dest = label} =
@@ -94,7 +100,10 @@ let schedule program =
         then ()
         else begin
             let ({params; body; _} as cont) : Cps.Cont.t = Cps.Program.cont program label in
-            Builder.add_cont builder label {cont with params = Vector.empty};
+            (* FIXME: Need to shift Params so that `$1 # 1` -> `$1 # 0` etc.
+                But that will become irrelevant if `Cfg` is switched to named params instead. *)
+            Builder.add_cont builder label {cont with
+                params = Vector.sub params 1 (Vector.length params - 1)};
             Option.iter (fun state -> add_renaming state state') (get_param label 0);
             let transfer = emit_transfer body in
             Builder.set_transfer builder label transfer

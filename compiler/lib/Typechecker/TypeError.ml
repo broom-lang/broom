@@ -6,6 +6,7 @@ type t =
     | InvalidField of Ast.Term.Stmt.t
     | Unbound of Name.t
     | Unusable of Fc.Type.template * typ
+    | TupleWidth of typ * int * Ast.Term.Expr.t * int
     | MissingField of typ * string
     | SubType of typ * typ
     | Unify of typ * typ
@@ -35,6 +36,10 @@ let rec cause_to_doc s pos = function
         | WithL {base = _; label; field = _} -> PPrint.string "lacks the field" ^/^ Name.to_doc label
         | ProxyL _ -> PPrint.string "is not a type"
         | Hole -> failwith "unreachable: Unusable as Hole")
+    | TupleWidth (typ, typ_width, expr, expr_width) ->
+        Ast.Term.Expr.to_doc {v = expr; pos} ^/^ PPrint.string "has" ^/^ PPrint.string (Int.to_string expr_width)
+        ^/^ PPrint.string "elements but expected type" ^/^ Fc.Type.to_doc s typ ^/^ PPrint.string "has"
+        ^/^ PPrint.string (Int.to_string typ_width)
     | MissingField (typ, label) -> Fc.Type.to_doc s typ ^/^ PPrint.string "is missing field" ^/^ PPrint.string label
     | SubType (typ, super) -> Fc.Type.to_doc s typ ^/^ PPrint.string "is not a subtype of" ^/^ Fc.Type.to_doc s super
     | Unify (typ, typ') -> Fc.Type.to_doc s typ ^/^ PPrint.string "does not unify with" ^/^ Fc.Type.to_doc s typ'

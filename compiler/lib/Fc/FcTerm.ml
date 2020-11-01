@@ -39,7 +39,8 @@ end = struct
 
         | Fn of {universals : Type.binding Vector.t; param : var; mutable body : t}
         | App of {mutable callee : t; universals : Type.t Vector.t; mutable arg : t}
-        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t}
+        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t
+            ; clauses : prim_clause Vector.t}
 
         | Let of {defs : stmt Array1.t; mutable body : t}
         | Letrec of {defs : def Array1.t; mutable body : t}
@@ -67,8 +68,9 @@ end = struct
         | Patchable of t TxRef.rref
 
     and clause = {pat : pat; mutable body : t}
+    and prim_clause = {res : var option; prim_body : t}
 
-    and pat = {pterm : pat'; ptyp : Type.t; ppos : Util.span}
+    and pat = {pterm: pat'; ptyp : Type.t; ppos : Util.span}
     and pat' =
         | ValuesP of pat Vector.t
         | ProxyP of Type.t
@@ -129,12 +131,15 @@ end = struct
                     (break 1 ^^ langle) (comma ^^ break 1) (rangle ^^ break 1)
                     (Type.to_doc s) (Vector.to_list universals)
                 ^^ to_doc s arg)
-        | PrimApp {op; universals; arg} ->
+        | PrimApp {op; universals; arg; clauses} ->
             prefix 4 1 (string "__" ^^ Primop.to_doc op)
                 (surround_separate_map 4 0 empty
                     (break 1 ^^ langle) (comma ^^ break 1) (rangle ^^ break 1)
                     (Type.to_doc s) (Vector.to_list universals)
-                ^^ to_doc s arg)
+                ^^ to_doc s arg
+                ^^ blank 1 ^^ surround_separate_map 0 1 (braces bar)
+                    lbrace (break 1) rbrace
+                    (prim_clause_to_doc s) (Vector.to_list clauses))
         | Axiom {axioms; body} ->
             group(
                 surround 4 1 (string "axiom")
@@ -201,6 +206,14 @@ end = struct
             ^^ PPrint.infix 4 1 (PPrint.string "->")
                 (pat_to_doc s pat) (to_doc s body)
 
+    and prim_clause_to_doc s {res; prim_body} =
+        PPrint.bar ^^ PPrint.blank 1
+            ^^ PPrint.infix 4 1 (PPrint.string "->")
+                (match res with
+                | Some var -> def_to_doc s var
+                | None -> PPrint.empty)
+                (to_doc s prim_body)
+
     and castee_to_doc s (castee : t) = match castee.term with
         | Fn _ -> PPrint.parens (to_doc s castee)
         | _ -> to_doc s castee
@@ -240,7 +253,8 @@ end = struct
     let focus focusee index = Focus {focusee; index}
     let fn universals param body = Fn {universals; param; body}
     let app callee universals arg = App {callee; universals; arg}
-    let primapp op universals arg = PrimApp {op; universals; arg}
+    let primapp op universals arg clauses = PrimApp {op; universals; arg; clauses}
+    let primapp' op universals arg = primapp op universals arg Vector.empty
 
     let let' defs body = match Array1.of_array defs with
         | Some defs -> (match body.term with
@@ -308,9 +322,17 @@ end = struct
                 then term
                 else app callee' universals arg'
 
-            | PrimApp {op; universals; arg} ->
+            | PrimApp {op; universals; arg; clauses} ->
                 let arg' = f arg in
-                if arg' == arg then term else primapp op universals arg'
+                let clauses' = clauses |> Vector.map (fun {res; prim_body} ->
+                    {res; prim_body = f prim_body}) in
+                if arg' == arg
+                    && Stream.from (Source.zip_with (fun clause' clause ->
+                            clause'.prim_body == clause.prim_body)
+                        (Vector.to_source clauses') (Vector.to_source clauses))
+                    |> Stream.into (Sink.all ~where: Fun.id)
+                then term
+                else primapp op universals arg' clauses'
 
             | Let {defs; body} ->
                 let defs' = Array1.map (fun stmt -> match stmt with

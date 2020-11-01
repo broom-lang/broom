@@ -39,6 +39,8 @@ module type TRANSFER = sig
         | Goto of {callee : cont_id; universals : Type.t Vector.t; args : expr_id Vector.t}
         | Jump of {callee : expr_id; universals : Type.t Vector.t; args : expr_id Vector.t}
         | Match of {matchee : expr_id; clauses : clause Vector.t}
+        | PrimApp of {op : Primop.t; universals : Type.t Vector.t
+            ; args : expr_id Vector.t; clauses : clause Vector.t}
         | Return of Type.t Vector.t * expr_id Vector.t
 
     type t = {pos : span; term : t'}
@@ -57,7 +59,7 @@ module type CONT = sig
         { pos : span
         ; name : Name.t option
         ; universals : Type.param Vector.t
-        ; params : Type.t Vector.t
+        ; params : Type.t Vector.t (* TODO: Replace Param nodes with Expr.Id.t:s here *)
         ; stmts : Stmt.t Vector.t
         ; transfer : Transfer.t }
 

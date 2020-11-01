@@ -24,7 +24,8 @@ module type EXPR = sig
 
         | Fn of {universals : Type.binding Vector.t; param : var; mutable body : t}
         | App of {mutable callee : t; universals : Type.t Vector.t; mutable arg : t}
-        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t}
+        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t
+            ; clauses : prim_clause Vector.t}
 
         | Let of {defs : stmt Array1.t; mutable body : t}
         | Letrec of {defs : def Array1.t; mutable body : t}
@@ -52,6 +53,7 @@ module type EXPR = sig
         | Patchable of t TxRef.rref
 
     and clause = {pat : pat; mutable body : t}
+    and prim_clause = {res : var option; prim_body : t}
 
     and pat = {pterm: pat'; ptyp : Type.t; ppos : Util.span}
     and pat' =
@@ -74,7 +76,8 @@ module type EXPR = sig
     val focus : t -> int -> t'
     val fn : Type.binding Vector.t -> var -> t -> t'
     val app : t -> Type.t Vector.t -> t -> t'
-    val primapp : Primop.t -> Type.t Vector.t -> t -> t'
+    val primapp : Primop.t -> Type.t Vector.t -> t -> prim_clause Vector.t -> t'
+    val primapp' : Primop.t -> Type.t Vector.t -> t -> t'
     val let' : stmt Array.t -> t -> t'
     val letrec : def Array.t -> t -> t'
     val axiom : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector.t -> t -> t'

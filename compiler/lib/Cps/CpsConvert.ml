@@ -71,19 +71,19 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
 
     let rec convert parent state k env (expr : FExpr.t) = match expr.term with
         | Values values ->
-            let rec convert_values state i values' =
+            let rec convert_values parent state i values' =
                 if i < Array.length values then begin
                     let value = Array.get values i in
                     let k = FnK {pos = value.pos; domain = convert_typ value.typ
-                        ; f = fun ~parent: _ ~state ~value ->
-                            convert_values state (i + 1) (value :: values') } in
+                        ; f = fun ~parent ~state ~value ->
+                            convert_values parent state (i + 1) (value :: values') } in
                     convert parent state k env value
                 end else
                     Builder.express builder { pos = expr.pos; cont = parent
                         ; typ = convert_typ expr.typ
                         ; term = Values (Vector.of_list (List.rev values')) } (* OPTIMIZE *)
                     |> continue k parent state in
-            convert_values state 0 []
+            convert_values parent state 0 []
 
         | Focus {focusee; index} ->
             let k = FnK {pos = focusee.pos; domain = convert_typ focusee.typ
@@ -130,7 +130,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                         convert parent state k env arg } in
             convert parent state k env callee
 
-        | PrimApp {op; universals; arg} ->
+        | PrimApp {op; universals; arg; clauses} ->
             (match Primop.behaviour op with
             | Pure ->
                 let k = FnK {pos = arg.pos; domain = convert_typ arg.typ
@@ -159,6 +159,34 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                             ; typ = codomain
                             ; term = Focus {focusee = app; index = 1}} in
                         continue k parent state result } in
+                convert parent state k env arg
+
+            | Branch ->
+                let k = FnK { pos = expr.pos; domain = convert_typ arg.typ
+                    ; f = fun ~parent ~state ~value: arg ->
+                        let join = trivialize_cont k in
+                        let clauses = clauses |> Vector.map (fun {FExpr.res; prim_body = body} ->
+                            let branch = Cont.Id.fresh () in
+                            let cont : Cont.t = 
+                                let parent = Some branch in
+                                let state = Builder.express builder {pos = body.pos; cont = parent; typ = state_typ
+                                    ; term = Param {label = branch; index = 0}} in
+                                let (params, env) = match res with
+                                    | Some res ->
+                                        let codomain = convert_typ res.vtyp in
+                                        let v = Builder.express builder {pos = body.pos; cont = parent; typ = codomain
+                                            ; term = Param {label = branch; index = 1}} in
+                                        (Vector.of_list [state_typ; codomain], Env.add env res.id v)
+                                    | None -> (Vector.singleton state_typ, env) in
+                                {pos = body.pos; name = None
+                                    ; universals = Vector.empty; params
+                                    ; body = convert parent state join env body } in
+                            Builder.add_cont builder branch cont;
+                            {Transfer.pat = Wild; dest = branch}) in
+                        {pos = expr.pos; term = PrimApp {op
+                            ; universals = Vector.map convert_typ universals
+                            ; state; args = Vector.singleton arg 
+                            ; clauses}} } in
                 convert parent state k env arg)
 
         | Let {defs; body} ->
@@ -185,7 +213,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                 ; f = fun ~parent ~state ~value: matchee ->
                     let join = trivialize_cont k in
                     let clauses = clauses |> Vector.map (fun {FExpr.pat; body} ->
-                        let (pat, env) = convert_pattern env pat in
+                        let pat = convert_pattern pat in
                         let branch = Cont.Id.fresh () in
                         let cont : Cont.t = 
                             let parent = Some branch in
@@ -268,9 +296,9 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
 
         | Letrec _ -> failwith "compiler bug: encountered `letrec` in CPS conversion"
 
-    and convert_pattern env pat : Pattern.t * Env.t = match pat.pterm with
-        | ConstP c -> (Const c, env)
-        | WildP _ -> (Wild, env)
+    and convert_pattern pat : Pattern.t = match pat.pterm with
+        | ConstP c -> Const c
+        | WildP _ -> Wild
         | VarP _ | ValuesP _ | ProxyP _ ->
             failwith "compiler bug: unexpanded pattern in CPS conversion"
 
