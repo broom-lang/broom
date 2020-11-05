@@ -100,14 +100,6 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
                 ; eff = callee_eff })
         | _ -> failwith "compiler bug: callee focalization returned non-function")
 
-    | AExpr.AppSequence exprs -> (* TODO: in/pre/postfix parsing, special forms, macros *)
-        let callee = Vector1.get exprs 0 in
-        let args = Vector.sub (Vector1.to_vector exprs) 1 (Vector1.length exprs - 1) in
-        let arg = if Vector.length args = 1
-            then Vector.get args 0
-            else {expr with v = Values args} in
-        typeof env {expr with v = AExpr.App (callee, Right arg)}
-
     | AExpr.PrimApp (op, args) ->
         let (universals, domain, app_eff, codomain) = primop_typ op in
         if Vector.length codomain = 1 then begin
@@ -180,6 +172,9 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
 
     | AExpr.Const c ->
         {term = FExpr.at expr.pos (const_typ c) (FExpr.const c); eff = EmptyRow}
+
+    | AppSequence exprs ->
+        failwith "compiler bug: typechecker encountered AppSequence expression"
 
 and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typing
 = fun env pos clauses -> match Vector.to_seq clauses () with
@@ -600,7 +595,7 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
         let ptyp = const_typ c in
         ({ppos = pat.pos; pterm = ConstP c; ptyp}, (Vector.empty, ptyp), Vector.empty)
 
-    | AExpr.Focus _ | AppSequence _ | App _ | PrimApp _ | Select _ | Record _ ->
+    | AExpr.Focus _ | App _ | PrimApp _ | Select _ | Record _ ->
         failwith "TODO in elaborate_pat"
 
     | AExpr.Fn _ ->
@@ -611,6 +606,8 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
         let var = FExpr.fresh_var ptyp None in
         ( {ppos = pat.pos; pterm = VarP var; ptyp}, (Vector.empty, ptyp)
         , Vector.singleton var )
+
+    | AppSequence _ -> failwith "compiler bug: typechecker encountered AppSequence pattern"
 
 (* ## Checking *)
 
@@ -662,12 +659,14 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
         let _ = M.solving_unify pat.pos env ptyp (const_typ c) in
         ({ppos = pat.pos; pterm = ConstP c; ptyp}, Vector.empty)
 
-    | AExpr.Focus _ | AppSequence _ | App _ | PrimApp _ | Select _ | Record _ ->
+    | AExpr.Focus _ | App _ | PrimApp _ | Select _ | Record _ ->
         failwith "TODO in check_pat"
 
     | AExpr.Fn _ ->
         Env.reportError env pat.pos (NonPattern pat.v);
         ({ppos = pat.pos; pterm = WildP (Name.of_string ""); ptyp}, Vector.empty)
+
+    | AppSequence _ -> failwith "compiler bug: typechecker encountered AppSequence pattern"
 
 (* # Statement Typing *)
 

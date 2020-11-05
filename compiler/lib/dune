@@ -3,6 +3,7 @@
   (libraries containers containers-data streaming menhirLib pprint unionFind)
   (preprocess (pps sedlex.ppx)))
 
+(copy_files# (files Expander/*))
 (copy_files# (files Util/*))
 (copy_files# (files IRUtil/*))
 (copy_files# (files Ast/*))

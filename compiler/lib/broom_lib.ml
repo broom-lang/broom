@@ -24,6 +24,8 @@ module Parse = struct
         |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.stmts
 end
 
+module Expander = Expander
+
 module TyperSigs = TyperSigs (* HACK *)
 module Typer = Typer
 

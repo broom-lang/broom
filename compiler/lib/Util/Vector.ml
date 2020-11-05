@@ -2,6 +2,8 @@ include CCImmutArray
 
 open Streaming
 
+let get_opt xs i = if i < length xs then Some (get xs i) else None
+
 let fold_right f acc xs =
     let rec loop acc i =
         if i >= 0

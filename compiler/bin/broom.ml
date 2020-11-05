@@ -78,6 +78,12 @@ let ltp filename =
             PPrint.ToChannel.pretty 1.0 80 stdout doc;
             print_newline ();
 
+            let defs = Expander.expand_defs Expander.Env.empty defs in
+            let doc = PPrint.group (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) Ast.Term.Stmt.def_to_doc
+                (Vector.to_list defs)) in
+            PPrint.ToChannel.pretty 1.0 80 stdout doc;
+            print_newline ();
+
             let program =
                 let pos = match Vector1.of_vector defs with
                     | Some defs -> let ((_, pos), _, _) = Vector1.get defs 0 in pos
