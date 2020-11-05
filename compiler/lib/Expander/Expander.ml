@@ -11,11 +11,21 @@ type stmt = Ast.Term.Stmt.t
 type fixity = Infix | Prefix | Postfix
 
 module Env = struct
-    type t = unit list
+    type binding' = Name.t
+    type binding = fixity option * binding'
 
-    let empty = []
+    type t = binding Name.Map.t
 
-    let fixity env name = None (* FIXME *)
+    let empty = Name.Map.empty
+
+    let add env name binding = Name.Map.add name binding env
+
+    let find env id =
+        match Name.Map.find_opt id env with
+        | Some id' -> id'
+        | None -> failwith ("unbound: " ^ Name.to_string id)
+
+    let fixity env id = fst (find env id)
 end
 
 let parse_appseq env exprs =
@@ -103,10 +113,19 @@ let parse_appseq env exprs =
 (* OPTIMIZE: Type.map_children (which does not exist yet): *)
 let rec expand_typ env (typ : typ with_pos) : typ with_pos = match typ.v with
     | Pi {domain; codomain} ->
-        let domain = domain |> Ior.bimap
-            (expand env)
-            (fun (edomain, eff) ->
-                (expand env edomain, Option.map (expand_typ env) eff)) in
+        let (domain, env) = match domain with
+            | Left idomain ->
+                let (idomain, env) = expand_pat env idomain in
+                (Ior.Left idomain, env)
+            | Right (edomain, eff) ->
+                let (edomain, env) = expand_pat env edomain in
+                let eff = Option.map (expand_typ env) eff in
+                (Right (edomain, eff), env)
+            | Both (idomain, (edomain, eff)) ->
+                let (idomain, env) = expand_pat env idomain in
+                let (edomain, env) = expand_pat env edomain in
+                let eff = Option.map (expand_typ env) eff in
+                (Both (idomain, (edomain, eff)), env) in
         {typ with v = Pi {domain; codomain = expand_typ env codomain}}
     | Values typs ->
         {typ with v = Values (Vector.map (expand_typ env) typs)}
@@ -119,34 +138,60 @@ let rec expand_typ env (typ : typ with_pos) : typ with_pos = match typ.v with
     | Prim _ -> typ
 
 (* OPTIMIZE: Expr.map_children (which does not exist yet): *)
-and expand env expr : expr with_pos =
-    let step (expr : expr with_pos) : expr with_pos = match expr.v with
-        | Fn clauses ->
-            {expr with v = Fn (Vector.map (expand_clause env) clauses)}
-        | AppSequence exprs -> expand env (parse_appseq env (Vector1.to_vector exprs))
-        | App (callee, args) ->
-            {expr with v = App (expand env callee, Ior.map (expand env) args)}
-        | PrimApp (op, args) ->
-            {expr with v = PrimApp (op, Ior.map (expand env) args)}
-        | Ann (expr, typ) ->
-            {expr with v = Ann (expand env expr, expand_typ env typ)}
-        | Values exprs ->
-            {expr with v = Values (Vector.map (expand env) exprs)}
-        | Focus (focusee, index) ->
-            {expr with v = Focus (expand env focusee, index)}
-        | Record stmts ->
-            {expr with v = Record (expand_stmts env stmts)}
-        | Select (selectee, label) ->
-            {expr with v = Select (expand env selectee, label)}
-        | Proxy typ -> {expr with v = Proxy ((expand_typ env {expr with v = typ}).v)}
-        | Var _ | Const _ -> expr in
-    step expr
+and expand env expr : expr with_pos = match expr.v with
+    | Fn clauses ->
+        {expr with v = Fn (Vector.map (expand_clause env) clauses)}
+    | AppSequence exprs -> expand env (parse_appseq env (Vector1.to_vector exprs))
+    | App (callee, args) ->
+        {expr with v = App (expand env callee, Ior.map (expand env) args)}
+    | PrimApp (op, args) ->
+        {expr with v = PrimApp (op, Ior.map (expand env) args)}
+    | Ann (expr, typ) ->
+        {expr with v = Ann (expand env expr, expand_typ env typ)}
+    | Values exprs ->
+        {expr with v = Values (Vector.map (expand env) exprs)}
+    | Focus (focusee, index) ->
+        {expr with v = Focus (expand env focusee, index)}
+    | Record stmts ->
+        {expr with v = Record (expand_stmts env stmts)}
+    | Select (selectee, label) ->
+        {expr with v = Select (expand env selectee, label)}
+    | Proxy typ -> {expr with v = Proxy ((expand_typ env {expr with v = typ}).v)}
+    | Var name -> {expr with v = Var (snd (Env.find env name))}
+    | Const _ -> expr
+
+and expand_pat env (pat : pat with_pos) = match pat.v with
+    | Values pats ->
+        let pats' = CCVector.create () in
+        let env = Vector.fold (fun env pat ->
+            let (pat, env) = expand_pat env pat in
+            CCVector.push pats' pat;
+            env
+        ) env pats in
+        ({pat with v = Values (Vector.build pats')}, env)
+    | Var name ->
+        let name' = Name.freshen name in
+        ({pat with v = Var name'}, Env.add env name (None, name'))
+    | Wild _ | Const _ -> (pat, env)
 
 and expand_clause env ({params; body} : clause) : clause =
-    {params = Ior.map (expand env) params; body = expand env body}
+    let (params, env) = match params with
+        | Left iparam ->
+            let (iparam, env) = expand_pat env iparam in
+            (Ior.Left iparam, env)
+        | Right eparam ->
+            let (eparam, env) = expand_pat env eparam in
+            (Right eparam, env)
+        | Both (iparam, eparam) ->
+            let (iparam, env) = expand_pat env iparam in
+            let (eparam, env) = expand_pat env eparam in
+            (Both (iparam, eparam), env) in
+    {params; body = expand env body}
 
 and expand_def env (pos, pat, expr) =
-    ((pos, expand env pat, expand env expr), env)
+    let expr = expand env expr in
+    let (pat, env) = expand_pat env pat in
+    ((pos, pat, expr), env)
 
 and expand_defs env defs =
     let defs' = CCVector.create () in
