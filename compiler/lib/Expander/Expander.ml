@@ -1,3 +1,5 @@
+open Streaming
+
 type 'a with_pos = 'a Util.with_pos
 
 type typ = Ast.Type.t
@@ -5,8 +7,9 @@ module Expr = Ast.Term.Expr
 type expr = Expr.t
 type pat = Expr.pat
 type clause = Expr.clause
-type def = Ast.Term.Stmt.def
-type stmt = Ast.Term.Stmt.t
+module Stmt = Ast.Term.Stmt
+type def = Stmt.def
+type stmt = Stmt.t
 
 type fixity = Infix | Prefix | Postfix
 
@@ -193,14 +196,16 @@ and expand_def env (pos, pat, expr) =
     let (pat, env) = expand_pat env pat in
     ((pos, pat, expr), env)
 
-and expand_defs env defs =
+and expand_defs' env defs =
     let defs' = CCVector.create () in
-    let _ = Vector.fold (fun env def ->
+    let env = Vector.fold (fun env def ->
         let (def', env) = expand_def env def in
         CCVector.push defs' def';
         env
     ) env defs in
-    Vector.build defs'
+    (Vector.build defs', env)
+
+and expand_defs env defs = fst (expand_defs' env defs)
 
 and expand_stmt env : stmt -> stmt * Env.t = function
     | Def def ->
@@ -216,4 +221,12 @@ and expand_stmts env stmts =
         env
     ) env stmts in
     Vector.build stmts'
+
+let expand_program defs body : expr with_pos =
+    let env = Env.empty in
+    let (defs, env) = expand_defs' env defs in
+    let body = expand env body in
+    match Vector1.of_vector defs with
+    | Some defs -> {pos = body.pos; v = Let (defs, body)}
+    | None -> body
 

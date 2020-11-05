@@ -145,6 +145,11 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
                     ; eff = app_eff }
         end
 
+    | AExpr.Let (defs, body) ->
+        let (defs, env) = check_defs env (Vector1.to_vector defs) in
+        let {TS.term = body; eff} = typeof env body in
+        {term = FExpr.at expr.pos body.typ (FExpr.letrec (Vector.to_array defs) body); eff}
+
     | AExpr.Record stmts -> typeof_record env expr.pos stmts
 
     | AExpr.Select (selectee, label) -> (* TODO: lacks-constraint: *)

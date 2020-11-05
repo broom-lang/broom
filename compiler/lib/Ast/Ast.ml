@@ -10,6 +10,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
 
         type typ = Type.t
         type stmt = Stmt.t
+        type def = Stmt.def
 
         type t =
             | Values of t with_pos Vector.t
@@ -19,6 +20,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | App of t with_pos * (t with_pos, t with_pos) Ior.t
             | AppSequence of t with_pos Vector1.t
             | PrimApp of Primop.t * (t with_pos, t with_pos) Ior.t
+            | Let of def Vector1.t * t with_pos
             | Record of stmt Vector.t
             | Select of t with_pos * Name.t
             | Proxy of typ
@@ -30,7 +32,9 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
 
         and pat = t
 
-        let rec to_doc (expr : t with_pos) = match expr.v with
+        let rec to_doc (expr : t with_pos) =
+            let open PPrint in
+            match expr.v with
             | Values val_exprs ->
                 PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                     PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
@@ -47,6 +51,12 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                     (args_to_doc args)
             | Ann (expr, typ) ->
                 PPrint.infix 4 1 PPrint.colon (to_doc expr) (Type.to_doc typ)
+            | Let (defs, body) ->
+                string "__let" ^^ blank 1
+                ^^ PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
+                    PPrint.lbrace (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
+                    Stmt.def_to_doc (Vector1.to_list defs)
+                ^^ blank 1 ^^ parens (to_doc body)
             | Record stmts ->
                 PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
                     PPrint.lbrace (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace

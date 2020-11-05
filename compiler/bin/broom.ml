@@ -78,20 +78,23 @@ let ltp filename =
             PPrint.ToChannel.pretty 1.0 80 stdout doc;
             print_newline ();
 
-            let defs = Expander.expand_defs Expander.Env.empty defs in
-            let doc = PPrint.group (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) Ast.Term.Stmt.def_to_doc
-                (Vector.to_list defs)) in
+            let entry : Ast.Term.Expr.t Util.with_pos =
+                let pos = match Vector1.of_vector defs with
+                    | Some defs ->
+                        let ((start, _), _, _) = Vector1.get defs 0 in
+                        let ((_, stop), _, _) = Vector1.get defs (Vector1.length defs - 1) in
+                        (start, stop)
+                    | None ->
+                        let pos = {Lexing.pos_fname = filename; pos_lnum = 1; pos_bol = 0; pos_cnum = 0} in
+                        (pos, pos) in
+                {Util.pos; v = App ( {pos; v = Var (Name.of_string "main")}
+                    , Right {pos; v = Values Vector.empty} )} in
+            let program = Expander.expand_program defs entry in
+            let doc = Ast.Term.Expr.to_doc program in
             PPrint.ToChannel.pretty 1.0 80 stdout doc;
             print_newline ();
 
-            let program =
-                let pos = match Vector1.of_vector defs with
-                    | Some defs -> let ((_, pos), _, _) = Vector1.get defs 0 in pos
-                    | None -> {Lexing.pos_fname = filename; pos_lnum = 1; pos_bol = 0; pos_cnum = 0} in
-                let pos = (pos, pos) in
-                Typer.check_program tenv defs
-                    {pos; v = App ( {pos; v = Var (Name.of_string "main")}
-                        , Right {pos; v = Values Vector.empty} )} in
+            let program = Typer.check_program tenv Vector.empty program in
             PPrint.ToChannel.pretty 1.0 80 stdout (Typer.Env.document tenv Fc.Program.to_doc program);
 
             match FwdRefs.convert program with

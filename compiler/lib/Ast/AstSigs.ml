@@ -3,6 +3,7 @@ type 'a with_pos = 'a Util.with_pos
 module type EXPR = sig
     type typ
     type stmt
+    type def
 
     type t =
         | Values of t with_pos Vector.t
@@ -12,6 +13,7 @@ module type EXPR = sig
         | App of t with_pos * (t with_pos, t with_pos) Ior.t
         | AppSequence of t with_pos Vector1.t
         | PrimApp of Primop.t * (t with_pos, t with_pos) Ior.t
+        | Let of def Vector1.t * t with_pos
         | Record of stmt Vector.t
         | Select of t with_pos * Name.t
         | Proxy of typ
@@ -43,7 +45,9 @@ module type STMT = sig
 end
 
 module type TERM = sig
-    module rec Expr : (EXPR with type stmt = Stmt.t)
+    module rec Expr : (EXPR
+        with type stmt = Stmt.t
+        with type def = Stmt.def)
     and Stmt : (STMT
         with type expr = Expr.t
         with type pat = Expr.pat)
