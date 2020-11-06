@@ -1,5 +1,5 @@
-Parsers : {|
-|} = {
+Parsers : {:
+} = {
     Char = require Std.Char;
     String = require Std.String;
     State = require Std.Eff.State;
@@ -8,39 +8,39 @@ Parsers : {|
         type t;
 
         EndOfInput : t;
-        Expected : {|expected : Char.t; actual : Char.t|} => t;
+        Expected : {:expected : Char.t; actual : Char.t} => t;
     };
 
-    type error = (|Error : Error.t|);
+    type error = (|Error : Error.t);
 
-    type t a = () -! State.eff String.Slice.t with error -> a;
+    type t a = (:) -! State.eff String.Slice.t with error -> a;
 
-    anyChar : t Char.t = [
-        match (String.Slice.uncons (perform ('State (State.Get {})))) [
+    anyChar : t Char.t = {|->
+        match (String.Slice.uncons (perform (`State (State.Get {})))) {
         | Some {first; rest} -> do {
-            perform ('State (State.Set rest));
+            perform (`State (State.Set rest));
             first
         }
         | None {} -> perform (`Error 'Error.EndOfInput)
-        ]
-    ];
+        }
+    };
 
-    char : Char.t -> t Char.t = [| expected -> [
-        match anyChar ! [
+    char : Char.t -> t Char.t = {| expected -> {|->
+        match anyChar ! {
         | actual when actual == expected -> actual
         | actual -> perform ('Error ('Error.Expected {expected; actual}))
-        ]
-    ]];
+        }
+    }};
 
-    (<|>) : a => (t a, t a) -> t a = [| a => parser parser' -> [
-        match parser ! [
+    (<|>) : a => (t a, t a) -> t a = {| a => parser, parser' -> {|->
+        match (parser ()) {
         | v -> v
-        | effect (`Error _) _ -> parser' {}
-        ]
-    ]];
+        | effect (`Error _) _ -> parser' ()
+        }
+    }};
 
-    build : a => (t a, String.t) -! error -> a = [| a => parser cs ->
+    build : a => (:t a, String.t) -! error -> a = {| a => parser cs ->
         State.eval parser (String.Slice.from cs)
-    ];
+    };
 };
 

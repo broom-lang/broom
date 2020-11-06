@@ -1,21 +1,21 @@
-ARRAY = {|
+ARRAY = {:
     type t a;
     type size = __uint; -- TODO: Get this from its module
     type key = __uint;
 
     count : a => t a -> size;
-    get : a => (t a, key) -> a;
-    set : a => (t a, key, a) -> t a;
-    update : (a, e) => (t a, key, a -!e-> a) -!e-> t a;
+    get : a => (:t a, key) -> a;
+    set : a => (:t a, key, a) -> t a;
+    update : (a, e) => (:t a, key, a -!e-> a) -!e-> t a;
 
-    unfoldl : (a, s, e) => (size, (s -!e-> {a : a; s : s}), s)
+    unfoldl : (a, s, e) => (:size, (s -!e-> {a : a; s : s}), s)
         -!e-> {array : t a; s : s};
-    unfoldr : (a, s, e) => (size, (s -!e-> {a : a; s : s}), s)
+    unfoldr : (a, s, e) => (:size, (s -!e-> {a : a; s : s}), s)
         -!e-> {array : t a; s : s};
 
-    foldl : (a, s, e) => (((s, a) -!e-> s), s, t a) -!e-> s;
-    foldr : (a, s, e) => (((a, s) -!e-> s), s, t a) -!e-> s;
-|};
+    foldl : (a, s, e) => (:((:s, a) -!e-> s), s, t a) -!e-> s;
+    foldr : (a, s, e) => (:((:a, s) -!e-> s), s, t a) -!e-> s;
+};
 
 Array : ARRAY = {
     type t a = __array a;
@@ -27,22 +27,22 @@ Array : ARRAY = {
     fun get arr i = __arrayGet arr i;
 
     fun set arr i v =
-        unfoldl (count arr) [| i' -> match (i' == i) [
-                | True -> {elem = v; state = i' - 1}
-                | False -> {elem = get arr i'; state = i' - 1}
-            ]
-        ]
+        unfoldl (count arr) {| i' -> match (i' == i) {
+                | 'True -> {elem = v; state = i' - 1}
+                | 'False -> {elem = get arr i'; state = i' - 1}
+            }
+        }
         (count arr - 1)
 
     fun update arr = set arr i (f (get arr i));
 
-    Builder : {|
+    Builder : {:
         type t a;
 
         new : a => size -> t a;
-        set : a => (t a, key, a) -! unsafe -> ();
+        set : a => (:t a, key, a) -! unsafe -> ();
         build : a => t a -! unsafe -> Array.t a;
-    |} = {
+    } = {
         type t a = __array a;
 
         fun new len = __arrayNew len;
@@ -52,7 +52,7 @@ Array : ARRAY = {
 
     fun unfoldl len f state = let {
         builder = Builder.new len;
-        fun loop state i = match (i > 0) [
+        fun loop state i = match (i > 0) {
             | True -> do {
                 i = i - 1;
                 es = f state;
@@ -60,40 +60,40 @@ Array : ARRAY = {
                 loop es.state i
             }
             | False -> Builder.build builder
-        ];
+        };
         loop state len
     };
 
     fun unfoldr len f state = let {
         builder = Builder.new len;
-        fun loop state i = match (i < len) [
+        fun loop state i = match (i < len) {
             | True -> do {
                 es = f state;
                 Builder.set builder i es.elem;
                 loop es.state (i + 1)
             }
             | False -> Builder.build builder
-        ];
+        };
         loop state 0
     };
 
     fun foldl f state arr = let {
         len = count arr;
-        fun loop state i = match (i < len) [
+        fun loop state i = match (i < len) {
             | True -> loop (f state (get arr i)) (i + 1)
             | False -> state
-        ];
+        };
         loop state 0
     };
 
     fun foldr f state arr = let {
-        fun loop state i = match (i > 0) [
+        fun loop state i = match (i > 0) {
             | True -> do {
                 i = i - 1;
                 loop (f (get arr i) state) i
             }
             | False -> state
-        ];
+        };
         loop state (count arr)
     };
 };

@@ -6,6 +6,6 @@ type FN = {|
 Fn = {
     fun id x = x;
 
-    fun const v = [| _ -> v];
+    fun const v = {| _ -> v};
 };
 

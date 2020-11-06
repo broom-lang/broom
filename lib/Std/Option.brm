@@ -1,5 +1,5 @@
-type OPTION = {|
-    extends enum {|
+type OPTION = {:
+    extends enum {:
         type t a;
 
         Some : a => a -> t a;
@@ -7,9 +7,9 @@ type OPTION = {|
     };
 
     pure : a => a -> t a;
-    map :  (a, b, e) => ((a -!e-> b), t a) -!e-> t b;
-    apply : (a, b, e) => (t (a -!e-> b), t a) -!e-> t b;
-    flatMap : (a, b, e) => ((a -!e-> t b), t a) -!e-> t b;
+    map :  (a, b, e) => (:(a -!e-> b), t a) -!e-> t b;
+    apply : (a, b, e) => (:t (a -!e-> b), t a) -!e-> t b;
+    flatMap : (a, b, e) => (:(a -!e-> t b), t a) -!e-> t b;
 |};
 
 Option : OPTION = {
@@ -22,22 +22,19 @@ Option : OPTION = {
 
     pure = Some;
 
-    fun map f = [
-    | Some v -> Some (f v)
-    | None -> None
+    map = {
+    | f, 'Some v -> Some (f v)
+    | _, 'None -> None
     ];
 
-    apply = [
-    | Some f -> [
-        | Some v -> Some (f v)
-        | None -> None
-        ]
-    | None -> Fn.const None
+    apply = {
+    | 'Some f, 'Some v -> Some (f v)
+    | _, 'None -> Fn.const None
     ];
 
-    fun flatMap f = [
-    | Some v -> f v
-    | None -> None
+    flatMap = {
+    | f, 'Some v -> f v
+    | _, 'None -> None
     ];
 };
 
