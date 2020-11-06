@@ -53,10 +53,10 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                 PPrint.infix 4 1 PPrint.colon (to_doc expr) (Type.to_doc typ)
             | Let (defs, body) ->
                 string "__let" ^^ blank 1
-                ^^ PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
+                ^^ surround_separate 4 0 (PPrint.braces PPrint.empty)
                     PPrint.lbrace (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
-                    Stmt.def_to_doc (Vector1.to_list defs)
-                ^^ blank 1 ^^ parens (to_doc body)
+                    (Vector1.to_list (Vector1.map Stmt.def_to_doc defs)
+                    @ [to_doc body])
             | Record stmts ->
                 PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
                     PPrint.lbrace (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace

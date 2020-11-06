@@ -191,35 +191,42 @@ and expand_clause env ({params; body} : clause) : clause =
             (Both (iparam, eparam), env) in
     {params; body = expand env body}
 
-and expand_def env (pos, pat, expr) =
-    let expr = expand env expr in
+and expand_def_pat env (pos, pat, expr) =
     let (pat, env) = expand_pat env pat in
     ((pos, pat, expr), env)
+
+and expand_def env (pos, pat, expr) = (pos, pat, expand env expr)
 
 and expand_defs' env defs =
     let defs' = CCVector.create () in
     let env = Vector.fold (fun env def ->
-        let (def', env) = expand_def env def in
+        let (def', env) = expand_def_pat env def in
         CCVector.push defs' def';
         env
     ) env defs in
+    CCVector.map_in_place (expand_def env) defs';
     (Vector.build defs', env)
 
 and expand_defs env defs = fst (expand_defs' env defs)
 
-and expand_stmt env : stmt -> stmt * Env.t = function
+and expand_stmt_pat env : stmt -> stmt * Env.t = function
     | Def def ->
-        let (def, env) = expand_def env def in
+        let (def, env) = expand_def_pat env def in
         (Def def, env)
-    | Expr expr -> (Expr (expand env expr), env)
+    | Expr _ as stmt -> (stmt, env)
+
+and expand_stmt env : stmt -> stmt = function
+    | Def def -> Def (expand_def env def)
+    | Expr expr -> Expr (expand env expr)
 
 and expand_stmts env stmts =
     let stmts' = CCVector.create () in
     let _ = Vector.fold (fun env stmt ->
-        let (stmt', env) = expand_stmt env stmt in
+        let (stmt', env) = expand_stmt_pat env stmt in
         CCVector.push stmts' stmt';
         env
     ) env stmts in
+    CCVector.map_in_place (expand_stmt env) stmts';
     Vector.build stmts'
 
 let expand_program defs body : expr with_pos =
