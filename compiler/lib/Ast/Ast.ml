@@ -32,40 +32,58 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
 
         and pat = t
 
+        let colon_prec = 1
+        let app_prec = 9
+        let dot_prec = 10
+
+        let prec_parens show_parens doc = if show_parens then PPrint.parens doc else doc
+
         let rec to_doc (expr : t with_pos) =
             let open PPrint in
-            match expr.v with
-            | Values val_exprs ->
-                PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
-                    PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
-                    to_doc (Vector.to_list val_exprs)
-            | Focus (tup, i) -> to_doc tup ^^ PPrint.dot ^^ PPrint.string (Int.to_string i)
-            | Fn clauses ->
-                PPrint.separate_map (PPrint.break 1) clause_to_doc (Vector.to_list clauses)
-                |> PPrint.braces
-            | App (callee, args) -> PPrint.prefix 4 1 (to_doc callee) (args_to_doc args)
-            | AppSequence exprs ->
-                PPrint.separate_map (PPrint.break 1) to_doc (Vector1.to_list exprs)
-            | PrimApp (callee, args) ->
-                PPrint.prefix 4 1 (PPrint.string "__" ^^ Primop.to_doc callee)
-                    (args_to_doc args)
-            | Ann (expr, typ) ->
-                PPrint.infix 4 1 PPrint.colon (to_doc expr) (Type.to_doc typ)
-            | Let (defs, body) ->
-                string "__let" ^^ blank 1
-                ^^ surround_separate 4 0 (PPrint.braces PPrint.empty)
-                    PPrint.lbrace (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
-                    (Vector1.to_list (Vector1.map Stmt.def_to_doc defs)
-                    @ [to_doc body])
-            | Record stmts ->
-                PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
-                    PPrint.lbrace (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
-                    Stmt.to_doc (Vector.to_list stmts)
-            | Select (record, label) -> to_doc record ^^ PPrint.dot ^^ Name.to_doc label
-            | Proxy typ -> Type.to_doc {expr with v = typ}
-            | Var name -> Name.to_doc name
-            | Wild name -> PPrint.underscore ^^ Name.to_doc name
-            | Const v -> Const.to_doc v
+            let rec to_doc prec (expr : t with_pos) = match expr.v with
+                | Proxy typ -> Type.to_doc {expr with v = typ}
+
+                | Ann (expr, typ) ->
+                    infix 4 1 colon (to_doc (colon_prec + 1) expr) (Type.to_doc typ)
+                    |> prec_parens (prec > colon_prec)
+
+                | App (callee, args) ->
+                    prefix 4 1 (to_doc (app_prec + 1) callee) (args_to_doc args)
+                    |> prec_parens (prec > app_prec)
+                | AppSequence exprs ->
+                    separate_map (break 1) (to_doc (app_prec + 1)) (Vector1.to_list exprs)
+                    |> prec_parens (prec > app_prec)
+                | PrimApp (op, args) ->
+                    prefix 4 1 (string "__" ^^ Primop.to_doc op) (args_to_doc args)
+                    |> prec_parens (prec > app_prec)
+                | Let (defs, body) ->
+                    string "__let" ^^ blank 1
+                    ^^ surround_separate 4 0 (PPrint.braces PPrint.empty)
+                        PPrint.lbrace (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
+                        (Vector1.to_list (Vector1.map Stmt.def_to_doc defs)
+                        @ [to_doc 0 body])
+                    |> prec_parens (prec > app_prec)
+
+                | Focus (focusee, i) ->
+                    prefix 4 0 (to_doc (dot_prec + 1) focusee) (dot ^^ string (Int.to_string i))
+                    |> prec_parens (prec > dot_prec) 
+                | Select (selectee, label) ->
+                    prefix 4 0 (to_doc (dot_prec + 1) selectee) (dot ^^ Name.to_doc label)
+                    |> prec_parens (prec > dot_prec) 
+
+                | Values exprs ->
+                    surround_separate_map 4 0 (parens empty) lparen (comma ^^ break 1) rparen
+                        (to_doc 0) (Vector.to_list exprs)
+                | Record stmts ->
+                    surround_separate_map 4 0 (braces empty) lbrace (semi ^^ break 1) rbrace
+                        Stmt.to_doc (Vector.to_list stmts)
+                | Fn clauses ->
+                    surround_separate_map 4 0 (braces bar) lbrace (break 1) rbrace
+                        clause_to_doc (Vector.to_list clauses)
+                | Var name -> Name.to_doc name
+                | Wild name -> PPrint.underscore ^^ Name.to_doc name
+                | Const v -> Const.to_doc v in
+            to_doc 0 expr
 
         and clause_to_doc {params; body} = match params with
             | Left iparam ->
