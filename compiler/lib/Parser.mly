@@ -170,12 +170,12 @@ nestable_without_pos :
 clause : params expr { {params = $1; body = $2} }
 
 params :
-    | "?" select* "|" select* "|" {
+    | "|" select* "@" select* "->" {
         Both (parenthesized (Vector.of_list $2) $loc($2)
             , parenthesized (Vector.of_list $4) $loc($4))
     }
-    | "|" select* "|" { Right (parenthesized (Vector.of_list $2) $loc($2)) }
-    | "?" select* "?" { Ior.Left (parenthesized (Vector.of_list $2) $loc($2)) }
+    | "|" select* "->" { Right (parenthesized (Vector.of_list $2) $loc($2)) }
+    | "|" select* "=>" { Ior.Left (parenthesized (Vector.of_list $2) $loc($2)) }
 
 args :
     | select+ "@" select+ { Ior.Both (Vector.of_list $1, Vector.of_list $3) }

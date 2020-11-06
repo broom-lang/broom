@@ -84,24 +84,27 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                 | Wild name -> PPrint.underscore ^^ Name.to_doc name
                 | Const v -> Const.to_doc v
 
-                and args_to_doc = function
-                    | Left iarg -> to_doc (app_prec + 1) iarg ^^ PPrint.blank 1 ^^ PPrint.string "@"
-                    | Right earg -> to_doc (app_prec + 1) earg
-                    | Both (iarg, earg) ->
-                        PPrint.infix 4 1 (PPrint.string "@")
-                            (to_doc (app_prec + 1) iarg) (to_doc (app_prec + 1) earg) in
+            and args_to_doc = function
+                | Left iarg -> to_doc (app_prec + 1) iarg ^^ PPrint.blank 1 ^^ PPrint.string "@"
+                | Right earg -> to_doc (app_prec + 1) earg
+                | Both (iarg, earg) ->
+                    PPrint.infix 4 1 (PPrint.string "@")
+                        (to_doc (app_prec + 1) iarg) (to_doc (app_prec + 1) earg) in
             to_doc 0 expr
 
         and clause_to_doc {params; body} = match params with
             | Left iparam ->
-                PPrint.infix 4 1 PPrint.qmark (PPrint.qmark ^^ PPrint.blank 1 ^^ to_doc iparam)
+                PPrint.infix 4 1 (PPrint.string "=>")
+                    (PPrint.bar ^^ PPrint.blank 1 ^^ to_doc iparam)
                     (to_doc body)
             | Right eparam ->
-                PPrint.infix 4 1 PPrint.bar (PPrint.bar ^^ PPrint.blank 1 ^^ to_doc eparam)
+                PPrint.infix 4 1 (PPrint.string "->")
+                    (PPrint.bar ^^ PPrint.blank 1 ^^ to_doc eparam)
                     (to_doc body)
             | Both (iparam, eparam) ->
-                PPrint.infix 4 1 PPrint.bar (to_doc eparam) (to_doc body)
-                |> PPrint.infix 4 1 PPrint.bar (PPrint.qmark ^^ PPrint.blank 1 ^^ to_doc iparam)
+                PPrint.infix 4 1 (PPrint.string "->") (to_doc eparam) (to_doc body)
+                |> PPrint.infix 4 1 (PPrint.string "=>")
+                    (PPrint.bar ^^ PPrint.blank 1 ^^ to_doc iparam)
     end
 
     module Stmt = struct
