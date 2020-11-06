@@ -170,12 +170,11 @@ nestable_without_pos :
 clause : head expr { {params = $1; body = $2} }
 
 head :
-    | "|" params "?" params "->" {
-        Both (parenthesized (Vector.of_list $2) $loc($2)
-            , parenthesized (Vector.of_list $4) $loc($4))
+    | "|" trail(",", binapp, "?") trail(",", binapp, "->") {
+        Both (parenthesized $2 $loc($2), parenthesized $3 $loc($3))
     }
-    | "|" params "->" { Right (parenthesized (Vector.of_list $2) $loc($2)) }
-    | "|" params "=>" { Ior.Left (parenthesized (Vector.of_list $2) $loc($2)) }
+    | "|" trail(",", binapp, "->") { Right (parenthesized $2 $loc($2)) }
+    | "|" trail(",", binapp, "=>") { Ior.Left (parenthesized $2 $loc($2)) }
 
 params :
     | binapp "," params { $1 :: $3 }
