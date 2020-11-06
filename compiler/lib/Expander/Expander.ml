@@ -23,12 +23,9 @@ module Env = struct
 
     let add env name binding = Name.Map.add name binding env
 
-    let find env id =
-        match Name.Map.find_opt id env with
-        | Some id' -> id'
-        | None -> failwith ("unbound: " ^ Name.to_string id)
+    let find env id = Name.Map.find_opt id env
 
-    let fixity env id = fst (find env id)
+    let fixity env id = Option.bind (find env id) fst
 end
 
 let parse_appseq env exprs =
@@ -145,6 +142,15 @@ and expand env expr : expr with_pos = match expr.v with
     | Fn clauses ->
         {expr with v = Fn (Vector.map (expand_clause env) clauses)}
     | AppSequence exprs -> expand env (parse_appseq env (Vector1.to_vector exprs))
+    | App ({v = Var cname; pos = _} as callee, Ior.Right arg) ->
+        (match Env.find env cname with
+        | Some (_, cname') ->
+            {expr with v = App ({v = Var cname'; pos = callee.pos}
+                , Ior.Right (expand env arg))}
+        | None -> (match Name.basename cname with
+            | Some "let" -> expand_let env expr.pos arg
+            | _ -> failwith ("unbound: " ^ Name.to_string cname
+                ^ " at " ^ Util.span_to_string expr.pos)))
     | App (callee, args) ->
         {expr with v = App (expand env callee, Ior.map (expand env) args)}
     | PrimApp (op, args) ->
@@ -160,8 +166,26 @@ and expand env expr : expr with_pos = match expr.v with
     | Select (selectee, label) ->
         {expr with v = Select (expand env selectee, label)}
     | Proxy typ -> {expr with v = Proxy ((expand_typ env {expr with v = typ}).v)}
-    | Var name -> {expr with v = Var (snd (Env.find env name))}
+    | Var name -> (match Env.find env name with
+        | Some (_, name') -> {expr with v = Var name'}
+        | None -> failwith ("unbound: " ^ Name.to_string name
+            ^ " at " ^ Util.span_to_string expr.pos))
     | Const _ -> expr
+
+and expand_let env pos (arg : expr with_pos) = match arg.v with
+    | Record stmts ->
+        let defs = Stream.from (Vector.to_source stmts)
+            |> Stream.take_while (function Stmt.Def _ -> true | Expr _ -> false)
+            |> Stream.map (function Stmt.Def def -> def)
+            |> Stream.into (Vector.sink ()) in
+        if Vector.length defs = Vector.length stmts - 1
+        then match Vector.get stmts (Vector.length stmts - 1) with
+            | Expr body ->
+                let (defs, env) = expand_defs' env defs in
+                let body = expand env body in
+                (match Vector1.of_vector defs with
+                | Some defs -> {pos; v = Let (defs, body)})
+        else failwith "TODO"
 
 and expand_pat env (pat : pat with_pos) = match pat.v with
     | Values pats ->
@@ -228,12 +252,4 @@ and expand_stmts env stmts =
     ) env stmts in
     CCVector.map_in_place (expand_stmt env) stmts';
     Vector.build stmts'
-
-let expand_program defs body : expr with_pos =
-    let env = Env.empty in
-    let (defs, env) = expand_defs' env defs in
-    let body = expand env body in
-    match Vector1.of_vector defs with
-    | Some defs -> {pos = body.pos; v = Let (defs, body)}
-    | None -> body
 

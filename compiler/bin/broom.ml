@@ -1,3 +1,5 @@
+open Streaming
+
 open Broom_lib
 module TS = TyperSigs
 module Env = Typer.Env
@@ -78,7 +80,7 @@ let ltp filename =
             PPrint.ToChannel.pretty 1.0 80 stdout doc;
             print_newline ();
 
-            let entry : Ast.Term.Expr.t Util.with_pos =
+            let program =
                 let pos = match Vector1.of_vector defs with
                     | Some defs ->
                         let ((start, _), _, _) = Vector1.get defs 0 in
@@ -87,9 +89,16 @@ let ltp filename =
                     | None ->
                         let pos = {Lexing.pos_fname = filename; pos_lnum = 1; pos_bol = 0; pos_cnum = 0} in
                         (pos, pos) in
-                {Util.pos; v = App ( {pos; v = Var (Name.of_string "main")}
+                let entry = {Util.pos; v = Ast.Term.Expr.App ( {pos; v = Var (Name.of_string "main")}
                     , Right {pos; v = Values Vector.empty} )} in
-            let program = Expander.expand_program defs entry in
+                let block : Ast.Term.Expr.t Util.with_pos = {pos; v = Record (
+                    Stream.concat
+                        (Stream.from (Vector.to_source defs)
+                        |> Stream.map (fun def -> Ast.Term.Stmt.Def def))
+                        (Stream.single (Ast.Term.Stmt.Expr entry))
+                    |> Stream.into (Vector.sink ()))} in
+                {Util.pos; v = Ast.Term.Expr.App ({pos; v = Var (Name.of_string "let")}, Right block)} in
+            let program = Expander.expand Expander.Env.empty program in
             let doc = Ast.Term.Expr.to_doc program in
             PPrint.ToChannel.pretty 1.0 80 stdout doc;
             print_newline ();

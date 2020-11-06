@@ -11,6 +11,6 @@ module Env : sig
     val empty : t
 end
 
+val expand : Env.t -> expr with_pos -> expr with_pos
 val expand_defs : Env.t -> def Vector.t -> def Vector.t
-val expand_program : def Vector.t -> expr with_pos -> expr with_pos
 
