@@ -176,11 +176,6 @@ head :
     | "|" trail(",", binapp, "->") { Right (parenthesized $2 $loc($2)) }
     | "|" trail(",", binapp, "=>") { Ior.Left (parenthesized $2 $loc($2)) }
 
-params :
-    | binapp "," params { $1 :: $3 }
-    | binapp { [$1] }
-    | { [] }
-
 args :
     | select+ "@" select+ { Ior.Both (Vector.of_list $1, Vector.of_list $3) }
     | select+ { Ior.Right (Vector.of_list $1) }
