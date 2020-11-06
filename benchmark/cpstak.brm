@@ -1,17 +1,17 @@
 fun cpsTak x y z = let {
   fun tak x y z k =
     match (y < x) {
-    |False| k z
-    |True|
-      tak (x - 1) y z {|v|
-        tak (y - 1) z x {|v'|
-          tak (z - 1) x y {|v''|
+    | 'False -> k z
+    | 'True ->
+      tak (x - 1) y z {| v ->
+        tak (y - 1) z x {| v' ->
+          tak (z - 1) x y {| v'' ->
             tak v v' v'' k
           }
         }
       }
     };
 
-  tak x y z {|res| res}
+  tak x y z {| res -> res}
 };
 
