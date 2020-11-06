@@ -167,15 +167,20 @@ nestable_without_pos :
     | "_" { Wild (Name.of_string $1) }
     | INT { Const (Int $1) }
 
-clause : params expr { {params = $1; body = $2} }
+clause : head expr { {params = $1; body = $2} }
 
-params :
-    | "|" select* "@" select* "->" {
+head :
+    | "|" params "?" params "->" {
         Both (parenthesized (Vector.of_list $2) $loc($2)
             , parenthesized (Vector.of_list $4) $loc($4))
     }
-    | "|" select* "->" { Right (parenthesized (Vector.of_list $2) $loc($2)) }
-    | "|" select* "=>" { Ior.Left (parenthesized (Vector.of_list $2) $loc($2)) }
+    | "|" params "->" { Right (parenthesized (Vector.of_list $2) $loc($2)) }
+    | "|" params "=>" { Ior.Left (parenthesized (Vector.of_list $2) $loc($2)) }
+
+params :
+    | binapp "," params { $1 :: $3 }
+    | binapp { [$1] }
+    | { [] }
 
 args :
     | select+ "@" select+ { Ior.Both (Vector.of_list $1, Vector.of_list $3) }
