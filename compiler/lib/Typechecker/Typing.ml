@@ -128,8 +128,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
                             ( Stream.from (Source.zip (Vector.to_source codomain) (Vector.to_source clauses))
                               |> Stream.map (fun (codomain, {AExpr.params; body}) ->
                                   match params with
-                                  | Right {v = Values params} when Vector.length params = 1 ->
-                                      let pat = Vector.get params 0 in
+                                  | Right pat ->
                                       let (pat, vars) = check_pat env codomain pat in
                                       let env = Vector.fold Env.push_val env vars in
                                       let pat = match pat.pterm with

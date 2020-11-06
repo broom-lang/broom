@@ -82,7 +82,14 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                         clause_to_doc (Vector.to_list clauses)
                 | Var name -> Name.to_doc name
                 | Wild name -> PPrint.underscore ^^ Name.to_doc name
-                | Const v -> Const.to_doc v in
+                | Const v -> Const.to_doc v
+
+                and args_to_doc = function
+                    | Left iarg -> to_doc (app_prec + 1) iarg ^^ PPrint.blank 1 ^^ PPrint.string "@"
+                    | Right earg -> to_doc (app_prec + 1) earg
+                    | Both (iarg, earg) ->
+                        PPrint.infix 4 1 (PPrint.string "@")
+                            (to_doc (app_prec + 1) iarg) (to_doc (app_prec + 1) earg) in
             to_doc 0 expr
 
         and clause_to_doc {params; body} = match params with
@@ -95,12 +102,6 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Both (iparam, eparam) ->
                 PPrint.infix 4 1 PPrint.bar (to_doc eparam) (to_doc body)
                 |> PPrint.infix 4 1 PPrint.bar (PPrint.qmark ^^ PPrint.blank 1 ^^ to_doc iparam)
-
-        and args_to_doc = function
-            | Left iarg -> to_doc iarg ^^ PPrint.blank 1 ^^ PPrint.string "@"
-            | Right earg -> to_doc earg
-            | Both (iarg, earg) ->
-                PPrint.infix 4 1 (PPrint.string "@") (to_doc iarg) (to_doc earg)
     end
 
     module Stmt = struct

@@ -14,10 +14,16 @@ let proxy = function
     | Path expr -> expr
     | typ -> Proxy typ
 
-let to_arg args pos =
+let parenthesized args pos =
     if Vector.length args = 1
     then Vector.get args 0
     else {v = Values args; pos}
+
+let parenthesized' args =
+    if Vector.length args = 1
+    then (Vector.get args 0).v
+    else Values args
+
 %}
 
 %token
@@ -110,18 +116,20 @@ app :
             | Some op -> op
             | None -> failwith ("No such primop: __" ^ $1) in
         match $2 with
-        | Left iargs -> {v = PrimApp (op, Left (to_arg iargs $loc($2))); pos = $loc}
-        | Right eargs -> {v = PrimApp (op, Right (to_arg eargs $loc($2))); pos = $loc}
+        | Left iargs -> {v = PrimApp (op, Left (parenthesized iargs $loc($2))); pos = $loc}
+        | Right eargs -> {v = PrimApp (op, Right (parenthesized eargs $loc($2))); pos = $loc}
         | Both (iargs, eargs) ->
-            {v = PrimApp (op, Both (to_arg iargs $loc($2), to_arg eargs $loc($2))); pos = $loc}
+            {v = PrimApp (op, Both (parenthesized iargs $loc($2)
+                , parenthesized eargs $loc($2))); pos = $loc}
     }
     | select args { match $2 with
-        | Left iargs -> {v = App ($1, Left (to_arg iargs $loc($2))); pos = $loc}
+        | Left iargs -> {v = App ($1, Left (parenthesized iargs $loc($2))); pos = $loc}
         | Right args ->
             let args = args |> Vector1.of_vector |> Option.get in
             {v = AppSequence (Vector1.append (Vector1.singleton $1) args); pos = $loc}
         | Both (iargs, eargs) ->
-            {v = App ($1, Both (to_arg iargs $loc($2), to_arg eargs $loc($2))); pos = $loc}
+            {v = App ($1, Both (parenthesized iargs $loc($2)
+                , parenthesized eargs $loc($2))); pos = $loc}
     }
     | select { $1 }
 
@@ -143,18 +151,18 @@ nestable_without_pos :
             ; body = {v = body; pos = $loc} })
     }
     | "{" "|" "}" { Fn Vector.empty }
-    | trailer("(", ",", expr, ")") { Values $1 }
-    | "(" "||" ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
-    | "(" "&&" ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
-    | "(" COMPARISON ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
-    | "(" ADDITIVE ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
-    | "(" MULTIPLICATIVE ")" { Values (Vector.singleton ({v = Var (Name.of_string $2); pos = $loc($2)}))}
+    | trailer("(", ",", expr, ")") { parenthesized' $1 }
+    | "(" "||" ")" { Var (Name.of_string $2) }
+    | "(" "&&" ")" { Var (Name.of_string $2) }
+    | "(" COMPARISON ")" { Var (Name.of_string $2) }
+    | "(" ADDITIVE ")" { Var (Name.of_string $2) }
+    | "(" MULTIPLICATIVE ")" { Var (Name.of_string $2) }
     | "(" "|" stmt tail("|", stmt, ")") { proxy (Row (Vector.of_list ($3 :: $4))) }
     | "(" "|" ")" { proxy (Row Vector.empty) }
     | "{" ":" stmt tail(";", stmt, "}") { proxy (Record (Vector.of_list ($3 :: $4))) }
     | "{" ":" "}" { proxy (Record Vector.empty) }
     | "(" ":" typ tail(",", typ, ")") { proxy (Ast.Type.Values (Vector.of_list ($3 :: $4))) }
-    | "(" ":" ")" { proxy (Values Vector.empty) }
+    | "(" ":" ")" { proxy (Ast.Type.Values Vector.empty) }
     | ID { Var (Name.of_string $1) }
     | "_" { Wild (Name.of_string $1) }
     | INT { Const (Int $1) }
@@ -163,11 +171,11 @@ clause : params expr { {params = $1; body = $2} }
 
 params :
     | "?" select* "|" select* "|" {
-        Both ( {v = Values (Vector.of_list $2); pos = $loc($2)}
-             , {v = Values (Vector.of_list $4); pos = $loc($4)} )
+        Both (parenthesized (Vector.of_list $2) $loc($2)
+            , parenthesized (Vector.of_list $4) $loc($4))
     }
-    | "|" select* "|" { Ior.Right {v = Values (Vector.of_list $2); pos = $loc($2)} }
-    | "?" select* "?" { Ior.Left {v = Values (Vector.of_list $2); pos = $loc($2)} }
+    | "|" select* "|" { Right (parenthesized (Vector.of_list $2) $loc($2)) }
+    | "?" select* "?" { Ior.Left (parenthesized (Vector.of_list $2) $loc($2)) }
 
 args :
     | select+ "@" select+ { Ior.Both (Vector.of_list $1, Vector.of_list $3) }
