@@ -93,8 +93,8 @@ let emit program =
     let rec emit_transfer parent stmts (transfer : Transfer.t) =
         let emit_expr : Expr.t -> PPrint.document = function
             | PrimApp {op = Import; universals = _; args} ->
-                assert (Vector.length args = 2);
-                string "require" ^^ parens (emit_use (Vector.get args 1))
+                assert (Vector.length args = 3); (* FIXME *)
+                string "require" ^^ parens (emit_use (Vector.get args 2))
 
             | PrimApp {op; _} -> failwith ("TODO: " ^ Primop.to_string op)
 

@@ -133,9 +133,9 @@ module Expr = struct
         | Select {selectee; field} -> 
             infix 4 1 dot (Id.to_doc selectee) (Name.to_doc field)
         | Proxy typ -> brackets (equals ^^ blank 1 ^^ Type.to_doc typ)
-        | Label label -> ContId.to_doc label
+        | Label label -> string "fn" ^^ blank 1 ^^ ContId.to_doc label
         | Param {label; index} ->
-            infix 4 1 sharp (ContId.to_doc label) (string (Int.to_string index))
+            infix 4 1 (string "param") (ContId.to_doc label) (string (Int.to_string index))
         | Const c -> Const.to_doc c
 
     let to_doc expr = term_to_doc expr.term
@@ -162,7 +162,7 @@ module Expr = struct
 
     let iter_uses f expr = iter_uses' f expr.term
 
-    let map_uses f term = match term with
+    let map_uses' f term = match term with
         | Tuple args ->
             let (noop, args) = Stream.from (Vector.to_source args)
                 |> Stream.map (fun arg -> let arg' = f arg in (arg' == arg, arg'))
@@ -204,6 +204,8 @@ module Expr = struct
             if selectee' == selectee then term else Select {selectee = selectee'; field}
 
         | Proxy _ | Label _ | Param _ | Const _ -> term
+
+    let map_uses f expr = {expr with term = map_uses' f expr.term}
 end
 
 module Pattern = struct
@@ -294,6 +296,20 @@ module Transfer = struct
         | PrimApp {op = _; universals = _; state; args; clauses = _} ->
             f state; Vector.iter f args
         | Return (_, args) -> Vector.iter f args
+
+    let map_uses f (transfer : t) =
+        let term = match transfer.term with
+            | Goto {universals; callee; args} ->
+                Goto {universals; callee; args = Vector.map f args}
+            | Jump {universals; callee; args} ->
+                Jump {universals; callee = f callee; args = Vector.map f args}
+            | Match {matchee; state; clauses} ->
+                Match {matchee = f matchee; state = f state; clauses}
+            | PrimApp {op; universals; args; state; clauses} ->
+                PrimApp {op; universals; args = Vector.map f args
+                    ; state = f state; clauses}
+            | Return (universals, args) -> Return (universals, Vector.map f args) in
+        {transfer with term}
 end
 
 module Cont = struct
@@ -379,9 +395,15 @@ module Program = struct
 
     let type_fns (program : t) = program.type_fns
 
+    let main program = program.main
+
     let exports {type_fns = _; exprs = _; conts = _; main} = Source.single main
 
     let cont (program : t) label = Conts.get_exn label program.conts
+
+    let conts (program : t) =
+        let gen = Conts.to_gen program.conts in
+        Stream.unfold () (fun () -> gen () |> Option.map (fun kv -> (kv, ())))
 
     let expr (program : t) id = Exprs.get_exn id program.exprs
 
@@ -447,6 +469,37 @@ module Program = struct
 
         visit_cont Exprs.empty main
 
+    type transient =
+        { type_fns : Type.param Vector.t
+        ; mutable exprs : Expr.t Exprs.t
+        ; mutable conts : Cont.t Conts.t
+        ; main : Cont.Id.t
+        ; transient : CCHashTrie.Transient.t }
+
+    module Transient = struct
+        let from ({type_fns; exprs; conts; main} : t) =
+            { type_fns; exprs; conts; main
+            ; transient = CCHashTrie.Transient.create () }
+
+        let persist {type_fns; exprs; conts; main; transient} =
+            CCHashTrie.Transient.freeze transient;
+            {type_fns; exprs; conts; main}
+
+        let exprs (program : transient) =
+            let gen = Exprs.to_gen program.exprs in
+            Stream.unfold () (fun () -> gen () |> Option.map (fun kv -> (kv, ())))
+
+        let add_expr program id expr =
+            program.exprs <-
+                Exprs.add_mut ~id: program.transient id expr program.exprs
+
+        let add_cont program label cont =
+            program.conts <-
+                Conts.add_mut ~id: program.transient label cont program.conts
+
+        type t = transient
+    end
+
     module Builder = struct
         let create type_fns =
             { type_fns
@@ -458,6 +511,7 @@ module Program = struct
             builder.exprs <- Exprs.add_mut ~id: builder.transient id expr builder.exprs
 
         let express builder expr =
+            (* TODO: 'peephole' optimizer (constant folding, GVN etc.) *)
             let id = Expr.Id.fresh () in
             express_as builder id expr;
             id
@@ -465,9 +519,11 @@ module Program = struct
         let add_cont (builder : builder) id k =
             builder.conts <- Conts.add_mut ~id: builder.transient id k builder.conts
 
-        let build {type_fns; exprs; transient; conts} main =
+        let build ({type_fns; exprs; transient; conts} : builder) main =
             CCHashTrie.Transient.freeze transient;
             {type_fns; exprs; conts; main}
+
+        let expr (builder : builder) id = Exprs.get_exn id builder.exprs
 
         type t = builder
     end

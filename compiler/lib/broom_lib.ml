@@ -59,6 +59,8 @@ module Cps = struct
     module Convert = CpsConvert
 end
 
+module Untuple = Untuple
+
 module Cfg = Cfg
 module ScheduleData = ScheduleData
 

@@ -55,6 +55,8 @@ module type CONT = sig
     module Stmt : STMT
     module Transfer : TRANSFER
 
+    module Id : Id.S
+
     type t =
         { pos : span
         ; name : Name.t option
@@ -63,9 +65,7 @@ module type CONT = sig
         ; stmts : Stmt.t Vector.t
         ; transfer : Transfer.t }
 
-    val to_doc : t -> PPrint.document
-
-    module Id : Id.S
+    val def_to_doc : Id.t -> t -> PPrint.document
 end
 
 module type PROGRAM = sig

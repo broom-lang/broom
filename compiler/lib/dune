@@ -12,6 +12,7 @@
 (copy_files# (files Fc/*))
 (copy_files# (files Typechecker/*))
 (copy_files# (files Cps/*))
+(copy_files# (files Optimizer/*))
 (copy_files# (files Cfg/*))
 (copy_files# (files Js/*))
 

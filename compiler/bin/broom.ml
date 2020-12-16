@@ -74,6 +74,12 @@ let build path debug check_only filename outfile =
                     pprint (Cps.Program.to_doc program ^^ twice hardline)
                 end;
 
+                let program = Untuple.untuple program in
+                if debug then begin
+                    debug_heading "CPS after untupling";
+                    pprint (Cps.Program.to_doc program ^^ twice hardline);
+                end;
+
                 let program = ScheduleData.schedule program in
                 if debug then begin
                     debug_heading "CFG from Dataflow Scheduling";

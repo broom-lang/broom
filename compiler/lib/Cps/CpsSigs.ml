@@ -51,7 +51,8 @@ module type EXPR = sig
     val iter_labels' : (cont_id -> unit) -> t' -> unit
     val iter_uses' : (Id.t -> unit) -> t' -> unit
     val iter_uses : (Id.t -> unit) -> t -> unit
-    val map_uses : (Id.t -> Id.t) -> t' -> t'
+    val map_uses' : (Id.t -> Id.t) -> t' -> t'
+    val map_uses : (Id.t -> Id.t) -> t -> t
 end
 
 module type PATTERN = sig
@@ -83,6 +84,7 @@ module type TRANSFER = sig
     val to_doc : t -> PPrint.document
     val iter_labels : (cont_id -> unit) -> t -> unit
     val iter_uses : (expr_id -> unit) -> t -> unit
+    val map_uses : (expr_id -> expr_id) -> t -> t
 end
 
 module type CONT = sig
@@ -107,17 +109,32 @@ module type PROGRAM = sig
     module Cont : CONT
 
     type t
+    type transient
     type builder
 
     val to_doc : t -> PPrint.document
 
     val type_fns : t -> Type.param Vector.t
+    val main : t -> Cont.Id.t
     val exports : t -> Cont.Id.t Streaming.Source.t
     val cont : t -> Cont.Id.t -> Cont.t
+    val conts : t -> (Cont.Id.t * Cont.t) Streaming.Stream.t
     val expr : t -> Expr.Id.t -> Expr.t
     val exprs : t -> (Expr.Id.t * Expr.t) Streaming.Stream.t
 
     val usecounts : t -> int Expr.Id.HashMap.t
+
+    module Transient : sig
+        val from : t -> transient
+        val persist : transient -> t
+        
+        val exprs : transient -> (Expr.Id.t * Expr.t) Streaming.Stream.t
+
+        val add_expr : transient -> Expr.Id.t -> Expr.t -> unit
+        val add_cont : transient -> Cont.Id.t -> Cont.t -> unit
+
+        type t = transient
+    end
 
     module Builder : sig
         val create : Type.param Vector.t -> builder
@@ -125,6 +142,8 @@ module type PROGRAM = sig
         val express_as : builder -> Expr.Id.t -> Expr.t -> unit
         val add_cont : builder -> Cont.Id.t -> Cont.t -> unit
         val build : builder -> Cont.Id.t -> t
+
+        val expr : builder -> Expr.Id.t -> Expr.t
 
         type t = builder
     end

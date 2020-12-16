@@ -145,9 +145,9 @@ module Cont = struct
         ; stmts : Stmt.t Vector.t
         ; transfer : Transfer.t }
 
-    let to_doc {pos = _; name; universals; params; stmts; transfer} =
+    let def_to_doc label {pos = _; name; universals; params; stmts; transfer} =
         let open PPrint in
-        string "function" ^^ blank 1
+        string "fun" ^^ blank 1 ^^ Cps.Cont.Id.to_doc label ^^ blank 1
         ^^ Option.fold ~some: (fun name -> Name.to_doc name ^^ blank 1)
             ~none: empty name
         ^^ surround_separate_map 4 0 empty
@@ -156,13 +156,11 @@ module Cont = struct
         ^^ surround_separate_map 4 0 (parens empty)
             lparen (comma ^^ break 1) rparen
             Type.to_doc (Vector.to_list params)
-        ^^ blank 1 ^^ surround 4 1 lbrace
+        ^^ blank 1 ^^ equals ^^ blank 1
+        ^^ surround 4 1 lbrace
             (separate_map (semi ^^ hardline) Stmt.to_doc (Vector.to_list stmts)
             ^^ hardline ^^ Transfer.to_doc transfer)
             rbrace
-
-    let def_to_doc id cont =
-        PPrint.(Cps.Cont.Id.to_doc id ^^ blank 1 ^^ equals ^^ blank 1 ^^ to_doc cont)
 
     module Builder = struct
         let create ({pos; name; universals; params; body = _} : Cps.Cont.t) : builder =

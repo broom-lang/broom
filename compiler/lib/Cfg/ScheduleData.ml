@@ -63,7 +63,7 @@ let schedule program =
                 | Some parent ->
                     emit_cont parent;
                     Cps.Expr.iter_labels emit_cont expr;
-                    let term = Cps.Expr.map_uses emit_expr term in
+                    let term = Cps.Expr.map_uses' emit_expr term in
                     Builder.define builder parent {Cfg.Stmt.pos; typ; term = Def (id, term)}
                 | None -> failwith "compiler bug: unparented expr in ScheduleData"
             end;
