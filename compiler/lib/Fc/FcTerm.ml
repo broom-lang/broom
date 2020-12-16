@@ -6,8 +6,6 @@ module Make (Type : FcSigs.TYPE) : FcSigs.TERM
 
 module Type = Type
 
-let (^^) = PPrint.(^^)
-
 module rec Expr : sig
     include FcSigs.EXPR
         with module Type = Type
@@ -79,10 +77,10 @@ end = struct
         | WildP of Name.t
 
     let var_to_doc (var : var) =
-        Name.to_doc var.name ^^ PPrint.sharp ^^ PPrint.string (Int.to_string var.id)
+        PPrint.(Name.to_doc var.name ^^ sharp ^^ string (Int.to_string var.id))
 
     let def_to_doc s (var : var) =
-        PPrint.infix 4 1 PPrint.colon (var_to_doc var) (Type.to_doc s var.vtyp)
+        PPrint.(infix 4 1 colon (var_to_doc var) (Type.to_doc s var.vtyp))
 
     let use_to_doc (use : use) = var_to_doc use.var
 
@@ -189,30 +187,29 @@ end = struct
         | Const c -> Const.to_doc c
         | Patchable r -> TxRef.(to_doc s !r)
 
-    and axiom_to_doc s (name, universals, l, r) = match Vector.to_list universals with
+    and axiom_to_doc s (name, universals, l, r) =
+        let open PPrint in
+        match Vector.to_list universals with
         | _ :: _ ->
-            PPrint.infix 4 1 PPrint.colon (Name.to_doc name)
-                (PPrint.infix 4 1 PPrint.tilde
+            infix 4 1 colon (Name.to_doc name)
+                (infix 4 1 tilde
                     (Type.universal_to_doc s universals (Type.to_doc s l))
                     (Type.universal_to_doc s universals (Type.to_doc s r)))
         | [] ->
-            PPrint.infix 4 1 PPrint.colon (Name.to_doc name)
-                (PPrint.infix 4 1 PPrint.tilde
-                    (Type.to_doc s l)
-                    (Type.to_doc s r))
+            infix 4 1 colon (Name.to_doc name)
+                (infix 4 1 tilde (Type.to_doc s l) (Type.to_doc s r))
 
     and clause_to_doc s {pat; body} =
-        PPrint.bar ^^ PPrint.blank 1
-            ^^ PPrint.infix 4 1 (PPrint.string "->")
-                (pat_to_doc s pat) (to_doc s body)
+        PPrint.(bar ^^ blank 1
+            ^^ infix 4 1 (string "->") (pat_to_doc s pat) (to_doc s body))
 
     and prim_clause_to_doc s {res; prim_body} =
-        PPrint.bar ^^ PPrint.blank 1
-            ^^ PPrint.infix 4 1 (PPrint.string "->")
+        PPrint.(bar ^^ blank 1
+            ^^ infix 4 1 (string "->")
                 (match res with
                 | Some var -> def_to_doc s var
-                | None -> PPrint.empty)
-                (to_doc s prim_body)
+                | None -> empty)
+                (to_doc s prim_body))
 
     and castee_to_doc s (castee : t) = match castee.term with
         | Fn _ -> PPrint.parens (to_doc s castee)
@@ -227,14 +224,16 @@ end = struct
             PPrint.parens (to_doc s selectee)
         | _ -> to_doc s selectee
 
-    and pat_to_doc s (pat : pat) = match pat.pterm with
+    and pat_to_doc s (pat : pat) =
+        let open PPrint in
+        match pat.pterm with
         | TupleP pats ->
-            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
-                PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+            surround_separate_map 4 0 (parens empty)
+                lparen (comma ^^ break 1) rparen
                 (pat_to_doc s) (Vector.to_list pats)
-        | ProxyP typ -> PPrint.brackets (Type.to_doc s typ)
-        | VarP var -> PPrint.parens (def_to_doc s var)
-        | WildP name -> PPrint.underscore ^^ Name.to_doc name
+        | ProxyP typ -> brackets (Type.to_doc s typ)
+        | VarP var -> parens (def_to_doc s var)
+        | WildP name -> underscore ^^ Name.to_doc name
         | ConstP c -> Const.to_doc c
 
     let id_counter = ref 0
@@ -458,7 +457,7 @@ and Stmt : FcSigs.STMT
         | Expr of expr
 
     let def_to_doc s ((_, var, expr) : def) =
-        PPrint.infix 4 1 PPrint.equals (Expr.def_to_doc s var) (Expr.to_doc s expr)
+        PPrint.(infix 4 1 equals (Expr.def_to_doc s var) (Expr.to_doc s expr))
 
     let to_doc s = function
         | Def def -> def_to_doc s def

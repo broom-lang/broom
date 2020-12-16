@@ -1,4 +1,4 @@
-let (^^) = PPrint.(^^)
+module PP = PPrint
 
 (* FIXME: Printing syntax differs from parsed syntax: *)
 
@@ -36,7 +36,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
         let app_prec = 9
         let dot_prec = 10
 
-        let prec_parens show_parens doc = if show_parens then PPrint.parens doc else doc
+        let prec_parens show_parens doc = if show_parens then PP.parens doc else doc
 
         let rec to_doc (expr : t with_pos) =
             let open PPrint in
@@ -58,8 +58,8 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                     |> prec_parens (prec > app_prec)
                 | Let (defs, body) ->
                     string "__let" ^^ blank 1
-                    ^^ surround_separate 4 0 (PPrint.braces PPrint.empty)
-                        PPrint.lbrace (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
+                    ^^ surround_separate 4 0 (braces empty)
+                        lbrace (semi ^^ break 1) rbrace
                         (Vector1.to_list (Vector1.map Stmt.def_to_doc defs)
                         @ [to_doc 0 body])
                     |> prec_parens (prec > app_prec)
@@ -81,30 +81,25 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                     surround_separate_map 4 0 (braces bar) lbrace (break 1) rbrace
                         clause_to_doc (Vector.to_list clauses)
                 | Var name -> Name.to_doc name
-                | Wild name -> PPrint.underscore ^^ Name.to_doc name
+                | Wild name -> underscore ^^ Name.to_doc name
                 | Const v -> Const.to_doc v
 
             and args_to_doc = function
-                | Left iarg -> to_doc (app_prec + 1) iarg ^^ PPrint.blank 1 ^^ PPrint.string "@"
+                | Left iarg -> to_doc (app_prec + 1) iarg ^^ blank 1 ^^ string "@"
                 | Right earg -> to_doc (app_prec + 1) earg
                 | Both (iarg, earg) ->
-                    PPrint.infix 4 1 (PPrint.string "@")
+                    infix 4 1 (string "@")
                         (to_doc (app_prec + 1) iarg) (to_doc (app_prec + 1) earg) in
             to_doc 0 expr
 
-        and clause_to_doc {params; body} = match params with
-            | Left iparam ->
-                PPrint.infix 4 1 (PPrint.string "=>")
-                    (PPrint.bar ^^ PPrint.blank 1 ^^ to_doc iparam)
-                    (to_doc body)
-            | Right eparam ->
-                PPrint.infix 4 1 (PPrint.string "->")
-                    (PPrint.bar ^^ PPrint.blank 1 ^^ to_doc eparam)
-                    (to_doc body)
+        and clause_to_doc {params; body} =
+            let open PPrint in
+            match params with
+            | Left iparam -> infix 4 1 (string "=>") (bar ^^ blank 1 ^^ to_doc iparam) (to_doc body)
+            | Right eparam -> infix 4 1 (string "->") (bar ^^ blank 1 ^^ to_doc eparam) (to_doc body)
             | Both (iparam, eparam) ->
-                PPrint.infix 4 1 (PPrint.string "->") (to_doc eparam) (to_doc body)
-                |> PPrint.infix 4 1 (PPrint.string "=>")
-                    (PPrint.bar ^^ PPrint.blank 1 ^^ to_doc iparam)
+                infix 4 1 (string "->") (to_doc eparam) (to_doc body)
+                |> infix 4 1 (string "=>") (bar ^^ blank 1 ^^ to_doc iparam)
     end
 
     module Stmt = struct
@@ -122,7 +117,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Expr expr -> expr.pos
 
         let def_to_doc ((_, pat, expr) : def) =
-            PPrint.infix 4 1 PPrint.equals (Expr.to_doc pat) (Expr.to_doc expr)
+            PP.infix 4 1 PP.equals (Expr.to_doc pat) (Expr.to_doc expr)
 
         let to_doc = function
             | Def def -> def_to_doc def
@@ -147,10 +142,12 @@ and Type : AstSigs.TYPE
         | Path of expr
         | Prim of Prim.t
 
-    let rec to_doc (typ : t with_pos) = match typ.v with
+    let rec to_doc (typ : t with_pos) =
+        let open PPrint in
+        match typ.v with
         | Tuple typs ->
-            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.colon)
-                (PPrint.lparen ^^ PPrint.colon) (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+            surround_separate_map 4 0 (parens colon)
+                (lparen ^^ colon) (comma ^^ break 1) rparen
                 to_doc (Vector.to_list typs)
         | Pi {domain; codomain} ->
             let codoc = to_doc codomain in
@@ -162,23 +159,23 @@ and Type : AstSigs.TYPE
                     , Option.map to_doc eff ) in
             let doc = match edoc with
                 | Some edoc ->
-                    let doc = PPrint.string "->" ^^ PPrint.blank 1 ^^ codoc in
+                    let doc = string "->" ^^ blank 1 ^^ codoc in
                     let doc = match effdoc with
                         | Some effdoc ->
-                            PPrint.prefix 4 1 (PPrint.string "-!" ^^ PPrint.blank 1 ^^ effdoc) doc
+                            prefix 4 1 (string "-!" ^^ blank 1 ^^ effdoc) doc
                         | None -> doc in
-                    PPrint.prefix 4 1 edoc doc
+                    prefix 4 1 edoc doc
                 | None -> codoc in
             (match idoc with
-            | Some idoc -> PPrint.prefix 4 1 idoc (PPrint.string "=>" ^^ PPrint.blank 1 ^^ doc)
+            | Some idoc -> prefix 4 1 idoc (string "=>" ^^ blank 1 ^^ doc)
             | None -> doc)
         | Record stmts ->
-            PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.colon)
-                (PPrint.lbrace ^^ PPrint.colon) (PPrint.semi ^^ PPrint.break 1) PPrint.rbrace
+            surround_separate_map 4 0 (braces colon)
+                (lbrace ^^ colon) (semi ^^ break 1) rbrace
                 Term.Stmt.to_doc (Vector.to_list stmts)
         | Row stmts ->
-            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.bar)
-                (PPrint.lparen ^^ PPrint.bar) (PPrint.break 1 ^^ PPrint.bar ^^ PPrint.break 1) PPrint.rparen
+            surround_separate_map 4 0 (parens bar)
+                (lparen ^^ bar) (break 1 ^^ bar ^^ break 1) rparen
                 Term.Stmt.to_doc (Vector.to_list stmts)
         | Path expr -> Term.Expr.to_doc {typ with v = expr}
         | Prim pt -> Prim.to_doc pt

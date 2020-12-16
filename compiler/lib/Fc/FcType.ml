@@ -31,6 +31,8 @@ and Typ : FcTypeSigs.TYPE
     with type uv = Uv.t
     with type subst = Uv.subst
 = struct
+    module PP = PPrint
+
     type uv = Uv.t
     type subst = Uv.subst
 
@@ -91,30 +93,29 @@ and Typ : FcTypeSigs.TYPE
 
     and kind = t
 
-    let (^^) = PPrint.(^^)
-    let (^/^) = PPrint.(^/^)
-
     (* --- *)
 
     let rec kind_to_doc s kind = to_doc s kind
 
-    and kinds_to_doc s kinds = PPrint.separate_map (PPrint.break 1) (kind_to_doc s) kinds
+    and kinds_to_doc s kinds = PPrint.(separate_map (break 1) (kind_to_doc s) kinds)
 
-    and to_doc s = function
+    and to_doc s typ =
+        let open PPrint in
+        match typ with
         | Exists (params, body) ->
-            PPrint.prefix 4 1 (PPrint.group (PPrint.string "exists" ^/^ (kinds_to_doc s) (Vector1.to_list params)))
-                (PPrint.dot ^^ PPrint.blank 1 ^^ to_doc s body)
+            prefix 4 1 (group (string "exists" ^/^ (kinds_to_doc s) (Vector1.to_list params)))
+                (dot ^^ blank 1 ^^ to_doc s body)
         | PromotedArray typs ->
-            PPrint.surround_separate_map 4 0 (PPrint.brackets PPrint.empty)
-                PPrint.lbracket (PPrint.comma ^^ PPrint.break 1) PPrint.rbracket
+            surround_separate_map 4 0 (brackets empty)
+                lbracket (comma ^^ break 1) rbracket
                 (to_doc s) (Vector.to_list typs)
         | PromotedTuple typs ->
-            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
-                PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+            surround_separate_map 4 0 (parens empty)
+                lparen (comma ^^ break 1) rparen
                 (to_doc s) (Vector.to_list typs)
         | Tuple typs ->
-            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.colon)
-                (PPrint.lparen ^^ PPrint.colon) (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+            surround_separate_map 4 0 (parens colon)
+                (lparen ^^ colon) (comma ^^ break 1) rparen
                 (to_doc s) (Vector.to_list typs)
         | Pi {universals; domain; codomain} ->
             let codoc = to_doc s codomain in
@@ -125,41 +126,41 @@ and Typ : FcTypeSigs.TYPE
                     (Some (to_doc s idomain), Some (to_doc s edomain), Some (to_doc s eff)) in
             let doc = match edoc with
                 | Some edoc ->
-                    let doc = PPrint.string "->" ^^ PPrint.blank 1 ^^ codoc in
+                    let doc = string "->" ^^ blank 1 ^^ codoc in
                     let doc = match effdoc with
                         | Some effdoc ->
-                            PPrint.prefix 4 1 (PPrint.string "-!" ^^ PPrint.blank 1 ^^ effdoc) doc
+                            prefix 4 1 (string "-!" ^^ blank 1 ^^ effdoc) doc
                         | None -> doc in
-                    PPrint.prefix 4 1 edoc doc
+                    prefix 4 1 edoc doc
                 | None -> codoc in
             let doc = match idoc with
-                | Some idoc -> PPrint.prefix 4 1 idoc (PPrint.string "=>" ^^ PPrint.blank 1 ^^ doc)
+                | Some idoc -> prefix 4 1 idoc (string "=>" ^^ blank 1 ^^ doc)
                 | None -> doc in
             if Vector.length universals > 0
-            then PPrint.prefix 4 1
-                (PPrint.string "forall" ^^ PPrint.blank 1 ^^ kinds_to_doc s (Vector.to_list universals))
-                (PPrint.dot ^^ PPrint.blank 1 ^^ doc)
+            then prefix 4 1
+                (string "forall" ^^ blank 1 ^^ kinds_to_doc s (Vector.to_list universals))
+                (dot ^^ blank 1 ^^ doc)
             else doc
-        | Record row -> PPrint.braces (to_doc s row)
+        | Record row -> braces (to_doc s row)
         | With {base; label; field} ->
-            PPrint.infix 4 1 (PPrint.string "with") (base_to_doc s base)
-                (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (to_doc s field))
-        | EmptyRow -> PPrint.parens (PPrint.bar)
-        | Proxy typ -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ to_doc s typ)
+            infix 4 1 (string "with") (base_to_doc s base)
+                (infix 4 1 colon (Name.to_doc label) (to_doc s field))
+        | EmptyRow -> parens (bar)
+        | Proxy typ -> brackets (equals ^^ blank 1 ^^ to_doc s typ)
         | Fn (param, body) ->
-            PPrint.prefix 4 1
-                (PPrint.string "fun" ^^ PPrint.blank 1 ^^ kind_to_doc s param)
-                (PPrint.dot ^^ PPrint.blank 1 ^^ to_doc s body)
+            prefix 4 1
+                (string "fun" ^^ blank 1 ^^ kind_to_doc s param)
+                (dot ^^ blank 1 ^^ to_doc s body)
         | App (callee, arg) -> callee_to_doc s callee ^/^ arg_to_doc s arg
         | Bv {depth; sibli; kind = _} ->
-            PPrint.caret ^^ PPrint.string (Int.to_string depth) ^^ PPrint.slash
-                ^^ PPrint.string (Int.to_string sibli)
+            caret ^^ string (Int.to_string depth) ^^ slash
+                ^^ string (Int.to_string sibli)
         | Ov ((name, _), _) -> Name.to_doc name
         | Uv uv -> uv_to_doc s uv
-        | Prim pt -> PPrint.string "__" ^^ Prim.to_doc pt
+        | Prim pt -> string "__" ^^ Prim.to_doc pt
 
     and base_to_doc s = function
-        | (Pi _ | Fn _) as base -> PPrint.parens (to_doc s base)
+        | (Pi _ | Fn _) as base -> PP.parens (to_doc s base)
         | Uv uv ->
             (match Uv.get s uv with
             | Assigned typ -> base_to_doc s typ
@@ -167,7 +168,7 @@ and Typ : FcTypeSigs.TYPE
         | base -> to_doc s base
 
     and callee_to_doc s = function
-        | (Pi _ | Fn _) as callee -> PPrint.parens (to_doc s callee)
+        | (Pi _ | Fn _) as callee -> PP.parens (to_doc s callee)
         | Uv uv ->
             (match Uv.get s uv with
             | Assigned typ -> callee_to_doc s typ
@@ -175,93 +176,97 @@ and Typ : FcTypeSigs.TYPE
         | callee -> to_doc s callee
 
     and arg_to_doc s = function
-        | (Pi _ | Fn _ (*| App _*)) as arg -> PPrint.parens (to_doc s arg)
+        | (Pi _ | Fn _ (*| App _*)) as arg -> PP.parens (to_doc s arg)
         | Uv uv ->
             (match Uv.get s uv with
             | Assigned typ -> arg_to_doc s typ
             | Unassigned _ -> uv_to_doc s uv)
         | arg -> to_doc s arg
 
-    and template_to_doc s = function
+    and template_to_doc s tpl =
+        let open PPrint in
+        match tpl with
         | TupleL length ->
-            PPrint.surround_separate 4 0 (PPrint.parens PPrint.empty)
-                PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
-                (List.init length (fun _ -> PPrint.underscore))
+            surround_separate 4 0 (parens empty)
+                lparen (comma ^^ break 1) rparen
+                (List.init length (fun _ -> underscore))
         | PiL codomain ->
-            let domain_doc = PPrint.parens PPrint.empty in
-            PPrint.infix 4 1 (PPrint.string "->") domain_doc (template_to_doc s codomain)
+            let domain_doc = parens empty in
+            infix 4 1 (string "->") domain_doc (template_to_doc s codomain)
         | WithL {base; label; field} ->
-            PPrint.infix 4 1 (PPrint.string "with") (basel_to_doc s base)
-                (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (template_to_doc s field))
-        | ProxyL path -> PPrint.brackets (PPrint.equals ^^ PPrint.blank 1 ^^ to_doc s path)
-        | Hole -> PPrint.underscore
+            infix 4 1 (string "with") (basel_to_doc s base)
+                (infix 4 1 colon (Name.to_doc label) (template_to_doc s field))
+        | ProxyL path -> brackets (equals ^^ blank 1 ^^ to_doc s path)
+        | Hole -> underscore
 
     and basel_to_doc s = function
-        | PiL _ as template -> PPrint.parens (template_to_doc s template)
+        | PiL _ as template -> PP.parens (template_to_doc s template)
         | template -> template_to_doc s template
 
     and binding_to_doc s (name, kind) =
-        Name.to_doc name ^/^ PPrint.colon ^/^ kind_to_doc s kind
+        PPrint.(Name.to_doc name ^/^ colon ^/^ kind_to_doc s kind)
 
     and universal_to_doc s universals body =
-        PPrint.prefix 4 1 (PPrint.group (PPrint.string "forall" ^/^ (kinds_to_doc s) (Vector.to_list universals)))
-            (PPrint.dot ^^ PPrint.blank 1 ^^ body)
+        PPrint.(prefix 4 1 (group (string "forall" ^/^ (kinds_to_doc s) (Vector.to_list universals)))
+            (dot ^^ blank 1 ^^ body))
 
     and uv_to_doc s uv = match Uv.get s uv with
-        | Unassigned (id, _, _) -> PPrint.qmark ^^ PPrint.string (Int.to_string id)
+        | Unassigned (id, _, _) -> PPrint.(qmark ^^ string (Int.to_string id))
         | Assigned t -> to_doc s t
 
-    let rec coercion_to_doc s = function
+    let rec coercion_to_doc s co =
+        let open PPrint in
+        match co with
         | Refl typ -> to_doc s typ
-        | Symm co -> PPrint.string "symm" ^^ PPrint.blank 1 ^^ coercion_to_doc s co
+        | Symm co -> string "symm" ^^ blank 1 ^^ coercion_to_doc s co
         | Trans (co, co') ->
-            PPrint.infix 4 1 (PPrint.bquotes (PPrint.string "o"))
+            infix 4 1 (bquotes (string "o"))
                 (coercion_to_doc s co) (andco_to_doc s co')
         | Comp (ctor_co, arg_cos) ->
-            PPrint.prefix 4 1 (ctorco_to_doc s ctor_co)
-                (PPrint.separate_map (PPrint.break 1) (argco_to_doc s) (Vector1.to_list arg_cos))
+            prefix 4 1 (ctorco_to_doc s ctor_co)
+                (separate_map (break 1) (argco_to_doc s) (Vector1.to_list arg_cos))
         | Inst (co, args) ->
-            Vector1.fold (fun doc arg -> PPrint.infix 4 1 PPrint.at doc (to_doc s arg))
+            Vector1.fold (fun doc arg -> infix 4 1 at doc (to_doc s arg))
                 (instantiee_to_doc s co) args
         | AUse name -> Name.to_doc name
         | PromotedArrayCo coercions ->
-            PPrint.surround_separate_map 4 0 (PPrint.brackets PPrint.empty)
-                PPrint.lbracket (PPrint.comma ^^ PPrint.break 1) PPrint.rbracket
+            surround_separate_map 4 0 (brackets empty)
+                lbracket (comma ^^ break 1) rbracket
                 (coercion_to_doc s) (Vector.to_list coercions)
         | PromotedTupleCo coercions ->
-            PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
-                PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+            surround_separate_map 4 0 (parens empty)
+                lparen (comma ^^ break 1) rparen
                 (coercion_to_doc s) (Vector.to_list coercions)
         | TupleCo coercions ->
-            PPrint.colon
-                ^/^ PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) (coercion_to_doc s)
+            colon
+                ^/^ separate_map (comma ^^ break 1) (coercion_to_doc s)
                     (Vector.to_list coercions)
-            |> PPrint.parens
-        | RecordCo row_co -> PPrint.braces (coercion_to_doc s row_co)
+            |> parens
+        | RecordCo row_co -> braces (coercion_to_doc s row_co)
         | WithCo {base; label; field} ->
-            PPrint.infix 4 1 (PPrint.string "with") (base_co_to_doc s base)
-                (PPrint.infix 4 1 PPrint.colon (Name.to_doc label) (coercion_to_doc s field))
-        | ProxyCo co -> PPrint.brackets (PPrint.equals ^^ PPrint.break 1 ^^ coercion_to_doc s co)
+            infix 4 1 (string "with") (base_co_to_doc s base)
+                (infix 4 1 colon (Name.to_doc label) (coercion_to_doc s field))
+        | ProxyCo co -> brackets (equals ^^ break 1 ^^ coercion_to_doc s co)
         | Patchable ref -> coercion_to_doc s !ref
 
     and andco_to_doc s = function
-        | Trans _ as co -> PPrint.parens (coercion_to_doc s co)
+        | Trans _ as co -> PP.parens (coercion_to_doc s co)
         | co -> coercion_to_doc s co
 
     and ctorco_to_doc s = function
-        | (Symm _ | Trans _ | Inst _) as co -> PPrint.parens (coercion_to_doc s co)
+        | (Symm _ | Trans _ | Inst _) as co -> PP.parens (coercion_to_doc s co)
         | co -> coercion_to_doc s co
 
     and argco_to_doc s = function
-        | (Trans _ | Inst _ | Comp _) as co -> PPrint.parens (coercion_to_doc s co)
+        | (Trans _ | Inst _ | Comp _) as co -> PP.parens (coercion_to_doc s co)
         | co -> coercion_to_doc s co
 
     and instantiee_to_doc s = function
-        | (Symm _ | Trans _) as co -> PPrint.parens (coercion_to_doc s co)
+        | (Symm _ | Trans _) as co -> PP.parens (coercion_to_doc s co)
         | co -> coercion_to_doc s co
 
     and base_co_to_doc s = function
-        | (Trans _ | Comp _ | Inst _) as co -> PPrint.parens (coercion_to_doc s co)
+        | (Trans _ | Comp _ | Inst _) as co -> PP.parens (coercion_to_doc s co)
         | co -> coercion_to_doc s co
 end
 

@@ -1,3 +1,4 @@
+module S = String
 module L = SedlexMenhir
 
 let reserved = [%sedlex.regexp? '(' | ')' | '[' | ']' | '{' | '}' | '.' | ':' | ',' | ';' | '|']
@@ -52,15 +53,15 @@ let rec token ({SedlexMenhir.stream; _} as lexbuf) =
 
     | string ->
         let tok = L.lexeme lexbuf in
-        L.update lexbuf; STRING (String.sub tok 1 (String.length tok - 2))
+        L.update lexbuf; STRING (S.sub tok 1 (S.length tok - 2))
     | integer -> L.update lexbuf; INT (int_of_string (L.lexeme lexbuf))
 
     | "__", Plus constituent ->
         let tok = L.lexeme lexbuf in
-        L.update lexbuf; PRIMOP (String.sub tok 2 (String.length tok - 2))
+        L.update lexbuf; PRIMOP (S.sub tok 2 (S.length tok - 2))
     | '_', Star constituent ->
         let tok = L.lexeme lexbuf in
-        L.update lexbuf; WILD (String.sub tok 1 (String.length tok - 1))
+        L.update lexbuf; WILD (S.sub tok 1 (S.length tok - 1))
 
     | identifier -> L.update lexbuf; ID (L.lexeme lexbuf)
     | symbol -> L.update lexbuf; OP (L.lexeme lexbuf)

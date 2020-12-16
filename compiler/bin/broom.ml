@@ -4,13 +4,14 @@ open Broom_lib
 module TS = TyperSigs
 module Env = Typer.Env
 module C = Cmdliner
-
-let (^^) = PPrint.(^^)
-let (^/^) = PPrint.(^/^)
+module PP = PPrint
 
 let name = "broom"
 let name_c = String.capitalize_ascii name
 let prompt = name ^ "> "
+
+let pprint = PP.ToChannel.pretty 1.0 80 stdout
+let pprint_err = PP.ToChannel.pretty 1.0 80 stderr
 
 let eval_envs () = (Typer.Env.eval (), Fc.Eval.Env.eval ())
 
@@ -29,33 +30,31 @@ let ep ((tenv, venv) as envs) (stmt : Ast.Term.Stmt.t) =
 
         match FwdRefs.convert program with
         | Ok program ->
-            let doc = Env.document tenv Fc.Program.to_doc program
-                ^/^ PPrint.colon ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc program.main.typ
-                ^/^ PPrint.bang ^^ PPrint.blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
-                |> PPrint.group in
-            PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ doc);
+            let doc = PPrint.(Env.document tenv Fc.Program.to_doc program
+                ^/^ colon ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc program.main.typ
+                ^/^ bang ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
+                |> group) in
+            pprint PPrint.(hardline ^^ doc);
 
             let (v, venv) = Fc.Eval.run venv program in
-            PPrint.ToChannel.pretty 1.0 80 stdout (PPrint.hardline ^^ Fc.Eval.Value.to_doc v);
+            pprint PPrint.(hardline ^^ Fc.Eval.Value.to_doc v);
             (tenv, venv)
         | Error errors ->
-            errors |> CCVector.iter (fun err ->
-                PPrint.ToChannel.pretty 1.0 80 stderr (FwdRefs.error_to_doc err));
+            errors |> CCVector.iter (fun err -> pprint_err (FwdRefs.error_to_doc err));
             flush stderr;
             envs
     end with
     | Typer.TypeError.TypeError (pos, err) ->
         flush stdout;
-        PPrint.ToChannel.pretty 1.0 80 stderr
-            (PPrint.hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ PPrint.hardline);
+        pprint_err PPrint.(hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ hardline);
         flush stderr;
         envs
 
 let rep envs input =
     try
         let stmts = Parse.parse_stmts_exn input in
-        let doc = PPrint.group (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) Ast.Term.Stmt.to_doc
-            (Vector.to_list stmts)) in
+        let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc
+            (Vector.to_list stmts))) in
         PPrint.ToChannel.pretty 1.0 80 stdout doc;
         print_newline ();
 
@@ -75,9 +74,9 @@ let ltp filename =
         let input = Sedlexing.Utf8.from_channel input in
         try
             let defs = Parse.parse_defs_exn input in
-            let doc = PPrint.group (PPrint.separate_map (PPrint.semi ^^ PPrint.break 1) Ast.Term.Stmt.def_to_doc
-                (Vector.to_list defs)) in
-            PPrint.ToChannel.pretty 1.0 80 stdout doc;
+            let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.def_to_doc
+                (Vector.to_list defs))) in
+            pprint doc;
             print_newline ();
 
             let program =
@@ -100,35 +99,34 @@ let ltp filename =
                 {Util.pos; v = Ast.Term.Expr.App ({pos; v = Var (Name.of_string "let")}, Right block)} in
             let program = Expander.expand Expander.Env.empty program in
             let doc = Ast.Term.Expr.to_doc program in
-            PPrint.ToChannel.pretty 1.0 80 stdout doc;
+            pprint doc;
             print_newline ();
 
             let program = Typer.check_program tenv Vector.empty program in
-            PPrint.ToChannel.pretty 1.0 80 stdout (Typer.Env.document tenv Fc.Program.to_doc program);
+            pprint (Typer.Env.document tenv Fc.Program.to_doc program);
 
             match FwdRefs.convert program with
             | Ok program ->
-                PPrint.ToChannel.pretty 1.0 80 stdout (Typer.Env.document tenv Fc.Program.to_doc program);
+                pprint (Typer.Env.document tenv Fc.Program.to_doc program);
 
                 let program = Cps.Convert.convert (Fc.Type.Prim Int) program in
-                PPrint.ToChannel.pretty 1.0 80 stdout (Cps.Program.to_doc program ^^ twice hardline);
+                pprint (Cps.Program.to_doc program ^^ twice hardline);
 
                 let program = ScheduleData.schedule program in
-                PPrint.ToChannel.pretty 1.0 80 stdout (Cfg.Program.to_doc program ^^ twice hardline);
+                pprint (Cfg.Program.to_doc program ^^ twice hardline);
 
                 let js = ToJs.emit program in
-                PPrint.ToChannel.pretty 1.0 80 stdout js
+                pprint js
             | Error errors ->
                 errors |> CCVector.iter (fun err ->
-                    PPrint.ToChannel.pretty 1.0 80 stderr (FwdRefs.error_to_doc err));
+                    pprint_err (FwdRefs.error_to_doc err));
                 flush stderr
         with
         | SedlexMenhir.ParseError err ->
             prerr_endline (SedlexMenhir.string_of_ParseError err);
         | Typer.TypeError.TypeError (pos, err) ->
             flush stdout;
-            PPrint.ToChannel.pretty 1.0 80 stderr
-                (PPrint.hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ PPrint.hardline);
+            pprint_err PPrint.(hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ hardline);
             flush stderr;
     ) ~finally: (fun () -> close_in input)
 
