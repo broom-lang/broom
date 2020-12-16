@@ -171,8 +171,8 @@ let rec expose' env depth substitution : T.t -> T.t = function
         let depth = depth + 1 in
         Exists (params, expose' env depth substitution body)
     | PromotedArray typs -> PromotedArray (Vector.map (expose' env depth substitution) typs)
-    | PromotedValues typs -> PromotedValues (Vector.map (expose' env depth substitution) typs)
-    | Values typs -> Values (Vector.map (expose' env depth substitution) typs)
+    | PromotedTuple typs -> PromotedTuple (Vector.map (expose' env depth substitution) typs)
+    | Tuple typs -> Tuple (Vector.map (expose' env depth substitution) typs)
     | Pi {universals; domain; codomain} ->
         let depth = depth + 1 in
         Pi { universals
@@ -200,7 +200,7 @@ let rec expose' env depth substitution : T.t -> T.t = function
     | (Ov _ | Prim _) as typ -> typ
 
 and expose_template' env depth substitution = function
-    | T.ValuesL _ as template -> template
+    | T.TupleL _ as template -> template
     | PiL codomain -> T.PiL (expose_template' env depth substitution codomain)
     | WithL {base; label; field} ->
         WithL { base = expose_template' env depth substitution base
@@ -218,8 +218,8 @@ let rec close' env depth substitution : T.t -> T.t = function
         let depth = depth + 1 in
         Exists (params, close' env depth substitution body)
     | PromotedArray typs -> PromotedArray (Vector.map (close' env depth substitution) typs)
-    | PromotedValues typs -> PromotedValues (Vector.map (close' env depth substitution) typs)
-    | Values typs -> Values (Vector.map (close' env depth substitution) typs)
+    | PromotedTuple typs -> PromotedTuple (Vector.map (close' env depth substitution) typs)
+    | Tuple typs -> Tuple (Vector.map (close' env depth substitution) typs)
     | Pi {universals; domain; codomain} ->
         let depth = depth + 1 in
         Pi { universals
@@ -246,7 +246,7 @@ let rec close' env depth substitution : T.t -> T.t = function
     | (Bv _ | Prim _) as typ -> typ
 
 and close_template' env depth substitution = function
-    | T.ValuesL _ as template -> template
+    | T.TupleL _ as template -> template
     | T.PiL codomain -> T.PiL (close_template' env depth substitution codomain)
     | WithL {base; label; field} ->
         WithL { base = close_template' env depth substitution base

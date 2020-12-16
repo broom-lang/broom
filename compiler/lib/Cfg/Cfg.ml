@@ -10,7 +10,7 @@ module Expr = struct
     let to_doc = Cps.Expr.term_to_doc
 
     let is_pure : t -> bool = function
-        | Values _ | Focus _ | Record _ | With _ | Where _ | Select _
+        | Tuple _ | Focus _ | Record _ | With _ | Where _ | Select _
         | Proxy _ | Label _ | Param _ | Const _ -> true
 
     let iter_uses = Cps.Expr.iter_uses'

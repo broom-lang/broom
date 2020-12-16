@@ -47,8 +47,8 @@ and Typ : FcTypeSigs.TYPE
     and t =
         | Exists of kind Vector1.t * t
         | PromotedArray of t Vector.t
-        | PromotedValues of t Vector.t
-        | Values of t Vector.t
+        | PromotedTuple of t Vector.t
+        | Tuple of t Vector.t
         | Pi of {universals : kind Vector.t; domain : (t, edomain) Ior.t; codomain : t}
         | Record of t
         | With of {base : t; label : Name.t; field : t}
@@ -64,7 +64,7 @@ and Typ : FcTypeSigs.TYPE
     and edomain = {edomain : t; eff : t}
 
     and template =
-        | ValuesL of int
+        | TupleL of int
         | PiL of template
         | WithL of {base : template; label : Name.t; field : template}
         | ProxyL of t
@@ -80,8 +80,8 @@ and Typ : FcTypeSigs.TYPE
         | Inst of coercion * typ Vector1.t
         | AUse of Name.t
         | PromotedArrayCo of coercion Vector.t
-        | PromotedValuesCo of coercion Vector.t
-        | ValuesCo of coercion Vector.t
+        | PromotedTupleCo of coercion Vector.t
+        | TupleCo of coercion Vector.t
         | RecordCo of coercion
         | WithCo of {base : coercion; label : Name.t; field : coercion}
         | ProxyCo of coercion
@@ -108,11 +108,11 @@ and Typ : FcTypeSigs.TYPE
             PPrint.surround_separate_map 4 0 (PPrint.brackets PPrint.empty)
                 PPrint.lbracket (PPrint.comma ^^ PPrint.break 1) PPrint.rbracket
                 (to_doc s) (Vector.to_list typs)
-        | PromotedValues typs ->
+        | PromotedTuple typs ->
             PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 (to_doc s) (Vector.to_list typs)
-        | Values typs ->
+        | Tuple typs ->
             PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.colon)
                 (PPrint.lparen ^^ PPrint.colon) (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 (to_doc s) (Vector.to_list typs)
@@ -183,7 +183,7 @@ and Typ : FcTypeSigs.TYPE
         | arg -> to_doc s arg
 
     and template_to_doc s = function
-        | ValuesL length ->
+        | TupleL length ->
             PPrint.surround_separate 4 0 (PPrint.parens PPrint.empty)
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 (List.init length (fun _ -> PPrint.underscore))
@@ -228,11 +228,11 @@ and Typ : FcTypeSigs.TYPE
             PPrint.surround_separate_map 4 0 (PPrint.brackets PPrint.empty)
                 PPrint.lbracket (PPrint.comma ^^ PPrint.break 1) PPrint.rbracket
                 (coercion_to_doc s) (Vector.to_list coercions)
-        | PromotedValuesCo coercions ->
+        | PromotedTupleCo coercions ->
             PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 (coercion_to_doc s) (Vector.to_list coercions)
-        | ValuesCo coercions ->
+        | TupleCo coercions ->
             PPrint.colon
                 ^/^ PPrint.separate_map (PPrint.comma ^^ PPrint.break 1) (coercion_to_doc s)
                     (Vector.to_list coercions)

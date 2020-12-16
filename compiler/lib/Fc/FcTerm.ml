@@ -34,7 +34,7 @@ end = struct
         ; pos : Util.span }
 
     and t' =
-        | Values of t array
+        | Tuple of t array
         | Focus of {mutable focusee : t; index : int}
 
         | Fn of {universals : Type.binding Vector.t; param : var; mutable body : t}
@@ -72,7 +72,7 @@ end = struct
 
     and pat = {pterm: pat'; ptyp : Type.t; ppos : Util.span}
     and pat' =
-        | ValuesP of pat Vector.t
+        | TupleP of pat Vector.t
         | ProxyP of Type.t
         | ConstP of Const.t
         | VarP of var
@@ -89,7 +89,7 @@ end = struct
     let rec to_doc s (expr : t) =
         let open PPrint in
         match expr.term with
-        | Values exprs ->
+        | Tuple exprs ->
             surround_separate_map 4 0 (parens empty)
                 lparen (comma ^^ break 1) rparen
                 (to_doc s) (Array.to_list exprs)
@@ -228,7 +228,7 @@ end = struct
         | _ -> to_doc s selectee
 
     and pat_to_doc s (pat : pat) = match pat.pterm with
-        | ValuesP pats ->
+        | TupleP pats ->
             PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
                 PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 (pat_to_doc s) (Vector.to_list pats)
@@ -248,7 +248,7 @@ end = struct
 
     let at pos typ term = {term; pos; typ; parent = None}
 
-    let values vals = Values vals
+    let values vals = Tuple vals
 
     let focus focusee index = Focus {focusee; index}
     let fn universals param body = Fn {universals; param; body}
@@ -300,7 +300,7 @@ end = struct
     let map_children f (expr : t) =
         let term = expr.term in
         let term' = match term with
-            | Values vals ->
+            | Tuple vals ->
                 let vals' = Array.map f vals in
                 let noop = Stream.from (Source.zip_with (==)
                         (Source.array vals') (Source.array vals))

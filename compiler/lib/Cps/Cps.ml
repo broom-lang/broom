@@ -9,8 +9,8 @@ module Type = struct
     type param = Fc.Type.binding
 
     type t =
-        | Values of t Vector.t
-        | PromotedValues of t Vector.t
+        | Tuple of t Vector.t
+        | PromotedTuple of t Vector.t
         | PromotedArray of t Vector.t
         | Pi of {universals : kind Vector.t; domain : t Vector.t}
         | Record of t
@@ -26,11 +26,11 @@ module Type = struct
     let rec to_doc typ =
         let open PPrint in
         match typ with
-        | Values typs -> surround_separate_map 4 0 (parens colon)
+        | Tuple typs -> surround_separate_map 4 0 (parens colon)
             (lparen ^^ colon) (comma ^^ break 1) rparen
             to_doc (Vector.to_list typs)
 
-        | PromotedValues typs -> surround_separate_map 4 0 (parens empty)
+        | PromotedTuple typs -> surround_separate_map 4 0 (parens empty)
             lparen (comma ^^ break 1) rparen
             to_doc (Vector.to_list typs)
 
@@ -77,7 +77,7 @@ module Expr = struct
 
     type t' =
         | PrimApp of {op : Primop.t; universals : Type.t Vector.t; args : Id.t Vector.t}
-        | Values of Id.t Vector.t
+        | Tuple of Id.t Vector.t
         | Focus of {focusee : Id.t; index : int}
         | Record of (Name.t * Id.t) Vector.t
         | With of {base : Id.t; label: Name.t; field : Id.t}
@@ -109,7 +109,7 @@ module Expr = struct
                     lparen (comma ^^ break 1) rparen
                     Id.to_doc (Vector.to_list args))
 
-        | Values values ->
+        | Tuple values ->
             surround_separate_map 4 0 (parens empty)
                 lparen (comma ^^ break 1) rparen
                 Id.to_doc (Vector.to_list values)
@@ -148,13 +148,13 @@ module Expr = struct
 
     let iter_labels' f = function
         | Label label | Param {label; index = _} -> f label
-        | Values _ | Focus _ | PrimApp _ | Record _ | With _ | Where _ | Select _ | Proxy _
+        | Tuple _ | Focus _ | PrimApp _ | Record _ | With _ | Where _ | Select _ | Proxy _
         | Const _ -> ()
 
     let iter_labels f expr = iter_labels' f expr.term
 
     let iter_uses' f = function
-        | Values args | PrimApp {universals = _; op = _; args} -> Vector.iter f args
+        | Tuple args | PrimApp {universals = _; op = _; args} -> Vector.iter f args
         | Record fields -> Vector.iter (fun (_, use) -> f use) fields
         | Where {base; fields} -> f base; Vector.iter (fun (_, use) -> f use) fields
         | With {base; label = _; field} -> f base; f field
@@ -164,11 +164,11 @@ module Expr = struct
     let iter_uses f expr = iter_uses' f expr.term
 
     let map_uses f term = match term with
-        | Values args ->
+        | Tuple args ->
             let (noop, args) = Stream.from (Vector.to_source args)
                 |> Stream.map (fun arg -> let arg' = f arg in (arg' == arg, arg'))
                 |> Stream.into (Sink.unzip (Sink.fold (&&) true) (Vector.sink ())) in
-            if noop then term else Values args
+            if noop then term else Tuple args
 
         | PrimApp {universals; op; args} ->
             let (noop, args) = Stream.from (Vector.to_source args)
@@ -401,7 +401,7 @@ module Program = struct
                     let {Expr.pos = _; typ = _; cont = _; term} = expr program id in
                     match term with
                     | PrimApp {op = _; universals = _; args = children}
-                    | Values children -> Vector.fold visit_use counts children
+                    | Tuple children -> Vector.fold visit_use counts children
                     | Focus {focusee = child; index = _}
                     | Select {selectee = child; field = _} -> visit_use counts child
                     | Record fields -> Vector.fold (fun counts (_, child) ->

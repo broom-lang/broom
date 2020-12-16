@@ -13,7 +13,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
         type def = Stmt.def
 
         type t =
-            | Values of t with_pos Vector.t
+            | Tuple of t with_pos Vector.t
             | Focus of t with_pos * int
             | Ann of t with_pos * typ with_pos
             | Fn of clause Vector.t
@@ -71,7 +71,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                     prefix 4 0 (to_doc (dot_prec + 1) selectee) (dot ^^ Name.to_doc label)
                     |> prec_parens (prec > dot_prec) 
 
-                | Values exprs ->
+                | Tuple exprs ->
                     surround_separate_map 4 0 (parens empty) lparen (comma ^^ break 1) rparen
                         (to_doc 0) (Vector.to_list exprs)
                 | Record stmts ->
@@ -140,7 +140,7 @@ and Type : AstSigs.TYPE
     type stmt = Term.Stmt.t
 
     type t =
-        | Values of t with_pos Vector.t
+        | Tuple of t with_pos Vector.t
         | Pi of {domain : (pat with_pos, (pat with_pos * t with_pos option)) Ior.t; codomain : t with_pos }
         | Record of stmt Vector.t
         | Row of stmt Vector.t
@@ -148,7 +148,7 @@ and Type : AstSigs.TYPE
         | Prim of Prim.t
 
     let rec to_doc (typ : t with_pos) = match typ.v with
-        | Values typs ->
+        | Tuple typs ->
             PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.colon)
                 (PPrint.lparen ^^ PPrint.colon) (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
                 to_doc (Vector.to_list typs)

@@ -33,8 +33,8 @@ let log = TxRef.log () (* HACK *)
 
 let convert_typ state_typ =
     let rec convert : Fc.Type.t -> Type.t = function
-        | Values typs -> Values (Vector.map convert typs)
-        | PromotedValues typs -> PromotedValues (Vector.map convert typs)
+        | Tuple typs -> Tuple (Vector.map convert typs)
+        | PromotedTuple typs -> PromotedTuple (Vector.map convert typs)
         | PromotedArray typs -> PromotedArray (Vector.map convert typs)
         | Pi {universals; domain; codomain} ->
             let domain = convert (match domain with
@@ -70,7 +70,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
         (pos, FExpr.at pos codomain (FExpr.let' defs main_body)) in
 
     let rec convert parent state k env (expr : FExpr.t) = match expr.term with
-        | Values values ->
+        | Tuple values ->
             let rec convert_values parent state i values' =
                 if i < Array.length values then begin
                     let value = Array.get values i in
@@ -81,7 +81,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                 end else
                     Builder.express builder { pos = expr.pos; cont = parent
                         ; typ = convert_typ expr.typ
-                        ; term = Values (Vector.of_list (List.rev values')) } (* OPTIMIZE *)
+                        ; term = Tuple (Vector.of_list (List.rev values')) } (* OPTIMIZE *)
                     |> continue k parent state in
             convert_values parent state 0 []
 
@@ -148,7 +148,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                 let k = FnK {pos = arg.pos; domain = convert_typ arg.typ
                     ; f = fun ~parent ~state ~value: arg ->
                         let app = Builder.express builder {pos = expr.pos; cont = parent
-                            ; typ = Values (Vector.of_list [state_typ; codomain])
+                            ; typ = Tuple (Vector.of_list [state_typ; codomain])
                             ; term = PrimApp {op
                                 ; universals = Vector.map convert_typ universals
                                 ; args = Vector.of_list [state; arg]}} in
@@ -299,7 +299,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
     and convert_pattern pat : Pattern.t = match pat.pterm with
         | ConstP c -> Const c
         | WildP _ -> Wild
-        | VarP _ | ValuesP _ | ProxyP _ ->
+        | VarP _ | TupleP _ | ProxyP _ ->
             failwith "compiler bug: unexpanded pattern in CPS conversion"
 
     and continue k parent state value = match k with

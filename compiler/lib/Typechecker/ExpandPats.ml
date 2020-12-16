@@ -58,7 +58,7 @@ let split_int : pat Matrix.t -> int -> pat Matrix.t * IntSet.t IntMap.t * IntSet
     let step (singles, defaults) (i, (pat : pat)) = match pat.pterm with
         | ConstP (Int n) -> (add_single singles n i, defaults)
         | VarP _ | WildP _ -> (singles, IntSet.add i defaults)
-        | ValuesP _ | ProxyP _ -> failwith "unreachable" in
+        | TupleP _ | ProxyP _ -> failwith "unreachable" in
     let (col', (singles, defaults)) =
         Stream.from (Source.zip (Source.count 0) (Option.get (Matrix.col col pats)))
         |> Stream.into (Sink.zip
@@ -71,7 +71,7 @@ let split_int : pat Matrix.t -> int -> pat Matrix.t * IntSet.t IntMap.t * IntSet
 
 let split_tuple pats coli width =
     let subpats (pat : pat) = match pat.pterm with
-        | ValuesP pats -> pats
+        | TupleP pats -> pats
         | VarP _ | WildP _ -> Vector.init width (fun _ -> {pat with pterm = WildP (Name.of_string "")})
         | ProxyP _ | ConstP _ -> failwith "unreachable" in
     let cols' = Stream.from (Option.get (Matrix.col coli pats))
@@ -81,7 +81,7 @@ let split_tuple pats coli width =
 
 let is_trivial : pat -> bool = fun pat -> match pat.pterm with
     | VarP _ | WildP _ | ProxyP _ -> true
-    | ValuesP _ | ConstP _ -> false
+    | TupleP _ | ConstP _ -> false
 
 let is_named (pat : pat) = match pat.pterm with
     | VarP _ -> true
@@ -121,7 +121,7 @@ let matcher pos typ matchee clauses =
                     Automaton.add states var.name {State.var; refcount = 1; frees = Some matchees; node};
                     var
 
-                | Values typs ->
+                | Tuple typs ->
                     let width = Vector.length typs in
                     let pats = split_tuple pats coli width in
                     let matchee = Vector.get matchees coli in
@@ -142,7 +142,7 @@ let matcher pos typ matchee clauses =
                     var
 
                 | Fn _ | Prim (Cell | SingleRep | Boxed | TypeIn | RowOf)
-                | EmptyRow | PromotedValues _ | PromotedArray _ -> failwith "unreachable"
+                | EmptyRow | PromotedTuple _ | PromotedArray _ -> failwith "unreachable"
 
                 | _ -> failwith "TODO: pattern expansion")
             else begin

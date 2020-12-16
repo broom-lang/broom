@@ -89,7 +89,7 @@ let focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
             (match Env.get_uv env uv with
             | Unassigned _ ->
                 let (uv, typ) = match template with
-                    | T.ValuesL _ -> failwith "cannot articulate tuple; width unknown"
+                    | T.TupleL _ -> failwith "cannot articulate tuple; width unknown"
                     | PiL _ ->
                         let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
                         let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
@@ -116,9 +116,9 @@ let focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
             | Assigned _ -> failwith "unreachable: Assigned uv in `focalize`.")
         | _ ->
             (match template with
-            | ValuesL min_length ->
+            | TupleL min_length ->
                 (match typ with
-                | Values typs when Vector.length typs >= min_length -> (Cf Fun.id, typ)
+                | Tuple typs when Vector.length typs >= min_length -> (Cf Fun.id, typ)
                 | _ ->
                     Env.reportError env pos (Unusable (template, typ));
                     let typ : T.t = Uv (Env.uv env T.aType) in
@@ -186,12 +186,12 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                             let kind = K.kindof_F pos env (Vector1.get typs1 0) in
                             (uv, PromotedArray (Vector.map (fun _ -> T.Uv (sibling env kind uv)) typs))
                         | None -> (uv, PromotedArray Vector.empty))
-                    | PromotedValues typs ->
-                        (uv, PromotedValues (Vector.map (fun typ ->
+                    | PromotedTuple typs ->
+                        (uv, PromotedTuple (Vector.map (fun typ ->
                             T.Uv (sibling env (K.kindof_F pos env typ) uv)
                         ) typs))
-                    | Values typs ->
-                        (uv, Values (Vector.map (fun typ ->
+                    | Tuple typs ->
+                        (uv, Tuple (Vector.map (fun typ ->
                             T.Uv (sibling env (K.kindof_F pos env typ) uv)
                         ) typs))
                     | Pi _ ->
@@ -267,17 +267,17 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 Env.reportError env pos (SubType (typ, super));
                 {coercion = Cf Fun.id; residual = empty})
 
-        | (PromotedValues _, _) -> (match super with
-            | PromotedValues _ ->
+        | (PromotedTuple _, _) -> (match super with
+            | PromotedTuple _ ->
                 let {coercion = _; residual} = unify pos env typ super in
-                { coercion = Cf (fun _ -> failwith "Compiler bug: PromotedValues coercion called")
+                { coercion = Cf (fun _ -> failwith "Compiler bug: PromotedTuple coercion called")
                 ; residual }
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
                 {coercion = Cf Fun.id; residual = empty})
 
-        | (Values typs, _) -> (match super with
-            | Values super_typs ->
+        | (Tuple typs, _) -> (match super with
+            | Tuple super_typs ->
                 if Vector.length typs = Vector.length super_typs then begin
                     let coercions = CCVector.create () in
                     (* OPTIMIZE: `noop` as in unification: *)
@@ -520,8 +520,8 @@ and occurs_check pos env uv typ =
     let rec check : T.t -> unit = function
         | Exists (_, body) -> check body
         | PromotedArray typs -> Vector.iter check typs
-        | PromotedValues typs -> Vector.iter check typs
-        | Values typs -> Vector.iter check typs
+        | PromotedTuple typs -> Vector.iter check typs
+        | Tuple typs -> Vector.iter check typs
         | Pi {universals = _; domain; codomain} ->
             Ior.biter check (fun {T.edomain; eff} -> check edomain; check eff) domain;
             check codomain
@@ -610,8 +610,8 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})
 
-    | (PromotedValues typs, _) -> (match typ' with
-        | PromotedValues typs' ->
+    | (PromotedTuple typs, _) -> (match typ' with
+        | PromotedTuple typs' ->
             if Vector.length typs = Vector.length typs' then begin
                 let coercions = CCVector.create () in
                 let (residual, noop) = Vector.fold2 (fun (residual, noop) typ typ' ->
@@ -620,7 +620,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
                     (combine residual residual', noop && Option.is_none coercion)
                 ) (empty, true) typs typs' in
                 { coercion = if noop
-                    then Some (PromotedValuesCo (coercions |> CCVector.mapi (fun i -> function
+                    then Some (PromotedTupleCo (coercions |> CCVector.mapi (fun i -> function
                         | Some coercion -> coercion
                         | None -> T.Refl (Vector.get typs' i)
                     ) |> Vector.build))
@@ -631,8 +631,8 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})
 
-    | (Values typs, _) -> (match typ' with
-        | Values typs' ->
+    | (Tuple typs, _) -> (match typ' with
+        | Tuple typs' ->
             if Vector.length typs = Vector.length typs' then begin
                 let coercions = CCVector.create () in
                 let (residual, noop) = Vector.fold2 (fun (residual, noop) typ typ' ->
@@ -641,7 +641,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
                     (combine residual residual', noop && Option.is_none coercion)
                 ) (empty, true) typs typs' in
                 { coercion = if noop
-                    then Some (ValuesCo (coercions |> CCVector.mapi (fun i -> function
+                    then Some (TupleCo (coercions |> CCVector.mapi (fun i -> function
                         | Some coercion -> coercion
                         | None -> T.Refl (Vector.get typs' i)
                     ) |> Vector.build))
@@ -763,8 +763,8 @@ and check_uv_assignee pos env uv level max_uv_level typ =
     let rec check : T.t -> unit = function
         | Exists (_, body) -> check body
         | PromotedArray typs -> Vector.iter check typs
-        | PromotedValues typs -> Vector.iter check typs
-        | Values typs -> Vector.iter check typs
+        | PromotedTuple typs -> Vector.iter check typs
+        | Tuple typs -> Vector.iter check typs
         | Pi {universals = _; domain; codomain} ->
             Ior.biter check (fun {T.edomain; eff} -> check edomain; check eff) domain;
             check codomain

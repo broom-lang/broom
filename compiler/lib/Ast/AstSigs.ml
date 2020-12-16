@@ -6,7 +6,7 @@ module type EXPR = sig
     type def
 
     type t =
-        | Values of t with_pos Vector.t
+        | Tuple of t with_pos Vector.t
         | Focus of t with_pos * int
         | Ann of t with_pos * typ with_pos
         | Fn of clause Vector.t
@@ -59,7 +59,7 @@ module type TYPE = sig
     type pat
 
     type t =
-        | Values of t with_pos Vector.t
+        | Tuple of t with_pos Vector.t
         | Pi of {domain : (pat with_pos, pat with_pos * t with_pos option) Ior.t; codomain : t with_pos}
         | Record of stmt Vector.t
         | Row of stmt Vector.t

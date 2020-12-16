@@ -17,8 +17,8 @@ module type TYPE = sig
     and t =
         | Exists of kind Vector1.t * t
         | PromotedArray of t Vector.t
-        | PromotedValues of t Vector.t
-        | Values of t Vector.t
+        | PromotedTuple of t Vector.t
+        | Tuple of t Vector.t
         | Pi of {universals : kind Vector.t; domain : (t, edomain) Ior.t; codomain : t}
         | Record of t
         | With of {base : t; label : Name.t; field : t}
@@ -34,7 +34,7 @@ module type TYPE = sig
     and edomain = {edomain : t; eff : t}
 
     and template =
-        | ValuesL of int
+        | TupleL of int
         | PiL of template
         | WithL of {base : template; label : Name.t; field : template}
         | ProxyL of t
@@ -50,8 +50,8 @@ module type TYPE = sig
         | Inst of coercion * typ Vector1.t
         | AUse of Name.t
         | PromotedArrayCo of coercion Vector.t
-        | PromotedValuesCo of coercion Vector.t
-        | ValuesCo of coercion Vector.t
+        | PromotedTupleCo of coercion Vector.t
+        | TupleCo of coercion Vector.t
         | RecordCo of coercion
         | WithCo of {base : coercion; label : Name.t; field : coercion}
         | ProxyCo of coercion

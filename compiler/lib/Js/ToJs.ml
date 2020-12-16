@@ -93,7 +93,7 @@ let emit program =
 
     let rec emit_transfer parent stmts (transfer : Transfer.t) =
         let emit_expr : Expr.t -> PPrint.document = function
-            | Values vals -> (* OPTIMIZE: unbox tuples (in an earlier pass) *)
+            | Tuple vals -> (* OPTIMIZE: unbox tuples (in an earlier pass) *)
                 surround_separate_map 4 0 (brackets empty)
                     lbracket (comma ^^ break 1) rbracket
                     emit_use (Vector.to_list vals)

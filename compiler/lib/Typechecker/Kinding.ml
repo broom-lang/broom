@@ -38,8 +38,8 @@ let rec kindof_F pos env : T.t -> T.kind = function
             then kindof_F pos env (Vector.get typs 0)
             else Uv (Env.uv env T.aKind) in
         App (Prim Array, el_kind)
-    | PromotedValues typs -> Values (Vector.map (kindof_F pos env) typs)
-    | Values typs ->
+    | PromotedTuple typs -> Tuple (Vector.map (kindof_F pos env) typs)
+    | Tuple typs ->
         let kinds = Vector.map (kindof_F pos env) typs in
         App (Prim TypeIn, PromotedArray kinds)
     | Pi _ | Record _ | Proxy _ -> T.aType
@@ -69,14 +69,14 @@ and check_F pos env kind typ =
 let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
     let rec elab env (typ : AType.t with_pos) : T.t kinding =
         match typ.v with
-        | Values typs ->
+        | Tuple typs ->
             let kinds = CCVector.create () in
             let typs = Vector.map (fun typ ->
                 let {TS.typ; kind} = elab env typ in
                 CCVector.push kinds kind;
                 typ
             ) typs in
-            {typ = Values typs; kind = App (Prim TypeIn, PromotedArray (Vector.build kinds))}
+            {typ = Tuple typs; kind = App (Prim TypeIn, PromotedArray (Vector.build kinds))}
 
         | Pi {domain; codomain} -> elab_pi env domain codomain
 
@@ -188,8 +188,8 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
             (pat, semiabs, defs', typ)
         | AStmt.Expr expr as decl ->
             Env.reportError env expr.pos (Err.InvalidDecl decl);
-            let (pat, semiabs, defs') = C.elaborate_pat env {expr with v = Values Vector.empty} in
-            (pat, semiabs, defs', {expr with v = AType.Values Vector.empty})
+            let (pat, semiabs, defs') = C.elaborate_pat env {expr with v = Tuple Vector.empty} in
+            (pat, semiabs, defs', {expr with v = AType.Tuple Vector.empty})
 
     and elaborate_field env (defs, (_, lhs), rhs) decl =
         let pos = AStmt.pos decl in
@@ -249,8 +249,8 @@ and eval env typ =
             (match Env.get_uv env uv with
             | Assigned typ -> eval typ
             | Unassigned _ -> Some (typ, None))
-        | ( Exists _ | PromotedArray _ | PromotedValues _
-          | Values _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ) as typ -> Some (typ, None)
+        | ( Exists _ | PromotedArray _ | PromotedTuple _
+          | Tuple _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ) as typ -> Some (typ, None)
         | Bv _ -> failwith "unreachable: `Bv` in `eval`"
 
     and apply callee arg = match callee with
@@ -261,8 +261,8 @@ and eval env typ =
             (match Env.get_uv env uv with
             | Unassigned _ -> None
             | Assigned _ -> failwith "unreachable: Assigned in `apply`.")
-        | Exists _ | PromotedArray _ | PromotedValues _
-        | Values _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ ->
+        | Exists _ | PromotedArray _ | PromotedTuple _
+        | Tuple _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ ->
             failwith "unreachable: uncallable type in `eval/apply`"
         | Bv _ -> failwith "unreachable: `Bv` in `eval/apply`"
     in eval typ

@@ -17,12 +17,12 @@ let proxy = function
 let parenthesized args pos =
     if Vector.length args = 1
     then Vector.get args 0
-    else {v = Values args; pos}
+    else {v = Tuple args; pos}
 
 let parenthesized' args =
     if Vector.length args = 1
     then (Vector.get args 0).v
-    else Values args
+    else Tuple args
 
 %}
 
@@ -78,35 +78,35 @@ ann_expr :
 binapp :
     | binapp "||" binapp2 {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Right {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Right {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp2 { $1 }
 
 binapp2 :
     | binapp2 "&&" binapp3 {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Right {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Right {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp3 { $1 }
 
 binapp3 :
     | binapp4 COMPARISON binapp4 { (* NOTE: nonassociative *)
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Right {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Right {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp4 { $1 }
 
 binapp4 :
     | binapp4 ADDITIVE binapp5 {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Right {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Right {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp5 { $1 }
 
 binapp5 :
     | binapp5 MULTIPLICATIVE app {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Right {v = Values (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Right {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | app { $1 }
 
@@ -147,7 +147,7 @@ nestable_without_pos :
         let body = App ( {v = Var (Name.of_string "do"); pos = $loc}
             , Right {v = Record (Vector.of_list ($3 :: $4)); pos = $loc} ) in
         Fn (Vector.singleton
-            { params = Ior.Right {v = Values Vector.empty; pos = $loc($2)}
+            { params = Ior.Right {v = Tuple Vector.empty; pos = $loc($2)}
             ; body = {v = body; pos = $loc} })
     }
     | "{" "|" "}" { Fn Vector.empty }
@@ -161,8 +161,8 @@ nestable_without_pos :
     | "(" "|" ")" { proxy (Row Vector.empty) }
     | "{" ":" stmt tail(";", stmt, "}") { proxy (Record (Vector.of_list ($3 :: $4))) }
     | "{" ":" "}" { proxy (Record Vector.empty) }
-    | "(" ":" typ tail(",", typ, ")") { proxy (Ast.Type.Values (Vector.of_list ($3 :: $4))) }
-    | "(" ":" ")" { proxy (Ast.Type.Values Vector.empty) }
+    | "(" ":" typ tail(",", typ, ")") { proxy (Ast.Type.Tuple (Vector.of_list ($3 :: $4))) }
+    | "(" ":" ")" { proxy (Ast.Type.Tuple Vector.empty) }
     | ID { Var (Name.of_string $1) }
     | "_" { Wild (Name.of_string $1) }
     | INT { Const (Int $1) }

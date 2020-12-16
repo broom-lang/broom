@@ -19,7 +19,7 @@ let ep ((tenv, venv) as envs) (stmt : Ast.Term.Stmt.t) =
         let (program, eff) : Fc.Program.t * Fc.Type.t = match stmt with
             | Def def ->
                 ( Typer.check_program tenv (Vector.singleton def)
-                    {v = Values Vector.empty; pos = Ast.Term.Stmt.pos stmt}
+                    {v = Tuple Vector.empty; pos = Ast.Term.Stmt.pos stmt}
                 , Fc.Type.EmptyRow )
             | Expr expr ->
                 let {TS.term; eff} = Typer.typeof tenv expr in
@@ -90,7 +90,7 @@ let ltp filename =
                         let pos = {Lexing.pos_fname = filename; pos_lnum = 1; pos_bol = 0; pos_cnum = 0} in
                         (pos, pos) in
                 let entry = {Util.pos; v = Ast.Term.Expr.App ( {pos; v = Var (Name.of_string "main")}
-                    , Right {pos; v = Values Vector.empty} )} in
+                    , Right {pos; v = Tuple Vector.empty} )} in
                 let block : Ast.Term.Expr.t Util.with_pos = {pos; v = Record (
                     Stream.concat
                         (Stream.from (Vector.to_source defs)

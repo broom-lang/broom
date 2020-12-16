@@ -5,8 +5,8 @@ module type TYPE = sig
     type param = Fc.Type.binding
 
     type t =
-        | Values of t Vector.t
-        | PromotedValues of t Vector.t
+        | Tuple of t Vector.t
+        | PromotedTuple of t Vector.t
         | PromotedArray of t Vector.t
         | Pi of {universals : kind Vector.t; domain : t Vector.t}
         | Record of t
@@ -27,7 +27,7 @@ module type EXPR = sig
 
     type t' =
         | PrimApp of {op : Primop.t; universals : Type.t Vector.t; args : Id.t Vector.t}
-        | Values of Id.t Vector.t
+        | Tuple of Id.t Vector.t
         | Focus of {focusee : Id.t; index : int}
         | Record of (Name.t * Id.t) Vector.t
         | With of {base : Id.t; label: Name.t; field : Id.t}

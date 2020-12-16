@@ -20,18 +20,18 @@ let error_to_doc = function
             ^/^ string "at" ^/^ string (Util.span_to_string pos)
 
 type shape =
-    | Values of shape Vector.t
+    | Tuple of shape Vector.t
     | Record of shape Name.Map.t
     | Closure of Support.t * shape
     | Scalar
     | Unknown
 
 let rec join shape shape' = match shape with
-    | Values shapes -> (match shape' with
-        | Values shapes' -> Stream.from (Source.zip_with join
+    | Tuple shapes -> (match shape' with
+        | Tuple shapes' -> Stream.from (Source.zip_with join
                 (Vector.to_source shapes) (Vector.to_source shapes'))
             |> Stream.into (Sink.unzip
-                (Vector.sink () |> Sink.map (fun shapes -> Values shapes))
+                (Vector.sink () |> Sink.map (fun shapes -> Tuple shapes))
                 (Sink.fold (||) false))
         | Unknown -> (shape, false)
         | _ -> failwith "unreachable")
@@ -71,10 +71,10 @@ let rec join shape shape' = match shape with
         | shape' -> (shape', true))
 
 let rec extract_shape_support = function
-    | Values shapes -> Stream.from (Vector.to_source shapes)
+    | Tuple shapes -> Stream.from (Vector.to_source shapes)
         |> Stream.map extract_shape_support
         |> Stream.into (Sink.unzip
-            (Sink.map (fun shapes -> Values shapes) (Vector.sink ()))
+            (Sink.map (fun shapes -> Tuple shapes) (Vector.sink ()))
             (Sink.fold Support.union Support.empty))
 
     | Record fields -> Stream.from (Source.seq (Name.Map.to_seq fields))
@@ -183,16 +183,16 @@ let analyze expr =
 
     let rec shapeof : Env.t -> ctx -> E.t -> shape * Support.t
     = fun env ctx expr -> match expr.term with
-        | Values exprs -> Stream.from (Source.array exprs)
+        | Tuple exprs -> Stream.from (Source.array exprs)
             |> Stream.map (shapeof env ctx)
             |> Stream.into (Sink.unzip
-                (Sink.map (fun typs -> Values typs) (Vector.sink ()))
+                (Sink.map (fun typs -> Tuple typs) (Vector.sink ()))
                 (Sink.fold Support.union Support.empty))
 
         | Focus {focusee; index} ->
             let (fshape, support) = shapeof env ctx focusee in
             ( (match fshape with
-              | Values shapes -> Vector.get shapes index
+              | Tuple shapes -> Vector.get shapes index
               | _ -> Unknown)
             , support )
 
@@ -394,9 +394,9 @@ let emit shapes expr =
                     match VarRefs.find vrs var with
                     | WasForward {cell} ->
                         Stream.double (S.Def (pos, var, value))
-                            (Expr (E.at pos (Values Vector.empty) (E.primapp' CellInit
+                            (Expr (E.at pos (Tuple Vector.empty) (E.primapp' CellInit
                                 (Vector.singleton value.typ)
-                                (E.at pos (Values (Vector.of_list [cell.vtyp; value.typ]))
+                                (E.at pos (Tuple (Vector.of_list [cell.vtyp; value.typ]))
                                     (E.values (Array.of_list [
                                         E.at pos cell.vtyp (E.use cell)
                                         ; E.at value.pos value.typ (E.use var)]))))))
@@ -409,7 +409,7 @@ let emit shapes expr =
                     | S.Def (pos, var, _) -> (match VarRefs.find vrs var with
                         | Backward -> Stream.empty
                         | WasForward {cell} ->
-                            let arg = E.at pos (Values Vector.empty)
+                            let arg = E.at pos (Tuple Vector.empty)
                                 (E.values (Array.init 0 (fun _ -> failwith "unreachable"))) in
                             let value = E.at pos cell.vtyp (E.primapp' CellNew Vector.empty arg) in
                             Stream.single (S.Def (pos, cell, value))
@@ -426,7 +426,7 @@ let emit shapes expr =
 
         | LetType _ | Axiom _ | Let _ | Match _
         | Cast _ | Pack _ | Unpack _ | Fn _ | App _ | PrimApp _
-        | Values _ | Focus _ | Record _ | Where _ | With _ | Select _ | Proxy _ | Const _
+        | Tuple _ | Focus _ | Record _ | Where _ | With _ | Select _ | Proxy _ | Const _
         | Patchable _ -> E.map_children emit expr in
     emit expr
 

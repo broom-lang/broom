@@ -89,7 +89,7 @@ let parse_appseq env exprs =
           | len ->
             let pos = (fst callee.pos, snd (Vector.get args (len - 1)).pos) in
             let apos = (fst (Vector.get args 0).pos, snd pos) in
-            {pos; v = App (callee, Ior.Right {pos = apos; v = Values args})})
+            {pos; v = App (callee, Ior.Right {pos = apos; v = Tuple args})})
         , i ) in
 
     (* infix = infix INFIX app | app *)
@@ -102,7 +102,7 @@ let parse_appseq env exprs =
                 let pos = (fst lhs.pos, snd rhs.pos) in
                 let args = Vector.of_array_unsafe [|lhs; rhs|] in
                 let lhs : expr with_pos =
-                    {pos; v = App (op, Ior.Right {pos; v = Values args})} in
+                    {pos; v = App (op, Ior.Right {pos; v = Tuple args})} in
                 tail lhs i
             | None -> lhs in
         let (lhs, i) = app i in
@@ -127,8 +127,8 @@ let rec expand_typ env (typ : typ with_pos) : typ with_pos = match typ.v with
                 let eff = Option.map (expand_typ env) eff in
                 (Both (idomain, (edomain, eff)), env) in
         {typ with v = Pi {domain; codomain = expand_typ env codomain}}
-    | Values typs ->
-        {typ with v = Values (Vector.map (expand_typ env) typs)}
+    | Tuple typs ->
+        {typ with v = Tuple (Vector.map (expand_typ env) typs)}
     | Record stmts ->
         {typ with v = Record (expand_stmts env stmts)}
     | Row stmts ->
@@ -157,8 +157,8 @@ and expand env expr : expr with_pos = match expr.v with
         {expr with v = PrimApp (op, Ior.map (expand env) args)}
     | Ann (expr, typ) ->
         {expr with v = Ann (expand env expr, expand_typ env typ)}
-    | Values exprs ->
-        {expr with v = Values (Vector.map (expand env) exprs)}
+    | Tuple exprs ->
+        {expr with v = Tuple (Vector.map (expand env) exprs)}
     | Focus (focusee, index) ->
         {expr with v = Focus (expand env focusee, index)}
     | Record stmts ->
@@ -188,14 +188,14 @@ and expand_let env pos (arg : expr with_pos) = match arg.v with
         else failwith "TODO"
 
 and expand_pat env (pat : pat with_pos) = match pat.v with
-    | Values pats ->
+    | Tuple pats ->
         let pats' = CCVector.create () in
         let env = Vector.fold (fun env pat ->
             let (pat, env) = expand_pat env pat in
             CCVector.push pats' pat;
             env
         ) env pats in
-        ({pat with v = Values (Vector.build pats')}, env)
+        ({pat with v = Tuple (Vector.build pats')}, env)
     | Var name ->
         let name' = Name.freshen name in
         ({pat with v = Var name'}, Env.add env name (None, name'))

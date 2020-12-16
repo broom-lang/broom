@@ -19,7 +19,7 @@ module type EXPR = sig
         ; pos : Util.span }
 
     and t' = private
-        | Values of t array
+        | Tuple of t array
         | Focus of {mutable focusee : t; index : int}
 
         | Fn of {universals : Type.binding Vector.t; param : var; mutable body : t}
@@ -57,7 +57,7 @@ module type EXPR = sig
 
     and pat = {pterm: pat'; ptyp : Type.t; ppos : Util.span}
     and pat' =
-        | ValuesP of pat Vector.t
+        | TupleP of pat Vector.t
         | ProxyP of Type.t
         | ConstP of Const.t
         | VarP of var

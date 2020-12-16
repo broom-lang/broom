@@ -96,7 +96,7 @@ let exit = Fun.id
 
 let rec eval : Env.t -> cont -> expr -> Value.t
 = fun env k expr -> match expr.term with
-    | Values exprs -> (match Array.length exprs with
+    | Tuple exprs -> (match Array.length exprs with
         | 0 -> k (Tuple Vector.empty)
         | len ->
             let rec eval_values i vs v =
@@ -279,7 +279,7 @@ and bind : Env.t -> cont' -> cont' -> pat -> cont
     | ConstP (Int n) -> (match v with
         | Int n' when n' = n -> then_k ()
         | _ -> else_k ())
-    | ValuesP _ | ProxyP _ -> failwith "unreachable"
+    | TupleP _ | ProxyP _ -> failwith "unreachable"
 
 (* # Public API Functions *)
 
