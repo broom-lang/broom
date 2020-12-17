@@ -62,7 +62,9 @@ let parse_appseq env exprs =
             ( { pos = (fst op.pos, snd arg.pos)
               ; v = App (op, Ior.Right arg) }
             , i )
-        | Some (None, arg, i) -> postfix_tail arg i in
+        | Some (None, arg, i) -> postfix_tail arg i
+        | Some (Some (Infix | Postfix), _, _) -> failwith "unexpected"
+        | None -> failwith "unfinished" in
 
     (* args = prefix* *)
     let args i =
@@ -73,7 +75,8 @@ let parse_appseq env exprs =
                 let (arg, i) = prefix i in
                 CCVector.push args arg;
                 loop i
-            | Some (Some Infix) | None -> (Vector.build args, i) in
+            | Some (Some Infix) | None -> (Vector.build args, i)
+            | Some (Some Postfix) -> failwith "unexpected" in
         loop i in
 
     (* app = prefix args *)
@@ -104,7 +107,8 @@ let parse_appseq env exprs =
                 let lhs : expr with_pos =
                     {pos; v = App (op, Ior.Right {pos; v = Tuple args})} in
                 tail lhs i
-            | None -> lhs in
+            | None -> lhs
+            | Some ((Some (Prefix | Postfix) | None), _, _) -> failwith "unexpected" in
         let (lhs, i) = app i in
         tail lhs i in
 
@@ -139,6 +143,12 @@ let rec expand_typ env (typ : typ with_pos) : typ with_pos = match typ.v with
 
 (* OPTIMIZE: Expr.map_children (which does not exist yet): *)
 and expand env expr : expr with_pos = match expr.v with
+    | Let (defs, body) ->
+        let (defs, env) = expand_defs' env (Vector1.to_vector defs) in
+        let body = expand env body in
+        (match Vector1.of_vector defs with
+        | Some defs -> {expr with v = Let (defs, body)}
+        | None -> body)
     | Fn clauses ->
         {expr with v = Fn (Vector.map (expand_clause env) clauses)}
     | AppSequence exprs -> expand env (parse_appseq env (Vector1.to_vector exprs))
@@ -155,6 +165,9 @@ and expand env expr : expr with_pos = match expr.v with
         {expr with v = App (expand env callee, Ior.map (expand env) args)}
     | PrimApp (op, args) ->
         {expr with v = PrimApp (op, Ior.map (expand env) args)}
+    | PrimBranch (op, args, clauses) ->
+        {expr with v = PrimBranch (op, Ior.map (expand env) args
+            , Vector.map (expand_clause env) clauses)}
     | Ann (expr, typ) ->
         {expr with v = Ann (expand env expr, expand_typ env typ)}
     | Tuple exprs ->
@@ -170,13 +183,14 @@ and expand env expr : expr with_pos = match expr.v with
         | Some (_, name') -> {expr with v = Var name'}
         | None -> failwith ("unbound: " ^ Name.to_string name
             ^ " at " ^ Util.span_to_string expr.pos))
+    | Wild _ -> failwith "stray `_`"
     | Const _ -> expr
 
 and expand_let env pos (arg : expr with_pos) = match arg.v with
     | Record stmts ->
         let defs = Stream.from (Vector.to_source stmts)
             |> Stream.take_while (function Stmt.Def _ -> true | Expr _ -> false)
-            |> Stream.map (function Stmt.Def def -> def)
+            |> Stream.map (function Stmt.Def def -> def | Expr _ -> failwith "unreachable")
             |> Stream.into (Vector.sink ()) in
         if Vector.length defs = Vector.length stmts - 1
         then match Vector.get stmts (Vector.length stmts - 1) with
@@ -184,8 +198,11 @@ and expand_let env pos (arg : expr with_pos) = match arg.v with
                 let (defs, env) = expand_defs' env defs in
                 let body = expand env body in
                 (match Vector1.of_vector defs with
-                | Some defs -> {pos; v = Let (defs, body)})
+                | Some defs -> {pos; v = Let (defs, body)}
+                | None -> body)
+            | _ -> failwith "dangling stmts in `let`"
         else failwith "TODO"
+    | _ -> failwith "non-record `let` arg"
 
 and expand_pat env (pat : pat with_pos) = match pat.v with
     | Tuple pats ->
