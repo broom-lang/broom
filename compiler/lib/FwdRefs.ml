@@ -269,7 +269,7 @@ let analyze expr =
             let (shape, body_support) = shapeof env ctx body in
             (shape, Support.union defs_support body_support)
 
-        | Use {var; expr = _} ->
+        | Use var ->
             let access (var' : E.var) = match Env.access env var'.id with
                 | Delayed Initialized | Instant Initialized -> Support.empty
                 | Delayed Uninitialized -> Support.singleton var'
@@ -422,7 +422,7 @@ let emit shapes expr =
                 |> Stream.into Sink.array in
             E.at expr.pos expr.typ (E.let' (Array.append cell_defs defs) body)
 
-        | Use {var; expr = _} -> (match VarRefs.find vrs var with
+        | Use var -> (match VarRefs.find vrs var with
             | Forward {cell} ->
                 E.at expr.pos expr.typ (E.primapp CellGet (Vector.singleton expr.typ)
                     (E.at expr.pos expr.typ (E.use cell)))

@@ -217,7 +217,7 @@ let rec eval : Env.t -> cont -> expr -> Value.t
     | LetType {body = expr; _} | Axiom {body = expr; _}
     | Cast {castee = expr; _} | Pack {impl = expr; _} -> eval env k expr
 
-    | Use {var = {name; _}; _} -> k (Env.find env name)
+    | Use {name; _} -> k (Env.find env name)
 
     | Record fields -> (match Array.length fields with
         | 0 -> k (Record Name.Map.empty)

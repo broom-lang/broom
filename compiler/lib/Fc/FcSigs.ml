@@ -6,11 +6,7 @@ module type EXPR = sig
     type def
     type stmt
 
-    and var =
-        { id : int; name : Name.t; vtyp : Type.t
-        ; mutable value : t option; uses : use CCVector.vector }
-
-    and use = {mutable expr : t option; mutable var : var}
+    and var = {id : int; name : Name.t; vtyp : Type.t}
 
     and t =
         { term : t'
@@ -49,7 +45,7 @@ module type EXPR = sig
         | Proxy of Type.t
         | Const of Const.t
 
-        | Use of use
+        | Use of var
 
         | Patchable of t TxRef.rref
 

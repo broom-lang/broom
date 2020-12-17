@@ -19,11 +19,7 @@ end = struct
     type def = Stmt.def
     type stmt = Stmt.t
 
-    and var =
-        { id : int; name : Name.t; vtyp : Type.t
-        ; mutable value : t option; uses : use CCVector.vector }
-
-    and use = {mutable expr : t option; mutable var : var}
+    and var = {id : int; name : Name.t; vtyp : Type.t}
 
     and t =
         { term : t'
@@ -62,7 +58,7 @@ end = struct
         | Proxy of Type.t
         | Const of Const.t
 
-        | Use of use
+        | Use of var
 
         | Patchable of t TxRef.rref
 
@@ -82,8 +78,6 @@ end = struct
 
     let def_to_doc s (var : var) =
         PPrint.(infix 4 1 colon (var_to_doc var) (Type.to_doc s var.vtyp))
-
-    let use_to_doc (use : use) = var_to_doc use.var
 
     let rec to_doc s (expr : t) =
         let open PPrint in
@@ -190,7 +184,7 @@ end = struct
         | Select {selectee; label} ->
             prefix 4 0 (selectee_to_doc s selectee) (dot ^^ Name.to_doc label)
         | Proxy typ -> brackets (Type.to_doc s typ)
-        | Use use -> use_to_doc use
+        | Use var -> var_to_doc var
         | Const c -> Const.to_doc c
         | Patchable r -> TxRef.(to_doc s !r)
 
@@ -248,7 +242,7 @@ end = struct
     let var name vtyp value =
         let id = !id_counter in
         id_counter := id + 1;
-        {id; name; vtyp; value; uses = CCVector.create ()}
+        {id; name; vtyp}
 
     let fresh_var vtyp value = var (Name.fresh ()) vtyp value
 
@@ -300,7 +294,7 @@ end = struct
     let select selectee label = Select {selectee; label}
     let proxy t = Proxy t
     let const c = Const c
-    let use var = Use {var; expr = None}
+    let use v = Use v
     let patchable ref = Patchable ref
 
     let map_children f (expr : t) =

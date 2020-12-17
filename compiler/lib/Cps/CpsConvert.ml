@@ -205,7 +205,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                 else convert parent state k env body in
             convert_defs state 0 env
 
-        | Use {var = {id; _}; expr = _} -> continue k parent state (Env.find env id)
+        | Use {id; _} -> continue k parent state (Env.find env id)
 
         | Match {matchee; clauses} ->
             let k = FnK { pos = expr.pos; domain = convert_typ matchee.typ
