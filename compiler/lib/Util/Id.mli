@@ -1,8 +1,11 @@
 module type S = sig
     type t = private int
 
-    val fresh : unit -> t
     val equal : t -> t -> bool
+    val compare : t -> t -> int
+    val hash : t -> int
+
+    val fresh : unit -> t
 
     val to_string : t -> string
     val to_doc : t -> PPrint.document

@@ -62,18 +62,14 @@ end
 module ContId = struct
     include Id.Make ()
 
-    let to_doc id = PPrint.(dollar ^^ to_doc id)
+    let to_doc id = PPrint.(percent ^^ to_doc id)
 end
 
 module Expr = struct
     type cont_id = ContId.t
     module Type = Type
 
-    module Id = struct
-        include Id.Make ()
-
-        let to_doc id = PPrint.(percent ^^ to_doc id)
-    end
+    module Id = Name
 
     type t' =
         | PrimApp of {op : Primop.t; universals : Type.t Vector.t; args : Id.t Vector.t}
@@ -454,9 +450,12 @@ module Program = struct
             ; conts = Conts.empty
             ; transient = CCHashTrie.Transient.create () }
 
-        let express (builder : builder) expr =
+        let express_as (builder : builder) id expr =
+            builder.exprs <- Exprs.add_mut ~id: builder.transient id expr builder.exprs
+
+        let express builder expr =
             let id = Expr.Id.fresh () in
-            builder.exprs <- Exprs.add_mut ~id: builder.transient id expr builder.exprs;
+            express_as builder id expr;
             id
 
         let add_cont (builder : builder) id k =

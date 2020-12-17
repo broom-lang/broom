@@ -1,8 +1,11 @@
 module type S = sig
     type t = private int
 
-    val fresh : unit -> t
     val equal : t -> t -> bool
+    val compare : t -> t -> int
+    val hash : t -> int
+
+    val fresh : unit -> t
 
     val to_string : t -> string
     val to_doc : t -> PPrint.document
@@ -13,14 +16,15 @@ module type S = sig
 end
 
 module Make () = struct
-    module Hashable = struct
+    module Key = struct
         type t = int
 
         let equal = (=)
+        let compare = Int.compare
         let hash = Hashtbl.hash
     end
 
-    include Hashable
+    include Key
 
     let fresh =
         let counter = ref 0 in
@@ -32,8 +36,8 @@ module Make () = struct
     let to_string = Int.to_string
     let to_doc id = PPrint.string (to_string id)
 
-    module HashMap = CCHashTrie.Make (Hashable)
-    module Hashtbl = Hashtbl.Make (Hashable)
-    module HashSet = CCHashSet.Make (Hashable)
+    module HashMap = CCHashTrie.Make (Key)
+    module Hashtbl = Hashtbl.Make (Key)
+    module HashSet = CCHashSet.Make (Key)
 end
 
