@@ -1,18 +1,14 @@
-module Cache = Hashtbl.Make(struct
-    type t = string
-    let equal = String.equal
-    let hash = Hashtbl.hash
-end)
+module H = Hashtbl
 
 module Key = struct
     type t = int
 
     let compare = Int.compare
     let equal = Int.equal
-    let hash = Hashtbl.hash
+    let hash = H.hash
 end
 
-module Hashtbl = Hashtbl.Make(Key)
+module Hashtbl = H.Make(Key)
 module Map = Map.Make(Key)
 
 include Key
@@ -27,6 +23,11 @@ let fresh =
 let names = Hashtbl.create 0
 
 let of_string =
+    let module Cache = H.Make(struct
+        type t = string
+        let equal = String.equal
+        let hash = H.hash
+    end) in
     let cache = Cache.create 0 in
     fun s ->
         match Cache.find_opt cache s with
