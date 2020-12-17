@@ -128,7 +128,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
                     let env = Vector.fold Env.push_val env vars in
                     let pat = match pat.pterm with
                         | VarP var -> Some var
-                        | TupleP pats when Vector.length pats = 0 -> None in
+                        | TupleP pats when Vector.length pats = 0 -> None
+                        | _ -> failwith "complex PrimBranch pattern" in
                     let {TS.term = prim_body; eff = body_eff} = check env typ body in
                     ignore (M.solving_unify body.pos env body_eff app_eff);
                     {FExpr.res = pat; prim_body})

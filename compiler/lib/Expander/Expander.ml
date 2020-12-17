@@ -262,7 +262,7 @@ and expand_stmt env : stmt -> stmt = function
 
 and expand_stmts env stmts =
     let stmts' = CCVector.create () in
-    let _ = Vector.fold (fun env stmt ->
+    let env = Vector.fold (fun env stmt ->
         let (stmt', env) = expand_stmt_pat env stmt in
         CCVector.push stmts' stmt';
         env

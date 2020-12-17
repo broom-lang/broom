@@ -167,7 +167,8 @@ end = struct
         | Record fields ->
             surround_separate_map 4 0 (braces empty)
                 lbrace (comma ^^ break 1) rbrace
-                (fun (label, field) -> infix 4 1 equals (Name.to_doc label) (to_doc s field))
+                (fun (label, field) ->
+                    infix 4 1 equals (string (Name.basename label |> Option.get)) (to_doc s field))
                 (Array.to_list fields)
         | Where {base; fields} ->
             infix 4 1 (string "where")

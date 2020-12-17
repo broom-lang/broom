@@ -55,7 +55,7 @@ let rep envs input =
         let stmts = Parse.parse_stmts_exn input in
         let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc
             (Vector.to_list stmts))) in
-        PPrint.ToChannel.pretty 1.0 80 stdout doc;
+        pprint doc;
         print_newline ();
 
         let envs = Vector.fold ep envs stmts in
