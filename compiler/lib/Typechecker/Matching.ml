@@ -229,7 +229,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
             let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
             let skolems = Vector1.map fst skolems in
             { coercion = Cf (fun expr ->
-                let var = E.fresh_var typ (Some expr) in
+                let var = E.fresh_var typ in
                 let use = E.at pos var.vtyp (E.use var) in
                 E.at pos super (E.unpack skolems var expr (coerce use)))
             ; residual = ResidualMonoid.skolemized (Vector.map snd (Vector1.to_vector skolems))
@@ -288,7 +288,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                         combine residual residual'
                     ) empty typs super_typs in
                     { coercion = Cf (fun expr ->
-                        let var = E.fresh_var typ (Some expr) in
+                        let var = E.fresh_var typ in
                         let body = E.at pos super (E.values (coercions |> CCVector.mapi (fun i (typ, coerce) ->
                             let use = E.at pos typ (E.use var) in
                             coerce (E.at pos typ (E.focus use i))
@@ -320,7 +320,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
                     let universals = Vector.map (fun uv -> T.Uv uv) uvs in
                     let universals' = Vector.map fst universals' in
-                    let param = E.fresh_var edomain' None in
+                    let param = E.fresh_var edomain' in
                     let arg = coerce_domain (E.at pos edomain' (E.use param)) in
                     { coercion = TyperSigs.Cf (fun expr ->
                         let body = E.at pos codomain (E.app expr universals arg) in
@@ -353,7 +353,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
                 let coerce = match super_base with
                 | EmptyRow -> (fun expr ->
-                    let var = E.fresh_var typ (Some expr) in
+                    let var = E.fresh_var typ in
                     let field i =
                         let selectee = E.at pos typ (E.use var) in
                         let label = CCVector.get labels i in
@@ -364,7 +364,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                     let body = E.at pos super (E.record (Array.init fields_len field)) in
                     E.at pos super (E.let' [|Def (pos, var, expr)|] body))
                 | _ -> (fun expr ->
-                    let var = E.fresh_var typ (Some expr) in
+                    let var = E.fresh_var typ in
                     let field i =
                         let selectee = E.at pos typ (E.use var) in
                         let label = CCVector.get labels i in

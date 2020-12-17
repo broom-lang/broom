@@ -7,13 +7,13 @@ module Env : sig
     type t
 
     val empty : t
-    val add : t -> int -> Expr.Id.t -> t
-    val find : t -> int -> Expr.Id.t
+    val add : t -> Name.t -> Expr.Id.t -> t
+    val find : t -> Name.t -> Expr.Id.t
 end = struct
     module Map = CCHashTrie.Make (struct
-        type t = int
-        let equal = (=)
-        let hash = Hashtbl.hash
+        type t = Name.t
+        let equal = Name.equal
+        let hash = Name.hash
     end)
 
     type t = Expr.Id.t Map.t
@@ -93,7 +93,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                         |> continue k parent state } in
             convert parent state k env focusee
 
-        | Fn {universals; param = {id = param_id; _} as param; body} ->
+        | Fn {universals; param = {name = param_id; _} as param; body} ->
             let label = Cont.Id.fresh () in
             let domain = convert_typ param.vtyp in
             let ret_typ : Type.t = Pi {universals = Vector.empty
@@ -175,7 +175,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                                     let codomain = convert_typ res.vtyp in
                                     let v = Builder.express builder {pos = body.pos; cont = parent; typ = codomain
                                         ; term = Param {label = branch; index = 1}} in
-                                    (Vector.of_list [state_typ; codomain], Env.add env res.id v)
+                                    (Vector.of_list [state_typ; codomain], Env.add env res.name v)
                                 | None -> (Vector.singleton state_typ, env) in
                             {pos = body.pos; name = None
                                 ; universals = Vector.empty; params
@@ -191,10 +191,10 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
         | Let {defs; body} ->
             let rec convert_defs state i env =
                 if i < Array1.length defs then match Array1.get defs i with
-                    | Def (_, ({id; _} as var), value) ->
+                    | Def (_, {name; _}, value) ->
                         let k = FnK {pos = value.pos; domain = convert_typ value.typ
                             ; f = fun ~parent: _ ~state ~value ->
-                                let env = Env.add env id value in
+                                let env = Env.add env name value in
                                 convert_defs state (i + 1) env } in
                         convert parent state k env value
                     | Expr expr ->
@@ -205,7 +205,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                 else convert parent state k env body in
             convert_defs state 0 env
 
-        | Use {id; _} -> continue k parent state (Env.find env id)
+        | Use {name; _} -> continue k parent state (Env.find env name)
 
         | Match {matchee; clauses} ->
             let k = FnK { pos = expr.pos; domain = convert_typ matchee.typ

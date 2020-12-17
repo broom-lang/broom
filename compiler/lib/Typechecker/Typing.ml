@@ -189,7 +189,7 @@ and elaborate_fn : Env.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typing
             | Right {T.edomain; eff = _} -> edomain
             | Both (idomain, {edomain; eff = _}) ->
                 Tuple (Vector.of_list [idomain; edomain]) in
-        let param = FExpr.fresh_var domain_t None in
+        let param = FExpr.fresh_var domain_t in
         let matchee = FExpr.at pos param.vtyp (FExpr.use param) in
         let body = ExpandPats.expand_clauses pos codomain matchee clauses in
         let universals = Vector.map fst (Vector.of_list !universals) in
@@ -291,7 +291,7 @@ and emit_clause_body {FExpr.pat; body} =
                     ; domain = Ior.Right { edomain = domain 
                         ; eff = EmptyRow } (* NOTE: effect does not matter any more... *)
                     ; codomain } in
-                let param = FExpr.fresh_var domain None in
+                let param = FExpr.fresh_var domain in
                 let body = FExpr.at pos codomain (FExpr.let' (Stream.from (Vector.to_source tmp_vars)
                         |> Stream.indexed
                         |> Stream.map (fun (i, {ExpandPats.tmp_var = _; src_var}) ->
@@ -427,7 +427,7 @@ and expand_def vars pos (pat : FExpr.pat) expr : FStmt.def Stream.t =
     end else begin
         let vars =
             let vars = Vector.to_array vars in
-            Array.sort (fun (var : var) (var' : var) -> Int.compare var.id var'.id) vars;
+            Array.sort FExpr.Var.compare vars;
             Vector.of_array_unsafe vars in
         let typ : T.t = Tuple (Vector.map (fun (var : var) -> var.vtyp) vars) in
         let emit_final _ tmp_vars =
@@ -437,7 +437,7 @@ and expand_def vars pos (pat : FExpr.pat) expr : FStmt.def Stream.t =
                 |> Stream.into (Sink.buffer (Vector.length tmp_vars)))) in
         let clauses = Vector.singleton {ExpandPats.pat; emit = emit_final} in
         let destructuring = ExpandPats.expand_clauses pat.ppos typ expr clauses in
-        let tuple_var = FExpr.fresh_var typ (Some destructuring) in
+        let tuple_var = FExpr.fresh_var typ in
         Stream.prepend (pos, tuple_var, destructuring)
             (Stream.from (Vector.to_source vars)
                 |> Stream.indexed
@@ -512,7 +512,7 @@ and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typ
                 | Right {edomain; eff = _} -> edomain
                 | Both (idomain, {edomain; eff = _}) ->
                     Tuple (Vector.of_list [idomain; edomain]) in
-            let param = FExpr.fresh_var domain None in
+            let param = FExpr.fresh_var domain in
             let matchee = FExpr.at pos param.vtyp (FExpr.use param) in
             let body = ExpandPats.expand_clauses pos codomain matchee (Vector1.to_vector clauses) in
             { term = FExpr.at pos typ (FExpr.fn (* FIXME: *) Vector.empty param body)
@@ -575,7 +575,7 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
     | AExpr.Var name ->
         let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
         let ptyp = T.Uv (Env.uv env kind) in
-        let var = FExpr.var name ptyp None in
+        let var = FExpr.var name ptyp in
         ({ppos = pat.pos; pterm = VarP var; ptyp}, (Vector.empty, ptyp), Vector.singleton var)
 
     | AExpr.Wild name ->
@@ -600,7 +600,7 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
         (* TODO: Treat as `_` instead: *)
         let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
         let ptyp = T.Uv (Env.uv env kind) in
-        let var = FExpr.fresh_var ptyp None in
+        let var = FExpr.fresh_var ptyp in
         ( {ppos = pat.pos; pterm = VarP var; ptyp}, (Vector.empty, ptyp)
         , Vector.singleton var )
 
@@ -642,7 +642,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
         check_pat env typ' pat'
 
     | AExpr.Var name ->
-        let var = FExpr.var name ptyp None in
+        let var = FExpr.var name ptyp in
         ({ppos = pat.pos; pterm = VarP var; ptyp}, Vector.singleton var)
 
     | AExpr.Wild name -> ({ppos = pat.pos; pterm = WildP name; ptyp}, Vector.empty)

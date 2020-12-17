@@ -6,7 +6,7 @@ module type EXPR = sig
     type def
     type stmt
 
-    and var = {id : int; name : Name.t; vtyp : Type.t}
+    and var = {name : Name.t; vtyp : Type.t}
 
     and t =
         { term : t'
@@ -64,8 +64,8 @@ module type EXPR = sig
     val to_doc : Type.subst -> t -> PPrint.document
     val pat_to_doc : Type.subst -> pat -> PPrint.document
 
-    val var : Name.t -> Type.t -> t option -> var
-    val fresh_var : Type.t -> t option -> var
+    val var : Name.t -> Type.t -> var
+    val fresh_var : Type.t -> var
 
     val at : Util.span -> Type.t -> t' -> t
 

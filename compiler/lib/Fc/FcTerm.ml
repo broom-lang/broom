@@ -19,7 +19,7 @@ end = struct
     type def = Stmt.def
     type stmt = Stmt.t
 
-    and var = {id : int; name : Name.t; vtyp : Type.t}
+    and var = {name : Name.t; vtyp : Type.t}
 
     and t =
         { term : t'
@@ -73,8 +73,7 @@ end = struct
         | VarP of var
         | WildP of Name.t
 
-    let var_to_doc (var : var) =
-        PPrint.(Name.to_doc var.name ^^ sharp ^^ string (Int.to_string var.id))
+    let var_to_doc (var : var) = Name.to_doc var.name
 
     let def_to_doc s (var : var) =
         PPrint.(infix 4 1 colon (var_to_doc var) (Type.to_doc s var.vtyp))
@@ -239,12 +238,9 @@ end = struct
 
     let id_counter = ref 0
 
-    let var name vtyp value =
-        let id = !id_counter in
-        id_counter := id + 1;
-        {id; name; vtyp}
+    let var name vtyp = {name; vtyp}
 
-    let fresh_var vtyp value = var (Name.fresh ()) vtyp value
+    let fresh_var vtyp = var (Name.fresh ()) vtyp
 
     let at pos typ term = {term; pos; typ; parent = None}
 
@@ -439,7 +435,7 @@ end = struct
     module Var = struct
         type t = var
 
-        let compare (var : var) (var' : var) = Int.compare var.id var'.id
+        let compare (var : var) (var' : var) = Name.compare var.name var'.name
     end
 
     module VarSet = Set.Make(Var)

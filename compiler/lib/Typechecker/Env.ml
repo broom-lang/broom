@@ -348,7 +348,7 @@ let find (env : t) pos name =
         | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
         | [] ->
             reportError env pos (Unbound name);
-            E.fresh_var (T.Uv (uv env (Uv (uv env T.aKind)))) None in
+            E.fresh_var (T.Uv (uv env (Uv (uv env T.aKind)))) in
     find env.scopes
 
 let find_rhs (env : t) pos name =

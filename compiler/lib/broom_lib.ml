@@ -30,11 +30,7 @@ module TyperSigs = TyperSigs (* HACK *)
 module Typer = Typer
 
 module ExpandPats = ExpandPats
-module FwdRefs = FwdRefs.Make (Hashtbl.Make (struct
-    include Int
-    let hash = Hashtbl.hash
-end))
-
+module FwdRefs = FwdRefs
 module Cps = struct
     include Cps
 

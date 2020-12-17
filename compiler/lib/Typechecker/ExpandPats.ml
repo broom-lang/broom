@@ -116,7 +116,7 @@ let matcher pos typ matchee clauses =
                                 , default_rowis ))
                         |> Stream.map clause
                         |> Stream.into (Vector.sink ()) in
-                    let var = E.fresh_var typ None in
+                    let var = E.fresh_var typ in
                     let node : State.node = Test {matchee; clauses} in
                     Automaton.add states var.name {State.var; refcount = 1; frees = Some matchees; node};
                     var
@@ -125,7 +125,7 @@ let matcher pos typ matchee clauses =
                     let width = Vector.length typs in
                     let pats = split_tuple pats coli width in
                     let matchee = Vector.get matchees coli in
-                    let matchees'' = Vector.init width (fun i -> E.fresh_var (Vector.get typs i) None) in
+                    let matchees'' = Vector.init width (fun i -> E.fresh_var (Vector.get typs i)) in
                     let matchees' = Vector.concat [Vector.sub matchees 0 coli; matchees''
                         ; Vector.sub matchees (coli + 1) (Vector.length matchees - (coli + 1))] in
                     let defs = Stream.from (Source.zip_with (fun (matchee' : var) index ->
@@ -136,7 +136,7 @@ let matcher pos typ matchee clauses =
                             (Source.count 0))
                         |> Stream.into (Vector.sink ()) in
                     let body = matcher' matchees' pats acceptors in
-                    let var = E.fresh_var typ None in
+                    let var = E.fresh_var typ in
                     let node : State.node = Destructure {defs; body} in
                     Automaton.add states var.name {var; refcount = 1; frees = Some matchees; node};
                     var
@@ -170,7 +170,7 @@ let matcher pos typ matchee clauses =
     let matchees = Vector.singleton matchee in
     let pats = Matrix.of_col (Vector.map (fun {pat; emit = _} -> pat) clauses) in
     let acceptors = Vector.map (fun {pat = _; emit} ->
-        let var = E.fresh_var typ None in
+        let var = E.fresh_var typ in
         let node : State.node = Final {tmp_vars = None; emit} in
         let state = {State.var; refcount = 0; frees = None; node} in
         Automaton.add states var.name state;
@@ -223,7 +223,7 @@ let emit pos codomain states start =
 
 let expand_clauses : Util.span -> T.t -> expr -> clause' Vector.t -> expr
 = fun pos codomain matchee clauses ->
-    let var = E.fresh_var matchee.typ (Some matchee) in
+    let var = E.fresh_var matchee.typ in
     let (states, start) = matcher pos codomain var clauses in
     let body = emit pos codomain states start.name in
     E.at pos codomain (E.let' [|Def (pos, var, matchee)|] body)

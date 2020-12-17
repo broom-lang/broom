@@ -4,8 +4,6 @@ module T = Fc.Type
 module E = Fc.Term.Expr
 module S = Fc.Term.Stmt
 
-module Make (IntHashtbl : Hashtbl.S with type key = int) = struct
-
 module Support = E.VarSet
 
 (* TODO: Add 'Fixing Leterc' optimizations *)
@@ -102,22 +100,22 @@ module Shapes : sig
 
     val create : unit -> t
     val length : t -> int
-    val refine : t -> int -> shape -> bool
-    val find : t -> int -> shape
+    val refine : t -> Name.t -> shape -> bool
+    val find : t -> Name.t -> shape
 end = struct
-    type t = shape IntHashtbl.t
+    type t = shape Name.Hashtbl.t
 
-    let create () = IntHashtbl.create 0
-    let length = IntHashtbl.length
+    let create () = Name.Hashtbl.create 0
+    let length = Name.Hashtbl.length
 
     let find shapes id =
-        IntHashtbl.find_opt shapes id
+        Name.Hashtbl.find_opt shapes id
         |> Option.value ~default: Unknown
 
     let refine shapes id shape' =
         let shape = find shapes id in
         let (shape, changed) = join shape shape' in
-        IntHashtbl.replace shapes id shape;
+        Name.Hashtbl.replace shapes id shape;
         changed
 end
 
@@ -131,12 +129,12 @@ module Env : sig
     val empty : t
     val push_fn : t -> ctx -> t
     val push_letrec : t -> S.def Array1.t -> t
-    val initialize : t -> int -> unit
-    val access : t -> int -> access
+    val initialize : t -> Name.t -> unit
+    val access : t -> Name.t -> access
 end = struct
     type scope =
         | Fn of ctx
-        | Rec of state IntHashtbl.t
+        | Rec of state Name.Hashtbl.t
 
     type t = scope list
 
@@ -144,9 +142,9 @@ end = struct
     let push_fn scopes ctx  = Fn ctx :: scopes
 
     let push_letrec scopes defs =
-        let bindings = IntHashtbl.create (Array1.length defs) in
-        Array1.iter (fun (_, ({id; _} : E.var), _) ->
-            IntHashtbl.add bindings id Uninitialized
+        let bindings = Name.Hashtbl.create (Array1.length defs) in
+        Array1.iter (fun (_, ({name; _} : E.var), _) ->
+            Name.Hashtbl.add bindings name Uninitialized
         ) defs;
         Rec bindings :: scopes
 
@@ -154,8 +152,8 @@ end = struct
         let rec initialize = function
             | Fn _ :: scopes -> initialize scopes
             | Rec bindings :: scopes ->
-                if IntHashtbl.mem bindings id
-                then IntHashtbl.add bindings id Initialized
+                if Name.Hashtbl.mem bindings id
+                then Name.Hashtbl.add bindings id Initialized
                 else initialize scopes
             | [] -> () in (* NOTE: must be nonrecursively bound, then *)
         initialize scopes
@@ -167,7 +165,7 @@ end = struct
                     | Escaping -> state_to_access
                     | Naming -> (fun state -> Delayed state) in
                 access state_to_access scopes
-            | Rec bindings :: scopes -> (match IntHashtbl.find_opt bindings id with
+            | Rec bindings :: scopes -> (match Name.Hashtbl.find_opt bindings id with
                 | Some state -> state_to_access state
                 | None -> access state_to_access scopes)
             | [] -> state_to_access Initialized in (* NOTE: must be nonrecursively bound, then *)
@@ -225,10 +223,10 @@ let analyze expr =
                 (Sink.fold (fun shape shape' -> fst (join shape shape')) Unknown)
                 (Sink.fold Support.union support))
 
-        | Unpack {existentials = _; var = {id; _}; value; body} ->
+        | Unpack {existentials = _; var = {name; _}; value; body} ->
             let (def_shape, def_support) = shapeof env Naming value in
             (* Need `let changed'` because `&&` is short-circuiting: *)
-            let changed' = Shapes.refine shapes id def_shape in
+            let changed' = Shapes.refine shapes name def_shape in
             changed := !changed && changed';
             let (shape, body_support) = shapeof env ctx body in
             (shape, Support.union def_support body_support)
@@ -243,10 +241,10 @@ let analyze expr =
 
         | Let {defs; body} ->
             let defs_support = Array1.fold_left (fun support -> function
-                | S.Def (_, ({id; _} : E.var), value) ->
+                | S.Def (_, ({name; _} : E.var), value) ->
                     let (shape, def_support) = shapeof env Naming value in
                     (* Need `let changed'` because `&&` is short-circuiting: *)
-                    let changed' = Shapes.refine shapes id shape in
+                    let changed' = Shapes.refine shapes name shape in
                     changed := !changed && changed';
                     Support.union support def_support
                 | S.Expr expr ->
@@ -258,26 +256,26 @@ let analyze expr =
 
         | Letrec {defs; body} ->
             let env = Env.push_letrec env defs in
-            let defs_support = Array1.fold_left (fun support (_, ({id; _} : E.var), value) ->
+            let defs_support = Array1.fold_left (fun support (_, ({name; _} : E.var), value) ->
                 let (shape, def_support) = shapeof env Naming value in
                 (* Need `let changed'` because `&&` is short-circuiting: *)
-                let changed' = Shapes.refine shapes id shape in
+                let changed' = Shapes.refine shapes name shape in
                 changed := !changed && changed';
-                Env.initialize env id;
+                Env.initialize env name;
                 Support.union support def_support
             ) Support.empty defs in
             let (shape, body_support) = shapeof env ctx body in
             (shape, Support.union defs_support body_support)
 
         | Use var ->
-            let access (var' : E.var) = match Env.access env var'.id with
+            let access (var' : E.var) = match Env.access env var'.name with
                 | Delayed Initialized | Instant Initialized -> Support.empty
                 | Delayed Uninitialized -> Support.singleton var'
                 | Instant Uninitialized ->
                     report_error (AccessUninitialized (expr.pos, var, var'));
                     Support.empty in
             let immediate_support = access var in
-            let shape = Shapes.find shapes var.id in
+            let shape = Shapes.find shapes var.name in
             (match ctx with
             | Escaping ->
                 let (shape, shape_support) = extract_shape_support shape in
@@ -362,25 +360,25 @@ module VarRefs : sig
     val initialize : t -> E.var -> unit
     val find : t -> E.var -> deref_state
 end = struct
-    type t = deref_state option IntHashtbl.t
+    type t = deref_state option Name.Hashtbl.t
 
-    let create = IntHashtbl.create
+    let create = Name.Hashtbl.create
 
-    let add vrs (var : E.var) = IntHashtbl.add vrs var.id None
+    let add vrs (var : E.var) = Name.Hashtbl.add vrs var.name None
 
     let initialize vrs (var : E.var) =
-        let state = match IntHashtbl.find vrs var.id with
+        let state = match Name.Hashtbl.find vrs var.name with
             | Some (Forward {cell}) -> WasForward {cell}
             | Some Backward | None -> Backward
             | Some (WasForward _) -> failwith "unreachable" in
-        IntHashtbl.replace vrs var.id (Some state)
+        Name.Hashtbl.replace vrs var.name (Some state)
 
-    let find vrs (var : E.var) = match IntHashtbl.find_opt vrs var.id with
+    let find vrs (var : E.var) = match Name.Hashtbl.find_opt vrs var.name with
         | Some (Some vr) -> vr
         | Some None ->
             let typ = T.App (Prim Cell, var.vtyp) in
-            let vr = Forward {cell = E.fresh_var typ None} in
-            IntHashtbl.add vrs var.id (Some vr);
+            let vr = Forward {cell = E.fresh_var typ} in
+            Name.Hashtbl.add vrs var.name (Some vr);
             vr
         | None -> Backward (* NOTE: nonrecursively bound *)
 end
@@ -446,6 +444,4 @@ let convert ({type_fns; defs; main} : Fc.Program.t) =
     analyze expr |> Result.map (fun shapes -> (* TODO: get rid of `defs` to begin with?: *)
         {Fc.Program.type_fns; defs = Vector.empty; main = emit shapes expr}
     )
-
-end
 
