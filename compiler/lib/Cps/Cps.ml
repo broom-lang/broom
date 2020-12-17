@@ -229,7 +229,7 @@ module Transfer = struct
         | Goto of {callee : cont_id; universals : Type.t Vector.t; args : expr_id Vector.t}
         | Jump of {callee : expr_id; universals : Type.t Vector.t; args : expr_id Vector.t}
         | Match of {matchee : expr_id; state : expr_id; clauses : clause Vector.t}
-        | PrimApp of {op : Primop.t; universals : Type.t Vector.t
+        | PrimApp of {op : Branchop.t; universals : Type.t Vector.t
             ; state : expr_id; args : expr_id Vector.t; clauses : clause Vector.t}
         | Return of Type.t Vector.t * expr_id Vector.t
 
@@ -267,7 +267,7 @@ module Transfer = struct
                 lbrace hardline rbrace clause_to_doc (Vector.to_list clauses)
 
         | PrimApp {op; universals; state; args; clauses} ->
-            prefix 4 1 (string "__" ^^ Primop.to_doc op)
+            prefix 4 1 (string "__" ^^ Branchop.to_doc op)
                 (surround_separate_map 4 0 empty
                     langle (comma ^^ break 1) (rangle ^^ blank 1)
                     Type.to_doc (Vector.to_list universals)

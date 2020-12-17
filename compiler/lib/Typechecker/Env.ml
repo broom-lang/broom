@@ -304,6 +304,14 @@ let instantiate_primop env universals domain app_eff codomain =
     ( uvs
     , Vector.map (expose env substitution) domain
     , expose env substitution app_eff
+    , expose env substitution codomain )
+
+let instantiate_branch env universals domain app_eff codomain =
+    let uvs = Vector.map (uv env) universals in
+    let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
+    ( uvs
+    , Vector.map (expose env substitution) domain
+    , expose env substitution app_eff
     , Vector.map (expose env substitution) codomain )
 
 let find (env : t) pos name =

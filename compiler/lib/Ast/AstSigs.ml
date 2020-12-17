@@ -13,6 +13,7 @@ module type EXPR = sig
         | App of t with_pos * (t with_pos, t with_pos) Ior.t
         | AppSequence of t with_pos Vector1.t
         | PrimApp of Primop.t * (t with_pos, t with_pos) Ior.t
+        | PrimBranch of Branchop.t * (t with_pos, t with_pos) Ior.t * clause Vector.t
         | Let of def Vector1.t * t with_pos
         | Record of stmt Vector.t
         | Select of t with_pos * Name.t

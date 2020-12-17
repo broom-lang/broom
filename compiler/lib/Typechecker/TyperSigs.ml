@@ -101,7 +101,9 @@ module type ENV = sig
     val instantiate_abs : t -> T.kind Vector1.t -> T.t -> T.uv Vector1.t * T.t
     val instantiate_arrow : t -> T.kind Vector.t -> (T.t, T.edomain) Ior.t
         -> T.t -> T.uv Vector.t * (T.t, T.edomain) Ior.t * T.t
-    val instantiate_primop : t -> T.kind Vector.t -> T.t Vector.t -> T.t -> T.t Vector.t
+    val instantiate_primop : t -> T.kind Vector.t -> T.t Vector.t -> T.t -> T.t
+        -> T.uv Vector.t * T.t Vector.t * T.t * T.t
+    val instantiate_branch : t -> T.kind Vector.t -> T.t Vector.t -> T.t -> T.t Vector.t
         -> T.uv Vector.t * T.t Vector.t * T.t * T.t Vector.t
 
     val reportError : t -> span -> TypeError.t -> unit

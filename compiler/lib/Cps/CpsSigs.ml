@@ -73,7 +73,7 @@ module type TRANSFER = sig
         | Goto of {callee : cont_id; universals : Type.t Vector.t; args : expr_id Vector.t}
         | Jump of {callee : expr_id; universals : Type.t Vector.t; args : expr_id Vector.t}
         | Match of {matchee : expr_id; state : expr_id; clauses : clause Vector.t}
-        | PrimApp of {op : Primop.t; universals : Type.t Vector.t
+        | PrimApp of {op : Branchop.t; universals : Type.t Vector.t
             ; state : expr_id; args : expr_id Vector.t; clauses : clause Vector.t}
         | Return of Type.t Vector.t * expr_id Vector.t
 

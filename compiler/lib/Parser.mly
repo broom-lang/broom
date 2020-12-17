@@ -33,7 +33,9 @@ let parenthesized' args =
     LPAREN "(" RPAREN ")" LBRACKET "[" RBRACKET "]" LBRACE "{" RBRACE "}"
     EOF
 %token <string> DISJUNCTION "||" CONJUNCTION "&&" COMPARISON ADDITIVE MULTIPLICATIVE
-%token <string> PRIMOP WILD "_" ID OP
+%token <Primop.t> PRIMOP
+%token <Branchop.t> BRANCHOP
+%token <string> WILD "_" ID OP
 %token <string> STRING
 %token <int> INT
 
@@ -112,15 +114,25 @@ binapp5 :
 
 app :
     | PRIMOP args {
-        let op = match Primop.of_string $1 with
-            | Some op -> op
-            | None -> failwith ("No such primop: __" ^ $1) in
+        let op = $1 in
         match $2 with
         | Left iargs -> {v = PrimApp (op, Left (parenthesized iargs $loc($2))); pos = $loc}
         | Right eargs -> {v = PrimApp (op, Right (parenthesized eargs $loc($2))); pos = $loc}
         | Both (iargs, eargs) ->
             {v = PrimApp (op, Both (parenthesized iargs $loc($2)
                 , parenthesized eargs $loc($2))); pos = $loc}
+    }
+    | BRANCHOP args {
+        let op = $1 in
+        match $2 with
+        | Left iargs -> failwith "branchop missing explicit args"
+        | Right eargs ->
+            assert (Vector.length eargs >= 2);
+            let args = Vector.sub eargs 0 (Vector.length eargs - 1) in
+            let clauses = match (Vector.get eargs (Vector.length args)).v with
+                | Fn clauses -> clauses
+                | _ -> failwith "branchop missing clauses" in
+            {v = PrimBranch (op, Right (parenthesized args $loc($2)), clauses); pos = $loc}
     }
     | select args { match $2 with
         | Left iargs -> {v = App ($1, Left (parenthesized iargs $loc($2))); pos = $loc}

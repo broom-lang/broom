@@ -28,8 +28,31 @@ let (!) = TxRef.(!)
 let const_typ c = T.Prim (match c with
     | Const.Int _ -> Prim.Int)
 
-let primop_typ =
+let primop_typ : Primop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t =
     let open Primop in
+    function
+    | CellNew -> (* forall a . () -> __cell a *)
+        ( Vector.singleton T.aType, Vector.empty
+        , T.EmptyRow
+        , T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}) )
+    | CellInit -> (* forall a . (__cell a, a) -> () *)
+        ( Vector.singleton T.aType
+        , Vector.of_list [ T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType})
+            ; Bv {depth = 0; sibli = 0; kind = T.aType} ]
+        , T.EmptyRow, T.Tuple Vector.empty )
+    | CellGet -> (* forall a . __cell a -> a *)
+        ( Vector.singleton T.aType
+        , Vector.singleton (T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}))
+        , T.EmptyRow, T.Bv {depth = 0; sibli = 0; kind = T.aType} )
+    | Int ->
+        (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim Int))
+    | Type ->
+        ( Vector.empty, Vector.empty, T.EmptyRow
+        , T.Proxy (T.Exists (Vector1.singleton T.aType
+            , Proxy (Bv {depth = 0; sibli = 0; kind = T.aType}))) )
+
+let branchop_typ : Branchop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t Vector.t =
+    let open Branchop in
     function
     | IAdd | ISub | IMul | IDiv ->
         ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
@@ -37,25 +60,6 @@ let primop_typ =
     | ILt | ILe | IGt | IGe | IEq ->
         ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
         , T.EmptyRow, Vector.of_list [T.Tuple Vector.empty; Tuple Vector.empty] )
-    | CellNew -> (* forall a . () -> __cell a *)
-        ( Vector.singleton T.aType, Vector.empty
-        , T.EmptyRow
-        , Vector.singleton (T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType})) )
-    | CellInit -> (* forall a . (__cell a, a) -> () *)
-        ( Vector.singleton T.aType
-        , Vector.of_list [ T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType})
-            ; Bv {depth = 0; sibli = 0; kind = T.aType} ]
-        , T.EmptyRow, Vector.singleton (T.Tuple Vector.empty) )
-    | CellGet -> (* forall a . __cell a -> a *)
-        ( Vector.singleton T.aType
-        , Vector.singleton (T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}))
-        , T.EmptyRow, Vector.singleton (T.Bv {depth = 0; sibli = 0; kind = T.aType}) )
-    | Int ->
-        (Vector.empty, Vector.empty, T.EmptyRow, Vector.singleton (T.Proxy (Prim Int)))
-    | Type ->
-        ( Vector.empty, Vector.empty, T.EmptyRow
-        , Vector.singleton (T.Proxy (T.Exists (Vector1.singleton T.aType
-            , Proxy (Bv {depth = 0; sibli = 0; kind = T.aType})))) )
 
 let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
 = fun env expr -> match expr.v with
@@ -102,47 +106,36 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
 
     | AExpr.PrimApp (op, args) ->
         let (universals, domain, app_eff, codomain) = primop_typ op in
-        if Vector.length codomain = 1 then begin
-            let codomain = Vector.get codomain 0 in
-            let (uvs, domain, codomain) =
-                Env.instantiate_arrow env universals (Right {edomain = Tuple domain; eff = app_eff})
-                    codomain in
-            let arg = check_args env expr.pos domain app_eff args in
-            { term = FExpr.at expr.pos codomain (FExpr.primapp' op (Vector.map (fun uv -> T.Uv uv) uvs) arg)
-            ; eff = app_eff }
-        end else begin
-            match args with
-            | Right args -> match args.v with
-                | Tuple args' when Vector.length args' = Vector.length domain + 1 ->
-                    let (uvs, domain, app_eff, codomain) =
-                        Env.instantiate_primop env universals domain app_eff codomain in
-                    let args'' = Stream.from (Vector.to_source args')
-                        |> Stream.take (Vector.length domain)
-                        |> Stream.into (Vector.sink ()) in
-                    let arg = check_args env expr.pos (Right {edomain = Tuple domain; eff = app_eff})
-                        app_eff (Right {args with v = Tuple args''}) in
-                    let (clauses, typ) = match (Vector.get args' (Vector.length domain)).v with
-                        | AExpr.Fn clauses when Vector.length clauses = Vector.length codomain ->
-                            let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-                            let typ = T.Uv (Env.uv env kind) in
-                            ( Stream.from (Source.zip (Vector.to_source codomain) (Vector.to_source clauses))
-                              |> Stream.map (fun (codomain, {AExpr.params; body}) ->
-                                  match params with
-                                  | Right pat ->
-                                      let (pat, vars) = check_pat env codomain pat in
-                                      let env = Vector.fold Env.push_val env vars in
-                                      let pat = match pat.pterm with
-                                          | VarP var -> Some var
-                                          | TupleP pats when Vector.length pats = 0 -> None in
-                                      let {TS.term = prim_body; eff = body_eff} = check env typ body in
-                                      ignore (M.solving_unify body.pos env body_eff app_eff);
-                                      {FExpr.res = pat; prim_body})
-                              |> Stream.into (Vector.sink ())
-                            , typ ) in
-                    { term = FExpr.at expr.pos typ
-                        (FExpr.primapp op (Vector.map (fun uv -> T.Uv uv) uvs) arg clauses)
-                    ; eff = app_eff }
-        end
+        let (uvs, domain, app_eff, codomain) =
+            Env.instantiate_primop env universals domain app_eff codomain in
+        let arg = check_args env expr.pos (Right {edomain = Tuple domain; eff = app_eff}) app_eff args in
+        { term = FExpr.at expr.pos codomain (FExpr.primapp op (Vector.map (fun uv -> T.Uv uv) uvs) arg)
+        ; eff = app_eff }
+
+    | AExpr.PrimBranch (op, args, clauses) ->
+        let (universals, domain, app_eff, codomain) = branchop_typ op in
+        let (uvs, domain, app_eff, codomain) =
+            Env.instantiate_branch env universals domain app_eff codomain in
+        let arg = check_args env expr.pos (Right {edomain = Tuple domain; eff = app_eff}) app_eff args in
+        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
+        let typ = T.Uv (Env.uv env kind) in
+        assert (Vector.length clauses = Vector.length codomain);
+        let clauses = Stream.from (Source.zip (Vector.to_source codomain) (Vector.to_source clauses))
+            |> Stream.map (fun (codomain, {AExpr.params; body}) ->
+                match params with
+                | Right pat ->
+                    let (pat, vars) = check_pat env codomain pat in
+                    let env = Vector.fold Env.push_val env vars in
+                    let pat = match pat.pterm with
+                        | VarP var -> Some var
+                        | TupleP pats when Vector.length pats = 0 -> None in
+                    let {TS.term = prim_body; eff = body_eff} = check env typ body in
+                    ignore (M.solving_unify body.pos env body_eff app_eff);
+                    {FExpr.res = pat; prim_body})
+            |> Stream.into (Vector.sink ()) in
+        { term = FExpr.at expr.pos typ
+            (FExpr.primbranch op (Vector.map (fun uv -> T.Uv uv) uvs) arg clauses)
+        ; eff = app_eff }
 
     | AExpr.Let (defs, body) ->
         let (defs, env) = check_defs env (Vector1.to_vector defs) in

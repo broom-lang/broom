@@ -212,7 +212,11 @@ let analyze expr =
               | _ -> Unknown)
             , Support.union callee_support arg_support )
 
-        | PrimApp {op = _; universals = _; arg; clauses} ->
+        | PrimApp {op = _; universals = _; arg} ->
+            let (_, support) = shapeof env Escaping arg in
+            (Unknown, support)
+
+        | PrimBranch {op = _; universals = _; arg; clauses} ->
             let (_, support) = shapeof env Escaping arg in
             Stream.from (Vector.to_source clauses)
             |> Stream.map (fun ({res = _; prim_body} : E.prim_clause) ->
@@ -394,7 +398,7 @@ let emit shapes expr =
                     match VarRefs.find vrs var with
                     | WasForward {cell} ->
                         Stream.double (S.Def (pos, var, value))
-                            (Expr (E.at pos (Tuple Vector.empty) (E.primapp' CellInit
+                            (Expr (E.at pos (Tuple Vector.empty) (E.primapp CellInit
                                 (Vector.singleton value.typ)
                                 (E.at pos (Tuple (Vector.of_list [cell.vtyp; value.typ]))
                                     (E.values (Array.of_list [
@@ -411,7 +415,7 @@ let emit shapes expr =
                         | WasForward {cell} ->
                             let arg = E.at pos (Tuple Vector.empty)
                                 (E.values (Array.init 0 (fun _ -> failwith "unreachable"))) in
-                            let value = E.at pos cell.vtyp (E.primapp' CellNew Vector.empty arg) in
+                            let value = E.at pos cell.vtyp (E.primapp CellNew Vector.empty arg) in
                             Stream.single (S.Def (pos, cell, value))
                         | Forward _ -> failwith "unreachable")
                     | Expr _ -> Stream.empty)
@@ -420,12 +424,12 @@ let emit shapes expr =
 
         | Use {var; expr = _} -> (match VarRefs.find vrs var with
             | Forward {cell} ->
-                E.at expr.pos expr.typ (E.primapp' CellGet (Vector.singleton expr.typ)
+                E.at expr.pos expr.typ (E.primapp CellGet (Vector.singleton expr.typ)
                     (E.at expr.pos expr.typ (E.use cell)))
             | Backward | WasForward _ -> expr)
 
         | LetType _ | Axiom _ | Let _ | Match _
-        | Cast _ | Pack _ | Unpack _ | Fn _ | App _ | PrimApp _
+        | Cast _ | Pack _ | Unpack _ | Fn _ | App _ | PrimApp _ | PrimBranch _
         | Tuple _ | Focus _ | Record _ | Where _ | With _ | Select _ | Proxy _ | Const _
         | Patchable _ -> E.map_children emit expr in
     emit expr

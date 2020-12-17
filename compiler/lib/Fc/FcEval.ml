@@ -128,7 +128,31 @@ let rec eval : Env.t -> cont -> expr -> Value.t
         eval env eval_arg callee
 
     | PrimApp {op; universals = _; arg} ->
-        let apply_primop (arg : Value.t) = match op with
+        let apply_op (arg : Value.t) : Value.t = match op with
+            | CellNew -> k (Cell (ref None))
+            | CellInit -> (match arg with
+                | Tuple args when Vector.length args = 2 ->
+                    (match (Vector.get args 0, Vector.get args 1) with
+                    | (Cell cell, v) -> (match !cell with
+                        | None -> cell := Some v; k (Tuple Vector.empty)
+                        | Some _ ->
+                            failwith "compiler bug: cellInit on initialized cell at runtime")
+                    | _ -> failwith "compiler bug: cellInit on non-cell at runtime")
+                | _ -> failwith "compiler bug: invalid primop arg")
+            | CellGet -> (match arg with
+                | Tuple args when Vector.length args = 1 ->
+                    (match Vector.get args 0 with
+                    | Cell cell -> (match !cell with
+                        | Some v -> k v
+                        | None ->
+                            failwith "compiler bug: cellGet on uninitialized cell at runtime")
+                    | _ -> failwith "compiler bug: cellGet on non-cell at runtime")
+                | _ -> failwith "compiler bug: invalid primop arg")
+            | Int | Type -> k Proxy in
+        eval env apply_op arg
+
+    | PrimBranch {op; universals = _; arg; clauses} ->
+        let apply_op (arg : Value.t) = match op with
             | IAdd | ISub | IMul | IDiv -> (match arg with
                 | Tuple args when Vector.length args = 2 ->
                     (match (Vector.get args 0, Vector.get args 1) with
@@ -151,28 +175,8 @@ let rec eval : Env.t -> cont -> expr -> Value.t
                         | IEq -> Int.equal a b
                         | _ -> failwith "unreachable"))
                     | _ -> failwith "compiler bug: invalid primop args")
-                | _ -> failwith "compiler bug: invalid primop arg")
-            | CellNew -> Cell (ref None)
-            | CellInit -> (match arg with
-                | Tuple args when Vector.length args = 2 ->
-                    (match (Vector.get args 0, Vector.get args 1) with
-                    | (Cell cell, v) -> (match !cell with
-                        | None -> cell := Some v; Tuple Vector.empty
-                        | Some _ ->
-                            failwith "compiler bug: cellInit on initialized cell at runtime")
-                    | _ -> failwith "compiler bug: cellInit on non-cell at runtime")
-                | _ -> failwith "compiler bug: invalid primop arg")
-            | CellGet -> (match arg with
-                | Tuple args when Vector.length args = 1 ->
-                    (match Vector.get args 0 with
-                    | Cell cell -> (match !cell with
-                        | Some v -> v
-                        | None ->
-                            failwith "compiler bug: cellGet on uninitialized cell at runtime")
-                    | _ -> failwith "compiler bug: cellGet on non-cell at runtime")
-                | _ -> failwith "compiler bug: invalid primop arg")
-            | Int | Type -> k Proxy in
-        eval env apply_primop arg
+                | _ -> failwith "compiler bug: invalid primop arg") in
+        eval env apply_op arg
 
     | Match {matchee; clauses} -> (match Vector.length clauses with
         | 0 -> match_failure ()

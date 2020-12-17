@@ -37,7 +37,8 @@ end = struct
 
         | Fn of {universals : Type.binding Vector.t; param : var; mutable body : t}
         | App of {mutable callee : t; universals : Type.t Vector.t; mutable arg : t}
-        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t
+        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t}
+        | PrimBranch of {op : Branchop.t; universals : Type.t Vector.t; mutable arg : t
             ; clauses : prim_clause Vector.t}
 
         | Let of {defs : stmt Array1.t; mutable body : t}
@@ -129,8 +130,14 @@ end = struct
                     (break 1 ^^ langle) (comma ^^ break 1) (rangle ^^ break 1)
                     (Type.to_doc s) (Vector.to_list universals)
                 ^^ to_doc s arg)
-        | PrimApp {op; universals; arg; clauses} ->
+        | PrimApp {op; universals; arg} ->
             prefix 4 1 (string "__" ^^ Primop.to_doc op)
+                (surround_separate_map 4 0 empty
+                    (break 1 ^^ langle) (comma ^^ break 1) (rangle ^^ break 1)
+                    (Type.to_doc s) (Vector.to_list universals)
+                ^^ to_doc s arg)
+        | PrimBranch {op; universals; arg; clauses} ->
+            prefix 4 1 (string "__" ^^ Branchop.to_doc op)
                 (surround_separate_map 4 0 empty
                     (break 1 ^^ langle) (comma ^^ break 1) (rangle ^^ break 1)
                     (Type.to_doc s) (Vector.to_list universals)
@@ -252,8 +259,8 @@ end = struct
     let focus focusee index = Focus {focusee; index}
     let fn universals param body = Fn {universals; param; body}
     let app callee universals arg = App {callee; universals; arg}
-    let primapp op universals arg clauses = PrimApp {op; universals; arg; clauses}
-    let primapp' op universals arg = primapp op universals arg Vector.empty
+    let primapp op universals arg = PrimApp {op; universals; arg}
+    let primbranch op universals arg clauses = PrimBranch {op; universals; arg; clauses}
 
     let let' defs body = match Array1.of_array defs with
         | Some defs -> (match body.term with
@@ -321,7 +328,11 @@ end = struct
                 then term
                 else app callee' universals arg'
 
-            | PrimApp {op; universals; arg; clauses} ->
+            | PrimApp {op; universals; arg} ->
+                let arg' = f arg in
+                if arg' == arg then term else primapp op universals arg'
+
+            | PrimBranch {op; universals; arg; clauses} ->
                 let arg' = f arg in
                 let clauses' = clauses |> Vector.map (fun {res; prim_body} ->
                     {res; prim_body = f prim_body}) in
@@ -331,7 +342,7 @@ end = struct
                         (Vector.to_source clauses') (Vector.to_source clauses))
                     |> Stream.into (Sink.all ~where: Fun.id)
                 then term
-                else primapp op universals arg' clauses'
+                else primbranch op universals arg' clauses'
 
             | Let {defs; body} ->
                 let defs' = Array1.map (fun stmt -> match stmt with

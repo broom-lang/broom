@@ -20,6 +20,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | App of t with_pos * (t with_pos, t with_pos) Ior.t
             | AppSequence of t with_pos Vector1.t
             | PrimApp of Primop.t * (t with_pos, t with_pos) Ior.t
+            | PrimBranch of Branchop.t * (t with_pos, t with_pos) Ior.t * clause Vector.t
             | Let of def Vector1.t * t with_pos
             | Record of stmt Vector.t
             | Select of t with_pos * Name.t
@@ -56,6 +57,10 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                 | PrimApp (op, args) ->
                     prefix 4 1 (string "__" ^^ Primop.to_doc op) (args_to_doc args)
                     |> prec_parens (prec > app_prec)
+                | PrimBranch (op, args, clauses) ->
+                    prefix 4 1 (string "__" ^^ Branchop.to_doc op)
+                        (args_to_doc args ^^ blank 1
+                        ^^ to_doc (app_prec + 1) {expr with v = Fn clauses})
                 | Let (defs, body) ->
                     string "__let" ^^ blank 1
                     ^^ surround_separate 4 0 (braces empty)

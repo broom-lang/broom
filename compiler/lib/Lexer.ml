@@ -58,7 +58,13 @@ let rec token ({SedlexMenhir.stream; _} as lexbuf) =
 
     | "__", Plus constituent ->
         let tok = L.lexeme lexbuf in
-        L.update lexbuf; PRIMOP (S.sub tok 2 (S.length tok - 2))
+        L.update lexbuf;
+        let name = S.sub tok 2 (S.length tok - 2) in
+        (match Primop.of_string name with
+        | Some op -> PRIMOP op
+        | None -> (match Branchop.of_string name with
+            | Some op -> BRANCHOP op
+            | None -> failwith ("no such primop: " ^ name)))
     | '_', Star constituent ->
         let tok = L.lexeme lexbuf in
         L.update lexbuf; WILD (S.sub tok 1 (S.length tok - 1))

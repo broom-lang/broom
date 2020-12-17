@@ -130,9 +130,8 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                         convert parent state k env arg } in
             convert parent state k env callee
 
-        | PrimApp {op; universals; arg; clauses} ->
-            (match Primop.behaviour op with
-            | Pure ->
+        | PrimApp {op; universals; arg} ->
+            if Primop.is_pure op then begin
                 let k = FnK {pos = arg.pos; domain = convert_typ arg.typ
                     ; f = fun ~parent ~state ~value: arg ->
                         Builder.express builder {pos = expr.pos; cont = parent
@@ -142,8 +141,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                                 ; args = Vector.singleton arg}}
                         |> continue k parent state } in
                 convert parent state k env arg
-
-            | Impure ->
+            end else begin
                 let codomain = convert_typ expr.typ in
                 let k = FnK {pos = arg.pos; domain = convert_typ arg.typ
                     ; f = fun ~parent ~state ~value: arg ->
@@ -160,34 +158,35 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                             ; term = Focus {focusee = app; index = 1}} in
                         continue k parent state result } in
                 convert parent state k env arg
+            end
 
-            | Branch ->
-                let k = FnK { pos = expr.pos; domain = convert_typ arg.typ
-                    ; f = fun ~parent ~state ~value: arg ->
-                        let join = trivialize_cont k in
-                        let clauses = clauses |> Vector.map (fun {FExpr.res; prim_body = body} ->
-                            let branch = Cont.Id.fresh () in
-                            let cont : Cont.t = 
-                                let parent = Some branch in
-                                let state = Builder.express builder {pos = body.pos; cont = parent; typ = state_typ
-                                    ; term = Param {label = branch; index = 0}} in
-                                let (params, env) = match res with
-                                    | Some res ->
-                                        let codomain = convert_typ res.vtyp in
-                                        let v = Builder.express builder {pos = body.pos; cont = parent; typ = codomain
-                                            ; term = Param {label = branch; index = 1}} in
-                                        (Vector.of_list [state_typ; codomain], Env.add env res.id v)
-                                    | None -> (Vector.singleton state_typ, env) in
-                                {pos = body.pos; name = None
-                                    ; universals = Vector.empty; params
-                                    ; body = convert parent state join env body } in
-                            Builder.add_cont builder branch cont;
-                            {Transfer.pat = Wild; dest = branch}) in
-                        {pos = expr.pos; term = PrimApp {op
-                            ; universals = Vector.map convert_typ universals
-                            ; state; args = Vector.singleton arg 
-                            ; clauses}} } in
-                convert parent state k env arg)
+        | PrimBranch {op; universals; arg; clauses} ->
+            let k = FnK { pos = expr.pos; domain = convert_typ arg.typ
+                ; f = fun ~parent ~state ~value: arg ->
+                    let join = trivialize_cont k in
+                    let clauses = clauses |> Vector.map (fun {FExpr.res; prim_body = body} ->
+                        let branch = Cont.Id.fresh () in
+                        let cont : Cont.t = 
+                            let parent = Some branch in
+                            let state = Builder.express builder {pos = body.pos; cont = parent; typ = state_typ
+                                ; term = Param {label = branch; index = 0}} in
+                            let (params, env) = match res with
+                                | Some res ->
+                                    let codomain = convert_typ res.vtyp in
+                                    let v = Builder.express builder {pos = body.pos; cont = parent; typ = codomain
+                                        ; term = Param {label = branch; index = 1}} in
+                                    (Vector.of_list [state_typ; codomain], Env.add env res.id v)
+                                | None -> (Vector.singleton state_typ, env) in
+                            {pos = body.pos; name = None
+                                ; universals = Vector.empty; params
+                                ; body = convert parent state join env body } in
+                        Builder.add_cont builder branch cont;
+                        {Transfer.pat = Wild; dest = branch}) in
+                    {pos = expr.pos; term = PrimApp {op
+                        ; universals = Vector.map convert_typ universals
+                        ; state; args = Vector.singleton arg 
+                        ; clauses}} } in
+            convert parent state k env arg
 
         | Let {defs; body} ->
             let rec convert_defs state i env =
