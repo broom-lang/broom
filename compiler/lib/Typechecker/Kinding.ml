@@ -162,6 +162,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
         let env = Vector.fold Env.push_val env defs in
         (domain, env)
 
+    (* TODO: Move desugaring to Expander, as with record values: *)
     and elab_row env pos decls =
         let bindings = CCVector.create () in
         let _ = Vector.fold (fun env decl ->

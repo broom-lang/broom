@@ -119,24 +119,24 @@ let rec expand_typ env (typ : typ with_pos) : typ with_pos = match typ.v with
     | Pi {domain; codomain} ->
         let (domain, env) = match domain with
             | Left idomain ->
-                let (idomain, env) = expand_pat env idomain in
+                let (idomain, env) = expand_pat ignore env idomain in
                 (Ior.Left idomain, env)
             | Right (edomain, eff) ->
-                let (edomain, env) = expand_pat env edomain in
+                let (edomain, env) = expand_pat ignore env edomain in
                 let eff = Option.map (expand_typ env) eff in
                 (Right (edomain, eff), env)
             | Both (idomain, (edomain, eff)) ->
-                let (idomain, env) = expand_pat env idomain in
-                let (edomain, env) = expand_pat env edomain in
+                let (idomain, env) = expand_pat ignore env idomain in
+                let (edomain, env) = expand_pat ignore env edomain in
                 let eff = Option.map (expand_typ env) eff in
                 (Both (idomain, (edomain, eff)), env) in
         {typ with v = Pi {domain; codomain = expand_typ env codomain}}
     | Tuple typs ->
         {typ with v = Tuple (Vector.map (expand_typ env) typs)}
     | Record stmts ->
-        {typ with v = Record (expand_stmts env stmts)}
+        {typ with v = Record (expand_stmts ignore env stmts)} (* TODO: don't ignore? *)
     | Row stmts ->
-        {typ with v = Row (expand_stmts env stmts)}
+        {typ with v = Row (expand_stmts ignore env stmts)} (* TODO: don't ignore? *)
     | Path expr ->
         {typ with v = Path ((expand env {typ with v = expr}).v)}
     | Prim _ -> typ
@@ -175,7 +175,17 @@ and expand env expr : expr with_pos = match expr.v with
     | Focus (focusee, index) ->
         {expr with v = Focus (expand env focusee, index)}
     | Record stmts ->
-        {expr with v = Record (expand_stmts env stmts)}
+        (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
+        let vars = CCVector.create () in
+        let (stmts, env) = expand_stmts' (CCVector.push vars) env stmts in
+        let defs = stmts |> Vector.map (function
+            | Stmt.Def def -> def
+            | Expr _ -> failwith "non-def stmt in Record") in
+        let body : expr with_pos = {expr with v = Record (Vector.build vars)} in
+        (match Vector1.of_vector defs with
+        | Some defs -> {expr with v = Let (defs, body)}
+        | None -> body)
+
     | Select (selectee, label) ->
         {expr with v = Select (expand env selectee, label)}
     | Proxy typ -> {expr with v = Proxy ((expand_typ env {expr with v = typ}).v)}
@@ -204,36 +214,38 @@ and expand_let env pos (arg : expr with_pos) = match arg.v with
         else failwith "TODO"
     | _ -> failwith "non-record `let` arg"
 
-and expand_pat env (pat : pat with_pos) = match pat.v with
+and expand_pat report_def env (pat : pat with_pos) =
+    match pat.v with
     | Tuple pats ->
         let pats' = CCVector.create () in
         let env = Vector.fold (fun env pat ->
-            let (pat, env) = expand_pat env pat in
+            let (pat, env) = expand_pat report_def env pat in
             CCVector.push pats' pat;
             env
         ) env pats in
         ({pat with v = Tuple (Vector.build pats')}, env)
     | Var name ->
         let name' = Name.freshen name in
+        report_def (Stmt.Def (pat.pos, pat, {pat with v = Expr.Var name'}));
         ({pat with v = Var name'}, Env.add env name (None, name'))
     | Wild _ | Const _ -> (pat, env)
 
 and expand_clause env ({params; body} : clause) : clause =
     let (params, env) = match params with
         | Left iparam ->
-            let (iparam, env) = expand_pat env iparam in
+            let (iparam, env) = expand_pat ignore env iparam in
             (Ior.Left iparam, env)
         | Right eparam ->
-            let (eparam, env) = expand_pat env eparam in
+            let (eparam, env) = expand_pat ignore env eparam in
             (Right eparam, env)
         | Both (iparam, eparam) ->
-            let (iparam, env) = expand_pat env iparam in
-            let (eparam, env) = expand_pat env eparam in
+            let (iparam, env) = expand_pat ignore env iparam in
+            let (eparam, env) = expand_pat ignore env eparam in
             (Both (iparam, eparam), env) in
     {params; body = expand env body}
 
-and expand_def_pat env (pos, pat, expr) =
-    let (pat, env) = expand_pat env pat in
+and expand_def_pat report_def env (pos, pat, expr) =
+    let (pat, env) = expand_pat report_def env pat in
     ((pos, pat, expr), env)
 
 and expand_def env (pos, pat, expr) = (pos, pat, expand env expr)
@@ -241,7 +253,7 @@ and expand_def env (pos, pat, expr) = (pos, pat, expand env expr)
 and expand_defs' env defs =
     let defs' = CCVector.create () in
     let env = Vector.fold (fun env def ->
-        let (def', env) = expand_def_pat env def in
+        let (def', env) = expand_def_pat ignore env def in
         CCVector.push defs' def';
         env
     ) env defs in
@@ -250,9 +262,9 @@ and expand_defs' env defs =
 
 and expand_defs env defs = fst (expand_defs' env defs)
 
-and expand_stmt_pat env : stmt -> stmt * Env.t = function
+and expand_stmt_pat report_def env : stmt -> stmt * Env.t = function
     | Def def ->
-        let (def, env) = expand_def_pat env def in
+        let (def, env) = expand_def_pat report_def env def in
         (Def def, env)
     | Expr _ as stmt -> (stmt, env)
 
@@ -260,13 +272,15 @@ and expand_stmt env : stmt -> stmt = function
     | Def def -> Def (expand_def env def)
     | Expr expr -> Expr (expand env expr)
 
-and expand_stmts env stmts =
+and expand_stmts' report_def env stmts =
     let stmts' = CCVector.create () in
     let env = Vector.fold (fun env stmt ->
-        let (stmt', env) = expand_stmt_pat env stmt in
+        let (stmt', env) = expand_stmt_pat report_def env stmt in
         CCVector.push stmts' stmt';
         env
     ) env stmts in
     CCVector.map_in_place (expand_stmt env) stmts';
-    Vector.build stmts'
+    (Vector.build stmts', env)
+
+and expand_stmts report_def env stmts = fst (expand_stmts' report_def env stmts)
 
