@@ -10,6 +10,8 @@ let name = "broom"
 let name_c = String.capitalize_ascii name
 let prompt = name ^ "> "
 
+let debug_heading str =
+    print_endline ("\n" ^ str ^ "\n" ^ String.make (String.length str) '=' ^ "\n")
 let pwrite output = PP.ToChannel.pretty 1.0 80 output
 let pprint = pwrite stdout
 let pprint_err = pwrite stderr
@@ -77,7 +79,7 @@ let build debug check_only filename outfile =
         try
             let defs = Parse.parse_defs_exn input in
             if debug then begin
-                print_endline "\nParsed AST\n==========\n";
+                debug_heading "Parsed AST";
                 let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.def_to_doc
                     (Vector.to_list defs))) in
                 pprint (doc ^^ twice hardline);
@@ -103,33 +105,33 @@ let build debug check_only filename outfile =
                 {Util.pos; v = Ast.Term.Expr.App ({pos; v = Var (Name.of_string "let")}, Explicit, block)} in
             let program = Expander.expand Expander.Env.empty program in
             if debug then begin
-                print_endline "Expanded AST\n============\n";
+                debug_heading "Expanded AST";
                 pprint (Ast.Term.Expr.to_doc program ^^ twice hardline);
             end;
 
             let program = Typer.check_program tenv Vector.empty program in
             if debug then begin
-                print_endline "FC from Typechecker\n===================\n";
+                debug_heading "FC from Typechecker";
                 pprint (Typer.Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
             end;
 
             match FwdRefs.convert program with
             | Ok program ->
                 if debug then begin
-                    print_endline "Nonrecursive FC\n===============\n";
+                    debug_heading "Nonrecursive FC";
                     pprint (Typer.Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
                 end;
 
                 if not check_only then begin
                     let program = Cps.Convert.convert (Fc.Type.Prim Int) program in
                     if debug then begin
-                        print_endline "CPS from CPS-conversion\n=======================\n";
+                        debug_heading "CPS from CPS-conversion";
                         pprint (Cps.Program.to_doc program ^^ twice hardline)
                     end;
 
                     let program = ScheduleData.schedule program in
                     if debug then begin
-                        print_endline "CFG from Dataflow Scheduling\n============================\n";
+                        debug_heading "CFG from Dataflow Scheduling";
                         pprint (Cfg.Program.to_doc program ^^ twice hardline)
                     end;
 
