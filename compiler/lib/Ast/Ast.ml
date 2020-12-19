@@ -16,11 +16,11 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Tuple of t with_pos Vector.t
             | Focus of t with_pos * int
             | Ann of t with_pos * typ with_pos
-            | Fn of clause Vector.t
-            | App of t with_pos * (t with_pos, t with_pos) Ior.t
+            | Fn of Util.plicity * clause Vector.t
+            | App of t with_pos * Util.plicity * t with_pos
             | AppSequence of t with_pos Vector1.t
-            | PrimApp of Primop.t * (t with_pos, t with_pos) Ior.t
-            | PrimBranch of Branchop.t * (t with_pos, t with_pos) Ior.t * clause Vector.t
+            | PrimApp of Primop.t * t with_pos option * t with_pos
+            | PrimBranch of Branchop.t * t with_pos option * t with_pos * clause Vector.t
             | Let of def Vector1.t * t with_pos
             | Record of stmt Vector.t
             | Select of t with_pos * Name.t
@@ -29,7 +29,7 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Wild of Name.t
             | Const of Const.t
 
-        and clause = {params : (pat with_pos, pat with_pos) Ior.t; body : t with_pos}
+        and clause = {params : pat with_pos; body : t with_pos}
 
         and pat = t
 
@@ -48,19 +48,24 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                     infix 4 1 colon (to_doc (colon_prec + 1) expr) (Type.to_doc typ)
                     |> prec_parens (prec > colon_prec)
 
-                | App (callee, args) ->
-                    prefix 4 1 (to_doc (app_prec + 1) callee) (args_to_doc args)
+                | App (callee, Explicit, args) ->
+                    prefix 4 1 (to_doc (app_prec + 1) callee) (to_doc (app_prec + 1) args)
+                    |> prec_parens (prec > app_prec)
+                | App (callee, Implicit, args) ->
+                    prefix 4 1 (to_doc (app_prec + 1) callee)
+                        (to_doc (app_prec + 1) args ^^ blank 1 ^^ string "@")
                     |> prec_parens (prec > app_prec)
                 | AppSequence exprs ->
                     separate_map (break 1) (to_doc (app_prec + 1)) (Vector1.to_list exprs)
                     |> prec_parens (prec > app_prec)
-                | PrimApp (op, args) ->
-                    prefix 4 1 (string "__" ^^ Primop.to_doc op) (args_to_doc args)
+                | PrimApp (op, iargs, args) ->
+                    prefix 4 1 (string "__" ^^ Primop.to_doc op) (to_doc (app_prec + 1) args)
                     |> prec_parens (prec > app_prec)
-                | PrimBranch (op, args, clauses) ->
+                | PrimBranch (op, iargs, args, clauses) ->
                     prefix 4 1 (string "__" ^^ Branchop.to_doc op)
-                        (args_to_doc args ^^ blank 1
-                        ^^ to_doc (app_prec + 1) {expr with v = Fn clauses})
+                        ((to_doc (app_prec + 1) args) ^^ blank 1
+                        ^^ to_doc (app_prec + 1) {expr with v = Fn (Explicit, clauses)})
+                    |> prec_parens (prec > app_prec)
                 | Let (defs, body) ->
                     string "__let" ^^ blank 1
                     ^^ surround_separate 4 0 (braces empty)
@@ -82,29 +87,17 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                 | Record stmts ->
                     surround_separate_map 4 0 (braces empty) lbrace (semi ^^ break 1) rbrace
                         Stmt.to_doc (Vector.to_list stmts)
-                | Fn clauses ->
+                | Fn (plicity, clauses) ->
                     surround_separate_map 4 0 (braces bar) lbrace (break 1) rbrace
-                        clause_to_doc (Vector.to_list clauses)
+                        (clause_to_doc (Util.plicity_arrow plicity))
+                        (Vector.to_list clauses)
                 | Var name -> Name.to_doc name
                 | Wild name -> underscore ^^ Name.to_doc name
-                | Const v -> Const.to_doc v
-
-            and args_to_doc = function
-                | Left iarg -> to_doc (app_prec + 1) iarg ^^ blank 1 ^^ string "@"
-                | Right earg -> to_doc (app_prec + 1) earg
-                | Both (iarg, earg) ->
-                    infix 4 1 (string "@")
-                        (to_doc (app_prec + 1) iarg) (to_doc (app_prec + 1) earg) in
+                | Const v -> Const.to_doc v in
             to_doc 0 expr
 
-        and clause_to_doc {params; body} =
-            let open PPrint in
-            match params with
-            | Left iparam -> infix 4 1 (string "=>") (bar ^^ blank 1 ^^ to_doc iparam) (to_doc body)
-            | Right eparam -> infix 4 1 (string "->") (bar ^^ blank 1 ^^ to_doc eparam) (to_doc body)
-            | Both (iparam, eparam) ->
-                infix 4 1 (string "->") (to_doc eparam) (to_doc body)
-                |> infix 4 1 (string "=>") (bar ^^ blank 1 ^^ to_doc iparam)
+        and clause_to_doc arrow {params; body} =
+            PPrint.(infix 4 1 arrow (bar ^^ blank 1 ^^ to_doc params) (to_doc body))
     end
 
     module Stmt = struct
@@ -141,7 +134,8 @@ and Type : AstSigs.TYPE
 
     type t =
         | Tuple of t with_pos Vector.t
-        | Pi of {domain : (pat with_pos, (pat with_pos * t with_pos option)) Ior.t; codomain : t with_pos }
+        | Pi of {domain : pat with_pos; eff : t with_pos option; codomain : t with_pos }
+        | Impli of {domain : pat with_pos; codomain : t with_pos}
         | Record of stmt Vector.t
         | Row of stmt Vector.t
         | Path of expr
@@ -154,26 +148,15 @@ and Type : AstSigs.TYPE
             surround_separate_map 4 0 (parens colon)
                 (lparen ^^ colon) (comma ^^ break 1) rparen
                 to_doc (Vector.to_list typs)
-        | Pi {domain; codomain} ->
-            let codoc = to_doc codomain in
-            let (idoc, edoc, effdoc) = match domain with
-                | Left idomain -> (Some (Term.Expr.to_doc idomain), None, None)
-                | Right (edomain, eff) -> (None, Some (Term.Expr.to_doc edomain), Option.map to_doc eff)
-                | Both (idomain, (edomain, eff)) ->
-                    ( Some (Term.Expr.to_doc idomain), Some (Term.Expr.to_doc edomain)
-                    , Option.map to_doc eff ) in
-            let doc = match edoc with
-                | Some edoc ->
-                    let doc = string "->" ^^ blank 1 ^^ codoc in
-                    let doc = match effdoc with
-                        | Some effdoc ->
-                            prefix 4 1 (string "-!" ^^ blank 1 ^^ effdoc) doc
-                        | None -> doc in
-                    prefix 4 1 edoc doc
-                | None -> codoc in
-            (match idoc with
-            | Some idoc -> prefix 4 1 idoc (string "=>" ^^ blank 1 ^^ doc)
-            | None -> doc)
+        | Pi {domain; eff; codomain} ->
+            prefix 4 1 (Term.Expr.to_doc domain)
+                (let codoc = string "->" ^^ blank 1 ^^ to_doc codomain in
+                match eff with
+                | Some eff -> prefix 4 1 (string "-!" ^^ blank 1 ^^ to_doc eff) codoc
+                | None -> codoc)
+        | Impli {domain; codomain} ->
+            prefix 4 1 (Term.Expr.to_doc domain ^^ blank 1)
+                (string "=>" ^^ to_doc codomain)
         | Record stmts ->
             surround_separate_map 4 0 (braces colon)
                 (lbrace ^^ colon) (semi ^^ break 1) rbrace

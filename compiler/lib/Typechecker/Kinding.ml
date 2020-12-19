@@ -22,13 +22,13 @@ let (!) = TxRef.(!)
 
 let kindof_prim : Prim.t -> T.kind = function
     | Int | Bool -> T.aType
-    | Array | Cell -> Pi {universals = Vector.empty; domain = Right {edomain = T.aType; eff = EmptyRow}
+    | Array | Cell -> Pi {universals = Vector.empty; domain = T.aType; eff = EmptyRow
         ; codomain = T.aType}
     | SingleRep -> T.aType
     | Boxed -> Prim SingleRep
-    | TypeIn -> Pi {universals = Vector.empty; domain = Right {edomain = T.rep; eff = EmptyRow}
+    | TypeIn -> Pi {universals = Vector.empty; domain = T.rep; eff = EmptyRow
         ; codomain = T.aType}
-    | RowOf -> Pi {universals = Vector.empty; domain = Right {edomain = T.aKind; eff = EmptyRow}
+    | RowOf -> Pi {universals = Vector.empty; domain = T.aKind; eff = EmptyRow
         ; codomain = T.aKind}
 
 let rec kindof_F pos env : T.t -> T.kind = function
@@ -42,14 +42,13 @@ let rec kindof_F pos env : T.t -> T.kind = function
     | Tuple typs ->
         let kinds = Vector.map (kindof_F pos env) typs in
         App (Prim TypeIn, PromotedArray kinds)
-    | Pi _ | Record _ | Proxy _ -> T.aType
+    | Pi _ | Impli _ | Record _ | Proxy _ -> T.aType
     | With _ | EmptyRow -> T.aRow
-    | Fn (domain, body) ->
-        Pi { universals = Vector.empty; domain  = Right {edomain = domain; eff = EmptyRow}
-            ; codomain = kindof_F pos env body }
+    | Fn (domain, body) -> Pi { universals = Vector.empty; domain; eff = EmptyRow
+        ; codomain = kindof_F pos env body }
     | App (callee, arg) ->
         (match kindof_F pos env callee with
-        | Pi {universals; domain = Right {edomain = domain; eff = _}; codomain} ->
+        | Pi {universals; domain; eff = _; codomain} ->
             if Vector.length universals = 0 then begin
                 check_F pos env domain arg;
                 codomain
@@ -78,7 +77,73 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
             ) typs in
             {typ = Tuple typs; kind = App (Prim TypeIn, PromotedArray (Vector.build kinds))}
 
-        | Pi {domain; codomain} -> elab_pi env domain codomain
+        | Pi {domain; eff; codomain} ->
+            let env0 = env in
+            let (env, universals) = Env.push_existential env0 in
+            let (domain, env) = elab_domain env domain in
+            let eff : T.t = match eff with
+                | Some eff -> check env T.aRow eff
+                | None -> EmptyRow in
+            let codomain_kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
+            let codomain = check env codomain_kind codomain in
+            let universals = Vector.of_list !universals in
+
+            let ubs = Vector.map fst universals in
+            let ukinds = Vector.map snd ubs in
+            let codomain =
+                match (eff, codomain) with (* FIXME: eval `eff` *)
+                | (EmptyRow, Exists (existentials, concr_codo)) ->
+                    (* Hoist codomain existentials to make applicative functor (in the ML modules sense): *)
+                    let substitution = Vector.map (fun kind ->
+                        let kind = Vector.fold_right (fun codomain domain ->
+                            T.Pi {universals = Vector.empty; domain; eff = EmptyRow; codomain}
+                        ) kind ukinds in
+                        let ov = Env.generate env0 (Name.fresh (), kind) in
+                        Vector.fold (fun callee arg -> T.App (callee, Ov arg)) (Ov ov) universals
+                    ) (Vector1.to_vector existentials) in
+                    Env.expose env0 substitution concr_codo
+                | (_, codomain) -> codomain in
+
+            let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
+                (i + 1, Name.Map.add name i substitution)
+            ) (0, Name.Map.empty) ubs in
+            { TS.typ = T.Pi {universals = Vector.map snd ubs
+                 ; domain = Env.close env substitution domain
+                 ; eff = Env.close env substitution eff
+                 ; codomain = Env.close env substitution codomain }
+            ; kind = T.aType }
+
+        | Impli {domain; codomain} ->
+            let env0 = env in
+            let (env, universals) = Env.push_existential env0 in
+            let (domain, env) = elab_domain env domain in
+            let codomain_kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
+            let codomain = check env codomain_kind codomain in
+            let universals = Vector.of_list !universals in
+
+            let ubs = Vector.map fst universals in
+            let ukinds = Vector.map snd ubs in
+            let codomain =
+                match codomain with (* FIXME: eval `eff` *)
+                | Exists (existentials, concr_codo) ->
+                    (* Hoist codomain existentials to make applicative functor (in the ML modules sense): *)
+                    let substitution = Vector.map (fun kind ->
+                        let kind = Vector.fold_right (fun codomain domain ->
+                            T.Pi {universals = Vector.empty; domain; eff = EmptyRow; codomain}
+                        ) kind ukinds in
+                        let ov = Env.generate env0 (Name.fresh (), kind) in
+                        Vector.fold (fun callee arg -> T.App (callee, Ov arg)) (Ov ov) universals
+                    ) (Vector1.to_vector existentials) in
+                    Env.expose env0 substitution concr_codo
+                | codomain -> codomain in
+
+            let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
+                (i + 1, Name.Map.add name i substitution)
+            ) (0, Name.Map.empty) ubs in
+            { TS.typ = T.Impli {universals = Vector.map snd ubs
+                 ; domain = Env.close env substitution domain
+                 ; codomain = Env.close env substitution codomain }
+            ; kind = T.aType }
 
         | Record decls ->
             let {TS.typ = row; kind = _} = elab_row env typ.pos decls in
@@ -105,58 +170,6 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
 
         | Prim pt -> {typ = Prim pt; kind = kindof_prim pt}
 
-    and elab_pi env0 domain codomain =
-        let (env, universals) = Env.push_existential env0 in
-        let (domain, eff, env) = match domain with
-            | Left idomain ->
-                let (idomain, env) = elab_domain env idomain in
-                (Ior.Left idomain, T.EmptyRow, env)
-            | Right (edomain, eff) ->
-                let (edomain, env) = elab_domain env edomain in
-                let eff : T.t = match eff with
-                    | Some eff -> check env T.aRow eff
-                    | None -> EmptyRow in
-                (Right {T.edomain; eff}, eff, env)
-            | Both (idomain, (edomain, eff)) ->
-                let (idomain, env) = elab_domain env idomain in
-                let (edomain, env) = elab_domain env edomain in
-                let eff : T.t = match eff with
-                    | Some eff -> check env T.aRow eff
-                    | None -> EmptyRow in
-                (Both (idomain, {edomain; eff}), eff, env) in
-        let codomain_kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-        let codomain = check env codomain_kind codomain in
-        let universals = Vector.of_list !universals in
-
-        let ubs = Vector.map fst universals in
-        let ukinds = Vector.map snd ubs in
-        let codomain =
-            match (eff, codomain) with (* FIXME: eval `eff` *)
-            | (EmptyRow, Exists (existentials, concr_codo)) ->
-                (* Hoist codomain existentials to make applicative functor (in the ML modules sense): *)
-                let substitution = Vector.map (fun kind ->
-                    let kind = Vector.fold_right (fun codomain domain ->
-                        T.Pi { universals = Vector.empty; domain = Right {edomain = domain; eff = EmptyRow}
-                            ; codomain }
-                    ) kind ukinds in
-                    let ov = Env.generate env0 (Name.fresh (), kind) in
-                    Vector.fold (fun callee arg -> T.App (callee, Ov arg)) (Ov ov) universals
-                ) (Vector1.to_vector existentials) in
-                Env.expose env0 substitution concr_codo
-            | (_, codomain) -> codomain in
-
-        let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
-            (i + 1, Name.Map.add name i substitution)
-        ) (0, Name.Map.empty) ubs in
-        { TS.typ = T.Pi { universals = Vector.map snd ubs
-             ; domain = Ior.bimap (Env.close env substitution)
-                 (fun {T.edomain; eff} ->
-                     { T.edomain = Env.close env substitution edomain
-                     ; eff = Env.close env substitution eff })
-                domain
-             ; codomain = Env.close env substitution codomain }
-        ; kind = T.aType }
-
     and elab_domain env (domain : AExpr.t with_pos) =
         let (_, (_, domain), defs) = C.elaborate_pat env domain in
         let env = Vector.fold Env.push_val env defs in
@@ -182,7 +195,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
     and analyze_decl env = function
         | AStmt.Def (_, pat, expr) ->
             let (pat, semiabs, defs') = C.elaborate_pat env pat in
-            let expr' = AExpr.App ({expr with v = Var (Name.of_string "typeof")}, Right expr) in
+            let expr' = AExpr.App ({expr with v = Var (Name.of_string "typeof")}, Explicit, expr) in
             (pat, semiabs, defs', {expr with v = AType.Path expr'})
         | AStmt.Expr {v = Ann (pat, typ); pos = _} ->
             let (pat, semiabs, defs') = C.elaborate_pat env pat in
@@ -251,7 +264,8 @@ and eval env typ =
             | Assigned typ -> eval typ
             | Unassigned _ -> Some (typ, None))
         | ( Exists _ | PromotedArray _ | PromotedTuple _
-          | Tuple _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ) as typ -> Some (typ, None)
+          | Tuple _ | Pi _ | Impli _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ) as typ ->
+            Some (typ, None)
         | Bv _ -> failwith "unreachable: `Bv` in `eval`"
 
     and apply callee arg = match callee with
@@ -263,7 +277,7 @@ and eval env typ =
             | Unassigned _ -> None
             | Assigned _ -> failwith "unreachable: Assigned in `apply`.")
         | Exists _ | PromotedArray _ | PromotedTuple _
-        | Tuple _ | Pi _ | Record _ | With _ | EmptyRow | Proxy _ ->
+        | Tuple _ | Pi _ | Impli _ | Record _ | With _ | EmptyRow | Proxy _ ->
             failwith "unreachable: uncallable type in `eval/apply`"
         | Bv _ -> failwith "unreachable: `Bv` in `eval/apply`"
     in eval typ

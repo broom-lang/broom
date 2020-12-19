@@ -51,7 +51,8 @@ and Typ : FcTypeSigs.TYPE
         | PromotedArray of t Vector.t
         | PromotedTuple of t Vector.t
         | Tuple of t Vector.t
-        | Pi of {universals : kind Vector.t; domain : (t, edomain) Ior.t; codomain : t}
+        | Pi of {universals : kind Vector.t; domain : t; eff : t; codomain : t}
+        | Impli of {universals : kind Vector.t; domain : t; codomain : t}
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
@@ -62,8 +63,6 @@ and Typ : FcTypeSigs.TYPE
         | Ov of ov
         | Uv of uv
         | Prim of Prim.t
-
-    and edomain = {edomain : t; eff : t}
 
     and template =
         | TupleL of int
@@ -117,25 +116,20 @@ and Typ : FcTypeSigs.TYPE
             surround_separate_map 4 0 (parens colon)
                 (lparen ^^ colon) (comma ^^ break 1) rparen
                 (to_doc s) (Vector.to_list typs)
-        | Pi {universals; domain; codomain} ->
-            let codoc = to_doc s codomain in
-            let (idoc, edoc, effdoc) = match domain with
-                | Left idomain -> (Some (to_doc s idomain), None, None)
-                | Right {edomain; eff} -> (None, Some (to_doc s edomain), Some (to_doc s eff))
-                | Both (idomain, {edomain; eff}) ->
-                    (Some (to_doc s idomain), Some (to_doc s edomain), Some (to_doc s eff)) in
-            let doc = match edoc with
-                | Some edoc ->
-                    let doc = string "->" ^^ blank 1 ^^ codoc in
-                    let doc = match effdoc with
-                        | Some effdoc ->
-                            prefix 4 1 (string "-!" ^^ blank 1 ^^ effdoc) doc
-                        | None -> doc in
-                    prefix 4 1 edoc doc
-                | None -> codoc in
-            let doc = match idoc with
-                | Some idoc -> prefix 4 1 idoc (string "=>" ^^ blank 1 ^^ doc)
-                | None -> doc in
+        | Pi {universals; domain; eff; codomain} ->
+            let codoc = string "->" ^^ blank 1 ^^ to_doc s codomain in
+            let doc = prefix 4 1 (to_doc s domain)
+                (match eff with
+                | EmptyRow -> codoc
+                | eff -> prefix 4 1 (string "-!" ^^ blank 1 ^^ to_doc s eff) codoc) in
+            if Vector.length universals > 0
+            then prefix 4 1
+                (string "forall" ^^ blank 1 ^^ kinds_to_doc s (Vector.to_list universals))
+                (dot ^^ blank 1 ^^ doc)
+            else doc
+        | Impli {universals; domain; codomain} ->
+            let doc = prefix 4 1 (to_doc s domain)
+                (string "=>" ^^ blank 1 ^^ to_doc s codomain) in
             if Vector.length universals > 0
             then prefix 4 1
                 (string "forall" ^^ blank 1 ^^ kinds_to_doc s (Vector.to_list universals))

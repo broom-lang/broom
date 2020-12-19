@@ -1,3 +1,9 @@
+type plicity = Explicit | Implicit
+
+let plicity_arrow = function
+    | Explicit -> PPrint.string "->"
+    | Implicit -> PPrint.string "=>"
+
 type span = Lexing.position * Lexing.position
 
 let pos_to_string ({pos_lnum = line; pos_bol = bol; pos_cnum = offset; pos_fname = _} : Lexing.position) =

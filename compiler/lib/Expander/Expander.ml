@@ -50,7 +50,7 @@ let parse_appseq env exprs =
         match token i with
         | Some (Some Postfix, op, i) ->
             let arg = { Util.pos = (fst arg.pos, snd op.pos)
-                      ; v = Expr.App (op, Ior.Right arg) } in
+                      ; v = Expr.App (op, Explicit, arg) } in
             postfix_tail arg i
         | _ -> (arg, i) in
 
@@ -60,7 +60,7 @@ let parse_appseq env exprs =
         | Some (Some Prefix, op, i) ->
             let (arg, i) = prefix i in
             ( { pos = (fst op.pos, snd arg.pos)
-              ; v = App (op, Ior.Right arg) }
+              ; v = App (op, Explicit, arg) }
             , i )
         | Some (None, arg, i) -> postfix_tail arg i
         | Some (Some (Infix | Postfix), _, _) -> failwith "unexpected"
@@ -88,11 +88,11 @@ let parse_appseq env exprs =
           | 1 ->
             let arg = Vector.get args 0 in
             let pos = (fst callee.pos, snd arg.pos) in
-            {pos; v = App (callee, Ior.Right arg)}
+            {pos; v = App (callee, Explicit, arg)}
           | len ->
             let pos = (fst callee.pos, snd (Vector.get args (len - 1)).pos) in
             let apos = (fst (Vector.get args 0).pos, snd pos) in
-            {pos; v = App (callee, Ior.Right {pos = apos; v = Tuple args})})
+            {pos; v = App (callee, Explicit, {pos = apos; v = Tuple args})})
         , i ) in
 
     (* infix = infix INFIX app | app *)
@@ -105,7 +105,7 @@ let parse_appseq env exprs =
                 let pos = (fst lhs.pos, snd rhs.pos) in
                 let args = Vector.of_array_unsafe [|lhs; rhs|] in
                 let lhs : expr with_pos =
-                    {pos; v = App (op, Ior.Right {pos; v = Tuple args})} in
+                    {pos; v = App (op, Explicit, {pos; v = Tuple args})} in
                 tail lhs i
             | None -> lhs
             | Some ((Some (Prefix | Postfix) | None), _, _) -> failwith "unexpected" in
@@ -116,21 +116,13 @@ let parse_appseq env exprs =
 
 (* OPTIMIZE: Type.map_children (which does not exist yet): *)
 let rec expand_typ env (typ : typ with_pos) : typ with_pos = match typ.v with
-    | Pi {domain; codomain} ->
-        let (domain, env) = match domain with
-            | Left idomain ->
-                let (idomain, env) = expand_pat ignore env idomain in
-                (Ior.Left idomain, env)
-            | Right (edomain, eff) ->
-                let (edomain, env) = expand_pat ignore env edomain in
-                let eff = Option.map (expand_typ env) eff in
-                (Right (edomain, eff), env)
-            | Both (idomain, (edomain, eff)) ->
-                let (idomain, env) = expand_pat ignore env idomain in
-                let (edomain, env) = expand_pat ignore env edomain in
-                let eff = Option.map (expand_typ env) eff in
-                (Both (idomain, (edomain, eff)), env) in
-        {typ with v = Pi {domain; codomain = expand_typ env codomain}}
+    | Pi {domain; eff; codomain} ->
+        let (edomain, env) = expand_pat ignore env domain in
+        let eff = Option.map (expand_typ env) eff in
+        {typ with v = Pi {domain; eff; codomain = expand_typ env codomain}}
+    | Impli {domain; codomain} ->
+        let (domain, env) = expand_pat ignore env domain in
+        {typ with v = Impli {domain; codomain = expand_typ env codomain}}
     | Tuple typs ->
         {typ with v = Tuple (Vector.map (expand_typ env) typs)}
     | Record stmts ->
@@ -149,25 +141,25 @@ and expand env expr : expr with_pos = match expr.v with
         (match Vector1.of_vector defs with
         | Some defs -> {expr with v = Let (defs, body)}
         | None -> body)
-    | Fn clauses ->
-        {expr with v = Fn (Vector.map (expand_clause env) clauses)}
+    | Fn (plicity, clauses) ->
+        {expr with v = Fn (plicity, Vector.map (expand_clause env) clauses)}
     | AppSequence exprs -> expand env (parse_appseq env (Vector1.to_vector exprs))
-    | App ({v = Var cname; pos = _} as callee, Ior.Right arg) ->
+    | App ({v = Var cname; pos = _} as callee, Explicit, arg) ->
         (match Env.find env cname with
         | Some (_, cname') ->
             {expr with v = App ({v = Var cname'; pos = callee.pos}
-                , Ior.Right (expand env arg))}
+                , Explicit, (expand env arg))}
         | None -> (match Name.basename cname with
             | Some "let" -> expand_let env expr.pos arg
             | _ -> failwith ("unbound: " ^ Name.to_string cname
                 ^ " at " ^ Util.span_to_string expr.pos)))
-    | App (callee, args) ->
-        {expr with v = App (expand env callee, Ior.map (expand env) args)}
-    | PrimApp (op, args) ->
-        {expr with v = PrimApp (op, Ior.map (expand env) args)}
-    | PrimBranch (op, args, clauses) ->
-        {expr with v = PrimBranch (op, Ior.map (expand env) args
-            , Vector.map (expand_clause env) clauses)}
+    | App (callee, plicity, args) ->
+        {expr with v = App (expand env callee, plicity, expand env args)}
+    | PrimApp (op, iargs, args) ->
+        {expr with v = PrimApp (op, Option.map (expand env) iargs, expand env args)}
+    | PrimBranch (op, iargs, args, clauses) ->
+        {expr with v = PrimBranch (op, Option.map (expand env) iargs
+            , expand env args, Vector.map (expand_clause env) clauses)}
     | Ann (expr, typ) ->
         {expr with v = Ann (expand env expr, expand_typ env typ)}
     | Tuple exprs ->
@@ -231,17 +223,7 @@ and expand_pat report_def env (pat : pat with_pos) =
     | Wild _ | Const _ -> (pat, env)
 
 and expand_clause env ({params; body} : clause) : clause =
-    let (params, env) = match params with
-        | Left iparam ->
-            let (iparam, env) = expand_pat ignore env iparam in
-            (Ior.Left iparam, env)
-        | Right eparam ->
-            let (eparam, env) = expand_pat ignore env eparam in
-            (Right eparam, env)
-        | Both (iparam, eparam) ->
-            let (iparam, env) = expand_pat ignore env iparam in
-            let (eparam, env) = expand_pat ignore env eparam in
-            (Both (iparam, eparam), env) in
+    let (params, env) = expand_pat ignore env params in
     {params; body = expand env body}
 
 and expand_def_pat report_def env (pos, pat, expr) =

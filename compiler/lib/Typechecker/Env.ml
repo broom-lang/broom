@@ -173,15 +173,17 @@ let rec expose' env depth substitution : T.t -> T.t = function
     | PromotedArray typs -> PromotedArray (Vector.map (expose' env depth substitution) typs)
     | PromotedTuple typs -> PromotedTuple (Vector.map (expose' env depth substitution) typs)
     | Tuple typs -> Tuple (Vector.map (expose' env depth substitution) typs)
-    | Pi {universals; domain; codomain} ->
+    | Pi {universals; domain; eff; codomain} ->
         let depth = depth + 1 in
         Pi { universals
-            ; domain = Ior.bimap (expose' env depth substitution)
-                (fun {T.edomain; eff} ->
-                    { T.edomain = expose' env depth substitution edomain
-                    ; eff = expose' env depth substitution eff })
-                domain
+            ; domain = expose' env depth substitution domain
+            ; eff = expose' env depth substitution eff
             ; codomain = expose' env depth substitution codomain }
+    | Impli {universals; domain; codomain} ->
+        let depth = depth + 1 in
+        Impli { universals
+                ; domain = expose' env depth substitution domain
+                ; codomain = expose' env depth substitution codomain }
     | Record row -> Record (expose' env depth substitution row)
     | With {base; label; field} ->
         With {base = expose' env depth substitution base; label; field = expose' env depth substitution field}
@@ -220,15 +222,17 @@ let rec close' env depth substitution : T.t -> T.t = function
     | PromotedArray typs -> PromotedArray (Vector.map (close' env depth substitution) typs)
     | PromotedTuple typs -> PromotedTuple (Vector.map (close' env depth substitution) typs)
     | Tuple typs -> Tuple (Vector.map (close' env depth substitution) typs)
-    | Pi {universals; domain; codomain} ->
+    | Pi {universals; domain; eff; codomain} ->
         let depth = depth + 1 in
         Pi { universals
-           ; domain = Ior.bimap (close' env depth substitution)
-                (fun {T.edomain; eff} ->
-                    { T.edomain = close' env depth substitution edomain
-                    ; eff = close' env depth substitution eff })
-                domain
+           ; domain = close' env depth substitution domain
+           ; eff = close' env depth substitution eff
            ; codomain = close' env depth substitution codomain }
+    | Impli {universals; domain; codomain} ->
+        let depth = depth + 1 in
+        Impli { universals
+               ; domain = close' env depth substitution domain
+               ; codomain = close' env depth substitution codomain }
     | Record row -> Record (close' env depth substitution row)
     | With {base; label; field} ->
         With {base = close' env depth substitution base; label; field = close' env depth substitution field}
@@ -272,15 +276,12 @@ let push_abs_skolems env existentials body =
     let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
     (env, Option.get (Vector1.of_vector skolems), expose env substitution body)
 
-let push_arrow_skolems env universals domain codomain =
+let push_arrow_skolems env universals domain eff codomain =
     let (env, skolems) = push_skolems env universals in
     let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
     ( env, skolems
-    , Ior.bimap (expose env substitution)
-        (fun {T.edomain; eff} ->
-            { T.edomain = expose env substitution edomain
-            ; eff =  expose env substitution eff })
-        domain
+    , expose env substitution domain
+    , expose env substitution eff
     , expose env substitution codomain )
 
 let instantiate_abs env existentials body =
@@ -288,14 +289,12 @@ let instantiate_abs env existentials body =
     let substitution = uvs |> Vector1.to_vector |> Vector.map (fun uv -> T.Uv uv) in
     (uvs, expose env substitution body)
 
-let instantiate_arrow env universals domain codomain =
+let instantiate_arrow env universals domain eff codomain =
     let uvs = Vector.map (uv env) universals in
     let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
     ( uvs
-    , Ior.bimap (expose env substitution)
-        (fun {T.edomain; eff} ->
-            {T.edomain = expose env substitution edomain; eff = expose env substitution eff})
-        domain
+    , expose env substitution domain
+    , expose env substitution eff
     , expose env substitution codomain )
 
 let instantiate_primop env universals domain app_eff codomain =

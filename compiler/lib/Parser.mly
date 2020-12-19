@@ -80,35 +80,35 @@ ann_expr :
 binapp :
     | binapp "||" binapp2 {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Right {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Explicit, {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp2 { $1 }
 
 binapp2 :
     | binapp2 "&&" binapp3 {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Right {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Explicit, {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp3 { $1 }
 
 binapp3 :
     | binapp4 COMPARISON binapp4 { (* NOTE: nonassociative *)
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Right {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Explicit, {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp4 { $1 }
 
 binapp4 :
     | binapp4 ADDITIVE binapp5 {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Right {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Explicit, {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | binapp5 { $1 }
 
 binapp5 :
     | binapp5 MULTIPLICATIVE app {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
-        {v = App (operator, Right {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
+        {v = App (operator, Explicit, {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
     | app { $1 }
 
@@ -116,11 +116,11 @@ app :
     | PRIMOP args {
         let op = $1 in
         match $2 with
-        | Left iargs -> {v = PrimApp (op, Left (parenthesized iargs $loc($2))); pos = $loc}
-        | Right eargs -> {v = PrimApp (op, Right (parenthesized eargs $loc($2))); pos = $loc}
+        | Left iargs -> failwith "primop missing explicit args"
+        | Right eargs -> {v = PrimApp (op, None, (parenthesized eargs $loc($2))); pos = $loc}
         | Both (iargs, eargs) ->
-            {v = PrimApp (op, Both (parenthesized iargs $loc($2)
-                , parenthesized eargs $loc($2))); pos = $loc}
+            {v = PrimApp (op, Some (parenthesized iargs $loc($2))
+                , parenthesized eargs $loc($2)); pos = $loc}
     }
     | BRANCHOP args {
         let op = $1 in
@@ -130,18 +130,18 @@ app :
             assert (Vector.length eargs >= 2);
             let args = Vector.sub eargs 0 (Vector.length eargs - 1) in
             let clauses = match (Vector.get eargs (Vector.length args)).v with
-                | Fn clauses -> clauses
+                | Fn (Explicit, clauses) -> clauses
                 | _ -> failwith "branchop missing clauses" in
-            {v = PrimBranch (op, Right (parenthesized args $loc($2)), clauses); pos = $loc}
+            {v = PrimBranch (op, None, parenthesized args $loc($2), clauses); pos = $loc}
     }
     | select args { match $2 with
-        | Left iargs -> {v = App ($1, Left (parenthesized iargs $loc($2))); pos = $loc}
+        | Left iargs -> {v = App ($1, Implicit, parenthesized iargs $loc($2)); pos = $loc}
         | Right args ->
             let args = args |> Vector1.of_vector |> Option.get in
             {v = AppSequence (Vector1.append (Vector1.singleton $1) args); pos = $loc}
         | Both (iargs, eargs) ->
-            {v = App ($1, Both (parenthesized iargs $loc($2)
-                , parenthesized eargs $loc($2))); pos = $loc}
+            let callee = {v = App ($1, Implicit, parenthesized iargs $loc($2)); pos = $loc} in
+            {v = App (callee, Explicit, parenthesized eargs $loc($2)); pos = $loc}
     }
     | select { $1 }
 
@@ -154,15 +154,15 @@ nestable : nestable_without_pos { {v = $1; pos = $sloc} }
 
 nestable_without_pos :
     | trailer("{", ";", stmt, "}") { Record $1 }
-    | "{" clause+ "}" { Fn (Vector.of_list $2) }
-    | "{" "||" stmt tail(";", stmt, "}") {
-        let body = App ( {v = Var (Name.of_string "do"); pos = $loc}
-            , Right {v = Record (Vector.of_list ($3 :: $4)); pos = $loc} ) in
-        Fn (Vector.singleton
-            { params = Ior.Right {v = Tuple Vector.empty; pos = $loc($2)}
+    | "{" clauses "}" { Fn (fst $2, Vector.of_list (snd $2)) }
+    | "{" "|" "->" stmt tail(";", stmt, "}") {
+        let body = App ( {v = Var (Name.of_string "do"); pos = $loc}, Explicit
+            , {v = Record (Vector.of_list ($4 :: $5)); pos = $loc} ) in
+        Fn (Explicit, Vector.singleton
+            { params = {v = Tuple Vector.empty; pos = $loc($3)}
             ; body = {v = body; pos = $loc} })
     }
-    | "{" "|" "}" { Fn Vector.empty }
+    | "{" "|" "}" { Fn (Explicit, Vector.empty) }
     | trailer("(", ",", expr, ")") { parenthesized' $1 }
     | "(" "||" ")" { Var (Name.of_string $2) }
     | "(" "&&" ")" { Var (Name.of_string $2) }
@@ -179,18 +179,21 @@ nestable_without_pos :
     | "_" { Wild (Name.of_string $1) }
     | INT { Const (Int $1) }
 
-clause : head expr { {params = $1; body = $2} }
+clauses :
+    | explicit_clause+ { (Explicit, $1) }
+    | implicit_clause+ { (Implicit, $1) }
 
-head :
-    | "|" trail(",", binapp, "?") trail(",", binapp, "->") {
-        Both (parenthesized $2 $loc($2), parenthesized $3 $loc($3))
+explicit_clause : "|" binapp tail(",", binapp, "->") expr {
+        {params = parenthesized (Vector.of_list ($2 :: $3)) $loc($3); body = $4}
     }
-    | "|" trail(",", binapp, "->") { Right (parenthesized $2 $loc($2)) }
-    | "|" trail(",", binapp, "=>") { Ior.Left (parenthesized $2 $loc($2)) }
+
+implicit_clause : "|" binapp tail(",", binapp, "=>") expr {
+        {params = parenthesized (Vector.of_list ($2 :: $3)) $loc($3); body = $4}
+    }
 
 args :
-    | select+ "@" select+ { Ior.Both (Vector.of_list $1, Vector.of_list $3) }
-    | select+ { Ior.Right (Vector.of_list $1) }
+    | select+ "@" select+ { Both (Vector.of_list $1, Vector.of_list $3) }
+    | select+ { Right (Vector.of_list $1) }
     | select+ "@" { Ior.Left (Vector.of_list $1) }
 
 (* # Types *)
@@ -198,20 +201,14 @@ args :
 typ : typ_without_pos { {v = $1; pos = $sloc} }
 
 typ_without_pos :
-    | binapp "=>" binapp "-!" binapp "->" typ {
-        Pi {domain = Both ($1, ($3, Some {$5 with v = path $5.v})); codomain = $7}
-    }
-    | binapp "=>" binapp "->" typ {
-        Pi {domain = Both ($1, ($3, None)); codomain = $5}
-    }
-    | binapp "=>" ann_expr {
-        Pi {domain = Left $1; codomain = {$3 with v = path $3.v}}
-    }
     | binapp "-!" binapp "->" typ {
-        Pi {domain = Right ($1, Some {$3 with v = path $3.v}); codomain = $5}
+        Pi {domain = $1; eff = Some {$3 with v = path $3.v}; codomain = $5}
     }
     | binapp "->" typ {
-        Pi {domain = Right ($1, None); codomain = $3}
+        Pi {domain = $1; eff = None; codomain = $3}
+    }
+    | binapp "=>" ann_expr {
+        Impli {domain = $1; codomain = {$3 with v = path $3.v}}
     }
     | ann_expr { path $1.v }
 

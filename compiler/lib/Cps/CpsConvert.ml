@@ -36,10 +36,8 @@ let convert_typ state_typ =
         | Tuple typs -> Tuple (Vector.map convert typs)
         | PromotedTuple typs -> PromotedTuple (Vector.map convert typs)
         | PromotedArray typs -> PromotedArray (Vector.map convert typs)
-        | Pi {universals; domain; codomain} ->
-            let domain = convert (match domain with
-                | Right {edomain; eff = _} -> edomain
-                | Left domain -> domain) in
+        | Pi {universals; domain; eff = _; codomain} | Impli {universals; domain; codomain} ->
+            let domain = convert domain in
             Pi {universals; domain = Vector.of_list [ state_typ
                 ; Type.Pi {universals = Vector.empty
                     ; domain = Vector.of_list [state_typ; convert codomain]}

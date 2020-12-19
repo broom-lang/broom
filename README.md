@@ -35,8 +35,8 @@ exprs ::= types ::= (expr ("," expr)*)? ","?
 expr ::=
 pat ::=
 type ::= 
-    | (type "=>")? type ("-!" type)? "->" type
-    | type "=>" type (* purely implicit function (~ resolution rule) *)
+    | type ("-!" type)? "->" type
+    | type "=>" type
 
     | expr ":" type
     | expr "||" expr
@@ -50,8 +50,10 @@ type ::=
     | expr POSTFIX
     | expr "." ID
 
-    | "{" ("?" pat*)? "|" pat* "|" expr "}" (* function literal *)
-    | "{" "?" pat* "?" expr "}" (* purely implicit function (~ Horn clause) *)
+    | "{" ("|" pat ("," pat)* "->" expr)+ "}" (* function literal *)
+    | "{" "|" "->" stmts "}" (* thunk *)
+    | "{" "|" "}" (* empty function (uncallable) *)
+    | "{" ("|" pat ("," pat)* "=>" expr)+ "}" (* implicit function literal *)
     | "{" stmts "}"
     | "[" exprs "]"
     | "(" exprs ")"

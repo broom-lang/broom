@@ -9,11 +9,11 @@ module type EXPR = sig
         | Tuple of t with_pos Vector.t
         | Focus of t with_pos * int
         | Ann of t with_pos * typ with_pos
-        | Fn of clause Vector.t
-        | App of t with_pos * (t with_pos, t with_pos) Ior.t
+        | Fn of Util.plicity * clause Vector.t
+        | App of t with_pos * Util.plicity * t with_pos
         | AppSequence of t with_pos Vector1.t
-        | PrimApp of Primop.t * (t with_pos, t with_pos) Ior.t
-        | PrimBranch of Branchop.t * (t with_pos, t with_pos) Ior.t * clause Vector.t
+        | PrimApp of Primop.t * t with_pos option * t with_pos
+        | PrimBranch of Branchop.t * t with_pos option * t with_pos * clause Vector.t
         | Let of def Vector1.t * t with_pos
         | Record of stmt Vector.t
         | Select of t with_pos * Name.t
@@ -22,7 +22,7 @@ module type EXPR = sig
         | Wild of Name.t
         | Const of Const.t
 
-    and clause = {params : (pat with_pos, pat with_pos) Ior.t; body : t with_pos}
+    and clause = {params : pat with_pos; body : t with_pos}
 
     and pat = t
 
@@ -61,7 +61,8 @@ module type TYPE = sig
 
     type t =
         | Tuple of t with_pos Vector.t
-        | Pi of {domain : (pat with_pos, pat with_pos * t with_pos option) Ior.t; codomain : t with_pos}
+        | Pi of {domain : pat with_pos; eff : t with_pos option; codomain : t with_pos}
+        | Impli of {domain : pat with_pos; codomain : t with_pos}
         | Record of stmt Vector.t
         | Row of stmt Vector.t
         | Path of expr

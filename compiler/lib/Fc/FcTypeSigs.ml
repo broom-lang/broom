@@ -19,7 +19,8 @@ module type TYPE = sig
         | PromotedArray of t Vector.t
         | PromotedTuple of t Vector.t
         | Tuple of t Vector.t
-        | Pi of {universals : kind Vector.t; domain : (t, edomain) Ior.t; codomain : t}
+        | Pi of {universals : kind Vector.t; domain : t; eff : t; codomain : t}
+        | Impli of {universals : kind Vector.t; domain : t; codomain : t}
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
@@ -30,8 +31,6 @@ module type TYPE = sig
         | Ov of ov
         | Uv of uv
         | Prim of Prim.t
-
-    and edomain = {edomain : t; eff : t}
 
     and template =
         | TupleL of int

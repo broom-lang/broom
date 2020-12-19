@@ -89,14 +89,14 @@ let ltp filename =
                         let pos = {Lexing.pos_fname = filename; pos_lnum = 1; pos_bol = 0; pos_cnum = 0} in
                         (pos, pos) in
                 let entry = {Util.pos; v = Ast.Term.Expr.App ( {pos; v = Var (Name.of_string "main")}
-                    , Right {pos; v = Tuple Vector.empty} )} in
+                    , Explicit, {pos; v = Tuple Vector.empty} )} in
                 let block : Ast.Term.Expr.t Util.with_pos = {pos; v = Record (
                     Stream.concat
                         (Stream.from (Vector.to_source defs)
                         |> Stream.map (fun def -> Ast.Term.Stmt.Def def))
                         (Stream.single (Ast.Term.Stmt.Expr entry))
                     |> Stream.into (Vector.sink ()))} in
-                {Util.pos; v = Ast.Term.Expr.App ({pos; v = Var (Name.of_string "let")}, Right block)} in
+                {Util.pos; v = Ast.Term.Expr.App ({pos; v = Var (Name.of_string "let")}, Explicit, block)} in
             let program = Expander.expand Expander.Env.empty program in
             let doc = Ast.Term.Expr.to_doc program in
             pprint doc;
