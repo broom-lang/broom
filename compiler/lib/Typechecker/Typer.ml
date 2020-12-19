@@ -12,11 +12,12 @@ and M : TyperSigs.MATCHING with type env = Env.t = Matching.Make(Env)(E)
 type 'a typing = 'a TyperSigs.typing
 
 let typeof = T.typeof
+let check_stmt = T.check_stmt
 
 let check_program env defs main =
-    let (defs, env') = T.check_defs env defs in
-    let {TyperSigs.term = main; eff = _} = T.check env' (Fc.Type.Tuple Vector.empty) main in
-    {Fc.Program.type_fns = Env.type_fns env; defs; main}
-
-let check_stmt = T.check_stmt
+    try
+        let (defs, env') = T.check_defs env defs in
+        let {TyperSigs.term = main; eff = _} = T.check env' (Fc.Type.Tuple Vector.empty) main in
+        Ok {Fc.Program.type_fns = Env.type_fns env; defs; main}
+    with TypeError.TypeError (pos, err) -> Error (pos, err)
 

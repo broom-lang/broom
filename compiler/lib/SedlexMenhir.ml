@@ -40,7 +40,8 @@ let lexeme { stream; pos = _ } = Sedlexing.Utf8.lexeme stream
 
 
 (** [ParseError (file, line, col, token)] *)
-exception ParseError of (string * int * int * string)
+type parse_error = (string * int * int * string)
+exception ParseError of parse_error
 
 let string_of_ParseError (file, line, cnum, tok) =
   let file_to_string file =

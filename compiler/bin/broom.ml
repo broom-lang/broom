@@ -11,7 +11,7 @@ let name_c = String.capitalize_ascii name
 let prompt = name ^ "> "
 
 let debug_heading str =
-    print_endline ("\n" ^ str ^ "\n" ^ String.make (String.length str) '=' ^ "\n")
+    print_endline (str ^ "\n" ^ String.make (String.length str) '=' ^ "\n")
 let pwrite output = PP.ToChannel.pretty 1.0 80 output
 let pprint = pwrite stdout
 let pprint_err = pwrite stderr
@@ -24,6 +24,7 @@ let ep ((tenv, venv) as envs) (stmt : Ast.Term.Stmt.t) =
             | Def def ->
                 ( Typer.check_program tenv (Vector.singleton def)
                     {v = Tuple Vector.empty; pos = Ast.Term.Stmt.pos stmt}
+                  |> Result.get_ok (* FIXME *)
                 , Fc.Type.EmptyRow )
             | Expr expr ->
                 let {TS.term; eff} = Typer.typeof tenv expr in
@@ -54,8 +55,8 @@ let ep ((tenv, venv) as envs) (stmt : Ast.Term.Stmt.t) =
         envs
 
 let rep envs input =
-    try
-        let stmts = Parse.parse_stmts_exn input in
+    match Parse.parse_stmts input with
+    | Ok stmts ->
         let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc
             (Vector.to_list stmts))) in
         pprint doc;
@@ -64,21 +65,23 @@ let rep envs input =
         let envs = Vector.fold ep envs stmts in
         print_newline ();
         envs
-    with
-        | SedlexMenhir.ParseError err ->
-            prerr_endline (SedlexMenhir.string_of_ParseError err);
-            envs
+    | Error err ->
+        prerr_endline (SedlexMenhir.string_of_ParseError err);
+        envs
 
 let build debug check_only filename outfile =
     let open PPrint in
+    let (let*) = Result.bind in
     let input = open_in filename in
     let output = if not check_only then open_out outfile else stdout in
     let tenv = Typer.Env.program () in
     Fun.protect (fun () ->
         let input = Sedlexing.Utf8.from_channel input in
-        try
-            let defs = Parse.parse_defs_exn input in
+
+        match (
+            let* defs = Parse.parse_defs input |> Result.map_error parse_err in
             if debug then begin
+                print_newline ();
                 debug_heading "Parsed AST";
                 let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.def_to_doc
                     (Vector.to_list defs))) in
@@ -109,46 +112,48 @@ let build debug check_only filename outfile =
                 pprint (Ast.Term.Expr.to_doc program ^^ twice hardline);
             end;
 
-            let program = Typer.check_program tenv Vector.empty program in
+            let* program = Typer.check_program tenv Vector.empty program |> Result.map_error type_err in
             if debug then begin
                 debug_heading "FC from Typechecker";
                 pprint (Typer.Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
             end;
 
-            match FwdRefs.convert program with
-            | Ok program ->
+            let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
+            if debug then begin
+                debug_heading "Nonrecursive FC";
+                pprint (Typer.Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
+            end;
+
+            if not check_only then begin
+                let program = Cps.Convert.convert (Fc.Type.Prim Int) program in
                 if debug then begin
-                    debug_heading "Nonrecursive FC";
-                    pprint (Typer.Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
+                    debug_heading "CPS from CPS-conversion";
+                    pprint (Cps.Program.to_doc program ^^ twice hardline)
                 end;
 
-                if not check_only then begin
-                    let program = Cps.Convert.convert (Fc.Type.Prim Int) program in
-                    if debug then begin
-                        debug_heading "CPS from CPS-conversion";
-                        pprint (Cps.Program.to_doc program ^^ twice hardline)
-                    end;
+                let program = ScheduleData.schedule program in
+                if debug then begin
+                    debug_heading "CFG from Dataflow Scheduling";
+                    pprint (Cfg.Program.to_doc program ^^ twice hardline)
+                end;
 
-                    let program = ScheduleData.schedule program in
-                    if debug then begin
-                        debug_heading "CFG from Dataflow Scheduling";
-                        pprint (Cfg.Program.to_doc program ^^ twice hardline)
-                    end;
-
-                    let js = ToJs.emit program in
-                    pwrite output js
-                end
-            | Error errors ->
+                let js = ToJs.emit program in
+                pwrite output js
+            end;
+            Ok ()
+        ) with
+        | Ok () -> ()
+        | Error err -> (match err with
+            | FwdRefs errors ->
                 errors |> CCVector.iter (fun err ->
                     pprint_err (FwdRefs.error_to_doc err));
                 flush stderr
-        with
-        | SedlexMenhir.ParseError err ->
-            prerr_endline (SedlexMenhir.string_of_ParseError err);
-        | Typer.TypeError.TypeError (pos, err) ->
-            flush stdout;
-            pprint_err PPrint.(hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ hardline);
-            flush stderr;
+            | Type (pos, err) ->
+                flush stdout;
+                pprint_err PPrint.(hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ hardline);
+                flush stderr
+            | Parse parse_error ->
+                prerr_endline (SedlexMenhir.string_of_ParseError parse_error))
     ) ~finally: (fun () ->
         close_in input;
         if not check_only then close_out output

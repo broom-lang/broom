@@ -15,13 +15,19 @@ end
 module SedlexMenhir = SedlexMenhir
 
 module Parse = struct
-    let parse_defs_exn input =
-        SedlexMenhir.create_lexbuf input
-        |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.defs
+    let parse_defs input =
+        try
+            SedlexMenhir.create_lexbuf input
+            |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.defs
+            |> fun defs -> Ok defs
+        with SedlexMenhir.ParseError err -> Error err
 
-    let parse_stmts_exn input =
-        SedlexMenhir.create_lexbuf input
-        |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.stmts
+    let parse_stmts input =
+        try
+            SedlexMenhir.create_lexbuf input
+            |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.stmts
+            |> fun stmts -> Ok stmts
+        with SedlexMenhir.ParseError err -> Error err
 end
 
 module Expander = Expander
@@ -31,6 +37,16 @@ module Typer = Typer
 
 module ExpandPats = ExpandPats
 module FwdRefs = FwdRefs
+
+type error =
+    | Parse of SedlexMenhir.parse_error
+    | Type of (Util.span * Typer.TypeError.t)
+    | FwdRefs of FwdRefs.error CCVector.ro_vector
+
+let parse_err err = Parse err
+let type_err err = Type err
+let fwd_ref_errs errs = FwdRefs errs
+
 module Cps = struct
     include Cps
 
