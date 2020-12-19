@@ -10,8 +10,9 @@ let name = "broom"
 let name_c = String.capitalize_ascii name
 let prompt = name ^ "> "
 
-let pprint = PP.ToChannel.pretty 1.0 80 stdout
-let pprint_err = PP.ToChannel.pretty 1.0 80 stderr
+let pwrite output = PP.ToChannel.pretty 1.0 80 output
+let pprint = pwrite stdout
+let pprint_err = pwrite stderr
 
 let eval_envs () = (Typer.Env.eval (), Fc.Eval.Env.eval ())
 
@@ -66,18 +67,21 @@ let rep envs input =
             prerr_endline (SedlexMenhir.string_of_ParseError err);
             envs
 
-let ltp filename =
+let build debug check_only filename outfile =
     let open PPrint in
     let input = open_in filename in
+    let output = if not check_only then open_out outfile else stdout in
     let tenv = Typer.Env.program () in
     Fun.protect (fun () ->
         let input = Sedlexing.Utf8.from_channel input in
         try
             let defs = Parse.parse_defs_exn input in
-            let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.def_to_doc
-                (Vector.to_list defs))) in
-            pprint doc;
-            print_newline ();
+            if debug then begin
+                print_endline "\nParsed AST\n==========\n";
+                let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.def_to_doc
+                    (Vector.to_list defs))) in
+                pprint (doc ^^ twice hardline);
+            end;
 
             let program =
                 let pos = match Vector1.of_vector defs with
@@ -98,25 +102,40 @@ let ltp filename =
                     |> Stream.into (Vector.sink ()))} in
                 {Util.pos; v = Ast.Term.Expr.App ({pos; v = Var (Name.of_string "let")}, Explicit, block)} in
             let program = Expander.expand Expander.Env.empty program in
-            let doc = Ast.Term.Expr.to_doc program in
-            pprint doc;
-            print_newline ();
+            if debug then begin
+                print_endline "Expanded AST\n============\n";
+                pprint (Ast.Term.Expr.to_doc program ^^ twice hardline);
+            end;
 
             let program = Typer.check_program tenv Vector.empty program in
-            pprint (Typer.Env.document tenv Fc.Program.to_doc program);
+            if debug then begin
+                print_endline "FC from Typechecker\n===================\n";
+                pprint (Typer.Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
+            end;
 
             match FwdRefs.convert program with
             | Ok program ->
-                pprint (Typer.Env.document tenv Fc.Program.to_doc program);
+                if debug then begin
+                    print_endline "Nonrecursive FC\n===============\n";
+                    pprint (Typer.Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
+                end;
 
-                let program = Cps.Convert.convert (Fc.Type.Prim Int) program in
-                pprint (Cps.Program.to_doc program ^^ twice hardline);
+                if not check_only then begin
+                    let program = Cps.Convert.convert (Fc.Type.Prim Int) program in
+                    if debug then begin
+                        print_endline "CPS from CPS-conversion\n=======================\n";
+                        pprint (Cps.Program.to_doc program ^^ twice hardline)
+                    end;
 
-                let program = ScheduleData.schedule program in
-                pprint (Cfg.Program.to_doc program ^^ twice hardline);
+                    let program = ScheduleData.schedule program in
+                    if debug then begin
+                        print_endline "CFG from Dataflow Scheduling\n============================\n";
+                        pprint (Cfg.Program.to_doc program ^^ twice hardline)
+                    end;
 
-                let js = ToJs.emit program in
-                pprint js
+                    let js = ToJs.emit program in
+                    pwrite output js
+                end
             | Error errors ->
                 errors |> CCVector.iter (fun err ->
                     pprint_err (FwdRefs.error_to_doc err));
@@ -128,7 +147,10 @@ let ltp filename =
             flush stdout;
             pprint_err PPrint.(hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ hardline);
             flush stderr;
-    ) ~finally: (fun () -> close_in input)
+    ) ~finally: (fun () ->
+        close_in input;
+        if not check_only then close_out output
+    )
 
 let lep envs filename =
     let input = open_in filename in
@@ -147,13 +169,28 @@ let repl () =
     print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
     loop (Typer.Env.interactive (), Fc.Eval.Env.interactive ())
 
+let debug =
+    let doc = "run compiler in debug mode" in
+    C.Arg.(value & flag & info ["debug"] ~doc)
+
+let infile =
+    let docv = "INFILE" in
+    let doc = "entry point filename" in
+    C.Arg.(value & pos 0 string "" & info [] ~docv ~doc)
+
+let outfile =
+    let docv = "OUTFILE" in
+    let doc = "output file" in
+    C.Arg.(value & opt string "a.js" & info ["o"; "outfile"] ~docv ~doc)
+
+let build_t =
+    let doc = "compile program" in
+    ( C.Term.(const ignore $ (const build $ debug $ const false $ infile $ outfile))
+    , C.Term.info "build" ~doc )
+
 let check_t =
     let doc = "typecheck program" in
-    let filename =
-        let docv = "FILENAME" in
-        let doc = "entry point filename" in
-        C.Arg.(value & pos 0 string "" & info [] ~docv ~doc) in
-    ( C.Term.(const ignore $ (const ltp $ filename))
+    ( C.Term.(const ignore $ (const build $ debug $ const true $ infile $ const ""))
     , C.Term.info "check" ~doc )
 
 let eval_t =
@@ -184,5 +221,5 @@ let default_t =
 
 let () =
     Hashtbl.randomize ();
-    C.Term.exit (C.Term.eval_choice default_t [check_t; repl_t; script_t; eval_t])
+    C.Term.exit (C.Term.eval_choice default_t [build_t; check_t; repl_t; script_t; eval_t])
 
