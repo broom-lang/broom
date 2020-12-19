@@ -237,8 +237,6 @@ end = struct
         | WildP name -> underscore ^^ Name.to_doc name
         | ConstP c -> Const.to_doc c
 
-    let id_counter = ref 0
-
     let var name vtyp = {name; vtyp}
 
     let fresh_var vtyp = var (Name.fresh ()) vtyp

@@ -96,7 +96,7 @@ let parse_appseq env exprs =
         , i ) in
 
     (* infix = infix INFIX app | app *)
-    let rec infix i =
+    let infix i =
         (* infix_tail(lhs) = (INFIX prefix)* *)
         let rec tail (lhs : expr with_pos) i =
             match token i with
@@ -112,12 +112,13 @@ let parse_appseq env exprs =
         let (lhs, i) = app i in
         tail lhs i in
 
+    let _ = (Infix, Prefix, Postfix) in (* HACK: silence warning *)
     infix 0
 
 (* OPTIMIZE: Type.map_children (which does not exist yet): *)
 let rec expand_typ env (typ : typ with_pos) : typ with_pos = match typ.v with
     | Pi {domain; eff; codomain} ->
-        let (edomain, env) = expand_pat ignore env domain in
+        let (domain, env) = expand_pat ignore env domain in
         let eff = Option.map (expand_typ env) eff in
         {typ with v = Pi {domain; eff; codomain = expand_typ env codomain}}
     | Impli {domain; codomain} ->
@@ -169,7 +170,7 @@ and expand env expr : expr with_pos = match expr.v with
     | Record stmts ->
         (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
         let vars = CCVector.create () in
-        let (stmts, env) = expand_stmts' (CCVector.push vars) env stmts in
+        let stmts = expand_stmts (CCVector.push vars) env stmts in
         let defs = stmts |> Vector.map (function
             | Stmt.Def def -> def
             | Expr _ -> failwith "non-def stmt in Record") in

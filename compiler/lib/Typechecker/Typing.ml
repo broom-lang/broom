@@ -109,7 +109,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
 
     | AExpr.App (_, Implicit, _) -> failwith "TODO"
 
-    | AExpr.PrimApp (op, iarg, arg) ->
+    | AExpr.PrimApp (_, Some _, _) -> failwith "TODO"
+    | AExpr.PrimApp (op, None, arg) ->
         let (universals, domain, app_eff, codomain) = primop_typ op in
         let (uvs, domain, app_eff, codomain) =
             Env.instantiate_primop env universals domain app_eff codomain in
@@ -119,7 +120,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         { term = FExpr.at expr.pos codomain (FExpr.primapp op (Vector.map (fun uv -> T.Uv uv) uvs) arg)
         ; eff = app_eff }
 
-    | AExpr.PrimBranch (op, iarg, arg, clauses) ->
+    | AExpr.PrimBranch (_, Some _, _, _) -> failwith "TODO"
+    | AExpr.PrimBranch (op, None, arg, clauses) ->
         let (universals, domain, app_eff, codomain) = branchop_typ op in
         let (uvs, domain, app_eff, codomain) =
             Env.instantiate_branch env universals domain app_eff codomain in
@@ -155,7 +157,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         let fields = CCVector.create () in
         let eff = T.Uv (Env.uv env T.aRow) in
         let row = Vector.fold (fun base -> function
-            | AStmt.Def (pos, {v = Var label; _}, expr) ->
+            | AStmt.Def (_, {v = Var label; _}, expr) ->
                 let {TS.term; eff = eff'} = typeof env expr in
                 CCVector.push fields (label, term);
                 ignore (M.solving_unify expr.pos env eff' eff);
@@ -191,7 +193,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
     | AExpr.Const c ->
         {term = FExpr.at expr.pos (const_typ c) (FExpr.const c); eff = EmptyRow}
 
-    | AppSequence exprs ->
+    | AppSequence _ ->
         failwith "compiler bug: typechecker encountered AppSequence expression"
 
 and elaborate_fn : Env.t -> Util.span -> Util.plicity -> AExpr.clause Vector.t -> FExpr.t typing

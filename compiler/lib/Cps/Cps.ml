@@ -280,15 +280,16 @@ module Transfer = struct
     let iter_labels f (transfer : t) = match transfer.term with
         | Goto {universals = _; callee; args = _} -> f callee
         | Match {matchee = _; state = _; clauses}
-        | PrimApp {op = _; universals = _; args = _; clauses} ->
+        | PrimApp {op = _; universals = _; state = _; args = _; clauses} ->
             Vector.iter (fun {pat = _; dest} -> f dest) clauses
         | Jump _ | Return _ -> ()
 
     let iter_uses f (transfer : t) = match transfer.term with
         | Goto {universals = _; callee = _; args} -> Vector.iter f args
         | Jump {universals = _; callee; args} -> f callee; Vector.iter f args
-        | Match {matchee; state; clauses} -> f matchee; f state
-        | PrimApp {op = _; universals = _; args; clauses} -> Vector.iter f args
+        | Match {matchee; state; clauses = _} -> f matchee; f state
+        | PrimApp {op = _; universals = _; state; args; clauses = _} ->
+            f state; Vector.iter f args
         | Return (_, args) -> Vector.iter f args
 end
 
@@ -427,8 +428,8 @@ module Program = struct
             | Match {matchee; state; clauses} ->
                 let counts = visit_use (visit_use counts matchee) state in
                 Vector.fold visit_clause counts clauses
-            | PrimApp {op = _; universals = _; args; clauses} ->
-                let counts = Vector.fold visit_use counts args in
+            | PrimApp {op = _; universals = _; state; args; clauses} ->
+                let counts = Vector.fold visit_use (visit_use counts state) args in
                 Vector.fold visit_clause counts clauses
 
         and visit_cont counts label =

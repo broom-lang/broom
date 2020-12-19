@@ -310,7 +310,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
         | (Pi {universals; domain; eff; codomain}, _) -> (match super with
             | Pi { universals = universals'; domain = domain'; eff = eff'; codomain = codomain'} ->
-                let (env, universals', domain', eff, codomain') =
+                let (env, universals', domain', eff', codomain') =
                     Env.push_arrow_skolems env universals' domain' eff' codomain' in
                 let (uvs, domain, eff, codomain) =
                     Env.instantiate_arrow env universals domain eff codomain in

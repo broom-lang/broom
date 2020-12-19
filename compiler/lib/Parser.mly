@@ -116,7 +116,7 @@ app :
     | PRIMOP args {
         let op = $1 in
         match $2 with
-        | Left iargs -> failwith "primop missing explicit args"
+        | Left _ -> failwith "primop missing explicit args"
         | Right eargs -> {v = PrimApp (op, None, (parenthesized eargs $loc($2))); pos = $loc}
         | Both (iargs, eargs) ->
             {v = PrimApp (op, Some (parenthesized iargs $loc($2))
@@ -125,7 +125,7 @@ app :
     | BRANCHOP args {
         let op = $1 in
         match $2 with
-        | Left iargs -> failwith "branchop missing explicit args"
+        | Left _ -> failwith "branchop missing explicit args"
         | Right eargs ->
             assert (Vector.length eargs >= 2);
             let args = Vector.sub eargs 0 (Vector.length eargs - 1) in

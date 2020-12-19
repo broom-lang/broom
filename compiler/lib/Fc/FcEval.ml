@@ -151,7 +151,7 @@ let rec eval : Env.t -> cont -> expr -> Value.t
             | Int | Type -> k Proxy in
         eval env apply_op arg
 
-    | PrimBranch {op; universals = _; arg; clauses} ->
+    | PrimBranch {op; universals = _; arg; clauses = _} -> (* FIXME: use `clauses` *)
         let apply_op (arg : Value.t) = match op with
             | IAdd | ISub | IMul | IDiv -> (match arg with
                 | Tuple args when Vector.length args = 2 ->

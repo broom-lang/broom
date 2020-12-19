@@ -58,10 +58,22 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                 | AppSequence exprs ->
                     separate_map (break 1) (to_doc (app_prec + 1)) (Vector1.to_list exprs)
                     |> prec_parens (prec > app_prec)
-                | PrimApp (op, iargs, args) ->
+                | PrimApp (op, Some iargs, args) ->
+                    infix 4 1 (string "@")
+                        (prefix 4 1 (string "__" ^^ Primop.to_doc op) (to_doc (app_prec + 1) iargs))
+                        (to_doc (app_prec + 1) args)
+                    |> prec_parens (prec > app_prec)
+                | PrimApp (op, None, args) ->
                     prefix 4 1 (string "__" ^^ Primop.to_doc op) (to_doc (app_prec + 1) args)
                     |> prec_parens (prec > app_prec)
-                | PrimBranch (op, iargs, args, clauses) ->
+                | PrimBranch (op, Some iargs, args, clauses) ->
+                    infix 4 1 (string "@")
+                        (prefix 4 1 (string "__" ^^ Branchop.to_doc op)
+                         (to_doc (app_prec + 1) args))
+                        ((to_doc (app_prec + 1) iargs) ^^ blank 1
+                         ^^ to_doc (app_prec + 1) {expr with v = Fn (Explicit, clauses)})
+                    |> prec_parens (prec > app_prec)
+                | PrimBranch (op, None, args, clauses) ->
                     prefix 4 1 (string "__" ^^ Branchop.to_doc op)
                         ((to_doc (app_prec + 1) args) ^^ blank 1
                         ^^ to_doc (app_prec + 1) {expr with v = Fn (Explicit, clauses)})

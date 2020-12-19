@@ -161,7 +161,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
 
         | PrimBranch {op; universals; arg; clauses} ->
             let k = FnK { pos = expr.pos; domain = convert_typ arg.typ
-                ; f = fun ~parent ~state ~value: arg ->
+                ; f = fun ~parent: _ ~state ~value: arg ->
                     let join = trivialize_cont k in
                     let clauses = clauses |> Vector.map (fun {FExpr.res; prim_body = body} ->
                         let branch = Cont.Id.fresh () in
@@ -208,7 +208,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
 
         | Match {matchee; clauses} ->
             let k = FnK { pos = expr.pos; domain = convert_typ matchee.typ
-                ; f = fun ~parent ~state ~value: matchee ->
+                ; f = fun ~parent: _ ~state ~value: matchee ->
                     let join = trivialize_cont k in
                     let clauses = clauses |> Vector.map (fun {FExpr.pat; body} ->
                         let pat = convert_pattern pat in

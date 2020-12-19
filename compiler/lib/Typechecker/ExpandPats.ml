@@ -41,8 +41,6 @@ end
 
 module Automaton = struct
     include Name.Hashtbl
-    type table = State.t t
-    type t = table
 end
 
 module IntMap = Map.Make(Int)
@@ -184,7 +182,7 @@ let emit pos codomain states start =
     let rec emit' state_name =
         let state : State.t = Automaton.find states state_name in
 
-        let emit_shared ({var; frees; refcount = _; node} : State.t) =
+        let emit_shared ({var; frees = _; refcount = _; node} : State.t) = (* TODO: use `frees`? *)
             match node with
             | Final {tmp_vars; emit} -> emit (Shared var) (Option.get tmp_vars)
             | _ -> failwith "TODO: shared intermediate pattern matching state 1st encounter" in
