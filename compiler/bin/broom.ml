@@ -171,6 +171,8 @@ let repl () =
     print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
     loop (Typer.Env.interactive (), Fc.Eval.Env.interactive ())
 
+(* # CLI Args & Flags *)
+
 let debug =
     let doc = "run compiler in debug mode" in
     C.Arg.(value & flag & info ["debug"] ~doc)
@@ -184,6 +186,8 @@ let outfile =
     let docv = "OUTFILE" in
     let doc = "output file" in
     C.Arg.(value & opt string "a.js" & info ["o"; "outfile"] ~docv ~doc)
+
+(* # Subcommands *)
 
 let build_t =
     let doc = "compile program" in
@@ -220,6 +224,8 @@ let repl_t =
 let default_t =
     let doc = "effective, modular, functional programming language. WIP." in
     (C.Term.(ret (const (fun () -> `Help (`Pager, None)) $ const ())), C.Term.info name ~doc)
+
+(* # ~ Main *)
 
 let () =
     Hashtbl.randomize ();
