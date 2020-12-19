@@ -230,6 +230,8 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
     let subtype_whnf : bool -> T.t -> T.t -> coercer matching
     = fun occ typ super -> match (typ, super) with
+        | (Impli _, _) | (_, Impli _) -> failwith "TODO"
+
         | (Exists (existentials, body), _) ->
             let (env, skolems, typ) = Env.push_abs_skolems env existentials body in
             let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
@@ -576,6 +578,8 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
 = fun pos env typ typ' ->
     let open ResidualMonoid in
     match (typ, typ') with
+    | (Impli _, _) | (_, Impli _) -> failwith "TODO"
+
     | (Exists _, _) -> (match typ' with
         | Exists _ -> failwith "TODO: unify existentials"
         | _ ->

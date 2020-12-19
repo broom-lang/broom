@@ -93,6 +93,8 @@ let emit program =
 
     let rec emit_transfer parent stmts (transfer : Transfer.t) =
         let emit_expr : Expr.t -> PPrint.document = function
+            | PrimApp _ -> failwith "TODO"
+
             | Tuple vals -> (* OPTIMIZE: unbox tuples (in an earlier pass) *)
                 surround_separate_map 4 0 (brackets empty)
                     lbracket (comma ^^ break 1) rbracket
@@ -107,6 +109,8 @@ let emit program =
                     (fun (label, field) ->
                         Name.to_doc label ^^ colon ^^ blank 1 ^^ emit_use field)
                     (Vector.to_list fields)
+
+            | With _ | Where _ -> failwith "TODO"
 
 (*
             | Where {base; fields} ->
@@ -192,6 +196,8 @@ let emit program =
                 ^^ surround_separate_map 0 0 (braces empty)
                     lbrace (break 1) rbrace
                     emit_clause (Vector.to_list clauses)
+
+            | PrimApp _ -> failwith "TODO"
 
             | Return (_, args) ->
                 string "return" ^^ blank 1 ^^ (Stream.from (Vector.to_source args)

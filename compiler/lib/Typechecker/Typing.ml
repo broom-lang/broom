@@ -107,6 +107,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
                 ; eff = callee_eff })
         | _ -> failwith "compiler bug: callee focalization returned non-function")
 
+    | AExpr.App (_, Implicit, _) -> failwith "TODO"
+
     | AExpr.PrimApp (op, iarg, arg) ->
         let (universals, domain, app_eff, codomain) = primop_typ op in
         let (uvs, domain, app_eff, codomain) =
@@ -487,7 +489,7 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
         let ptyp = const_typ c in
         ({ppos = pat.pos; pterm = ConstP c; ptyp}, (Vector.empty, ptyp), Vector.empty)
 
-    | AExpr.Focus _ | App _ | PrimApp _ | Select _ | Record _ ->
+    | AExpr.Focus _ | Let _ | App _ | PrimApp _ | PrimBranch _ | Select _ | Record _ ->
         failwith "TODO in elaborate_pat"
 
     | AExpr.Fn _ ->
@@ -551,7 +553,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
         let _ = M.solving_unify pat.pos env ptyp (const_typ c) in
         ({ppos = pat.pos; pterm = ConstP c; ptyp}, Vector.empty)
 
-    | AExpr.Focus _ | App _ | PrimApp _ | Select _ | Record _ ->
+    | AExpr.Focus _ | Let _ | App _ | PrimApp _ | PrimBranch _ | Select _ | Record _ ->
         failwith "TODO in check_pat"
 
     | AExpr.Fn _ ->

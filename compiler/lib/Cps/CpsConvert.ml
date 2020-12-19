@@ -48,9 +48,10 @@ let convert_typ state_typ =
         | EmptyRow -> EmptyRow
         | App (callee, arg) -> App (convert callee, convert arg)
         | Prim p -> Prim p
-        | Uv r -> match Fc.Uv.get log r with
+        | Uv r -> (match Fc.Uv.get log r with
             | Assigned typ -> convert typ
-            | Unassigned _ -> failwith "compiler bug (FIXME): unassigned uv in CPS conversion" in
+            | Unassigned _ -> failwith "compiler bug (FIXME): unassigned uv in CPS conversion")
+        | _ -> failwith "TODO" in
     convert
 
 let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
@@ -292,6 +293,8 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
         | Patchable r -> TxRef.(convert parent state k env !r)
 
         | Letrec _ -> failwith "compiler bug: encountered `letrec` in CPS conversion"
+
+        | _ -> failwith "TODO"
 
     and convert_pattern pat : Pattern.t = match pat.pterm with
         | ConstP c -> Const c

@@ -216,11 +216,16 @@ and expand_pat report_def env (pat : pat with_pos) =
             env
         ) env pats in
         ({pat with v = Tuple (Vector.build pats')}, env)
+    | Focus (focusee, label) ->
+        let (focusee, env) = expand_pat report_def env focusee in
+        ({pat with v = Focus (focusee, label)}, env)
+    | Proxy typ -> ({pat with v = Proxy ((expand_typ env {pat with v = typ}).v)}, env)
     | Var name ->
         let name' = Name.freshen name in
         report_def (Stmt.Def (pat.pos, pat, {pat with v = Expr.Var name'}));
         ({pat with v = Var name'}, Env.add env name (None, name'))
     | Wild _ | Const _ -> (pat, env)
+    | _ -> failwith "TODO"
 
 and expand_clause env ({params; body} : clause) : clause =
     let (params, env) = expand_pat ignore env params in
