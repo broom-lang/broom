@@ -31,6 +31,7 @@ module type TYPING = sig
         -> Fc.Term.Expr.t typing
     val check_defs : env -> Ast.Term.Stmt.def Vector.t -> Fc.Term.Stmt.def Vector.t * env
     val check_stmt : env -> Ast.Term.Stmt.t -> Fc.Term.Stmt.t Vector.t typing * Fc.Type.t * env
+    val check_interactive_stmt : env -> Ast.Term.Stmt.t -> Fc.Program.t typing * env
     (* HACK: (?): *)
     val elaborate_pat : env -> Ast.Term.Expr.pat with_pos ->
         Fc.Term.Expr.pat * (Fc.Type.ov Vector.t * Fc.Type.t) * Fc.Term.Expr.var Vector.t
@@ -55,7 +56,7 @@ module type ENV = sig
     val interactive : unit -> t
     val eval : unit -> t
 
-    val find : t -> Util.span -> Name.t -> Fc.Term.Expr.var
+    val find : t -> Util.span -> Name.t -> Fc.Term.Expr.var * bool
     val find_rhs : t -> Util.span -> Name.t -> Fc.Term.Expr.t typing
     val find_rhst : t -> Util.span -> Name.t -> Fc.Type.t kinding
 

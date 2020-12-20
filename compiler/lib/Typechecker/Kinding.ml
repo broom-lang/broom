@@ -21,7 +21,7 @@ let reabstract = Env.reabstract
 let (!) = TxRef.(!)
 
 let kindof_prim : Prim.t -> T.kind = function
-    | Int | Bool -> T.aType
+    | Int | Bool | String -> T.aType
     | Array | Cell -> Pi {universals = Vector.empty; domain = T.aType; eff = EmptyRow
         ; codomain = T.aType}
     | SingleRep -> T.aType

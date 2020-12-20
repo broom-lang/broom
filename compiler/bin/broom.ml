@@ -16,58 +16,7 @@ let pwrite output = PP.ToChannel.pretty 1.0 80 output
 let pprint = pwrite stdout
 let pprint_err = pwrite stderr
 
-let eval_envs () = (Typer.Env.eval (), Fc.Eval.Env.eval ())
-
-let ep ((tenv, venv) as envs) (stmt : Ast.Term.Stmt.t) =
-    try begin
-        let (program, eff) : Fc.Program.t * Fc.Type.t = match stmt with
-            | Def def ->
-                ( Typer.check_program tenv (Vector.singleton def)
-                    {v = Tuple Vector.empty; pos = Ast.Term.Stmt.pos stmt}
-                  |> Result.get_ok (* FIXME *)
-                , Fc.Type.EmptyRow )
-            | Expr expr ->
-                let {TS.term; eff} = Typer.typeof tenv expr in
-                ( { type_fns = Env.type_fns tenv (* FIXME: gets all typedefs ever seen *)
-                  ; defs = Vector.empty; main = term }
-                , eff ) in
-
-        match FwdRefs.convert program with
-        | Ok program ->
-            let doc = PPrint.(Env.document tenv Fc.Program.to_doc program
-                ^/^ colon ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc program.main.typ
-                ^/^ bang ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
-                |> group) in
-            pprint PPrint.(hardline ^^ doc);
-
-            let (v, venv) = Fc.Eval.run venv program in
-            pprint PPrint.(hardline ^^ Fc.Eval.Value.to_doc v);
-            (tenv, venv)
-        | Error errors ->
-            errors |> CCVector.iter (fun err -> pprint_err (FwdRefs.error_to_doc err));
-            flush stderr;
-            envs
-    end with
-    | Typer.TypeError.TypeError (pos, err) ->
-        flush stdout;
-        pprint_err PPrint.(hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ hardline);
-        flush stderr;
-        envs
-
-let rep envs input =
-    match Parse.parse_stmts input with
-    | Ok stmts ->
-        let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc
-            (Vector.to_list stmts))) in
-        pprint doc;
-        print_newline ();
-
-        let envs = Vector.fold ep envs stmts in
-        print_newline ();
-        envs
-    | Error err ->
-        prerr_endline (SedlexMenhir.string_of_ParseError err);
-        envs
+let eval_envs () = (Typer.Env.eval (), Fc.Eval.Namespace.create ())
 
 let build debug check_only filename outfile =
     let open PPrint in
@@ -137,8 +86,7 @@ let build debug check_only filename outfile =
                     pprint (Cfg.Program.to_doc program ^^ twice hardline)
                 end;
 
-                let js = ToJs.emit program in
-                pwrite output js
+                pwrite output (ToJs.emit program)
             end;
             Ok ()
         ) with
@@ -159,22 +107,68 @@ let build debug check_only filename outfile =
         if not check_only then close_out output
     )
 
+let ep (tenv, venv) (stmt : Ast.Term.Stmt.t) =
+    let (let*) = Result.bind in
+    let* ({TS.term = program; eff}, tenv) =
+        Typer.check_interactive_stmt tenv stmt |> Result.map_error type_err in
+    let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
+    let doc = PPrint.(Env.document tenv Fc.Program.to_doc program
+        ^/^ colon ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc program.main.typ
+        ^/^ bang ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
+        |> group) in
+    pprint PPrint.(hardline ^^ doc);
+
+    let v = Fc.Eval.run venv program in
+    pprint PPrint.(hardline ^^ Fc.Eval.Value.to_doc v);
+    Ok tenv
+
+let rep (tenv, venv) input =
+    let (let*) = Result.bind in
+    match (
+        let* stmts = Parse.parse_stmts input |> Result.map_error parse_err in
+        let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc
+            (Vector.to_list stmts))) in
+        pprint doc;
+        print_newline ();
+
+        let* envs = Vector.fold (fun tenv stmt ->
+            Result.bind tenv (fun tenv -> ep (tenv, venv) stmt)
+        ) (Ok tenv) stmts in
+        print_newline ();
+        Ok envs
+    ) with
+    | Ok envs -> envs
+    | Error err -> (match err with
+        | Parse err ->
+            prerr_endline (SedlexMenhir.string_of_ParseError err);
+            tenv
+        | Type (pos, err) ->
+            flush stdout;
+            pprint_err PPrint.(hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ hardline);
+            flush stderr;
+            tenv
+        | FwdRefs errors ->
+            errors |> CCVector.iter (fun err -> pprint_err (FwdRefs.error_to_doc err));
+            flush stderr;
+            tenv)
+
+let repl () =
+    let venv = Fc.Eval.Namespace.create () in
+    let rec loop tenv =
+        match LNoise.linenoise prompt with
+        | None -> ()
+        | Some input ->
+            let _ = LNoise.history_add input in
+            let envs = rep (tenv, venv) (Sedlexing.Utf8.from_string input) in
+            loop envs in
+    print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
+    loop (Typer.Env.interactive ())
+
 let lep envs filename =
     let input = open_in filename in
     Fun.protect (fun () ->
         rep envs (Sedlexing.Utf8.from_channel input)
     ) ~finally: (fun () -> close_in input)
-
-let repl () =
-    let rec loop envs =
-        match LNoise.linenoise prompt with
-        | None -> ()
-        | Some input ->
-            let _ = LNoise.history_add input in
-            let envs = rep envs (Sedlexing.Utf8.from_string input) in
-            loop envs in
-    print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
-    loop (Typer.Env.interactive (), Fc.Eval.Env.interactive ())
 
 (* # CLI Args & Flags *)
 

@@ -1,6 +1,6 @@
 type t =
     | Int | Bool
-    | Array | Cell
+    | Array | String | Cell
     | SingleRep (* = *) | Boxed
     | TypeIn | RowOf
 

@@ -56,7 +56,7 @@ let split_int : pat Matrix.t -> int -> pat Matrix.t * IntSet.t IntMap.t * IntSet
     let step (singles, defaults) (i, (pat : pat)) = match pat.pterm with
         | ConstP (Int n) -> (add_single singles n i, defaults)
         | VarP _ | WildP _ -> (singles, IntSet.add i defaults)
-        | TupleP _ | ProxyP _ -> failwith "unreachable" in
+        | ConstP _ | TupleP _ | ProxyP _ -> failwith "unreachable" in
     let (col', (singles, defaults)) =
         Stream.from (Source.zip (Source.count 0) (Option.get (Matrix.col col pats)))
         |> Stream.into (Sink.zip

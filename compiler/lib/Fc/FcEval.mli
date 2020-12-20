@@ -1,8 +1,7 @@
-module Env : sig
+module Namespace : sig
     type t
 
-    val eval : unit -> t
-    val interactive : unit -> t
+    val create : unit -> t
 end
 
 module Value : sig
@@ -14,9 +13,10 @@ module Value : sig
         | Cell of t option ref
         | Int of int
         | Bool of bool
+        | String of string
 
     val to_doc : t -> PPrint.document
 end
 
-val run : Env.t -> Fc.Program.t -> Value.t * Env.t
+val run : Namespace.t -> Fc.Program.t -> Value.t
 

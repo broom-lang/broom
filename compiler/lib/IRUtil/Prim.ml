@@ -1,6 +1,6 @@
 type t =
     | Int | Bool
-    | Array | Cell
+    | Array | String | Cell
     | SingleRep (* = *) | Boxed
     | TypeIn | RowOf
 
@@ -8,6 +8,7 @@ let to_string = function
     | Int -> "int"
     | Bool -> "bool"
     | Array -> "array"
+    | String -> "string"
     | Cell -> "cell"
     | SingleRep -> "singleRep"
     | Boxed -> "boxed"

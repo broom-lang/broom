@@ -26,7 +26,8 @@ let (!) = TxRef.(!)
 (* # Synthesis *)
 
 let const_typ c = T.Prim (match c with
-    | Const.Int _ -> Prim.Int)
+    | Const.Int _ -> Prim.Int
+    | String _ -> String)
 
 let primop_typ : Primop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t =
     let open Primop in
@@ -50,6 +51,14 @@ let primop_typ : Primop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t =
         ( Vector.empty, Vector.empty, T.EmptyRow
         , T.Proxy (T.Exists (Vector1.singleton T.aType
             , Proxy (Bv {depth = 0; sibli = 0; kind = T.aType}))) )
+    | GlobalSet ->
+        ( Vector.singleton T.aType
+        , Vector.of_list [T.Prim String; Bv {depth = 0; sibli = 0; kind = T.aType}]
+        , EmptyRow, Tuple Vector.empty )
+    | GlobalGet ->
+        ( Vector.singleton T.aType
+        , Vector.singleton (T.Prim String)
+        , EmptyRow, Bv {depth = 0; sibli = 0; kind = T.aType} )
 
 let branchop_typ : Branchop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t Vector.t =
     let open Branchop in
@@ -184,9 +193,16 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         {term = FExpr.at expr.pos (Proxy typ) (FExpr.proxy typ); eff = EmptyRow}
 
     | AExpr.Var name ->
-        let {FExpr.vtyp = typ; _} as var = Env.find env expr.pos name in
-        { term = FExpr.at expr.pos typ (FExpr.use var)
-        ; eff = EmptyRow }
+        let ({FExpr.vtyp = typ; _} as var, global) = Env.find env expr.pos name in
+        if not global
+        then {term = FExpr.at expr.pos typ (FExpr.use var); eff = EmptyRow}
+        else
+            let namexpr = FExpr.at expr.pos (Prim String)
+                (FExpr.const (String (Name.to_string name))) in
+            { term = FExpr.at expr.pos typ (FExpr.primapp GlobalGet (Vector.singleton typ)
+                (FExpr.at expr.pos (Tuple (Vector.singleton (T.Prim String)))
+                    (FExpr.values [|namexpr|])))
+            ; eff = EmptyRow }
 
     | AExpr.Wild _ -> failwith "TODO: elaborate _ expression"
 
@@ -579,6 +595,34 @@ let check_stmt : Env.t -> AStmt.t -> FStmt.t Vector.t typing * T.t * Env.t
     | AStmt.Expr expr ->
         let typing = typeof env expr in
         ({typing with term = Vector.singleton (FStmt.Expr typing.term)}, typing.term.typ, env)
+
+let check_interactive_stmt : Env.t -> AStmt.t -> Fc.Program.t typing * Env.t = fun env stmt ->
+    let (main, eff, env) = match stmt with
+        | Def (pos, pat, expr) ->
+            let {TS.term = expr; eff} = typeof env expr in
+            let (pat, vars) = check_pat env expr.typ pat in
+            let stmts = expand_def vars pos pat expr
+                |> Stream.flat_map (fun (((pos, var, _) as def) : FExpr.def) ->
+                    let typ = var.vtyp in
+                    let namexpr = FExpr.at pos (Prim String)
+                        (FExpr.const (String (Name.to_string var.name))) in
+                    Stream.double
+                        (FStmt.Def def)
+                        (Expr (FExpr.at pos (Tuple Vector.empty)
+                            (FExpr.primapp GlobalSet (Vector.singleton typ)
+                                (FExpr.at pos (Tuple Vector.empty)
+                                (FExpr.values [|namexpr; FExpr.at pos typ (FExpr.use var)|]))))))
+                |> Stream.into Sink.array in
+            ( FExpr.at pos (Tuple Vector.empty)
+                (FExpr.let' stmts (FExpr.at pos (Tuple Vector.empty) (FExpr.values [||])))
+            , eff, Vector.fold Env.push_val env vars )
+        | Expr expr ->
+            let {TS.term = expr; eff} = typeof env expr in
+            (expr, eff, env) in
+    ( { term = { type_fns = Env.type_fns env (* FIXME: gets all typedefs ever seen *)
+               ; defs = Vector.empty; main }
+      ; eff }
+    , env )
 
 end
 

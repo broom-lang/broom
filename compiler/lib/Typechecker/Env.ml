@@ -19,8 +19,8 @@ type row_binding =
 type scope =
     | Hoisting of T.ov list TxRef.rref * T.level
     | Rigid of T.ov Vector.t
-    | Val of Fc.Term.Expr.var
-    | Vals of (var * vals_binding TxRef.rref) Name.Map.t * var list TxRef.rref
+    | Vals of var Name.Map.t
+    | Rec of (var * vals_binding TxRef.rref) Name.Map.t * var list TxRef.rref
     | Row of (var * row_binding TxRef.rref) Name.Map.t * var list TxRef.rref
     | Axiom of (Name.t * T.ov * uv) Name.Map.t
 
@@ -76,7 +76,11 @@ let reportError (env : t) pos error = env.errorHandler pos error
 let wrapErrorHandler (env : t) middleware =
     {env with errorHandler = middleware env.errorHandler}
 
-let push_val (env : t) var = {env with scopes = Val var :: env.scopes}
+let push_val (env : t) (var : var) =
+    match env.scopes with
+    | Vals bindings :: scopes' ->
+        {env with scopes = Vals (Name.Map.add var.name var bindings) :: scopes'}
+    | scopes -> {env with scopes = Vals (Name.Map.singleton var.name var) :: scopes}
 
 let push_rec env stmts =
     let bindings = CCVector.fold (fun bindings (defs, semiabs, expr) ->
@@ -85,7 +89,7 @@ let push_rec env stmts =
         ) bindings defs
     ) Name.Map.empty stmts in
     let fields = ref [] in
-    ({env with scopes = Vals (bindings, fields) :: env.scopes}, fields)
+    ({env with scopes = Rec (bindings, fields) :: env.scopes}, fields)
 
 let push_row env decls =
     let bindings = CCVector.fold (fun bindings (defs, semiabs, rhs) ->
@@ -137,12 +141,15 @@ let get_implementation (env : t) (((name, _), _) : T.ov) =
         | [] -> None
     in get env.scopes
 
-let type_fns (env : t) = match env.scopes with
-    | [Hoisting (ovs, _)] ->
-        let tfns = CCVector.create () in
-        List.iter (fun (binding, _) -> CCVector.push tfns binding) !ovs;
-        Vector.build tfns
-    | _ -> failwith "compiler bug: type_fns on non-toplevel environment"
+let type_fns (env : t) =
+    let rec loop = function
+        | [Hoisting (ovs, _)] ->
+            let tfns = CCVector.create () in
+            List.iter (fun (binding, _) -> CCVector.push tfns binding) !ovs;
+            Vector.build tfns
+        | _ :: scopes' -> loop scopes'
+        | [] -> failwith "unreachable" in
+    loop env.scopes
 
 let uv (env : t) kind = Fc.Uv.make env.tx_log kind env.level
 
@@ -315,8 +322,12 @@ let instantiate_branch env universals domain app_eff codomain =
 
 let find (env : t) pos name =
     let rec find scopes = match scopes with
-        | Val var :: scopes -> if var.name = name then var else find scopes
-        | Vals (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
+        | Vals bindings :: scopes' -> (match Name.Map.find_opt name bindings with
+            | Some var -> (match scopes' with
+                | [Hoisting _] -> (var, true)
+                | _ -> (var, false))
+            | None -> find scopes')
+        | Rec (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some (var, binding) ->
                 (match !binding with
                 | White (semiabs, expr) ->
@@ -327,7 +338,7 @@ let find (env : t) pos name =
                     TxRef.set env.tx_log fields (var :: !fields)
                 | Grey -> () (* TODO: really? *)
                 | Black _ -> ());
-                var 
+                (var, false)
             | None -> find scopes')
         | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some (var, binding) ->
@@ -342,21 +353,20 @@ let find (env : t) pos name =
                     TxRef.set env.tx_log fields (var :: !fields)
                 | GreyT -> () (* TODO: really? *)
                 | BlackT _ -> ());
-                var
+                (var, false)
             | None -> find scopes')
         | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
         | [] ->
             reportError env pos (Unbound name);
-            E.fresh_var (T.Uv (uv env (Uv (uv env T.aKind)))) in
+            (E.fresh_var (T.Uv (uv env (Uv (uv env T.aKind)))), false) in
     find env.scopes
 
 let find_rhs (env : t) pos name =
     let rec find scopes = match scopes with
-        | Val {name = name'; _} :: scopes ->
-            if name' = name
-            then failwith "compiler bug: `Env.find_rhs` found `Val` scope"
-            else find scopes
-        | Vals (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
+        | Vals bindings :: scopes -> (match Name.Map.find_opt name bindings with
+            | Some _ -> failwith "compiler bug: `Env.find_rhs` found `Vals` scope"
+            | None -> find scopes)
+        | Rec (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some (var, binding) ->
                 (match !binding with
                 | White (semiabs, expr) ->
@@ -380,12 +390,11 @@ let find_rhs (env : t) pos name =
 
 let find_rhst (env : t) pos name =
     let rec find scopes = match scopes with
-        | Val {name = name'; _} :: scopes ->
-            if name' = name
-            then failwith "compiler bug: `Env.find_rhst` found `Val` scope"
-            else find scopes
-        | Vals (bindings, _) :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some _ -> failwith "compiler bug: `Env.find_rhst` found `Vals` scope."
+        | Vals bindings :: scopes -> (match Name.Map.find_opt name bindings with
+            | Some _ -> failwith "compiler bug: `Env.find_rhs` found `Vals` scope"
+            | None -> find scopes)
+        | Rec (bindings, _) :: scopes' -> (match Name.Map.find_opt name bindings with
+            | Some _ -> failwith "compiler bug: `Env.find_rhst` found `Rec` scope."
             | None -> find scopes')
         | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some (var, binding) ->
