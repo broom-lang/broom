@@ -3,9 +3,6 @@ module Stmt = Fc.Term.Stmt
 type expr = Expr.t
 type pat = Expr.pat
 
-let (^^) = PPrint.(^^)
-let (^/^) = PPrint.(^/^)
-
 module Value = struct
     type t =
         | Tuple of t Vector.t
@@ -17,25 +14,27 @@ module Value = struct
         | Bool of bool
         | String of string
 
-    let rec to_doc = function
-        | Tuple vs -> PPrint.surround_separate_map 4 0 (PPrint.parens PPrint.empty)
-            PPrint.lparen (PPrint.comma ^^ PPrint.break 1) PPrint.rparen
+    let rec to_doc =
+        let open PPrint in
+        function
+        | Tuple vs -> surround_separate_map 4 0 (parens empty)
+            lparen (comma ^^ break 1) rparen
             to_doc (Vector.to_list vs)
-        | Fn _ -> PPrint.braces (PPrint.bar ^^ PPrint.underscore ^^ PPrint.bar ^/^ PPrint.underscore)
+        | Fn _ -> braces (bar ^^ blank 1 ^^ infix 4 1 (string "->") underscore underscore)
         | Record fields ->
             let field_to_doc (label, v) =
-                PPrint.infix 4 1 PPrint.equals (Name.to_doc label) (to_doc v) in
-            PPrint.surround_separate_map 4 0 (PPrint.braces PPrint.empty)
-                PPrint.lbrace (PPrint.comma ^^ PPrint.break 1) PPrint.rbrace
+                infix 4 1 equals (Name.to_doc label) (to_doc v) in
+            surround_separate_map 4 0 (braces empty)
+                lbrace (comma ^^ break 1) rbrace
                 field_to_doc (Name.Map.bindings fields)
-        | Proxy -> PPrint.brackets PPrint.underscore
-        | Cell v -> PPrint.sharp ^^ PPrint.angles (PPrint.string "cell" ^/^ match !v with
+        | Proxy -> brackets underscore
+        | Cell v -> sharp ^^ angles (string "cell" ^/^ match !v with
             | Some contents -> to_doc contents
-            | None -> PPrint.string "uninitialized")
-        | Int n -> PPrint.string (Int.to_string n)
-        | Bool true -> PPrint.string "True"
-        | Bool false -> PPrint.string "False"
-        | String s -> PPrint.dquotes (PPrint.string s)
+            | None -> string "uninitialized")
+        | Int n -> string (Int.to_string n)
+        | Bool true -> string "True"
+        | Bool false -> string "False"
+        | String s -> dquotes (string s)
 end
 
 module Namespace = struct
@@ -149,13 +148,13 @@ let run (ns : Namespace.t) program =
                         (match Vector.get args 0 with
                         | String name ->
                             Namespace.add ns (Name.of_string name) (Vector.get args 1);
-                            Tuple Vector.empty
+                            k (Tuple Vector.empty)
                         | _ -> failwith "compiler bug: globalSet name not a string at runtime")
                     | _ -> failwith "compiler bug: invalid primop arg")
                 | GlobalGet -> (match arg with
                     | Tuple args when Vector.length args = 1 ->
                         (match Vector.get args 0 with
-                        | String name -> Namespace.find ns (Name.of_string name)
+                        | String name -> k (Namespace.find ns (Name.of_string name))
                         | _ -> failwith "compiler bug: globalGet name not a string at runtime")
                     | _ -> failwith "compiler bug: invalid primop arg") in
             eval env apply_op arg
