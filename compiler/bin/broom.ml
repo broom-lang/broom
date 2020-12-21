@@ -119,15 +119,23 @@ let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
 
     let* ({TS.term = program; eff}, tenv) =
         Typer.check_interactive_stmt tenv stmt |> Result.map_error type_err in
+    if debug then begin
+        debug_heading "FC from Typechecker";
+        pprint (Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
+    end;
+
     let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
-    if debug then pprint (Env.document tenv Fc.Program.to_doc program ^^ hardline);
-    let doc = colon ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc program.main.typ
-        ^/^ bang ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
-        |> group in
-    pprint doc;
+    if debug then begin
+        debug_heading "Nonrecursive FC";
+        pprint (Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
+    end;
 
     let (venv, v) = Fc.Eval.run venv program in
-    pprint PPrint.(hardline ^^ Fc.Eval.Value.to_doc v);
+    let doc = infix 4 1 bang
+        (infix 4 1 colon (Fc.Eval.Value.to_doc v)
+            (Env.document tenv Fc.Type.to_doc program.main.typ))
+        (Env.document tenv Fc.Type.to_doc eff) in
+    pprint doc;
 
     Ok (eenv, tenv, venv)
 
@@ -136,10 +144,10 @@ let rep debug ((eenv, tenv, venv) as envs) input =
     match (
         let* stmts = Parse.parse_stmts input |> Result.map_error parse_err in
         if debug then begin
+            debug_heading "\nParsed AST";
             let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc
                 (Vector.to_list stmts))) in
-            pprint doc;
-            print_newline ()
+            pprint PPrint.(doc ^^ twice hardline)
         end;
 
         let* envs = Vector.fold (fun envs stmt ->
