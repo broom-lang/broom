@@ -107,67 +107,69 @@ let build debug check_only filename outfile =
         if not check_only then close_out output
     )
 
-let ep (tenv, venv) (stmt : Ast.Term.Stmt.t) =
+let ep debug (tenv, venv) (stmt : Ast.Term.Stmt.t) =
     let (let*) = Result.bind in
+
     let* ({TS.term = program; eff}, tenv) =
         Typer.check_interactive_stmt tenv stmt |> Result.map_error type_err in
     let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
-    let doc = PPrint.(Env.document tenv Fc.Program.to_doc program
-        ^/^ colon ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc program.main.typ
+    if debug then pprint PPrint.(Env.document tenv Fc.Program.to_doc program ^^ hardline);
+    let doc = PPrint.(colon ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc program.main.typ
         ^/^ bang ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
         |> group) in
-    pprint PPrint.(hardline ^^ doc);
+    pprint doc;
 
-    let v = Fc.Eval.run venv program in
+    let (venv, v) = Fc.Eval.run venv program in
     pprint PPrint.(hardline ^^ Fc.Eval.Value.to_doc v);
-    Ok tenv
 
-let rep (tenv, venv) input =
+    Ok (tenv, venv)
+
+let rep debug ((tenv, venv) as envs) input =
     let (let*) = Result.bind in
     match (
         let* stmts = Parse.parse_stmts input |> Result.map_error parse_err in
-        let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc
-            (Vector.to_list stmts))) in
-        pprint doc;
-        print_newline ();
+        if debug then begin
+            let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc
+                (Vector.to_list stmts))) in
+            pprint doc;
+            print_newline ()
+        end;
 
-        let* envs = Vector.fold (fun tenv stmt ->
-            Result.bind tenv (fun tenv -> ep (tenv, venv) stmt)
-        ) (Ok tenv) stmts in
+        let* envs = Vector.fold (fun envs stmt ->
+            Result.bind envs (fun envs -> ep debug envs stmt)
+        ) (Ok envs) stmts in
         print_newline ();
-        Ok envs
+        Ok envs 
     ) with
     | Ok envs -> envs
-    | Error err -> (match err with
+    | Error err ->
+        (match err with
         | Parse err ->
             prerr_endline (SedlexMenhir.string_of_ParseError err);
-            tenv
         | Type (pos, err) ->
             flush stdout;
             pprint_err PPrint.(hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ hardline);
             flush stderr;
-            tenv
         | FwdRefs errors ->
             errors |> CCVector.iter (fun err -> pprint_err (FwdRefs.error_to_doc err));
-            flush stderr;
-            tenv)
+            flush stderr);
+        envs
 
-let repl () =
-    let venv = Fc.Eval.Namespace.create () in
-    let rec loop tenv =
+let repl debug =
+    let rec loop envs =
         match LNoise.linenoise prompt with
         | None -> ()
         | Some input ->
             let _ = LNoise.history_add input in
-            let envs = rep (tenv, venv) (Sedlexing.Utf8.from_string input) in
+            let envs = rep debug envs (Sedlexing.Utf8.from_string input) in
             loop envs in
     print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
-    loop (Typer.Env.interactive ())
+    loop (Typer.Env.interactive (), Fc.Eval.Namespace.create ())
 
-let lep envs filename =
+let lep debug filename =
     let input = open_in filename in
     Fun.protect (fun () ->
-        rep envs (Sedlexing.Utf8.from_channel input)
+        rep debug (eval_envs ()) (Sedlexing.Utf8.from_channel input)
     ) ~finally: (fun () -> close_in input)
 
 (* # CLI Args & Flags *)
@@ -204,7 +206,8 @@ let eval_t =
         let docv = "STATEMENTS" in
         let doc = "the statements to evaluate" in
         C.Arg.(value & pos 0 string "" & info [] ~docv ~doc) in
-    ( C.Term.(const ignore $ (const rep $ (const eval_envs $ const ()) $ (const Sedlexing.Utf8.from_string $ expr)))
+    ( C.Term.(const ignore $ (const rep $ debug
+        $ (const eval_envs $ const ()) $ (const Sedlexing.Utf8.from_string $ expr)))
     , C.Term.info "eval" ~doc )
 
 let script_t =
@@ -213,12 +216,12 @@ let script_t =
         let docv = "FILENAME" in
         let doc = "the file to evaluate" in
         C.Arg.(value & pos 0 string "" & info [] ~docv ~doc) in
-    ( C.Term.(const ignore $ (const lep $ (const eval_envs $ const ()) $ filename))
+    ( C.Term.(const ignore $ (const lep $ debug $ filename))
     , C.Term.info "script" ~doc )
 
 let repl_t =
     let doc = "interactive evaluation loop" in
-    (C.Term.(const repl $ const ()), C.Term.info "repl" ~doc)
+    (C.Term.(const repl $ debug), C.Term.info "repl" ~doc)
 
 let default_t =
     let doc = "effective, modular, functional programming language. WIP." in

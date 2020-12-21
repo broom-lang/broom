@@ -18,5 +18,5 @@ module Value : sig
     val to_doc : t -> PPrint.document
 end
 
-val run : Namespace.t -> Fc.Program.t -> Value.t
+val run : Namespace.t -> Fc.Program.t -> Namespace.t * Value.t
 

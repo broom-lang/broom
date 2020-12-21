@@ -46,6 +46,7 @@ module Namespace = struct
     let create () = Map.create 0
     let add = Map.add
     let find = Map.find
+    let clone = Map.copy
 end
 
 module Env = struct
@@ -86,6 +87,8 @@ type cont' = unit -> Value.t
 let exit = Fun.id
 
 let run (ns : Namespace.t) program =
+    let ns = Namespace.clone ns in
+
     let rec eval : Env.t -> cont -> expr -> Value.t
     = fun env k expr -> match expr.term with
         | Tuple exprs -> (match Array.length exprs with
@@ -303,5 +306,5 @@ let run (ns : Namespace.t) program =
         , snd main.pos ) in
     let defs = defs |> Vector.to_array |> Array.map (fun def -> Stmt.Def def) in
     let expr = Expr.at pos main.typ (Expr.let' defs main) in
-    eval Env.empty exit expr
+    (ns, eval Env.empty exit expr)
 
