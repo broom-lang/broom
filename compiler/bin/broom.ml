@@ -16,7 +16,7 @@ let pwrite output = PP.ToChannel.pretty 1.0 80 output
 let pprint = pwrite stdout
 let pprint_err = pwrite stderr
 
-let eval_envs () = (Typer.Env.eval (), Fc.Eval.Namespace.create ())
+let eval_envs () = (Expander.Env.empty, Typer.Env.eval (), Fc.Eval.Namespace.create ())
 
 let build debug check_only filename outfile =
     let open PPrint in
@@ -107,24 +107,31 @@ let build debug check_only filename outfile =
         if not check_only then close_out output
     )
 
-let ep debug (tenv, venv) (stmt : Ast.Term.Stmt.t) =
+let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
+    let open PPrint in
     let (let*) = Result.bind in
+
+    let (eenv, stmt) = Expander.expand_interactive_stmt eenv stmt in
+    if debug then begin
+        debug_heading "Expanded AST";
+        pprint (Ast.Term.Stmt.to_doc stmt ^^ twice hardline);
+    end;
 
     let* ({TS.term = program; eff}, tenv) =
         Typer.check_interactive_stmt tenv stmt |> Result.map_error type_err in
     let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
-    if debug then pprint PPrint.(Env.document tenv Fc.Program.to_doc program ^^ hardline);
-    let doc = PPrint.(colon ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc program.main.typ
+    if debug then pprint (Env.document tenv Fc.Program.to_doc program ^^ hardline);
+    let doc = colon ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc program.main.typ
         ^/^ bang ^^ blank 1 ^^ Env.document tenv Fc.Type.to_doc eff
-        |> group) in
+        |> group in
     pprint doc;
 
     let (venv, v) = Fc.Eval.run venv program in
     pprint PPrint.(hardline ^^ Fc.Eval.Value.to_doc v);
 
-    Ok (tenv, venv)
+    Ok (eenv, tenv, venv)
 
-let rep debug ((tenv, venv) as envs) input =
+let rep debug ((eenv, tenv, venv) as envs) input =
     let (let*) = Result.bind in
     match (
         let* stmts = Parse.parse_stmts input |> Result.map_error parse_err in
@@ -164,7 +171,7 @@ let repl debug =
             let envs = rep debug envs (Sedlexing.Utf8.from_string input) in
             loop envs in
     print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
-    loop (Typer.Env.interactive (), Fc.Eval.Namespace.create ())
+    loop (Expander.Env.empty, Typer.Env.interactive (), Fc.Eval.Namespace.create ())
 
 let lep debug filename =
     let input = open_in filename in

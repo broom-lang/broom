@@ -272,3 +272,7 @@ and expand_stmts' report_def env stmts =
 
 and expand_stmts report_def env stmts = fst (expand_stmts' report_def env stmts)
 
+let expand_interactive_stmt env stmt =
+    let (stmt, env) = expand_stmt_pat ignore env stmt in
+    (env, expand_stmt env stmt)
+
