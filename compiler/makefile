@@ -10,7 +10,7 @@ all: build
 
 .PHONY: build
 build: deps
-	${DUNE} build -p broom
+	${DUNE} build -p broom @install
 
 .PHONY: deps
 deps:
