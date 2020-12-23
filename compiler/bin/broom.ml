@@ -48,14 +48,10 @@ let build debug check_only filename outfile =
                         (pos, pos) in
                 let entry = {Util.pos; v = Ast.Term.Expr.App ( {pos; v = Var (Name.of_string "main")}
                     , Explicit, {pos; v = Tuple Vector.empty} )} in
-                let block : Ast.Term.Expr.t Util.with_pos = {pos; v = Record (
-                    Stream.concat
-                        (Stream.from (Vector.to_source defs)
-                        |> Stream.map (fun def -> Ast.Term.Stmt.Def def))
-                        (Stream.single (Ast.Term.Stmt.Expr entry))
-                    |> Stream.into (Vector.sink ()))} in
-                {Util.pos; v = Ast.Term.Expr.App ({pos; v = Var (Name.of_string "let")}, Explicit, block)} in
-            let program = Expander.expand Expander.Env.empty program in
+                let (defs, entry) = Expander.expand_program Expander.Env.empty defs entry in
+                match Vector1.of_vector defs with
+                | Some defs -> {Util.pos; v = Ast.Term.Expr.Let (defs, entry)}
+                | None -> failwith "compiler bug: program expansion succeeded without main function" in
             if debug then begin
                 debug_heading "Expanded AST";
                 pprint (Ast.Term.Expr.to_doc program ^^ twice hardline);
@@ -111,14 +107,15 @@ let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
     let open PPrint in
     let (let*) = Result.bind in
 
-    let (eenv, stmt) = Expander.expand_interactive_stmt eenv stmt in
+    let (eenv, stmts) = Expander.expand_interactive_stmt eenv stmt in
     if debug then begin
         debug_heading "Expanded AST";
-        pprint (Ast.Term.Stmt.to_doc stmt ^^ twice hardline);
+        let doc = separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc (Vector1.to_list stmts) in
+        pprint (doc ^^ twice hardline);
     end;
 
     let* ({TS.term = program; eff}, tenv) =
-        Typer.check_interactive_stmt tenv stmt |> Result.map_error type_err in
+        Typer.check_interactive_stmts tenv stmts |> Result.map_error type_err in
     if debug then begin
         debug_heading "FC from Typechecker";
         pprint (Env.document tenv Fc.Program.to_doc program ^^ twice hardline)

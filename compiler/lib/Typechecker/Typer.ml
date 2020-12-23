@@ -18,7 +18,7 @@ let check_program env defs main =
         Ok {Fc.Program.type_fns = Env.type_fns env; defs; main}
     with TypeError.TypeError (pos, err) -> Error (pos, err)
 
-let check_interactive_stmt env stmt =
-    try Ok (T.check_interactive_stmt env stmt)
+let check_interactive_stmts env stmt =
+    try Ok (T.check_interactive_stmts env stmt)
     with TypeError.TypeError (pos, err) -> Error (pos, err)
 

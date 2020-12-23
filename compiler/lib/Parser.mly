@@ -39,7 +39,8 @@ let parenthesized' args =
 %token <string> STRING
 %token <int> INT
 
-%start defs stmts
+%start modul defs stmts
+%type <Ast.Term.Expr.t with_pos> modul
 %type <Ast.Term.Stmt.def Vector.t> defs
 %type <Ast.Term.Stmt.t Vector.t> stmts
 
@@ -56,6 +57,8 @@ trail(separator, item, terminator) :
 trailer(init, separator, item, terminator) : init trail(separator, item, terminator) { $2 }
 
 (* # Entry Points *)
+
+modul : expr EOF { $1 }
 
 defs : trail(";", def, EOF) { $1 }
 
@@ -186,6 +189,7 @@ nestable_without_pos :
     | ID { Var (Name.of_string $1) }
     | "_" { Wild (Name.of_string $1) }
     | INT { Const (Int $1) }
+    | STRING { Const (String $1) }
 
 clauses :
     | explicit_clause+ { (Explicit, $1) }

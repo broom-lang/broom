@@ -12,6 +12,6 @@ module Env : sig
     val empty : t
 end
 
-val expand : Env.t -> expr with_pos -> expr with_pos
-val expand_interactive_stmt : Env.t -> stmt -> Env.t * stmt
+val expand_program : Env.t -> def Vector.t -> expr with_pos -> def Vector.t * expr with_pos
+val expand_interactive_stmt : Env.t -> stmt -> Env.t * stmt Vector1.t
 
