@@ -16,7 +16,8 @@ deps:
 .PHONY: install
 install: build
 	mkdir -p $(DESTDIR)$(PREFIX)bin/; \
-	cp $(BROOM) $(DESTDIR)$(PREFIX)bin/broom
+	cp $(BROOM) $(DESTDIR)$(PREFIX)bin/broom; \
+	strip $(DESTDIR)$(PREFIX)bin/broom
 
 .PHONY: uninstall
 uninstall:
