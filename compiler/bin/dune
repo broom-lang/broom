@@ -1,5 +1,5 @@
 (executable
   (name broom)
   (libraries broom.lib pprint cmdliner linenoise)
-  (link_flags -z relro))
+  (link_flags -ccopt -Lz,relro))
 
