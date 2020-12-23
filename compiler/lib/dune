@@ -3,7 +3,7 @@
   (public_name broom.lib)
   (libraries containers containers-data streaming menhirLib pprint unionFind)
   (preprocess (pps sedlex.ppx))
-  (library_flags -ccopt -L,-z,relro,-z,now))
+  (library_flags -ccopt -Wl,-z,relro,-z,now))
 
 (copy_files# (files Expander/*))
 (copy_files# (files Util/*))
