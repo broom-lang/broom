@@ -7,7 +7,7 @@ all: build
 
 .PHONY: build
 build: deps
-	dune build --release
+	dune build --profile release
 
 .PHONY: deps
 deps:
