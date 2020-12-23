@@ -154,7 +154,7 @@ and expand define_toplevel env expr : expr with_pos = match expr.v with
                 , Explicit, (expand define_toplevel env arg))}
         | None -> (match Name.basename cname with
             | Some "let" -> expand_let define_toplevel env expr.pos arg
-            | Some "include" -> expand_include define_toplevel env expr.pos arg
+            | Some "include" -> expand_include arg
             | _ -> failwith ("unbound: " ^ Name.to_string cname
                 ^ " at " ^ Util.span_to_string expr.pos)))
     | App (callee, plicity, args) ->
@@ -215,7 +215,7 @@ and expand_let define_toplevel env pos (arg : expr with_pos) = match arg.v with
         else failwith "TODO"
     | _ -> failwith "non-record `let` arg"
 
-and expand_include define_toplevel env pos (arg : expr with_pos) = match arg.v with
+and expand_include (arg : expr with_pos) = match arg.v with
     | Const (String filename) -> (* FIXME: error handling: *)
         (* TODO: BROOMPATH *)
         let input = open_in filename in
@@ -269,9 +269,6 @@ and expand_defs' define_toplevel env defs =
     ) env defs in
     CCVector.map_in_place (expand_def define_toplevel env) defs';
     (Vector.build defs', env)
-
-and expand_defs define_toplevel env defs =
-    fst (expand_defs' define_toplevel env defs)
 
 and expand_stmt_pat define_toplevel report_def env : stmt -> stmt * Env.t = function
     | Def def ->

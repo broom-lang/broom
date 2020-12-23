@@ -89,7 +89,8 @@ let emit program =
         prefix ^^ dollar ^^ string (Int.to_string (label :> int)) in
 
     let emit_const : Const.t -> PPrint.document = function
-        | Int n -> string (Int.to_string n) in
+        | Int n -> string (Int.to_string n)
+        | String s -> dquotes (string s) in (* HACK *)
 
     let rec emit_transfer parent stmts (transfer : Transfer.t) =
         let emit_expr : Expr.t -> PPrint.document = function

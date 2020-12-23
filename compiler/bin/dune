@@ -1,4 +1,9 @@
 (executable
   (name broom)
-  (libraries broom_lib pprint cmdliner linenoise))
+  (libraries broom.lib pprint cmdliner linenoise))
+
+(install
+  (package broom)
+  (section bin)
+  (files (broom.exe as broom)))
 

@@ -1,5 +1,6 @@
 (library
-  (public_name broom_lib)
+  (name broom_lib)
+  (public_name broom.lib)
   (libraries containers containers-data streaming menhirLib pprint unionFind)
   (preprocess (pps sedlex.ppx)))
 

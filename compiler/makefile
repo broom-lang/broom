@@ -1,6 +1,25 @@
-.PHONY: prod
-prod:
-	dune build --profile release
+OPAM=opam
+EXEC=${OPAM} exec
+DUNE=${EXEC} dune --
+
+.PHONY: all
+all: build
+
+.PHONY: build
+build:
+	@${DUNE} build @install
+
+.PHONY: install
+install:
+	@${OPAM} install ./broom.opam
+
+.PHONY: reinstall
+reinstall:
+	@${OPAM} reinstall ./broom.opam
+
+.PHONY: uninstall
+uninstall:
+	@${OPAM} uninstall broom
 
 .PHONY: dev
 dev:
@@ -12,5 +31,5 @@ test:
 
 .PHONY: clean
 clean:
-	dune clean
+	@${DUNE} clean
 

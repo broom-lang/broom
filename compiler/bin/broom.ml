@@ -1,5 +1,3 @@
-open Streaming
-
 open Broom_lib
 module TS = TyperSigs
 module Env = Typer.Env
@@ -136,7 +134,7 @@ let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
 
     Ok (eenv, tenv, venv)
 
-let rep debug ((eenv, tenv, venv) as envs) input =
+let rep debug ((_, tenv, _) as envs) input =
     let (let*) = Result.bind in
     match (
         let* stmts = Parse.parse_stmts input |> Result.map_error parse_err in
