@@ -1,15 +1,14 @@
 # Maintainer: Pauli Jaakkola <pauli.jaakkola@iki.fi>
 pkgname=broom-git
-pkgver=r872.8c1f513
+pkgver=r1253.9705d8c
 pkgrel=1
-pkgdesc="Effective, modular functional programming language"
+pkgdesc="A programming language with first-class modules and algebraic effects"
 arch=('x86_64')
-url="https://github.com/nilern/broom"
+url="https://github.com/broom-lang/broom"
 license=('custom:bsd')
-depends=('gmp')
-makedepends=('git' 'smlnj' 'mlton' 'rust' 'cargo')
-options=('staticlibs')
-source=('git://github.com/nilern/broom.git')
+depends=('glibc')
+makedepends=('git' 'opam' 'dune')
+source=('git://github.com/broom-lang/broom.git')
 md5sums=('SKIP')
 
 pkgver() {
@@ -18,14 +17,15 @@ pkgver() {
 }
 
 build() {
-	cd "$srcdir/broom"
-	make DESTDIR="$pkgdir/" PREFIX="usr/"
+	cd "$srcdir/broom/compiler"
+        make build
 }
 
 package() {
-	cd "$srcdir/broom"
+	cd "$srcdir/broom/compiler"
 	make DESTDIR="$pkgdir/" PREFIX="usr/" install
+
         mkdir -p "$pkgdir/usr/share/licenses/$pkgname"
-        cp LICENSE "$pkgdir/usr/share/licenses/$pkgname/"
+        cp ../LICENSE "$pkgdir/usr/share/licenses/$pkgname/"
 }
 
