@@ -14,7 +14,5 @@
 (copy_files# (files Cfg/*))
 (copy_files# (files Js/*))
 
-(menhir
-  (modules Parser)
-  (flags --explain))
+(menhir (modules Parser))
 
