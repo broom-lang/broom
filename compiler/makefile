@@ -14,7 +14,7 @@ build: deps
 
 .PHONY: deps
 deps:
-	${OPAM} install --deps-only ./broom.opam
+	${OPAM} install --deps-only -y ./broom.opam
 
 .PHONY: install
 install: build
