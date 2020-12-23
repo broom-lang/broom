@@ -16,7 +16,7 @@ let pprint_err = pwrite stderr
 
 let eval_envs () = (Expander.Env.empty, Typer.Env.eval (), Fc.Eval.Namespace.create ())
 
-let build debug check_only filename outfile =
+let build path debug check_only filename outfile =
     let open PPrint in
     let (let*) = Result.bind in
     let input = open_in filename in
@@ -46,7 +46,7 @@ let build debug check_only filename outfile =
                         (pos, pos) in
                 let entry = {Util.pos; v = Ast.Term.Expr.App ( {pos; v = Var (Name.of_string "main")}
                     , Explicit, {pos; v = Tuple Vector.empty} )} in
-                let (defs, entry) = Expander.expand_program Expander.Env.empty defs entry in
+                let (defs, entry) = Expander.expand_program path Expander.Env.empty defs entry in
                 match Vector1.of_vector defs with
                 | Some defs -> {Util.pos; v = Ast.Term.Expr.Let (defs, entry)}
                 | None -> failwith "compiler bug: program expansion succeeded without main function" in
@@ -101,11 +101,11 @@ let build debug check_only filename outfile =
         if not check_only then close_out output
     )
 
-let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
+let ep path debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
     let open PPrint in
     let (let*) = Result.bind in
 
-    let (eenv, stmts) = Expander.expand_interactive_stmt eenv stmt in
+    let (eenv, stmts) = Expander.expand_interactive_stmt path eenv stmt in
     if debug then begin
         debug_heading "Expanded AST";
         let doc = separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc (Vector1.to_list stmts) in
@@ -134,7 +134,7 @@ let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
 
     Ok (eenv, tenv, venv)
 
-let rep debug ((_, tenv, _) as envs) input =
+let rep path debug ((_, tenv, _) as envs) input =
     let (let*) = Result.bind in
     match (
         let* stmts = Parse.parse_stmts input |> Result.map_error parse_err in
@@ -146,7 +146,7 @@ let rep debug ((_, tenv, _) as envs) input =
         end;
 
         let* envs = Vector.fold (fun envs stmt ->
-            Result.bind envs (fun envs -> ep debug envs stmt)
+            Result.bind envs (fun envs -> ep path debug envs stmt)
         ) (Ok envs) stmts in
         print_newline ();
         Ok envs 
@@ -165,24 +165,31 @@ let rep debug ((_, tenv, _) as envs) input =
             flush stderr);
         envs
 
-let repl debug =
+let repl path debug =
     let rec loop envs =
         match LNoise.linenoise prompt with
         | None -> ()
         | Some input ->
             let _ = LNoise.history_add input in
-            let envs = rep debug envs (Sedlexing.Utf8.from_string input) in
+            let envs = rep path debug envs (Sedlexing.Utf8.from_string input) in
             loop envs in
     print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
     loop (Expander.Env.empty, Typer.Env.interactive (), Fc.Eval.Namespace.create ())
 
-let lep debug filename =
+let lep path debug filename =
     let input = open_in filename in
     Fun.protect (fun () ->
-        rep debug (eval_envs ()) (Sedlexing.Utf8.from_channel input)
+        rep path debug (eval_envs ()) (Sedlexing.Utf8.from_channel input)
     ) ~finally: (fun () -> close_in input)
 
 (* # CLI Args & Flags *)
+
+let path =
+    let docv = "BROOMPATH" in
+    let env = C.Arg.env_var docv in
+    let doc = "Where to look for Broom code; colon-separated, like shell PATH." in
+    C.Arg.(value & opt (list ~sep: ':' string) [Filename.current_dir_name]
+        & info ["p"; "path"] ~env ~docv ~doc)
 
 let debug =
     let doc = "run compiler in debug mode" in
@@ -202,12 +209,12 @@ let outfile =
 
 let build_t =
     let doc = "compile program" in
-    ( C.Term.(const ignore $ (const build $ debug $ const false $ infile $ outfile))
+    ( C.Term.(const ignore $ (const build $ path $ debug $ const false $ infile $ outfile))
     , C.Term.info "build" ~doc )
 
 let check_t =
     let doc = "typecheck program" in
-    ( C.Term.(const ignore $ (const build $ debug $ const true $ infile $ const ""))
+    ( C.Term.(const ignore $ (const build $ path $ debug $ const true $ infile $ const ""))
     , C.Term.info "check" ~doc )
 
 let eval_t =
@@ -216,7 +223,7 @@ let eval_t =
         let docv = "STATEMENTS" in
         let doc = "the statements to evaluate" in
         C.Arg.(value & pos 0 string "" & info [] ~docv ~doc) in
-    ( C.Term.(const ignore $ (const rep $ debug
+    ( C.Term.(const ignore $ (const rep $ path $ debug
         $ (const eval_envs $ const ()) $ (const Sedlexing.Utf8.from_string $ expr)))
     , C.Term.info "eval" ~doc )
 
@@ -226,12 +233,12 @@ let script_t =
         let docv = "FILENAME" in
         let doc = "the file to evaluate" in
         C.Arg.(value & pos 0 string "" & info [] ~docv ~doc) in
-    ( C.Term.(const ignore $ (const lep $ debug $ filename))
+    ( C.Term.(const ignore $ (const lep $ path $ debug $ filename))
     , C.Term.info "script" ~doc )
 
 let repl_t =
     let doc = "interactive evaluation loop" in
-    (C.Term.(const repl $ debug), C.Term.info "repl" ~doc)
+    (C.Term.(const repl $ path $ debug), C.Term.info "repl" ~doc)
 
 let default_t =
     let doc = "effective, modular, functional programming language. WIP." in
