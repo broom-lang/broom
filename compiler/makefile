@@ -1,25 +1,29 @@
+DESTDIR = /
+PREFIX = usr/local/
 OPAM=opam
 EXEC=${OPAM} exec
 DUNE=${EXEC} dune --
+BROOM=_build/default/bin/broom.exe
 
 .PHONY: all
 all: build
 
 .PHONY: build
-build:
-	@${DUNE} build @install
+build: deps
+	${DUNE} build -p broom @install
+
+.PHONY: deps
+deps:
+	${OPAM} install --deps-only ./broom.opam
 
 .PHONY: install
-install:
-	@${OPAM} install ./broom.opam
-
-.PHONY: reinstall
-reinstall:
-	@${OPAM} reinstall ./broom.opam
+install: build
+	mkdir -p $(DESTDIR)$(PREFIX)bin/; \
+	cp $(BROOM) $(DESTDIR)$(PREFIX)bin/broom
 
 .PHONY: uninstall
 uninstall:
-	@${OPAM} uninstall broom
+	rm -f $(DESTDIR)$(PREFIX)bin/broom
 
 .PHONY: dev
 dev:
@@ -31,5 +35,5 @@ test:
 
 .PHONY: clean
 clean:
-	@${DUNE} clean
+	${DUNE} clean
 
