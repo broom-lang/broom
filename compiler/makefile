@@ -1,8 +1,5 @@
 DESTDIR = /
 PREFIX = usr/local/
-OPAM=opam
-EXEC=${OPAM} exec
-DUNE=${EXEC} dune --
 BROOM=_build/default/bin/broom.exe
 
 .PHONY: all
@@ -14,7 +11,7 @@ build: deps
 
 .PHONY: deps
 deps:
-	${OPAM} install --deps-only -y ./broom.opam
+	opam install --deps-only -y ./broom.opam
 
 .PHONY: install
 install: build
@@ -35,5 +32,5 @@ test:
 
 .PHONY: clean
 clean:
-	${DUNE} clean
+	dune clean
 
