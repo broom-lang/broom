@@ -14,7 +14,7 @@ let pwrite output = PP.ToChannel.pretty 1.0 80 output
 let pprint = pwrite stdout
 let pprint_err = pwrite stderr
 
-let eval_envs () = (Expander.Bindings.empty (), Typer.Env.eval (), Fc.Eval.Namespace.create ())
+let eval_envs path = (Expander.Bindings.empty path, Typer.Env.eval (), Fc.Eval.Namespace.create ())
 
 let build path debug check_only filename outfile =
     let open PPrint in
@@ -46,7 +46,7 @@ let build path debug check_only filename outfile =
                         (pos, pos) in
                 let entry = {Util.pos; v = Ast.Term.Expr.App ( {pos; v = Var (Name.of_string "main")}
                     , Explicit, {pos; v = Tuple Vector.empty} )} in
-                let (defs, entry) = Expander.expand_program path (Expander.Bindings.empty ()) defs entry in
+                let (defs, entry) = Expander.expand_program (Expander.Bindings.empty path) defs entry in
                 match Vector1.of_vector defs with
                 | Some defs -> {Util.pos; v = Ast.Term.Expr.Let (defs, entry)}
                 | None -> failwith "compiler bug: program expansion succeeded without main function" in
@@ -101,11 +101,11 @@ let build path debug check_only filename outfile =
         if not check_only then close_out output
     )
 
-let ep path debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
+let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
     let open PPrint in
     let (let*) = Result.bind in
 
-    let (eenv, stmts) = Expander.expand_interactive_stmt path eenv stmt in
+    let (eenv, stmts) = Expander.expand_interactive_stmt eenv stmt in
     if debug then begin
         debug_heading "Expanded AST";
         let doc = separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc (Vector1.to_list stmts) in
@@ -134,7 +134,7 @@ let ep path debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
 
     Ok (eenv, tenv, venv)
 
-let rep path debug ((_, tenv, _) as envs) input =
+let rep debug ((_, tenv, _) as envs) input =
     let (let*) = Result.bind in
     match (
         let* stmts = Parse.parse_stmts input |> Result.map_error parse_err in
@@ -146,7 +146,7 @@ let rep path debug ((_, tenv, _) as envs) input =
         end;
 
         let* envs = Vector.fold (fun envs stmt ->
-            Result.bind envs (fun envs -> ep path debug envs stmt)
+            Result.bind envs (fun envs -> ep debug envs stmt)
         ) (Ok envs) stmts in
         print_newline ();
         Ok envs 
@@ -171,15 +171,15 @@ let repl path debug =
         | None -> ()
         | Some input ->
             let _ = LNoise.history_add input in
-            let envs = rep path debug envs (Sedlexing.Utf8.from_string input) in
+            let envs = rep debug envs (Sedlexing.Utf8.from_string input) in
             loop envs in
     print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
-    loop (Expander.Bindings.empty (), Typer.Env.interactive (), Fc.Eval.Namespace.create ())
+    loop (Expander.Bindings.empty path, Typer.Env.interactive (), Fc.Eval.Namespace.create ())
 
 let lep path debug filename =
     let input = open_in filename in
     Fun.protect (fun () ->
-        rep path debug (eval_envs ()) (Sedlexing.Utf8.from_channel input)
+        rep debug (eval_envs path) (Sedlexing.Utf8.from_channel input)
     ) ~finally: (fun () -> close_in input)
 
 (* # CLI Args & Flags *)
@@ -223,8 +223,8 @@ let eval_t =
         let docv = "STATEMENTS" in
         let doc = "the statements to evaluate" in
         C.Arg.(value & pos 0 string "" & info [] ~docv ~doc) in
-    ( C.Term.(const ignore $ (const rep $ path $ debug
-        $ (const eval_envs $ const ()) $ (const Sedlexing.Utf8.from_string $ expr)))
+    ( C.Term.(const ignore $ (const rep $ debug
+        $ (const eval_envs $ path) $ (const Sedlexing.Utf8.from_string $ expr)))
     , C.Term.info "eval" ~doc )
 
 let script_t =
