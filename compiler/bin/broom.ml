@@ -14,7 +14,7 @@ let pwrite output = PP.ToChannel.pretty 1.0 80 output
 let pprint = pwrite stdout
 let pprint_err = pwrite stderr
 
-let eval_envs () = (Expander.Env.empty, Typer.Env.eval (), Fc.Eval.Namespace.create ())
+let eval_envs () = (Expander.Bindings.empty (), Typer.Env.eval (), Fc.Eval.Namespace.create ())
 
 let build path debug check_only filename outfile =
     let open PPrint in
@@ -46,7 +46,7 @@ let build path debug check_only filename outfile =
                         (pos, pos) in
                 let entry = {Util.pos; v = Ast.Term.Expr.App ( {pos; v = Var (Name.of_string "main")}
                     , Explicit, {pos; v = Tuple Vector.empty} )} in
-                let (defs, entry) = Expander.expand_program path Expander.Env.empty defs entry in
+                let (defs, entry) = Expander.expand_program path (Expander.Bindings.empty ()) defs entry in
                 match Vector1.of_vector defs with
                 | Some defs -> {Util.pos; v = Ast.Term.Expr.Let (defs, entry)}
                 | None -> failwith "compiler bug: program expansion succeeded without main function" in
@@ -174,7 +174,7 @@ let repl path debug =
             let envs = rep path debug envs (Sedlexing.Utf8.from_string input) in
             loop envs in
     print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
-    loop (Expander.Env.empty, Typer.Env.interactive (), Fc.Eval.Namespace.create ())
+    loop (Expander.Bindings.empty (), Typer.Env.interactive (), Fc.Eval.Namespace.create ())
 
 let lep path debug filename =
     let input = open_in filename in

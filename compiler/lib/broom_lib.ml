@@ -1,3 +1,9 @@
+module StringHashtbl = Hashtbl.Make (struct
+    type t = string
+
+    let equal = String.equal
+    let hash = Hashtbl.hash
+end)
 module Vector = Vector (* HACK *)
 module Vector1 = Vector1
 
@@ -30,7 +36,7 @@ module Parse = struct
         with SedlexMenhir.ParseError err -> Error err
 end
 
-module Expander = Expander
+module Expander = Expander.Make (StringHashtbl)
 
 module TyperSigs = TyperSigs (* HACK *)
 module Typer = Typer

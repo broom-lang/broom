@@ -14,19 +14,47 @@ type broompath = string list
 
 type fixity = Infix | Prefix | Postfix
 
-module Env = struct
+module Make (StringHashtbl : Hashtbl.S with type key = string) = struct
+
+module Env : sig
+    type value =
+        | Var of expr with_pos
+        | BroomPath of string list
+        | RequireCache of Name.t StringHashtbl.t
+
+    val add : Name.t -> value -> unit
+    val find : Name.t -> value option
+end = struct
+    type value =
+        | Var of expr with_pos
+        | BroomPath of string list
+        | RequireCache of Name.t StringHashtbl.t
+
+    let the = Name.Hashtbl.create 0
+
+    let add binding v = Name.Hashtbl.add the binding v
+    let find binding = Name.Hashtbl.find_opt the binding
+end
+
+module Bindings = struct
     type binding' = Name.t
     type binding = fixity option * binding'
 
     type t = binding Name.Map.t
 
-    let empty = Name.Map.empty
+    let empty () =
+        let rqc_name = Name.of_string "__requireCache" in
+        let rqc_binding = Name.fresh () in
+        Env.add rqc_binding (RequireCache (StringHashtbl.create 0));
+        Name.Map.singleton rqc_name (None, rqc_binding)
 
     let add env name binding = Name.Map.add name binding env
 
-    let find env id = Name.Map.find_opt id env
+    let find env id = match Name.Map.find_opt id env with
+        | Some binding -> binding
+        | None -> (None, id)
 
-    let fixity env id = Option.bind (find env id) fst
+    let fixity env id = fst (find env id)
 end
 
 let parse_appseq env exprs =
@@ -34,14 +62,14 @@ let parse_appseq env exprs =
         Vector.get_opt exprs i
         |> Option.map (fun (expr : expr with_pos) ->
             match expr.v with
-            | Var name -> Env.fixity env name
+            | Var name -> Bindings.fixity env name
             | _ -> None) in
 
     let token i =
         Vector.get_opt exprs i
         |> Option.map (fun (expr : expr with_pos) ->
             match expr.v with
-            | Var name -> (Env.fixity env name, expr, i + 1)
+            | Var name -> (Bindings.fixity env name, expr, i + 1)
             | _ -> (None, expr, i + 1)) in
 
     (* postfix = postfix POSTFIX | NONFIX *)
@@ -148,14 +176,15 @@ and expand path define_toplevel env expr : expr with_pos = match expr.v with
         {expr with v = Fn (plicity, Vector.map (expand_clause path define_toplevel env) clauses)}
     | AppSequence exprs ->
         expand path define_toplevel env (parse_appseq env (Vector1.to_vector exprs))
-    | App ({v = Var cname; pos = _} as callee, Explicit, arg) ->
-        (match Env.find env cname with
-        | Some (_, cname') ->
-            {expr with v = App ({v = Var cname'; pos = callee.pos}
-                , Explicit, (expand path define_toplevel env arg))}
+    | App ({v = Var cname; pos = _}, Explicit, arg) ->
+        (match Env.find (snd (Bindings.find env cname)) with
+        | Some (Var id) ->
+            {expr with v = App (id, Explicit, (expand path define_toplevel env arg))}
+        | Some _ -> failwith "TODO"
         | None -> (match Name.basename cname with
             | Some "let" -> expand_let path define_toplevel env expr.pos arg
             | Some "include" -> expand_include path arg
+            | Some "require" -> expand_require path define_toplevel env expr.pos arg
             | _ -> failwith ("unbound: " ^ Name.to_string cname
                 ^ " at " ^ Util.span_to_string expr.pos)))
     | App (callee, plicity, args) ->
@@ -191,8 +220,9 @@ and expand path define_toplevel env expr : expr with_pos = match expr.v with
         {expr with v = Select (expand path define_toplevel env selectee, label)}
     | Proxy typ ->
         {expr with v = Proxy ((expand_typ path define_toplevel env {expr with v = typ}).v)}
-    | Var name -> (match Env.find env name with
-        | Some (_, name') -> {expr with v = Var name'}
+    | Var name -> (match Env.find (snd (Bindings.find env name)) with
+        | Some (Var id) -> id
+        | Some _ -> failwith "TODO"
         | None -> failwith ("unbound: " ^ Name.to_string name
             ^ " at " ^ Util.span_to_string expr.pos))
     | Wild _ -> failwith "stray `_`"
@@ -232,6 +262,27 @@ and expand_include path (arg : expr with_pos) = match arg.v with
         ) ~finally: (fun () -> close_in input)
     | _ -> failwith "non-string-literal `include` arg"
 
+(* FIXME: canonicalize (?) filename: *)
+and expand_require path define_toplevel env pos (arg : expr with_pos) = match arg.v with
+    | Const (String filename) ->
+        let name = 
+            match Env.find (snd (Bindings.find env (Name.of_string "__requireCache"))) with
+            | Some (RequireCache requireds) -> (match StringHashtbl.find_opt requireds filename with
+                | Some name -> name
+                | None ->
+                    let name = Name.fresh () in
+                    let var : pat with_pos = {pos; v = Var name} in
+                    let incl : expr with_pos = {pos; v = Var (Name.of_string "include")} in
+                    let load = expand path define_toplevel env {pos; v = App (incl, Explicit, arg)} in
+                    let def : def = (pos, var, load) in
+                    define_toplevel def;
+                    StringHashtbl.add requireds filename name;
+                    name)
+            | Some _ -> failwith "compiler bug: __requireCache has wrong type"
+            | None -> failwith "compiler bug: __requireCache is unbound" in
+        {pos; v = Var name}
+    | _ -> failwith "non-string-literal `include` arg"
+
 and expand_pat path define_toplevel report_def env (pat : pat with_pos) =
     match pat.v with
     | Tuple pats ->
@@ -249,8 +300,10 @@ and expand_pat path define_toplevel report_def env (pat : pat with_pos) =
         ({pat with v = Proxy ((expand_typ path define_toplevel env {pat with v = typ}).v)}, env)
     | Var name ->
         let name' = Name.freshen name in
-        report_def (Stmt.Def (pat.pos, pat, {pat with v = Expr.Var name'}));
-        ({pat with v = Var name'}, Env.add env name (None, name'))
+        let id' = {pat with v = Expr.Var name'} in
+        report_def (Stmt.Def (pat.pos, pat, id'));
+        Env.add name' (Var id');
+        ({pat with v = Var name'}, Bindings.add env name (None, name'))
     | Wild _ | Const _ -> (pat, env)
     | _ -> failwith "TODO"
 
@@ -275,7 +328,7 @@ and expand_defs' path define_toplevel env defs =
     CCVector.map_in_place (expand_def path define_toplevel env) defs';
     (Vector.build defs', env)
 
-and expand_stmt_pat path define_toplevel report_def env : stmt -> stmt * Env.t = function
+and expand_stmt_pat path define_toplevel report_def env : stmt -> stmt * Bindings.t = function
     | Def def ->
         let (def, env) = expand_def_pat path define_toplevel report_def env def in
         (Def def, env)
@@ -320,4 +373,6 @@ let expand_interactive_stmt path env stmt =
     let stmts = CCVector.map (fun def -> Stmt.Def def) defs in
     CCVector.push stmts stmt;
     (env, Option.get (Vector1.of_vector (Vector.build stmts)))
+
+end
 
