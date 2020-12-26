@@ -272,7 +272,7 @@ and expand_include env (arg : expr with_pos) = match arg.v with
         ) ~finally: (fun () -> close_in input)
     | _ -> failwith "non-string-literal `include` arg"
 
-(* FIXME: canonicalize (?) filename: *)
+(* TODO: canonicalize (?) filename: *)
 and expand_require define_toplevel env pos (arg : expr with_pos) = match arg.v with
     | Const (String filename) ->
         let name = 
@@ -281,12 +281,12 @@ and expand_require define_toplevel env pos (arg : expr with_pos) = match arg.v w
                 | Some name -> name
                 | None ->
                     let name = Name.fresh () in
+                    StringHashtbl.add requireds filename name;
                     let var : pat with_pos = {pos; v = Var name} in
                     let incl : expr with_pos = {pos; v = Var (Name.of_string "include")} in
                     let load = expand define_toplevel env {pos; v = App (incl, Explicit, arg)} in
                     let def : def = (pos, var, load) in
                     define_toplevel def;
-                    StringHashtbl.add requireds filename name;
                     name)
             | Some _ -> failwith "compiler bug: __requireCache has wrong type"
             | None -> failwith "compiler bug: __requireCache is unbound" in
