@@ -1,0 +1,4 @@
+include "Std/Prelude";
+
+fun main _ = printLine "Hello, World!";
+
