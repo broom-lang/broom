@@ -148,6 +148,7 @@ and Type : AstSigs.TYPE
         | Tuple of t with_pos Vector.t
         | Pi of {domain : pat with_pos; eff : t with_pos option; codomain : t with_pos }
         | Impli of {domain : pat with_pos; codomain : t with_pos}
+        | Declare of stmt Vector1.t * t with_pos
         | Record of stmt Vector.t
         | Row of stmt Vector.t
         | Path of expr
@@ -169,6 +170,13 @@ and Type : AstSigs.TYPE
         | Impli {domain; codomain} ->
             prefix 4 1 (Term.Expr.to_doc domain ^^ blank 1)
                 (string "=>" ^^ to_doc codomain)
+        | Declare (decls, body) ->
+            string "__declare" ^^ blank 1
+            ^^ surround_separate 4 0 (braces empty)
+                lbrace (semi ^^ break 1) rbrace
+                (Vector1.to_list (Vector1.map Term.Stmt.to_doc decls)
+                @ [to_doc body])
+
         | Record stmts ->
             surround_separate_map 4 0 (braces colon)
                 (lbrace ^^ colon) (semi ^^ break 1) rbrace

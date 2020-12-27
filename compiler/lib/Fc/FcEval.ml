@@ -142,7 +142,7 @@ let run (ns : Namespace.t) program =
                                 failwith "compiler bug: cellGet on uninitialized cell at runtime")
                         | _ -> failwith "compiler bug: cellGet on non-cell at runtime")
                     | _ -> failwith "compiler bug: invalid primop arg")
-                | Int | Type -> k Proxy
+                | Int | String | Type | TypeOf -> k Proxy
                 | GlobalSet -> (match arg with
                     | Tuple args when Vector.length args = 2 ->
                         (match Vector.get args 0 with
@@ -156,7 +156,8 @@ let run (ns : Namespace.t) program =
                         (match Vector.get args 0 with
                         | String name -> k (Namespace.find ns (Name.of_string name))
                         | _ -> failwith "compiler bug: globalGet name not a string at runtime")
-                    | _ -> failwith "compiler bug: invalid primop arg") in
+                    | _ -> failwith "compiler bug: invalid primop arg")
+                | Import -> failwith "TODO: foreign import in interpreter" in
             eval env apply_op arg
 
         | PrimBranch {op; universals = _; arg; clauses = _} -> (* FIXME: use `clauses` *)

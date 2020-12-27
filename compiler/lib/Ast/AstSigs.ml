@@ -56,13 +56,14 @@ end
 
 module type TYPE = sig
     type expr
-    type stmt
+    type stmt (* TODO: separate `decl` type, to handle `foo : bar` more directly? *)
     type pat
 
     type t =
         | Tuple of t with_pos Vector.t
         | Pi of {domain : pat with_pos; eff : t with_pos option; codomain : t with_pos}
         | Impli of {domain : pat with_pos; codomain : t with_pos}
+        | Declare of stmt Vector1.t * t with_pos
         | Record of stmt Vector.t
         | Row of stmt Vector.t
         | Path of expr

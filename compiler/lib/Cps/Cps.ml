@@ -16,6 +16,7 @@ module Type = struct
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
+        | Proxy of t
         | App of t * t
         | Prim of Prim.t
 
@@ -54,6 +55,8 @@ module Type = struct
                 (infix 4 1 equals (Name.to_doc label) (to_doc field))
 
         | EmptyRow -> parens bar
+
+        | Proxy carrie -> brackets (prefix 4 1 equals (to_doc carrie))
 
         | App (callee, arg) -> parens (to_doc callee) ^^ blank 1 ^^ parens (to_doc arg)
         | Prim p -> string "__" ^^ Prim.to_doc p

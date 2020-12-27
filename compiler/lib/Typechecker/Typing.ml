@@ -45,12 +45,20 @@ let primop_typ : Primop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t =
         ( Vector.singleton T.aType
         , Vector.singleton (T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}))
         , T.EmptyRow, T.Bv {depth = 0; sibli = 0; kind = T.aType} )
-    | Int ->
-        (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim Int))
+    | Int -> (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim Int))
+    | String -> (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim String))
     | Type ->
         ( Vector.empty, Vector.empty, T.EmptyRow
         , T.Proxy (T.Exists (Vector1.singleton T.aType
             , Proxy (Bv {depth = 0; sibli = 0; kind = T.aType}))) )
+    | TypeOf -> (* FIXME: Enforce argument purity *)
+        ( Vector.singleton T.aType
+        , Vector.singleton (T.Bv {depth = 0; sibli = 0; kind = T.aType})
+        , EmptyRow, Proxy (Bv {depth = 0; sibli = 0; kind = T.aType}) )
+    | Import ->
+        ( Vector.singleton T.aType
+        , Vector.of_list [T.Proxy (Bv {depth = 0; sibli = 0; kind = T.aType}); Prim String]
+        , EmptyRow, Bv {depth = 0; sibli = 0; kind = T.aType} )
     | GlobalSet ->
         ( Vector.singleton T.aType
         , Vector.of_list [T.Prim String; Bv {depth = 0; sibli = 0; kind = T.aType}]
@@ -123,8 +131,12 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         let (universals, domain, app_eff, codomain) = primop_typ op in
         let (uvs, domain, app_eff, codomain) =
             Env.instantiate_primop env universals domain app_eff codomain in
+        let domain = (* HACK *)
+            if Vector.length domain = 1
+            then Vector.get domain 0
+            else Tuple domain in
         (* TODO: Effect opening à la Koka: *)
-        let {TS.term = arg; eff = arg_eff} = check env (Tuple domain) arg in
+        let {TS.term = arg; eff = arg_eff} = check env domain arg in
         ignore (M.solving_unify expr.pos env arg_eff app_eff);
         { term = FExpr.at expr.pos codomain (FExpr.primapp op (Vector.map (fun uv -> T.Uv uv) uvs) arg)
         ; eff = app_eff }

@@ -2,7 +2,8 @@ open Streaming
 
 type 'a with_pos = 'a Util.with_pos
 
-type typ = Ast.Type.t
+module Type = Ast.Type
+type typ = Type.t
 module Expr = Ast.Term.Expr
 type expr = Expr.t
 type pat = Expr.pat
@@ -160,15 +161,65 @@ let rec expand_typ define_toplevel env (typ : typ with_pos) : typ with_pos =
     | Impli {domain; codomain} ->
         let (domain, env) = expand_pat define_toplevel ignore env domain in
         {typ with v = Impli {domain; codomain = expand_typ define_toplevel env codomain}}
+    | Declare (decls, body) ->
+        let (decls, env) = expand_decls' define_toplevel ignore env (Vector1.to_vector decls) in
+        let body = expand_typ define_toplevel env body in
+        (match Vector1.of_vector decls with
+        | Some decls -> {typ with v = Declare (decls, body)}
+        | None -> body)
+
     | Tuple typs ->
         {typ with v = Tuple (Vector.map (expand_typ define_toplevel env) typs)}
-    | Record stmts ->
-        {typ with v = Record (expand_stmts define_toplevel ignore env stmts)} (* TODO: don't ignore? *)
-    | Row stmts ->
-        {typ with v = Row (expand_stmts define_toplevel ignore env stmts)} (* TODO: don't ignore? *)
+    | Record decls | Row decls ->
+        let vars = CCVector.create () in
+        let decls = expand_decls define_toplevel (CCVector.push vars) env decls in
+        let decls = decls |> Vector.map (function
+            | (Stmt.Def _ | Expr {v = Ann _; _}) as decl -> decl
+            | Expr _ -> failwith "non-decl stmt in Record") in
+        let body : typ with_pos = match typ.v with
+            | Record _ -> {typ with v = Record (Vector.build vars)}
+            | Row _ -> {typ with v = Row (Vector.build vars)}
+            | _ -> failwith "unreachable" in
+        (match Vector1.of_vector decls with
+        | Some decls -> {typ with v = Declare (decls, body)}
+        | None -> body)
+
     | Path expr ->
         {typ with v = Path ((expand define_toplevel env {typ with v = expr}).v)}
     | Prim _ -> typ
+
+and expand_decl_pat define_toplevel report_def env = function
+    | Stmt.Def def ->
+        let (def, env) = expand_def_pat define_toplevel report_def env def in
+        (Stmt.Def def, env)
+    | Expr {v = Ann (pat, typ); pos} ->
+        let report_def = function
+            | Stmt.Def (pos, pat, expr) ->
+                let path = Expr.PrimApp (TypeOf, None, expr) in
+                report_def (Stmt.Expr {v = Ann (pat, {pos; v = Path path}); pos})
+            | _ -> failwith "unreachable" in
+        let (pat, env) = expand_pat define_toplevel report_def env pat in
+        (Expr {v = Ann (pat, typ); pos}, env)
+    | Expr _ as stmt -> (stmt, env)
+
+and expand_decl define_toplevel env : stmt -> stmt = function
+    | Def def -> Def (expand_def define_toplevel env def)
+    | Expr {v = Ann (pat, typ); pos} ->
+        Expr {v = Ann (pat, expand_typ define_toplevel env typ); pos}
+    | Expr expr -> Expr (expand define_toplevel env expr)
+
+and expand_decls' define_toplevel report_def env decls =
+    let decls' = CCVector.create () in
+    let env = Vector.fold (fun env decl ->
+        let (decl', env) = expand_decl_pat define_toplevel report_def env decl in
+        CCVector.push decls' decl';
+        env
+    ) env decls in
+    CCVector.map_in_place (expand_decl define_toplevel env) decls';
+    (Vector.build decls', env)
+
+and expand_decls define_toplevel report_def env decls =
+    fst (expand_decls' define_toplevel report_def env decls)
 
 (* OPTIMIZE: Expr.map_children (which does not exist yet): *)
 and expand define_toplevel env expr : expr with_pos = match expr.v with
@@ -295,6 +346,9 @@ and expand_require define_toplevel env pos (arg : expr with_pos) = match arg.v w
 
 and expand_pat define_toplevel report_def env (pat : pat with_pos) =
     match pat.v with
+    | Ann (pat, typ) ->
+        let (pat, env) = expand_pat define_toplevel report_def env pat in
+        ({pat with v = Ann (pat, expand_typ define_toplevel env typ)}, env)
     | Tuple pats ->
         let pats' = CCVector.create () in
         let env = Vector.fold (fun env pat ->
@@ -315,7 +369,7 @@ and expand_pat define_toplevel report_def env (pat : pat with_pos) =
         Env.add name' (Var id');
         ({pat with v = Var name'}, Bindings.add env name (None, name'))
     | Wild _ | Const _ -> (pat, env)
-    | _ -> failwith "TODO"
+    | _ -> failwith ("TODO: pat at " ^ Util.span_to_string pat.pos)
 
 and expand_clause define_toplevel env ({params; body} : clause) : clause =
     let (params, env) = expand_pat define_toplevel ignore env params in

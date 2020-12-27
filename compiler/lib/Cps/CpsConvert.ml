@@ -46,6 +46,7 @@ let convert_typ state_typ =
         | With {base; label; field} ->
             With {base = convert base; label; field = convert field}
         | EmptyRow -> EmptyRow
+        | Proxy typ -> Proxy (convert typ)
         | App (callee, arg) -> App (convert callee, convert arg)
         | Prim p -> Prim p
         | Uv r -> (match Fc.Uv.get log r with

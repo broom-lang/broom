@@ -145,6 +145,22 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
                  ; codomain = Env.close env substitution codomain }
             ; kind = T.aType }
 
+        | Declare (decls, body) ->
+            let bindings = CCVector.create () in
+            let _ = Vector1.fold (fun env decl ->
+                let (_, semiabs, defs', rhs) = analyze_decl env decl in
+                CCVector.push bindings (defs', semiabs, rhs);
+                Vector.fold Env.push_val env defs'
+            ) env decls in
+            (* OPTIMIZE: Fields accumulator is not needed here, as `_` shows: *)
+            let (env, _) = Env.push_row env (CCVector.freeze bindings) in
+
+            Vector1.iter2 (elaborate_decl env)
+                (Vector.build bindings |> Vector1.of_vector |> Option.get)
+                decls;
+
+            elab env body
+
         | Record decls ->
             let {TS.typ = row; kind = _} = elab_row env typ.pos decls in
             let typ' = T.Record row in
@@ -175,27 +191,19 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
         let env = Vector.fold Env.push_val env defs in
         (domain, env)
 
-    (* TODO: Move desugaring to Expander, as with record values: *)
     and elab_row env pos decls =
-        let bindings = CCVector.create () in
-        let _ = Vector.fold (fun env decl ->
-            let (_, semiabs, defs', rhs) = analyze_decl env decl in
-            CCVector.push bindings (defs', semiabs, rhs);
-            Vector.fold Env.push_val env defs'
-        ) env decls in
-        let (env, fields) = Env.push_row env (CCVector.freeze bindings) in
-
-        Vector.iter2 (elaborate_field env) (Vector.build bindings) decls;
-
-        let row = List.fold_right (fun {FExpr.name; vtyp; _} base ->
-            T.With {base; label = name; field = vtyp}
-        ) (!fields) EmptyRow in
+        let row = Vector.fold_right (fun base -> function
+            | AStmt.Expr {v = Ann ({v = Var label; _}, typ); _} ->
+                let {TS.typ = field; kind = _} = elab env typ in
+                T.With {base; label; field}
+            | _ -> failwith "compiler bug: bad record type field reached typechecker"
+        ) EmptyRow decls in
         {typ = row; kind = kindof_F pos env row}
 
     and analyze_decl env = function
         | AStmt.Def (_, pat, expr) ->
             let (pat, semiabs, defs') = C.elaborate_pat env pat in
-            let expr' = AExpr.App ({expr with v = Var (Name.of_string "typeof")}, Explicit, expr) in
+            let expr' = AExpr.PrimApp (TypeOf, None, expr) in
             (pat, semiabs, defs', {expr with v = AType.Path expr'})
         | AStmt.Expr {v = Ann (pat, typ); pos = _} ->
             let (pat, semiabs, defs') = C.elaborate_pat env pat in
@@ -205,7 +213,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
             let (pat, semiabs, defs') = C.elaborate_pat env {expr with v = Tuple Vector.empty} in
             (pat, semiabs, defs', {expr with v = AType.Tuple Vector.empty})
 
-    and elaborate_field env (defs, (_, lhs), rhs) decl =
+    and elaborate_decl env (defs, (_, lhs), rhs) decl =
         let pos = AStmt.pos decl in
         ignore (
             if Vector.length defs > 0

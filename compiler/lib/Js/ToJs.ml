@@ -56,13 +56,11 @@ let emit program =
             | None -> false
         else false in
 
-(*
     let counter = ref 0 in
     let fresh () =
         let i = !counter in
         counter := i + 1;
         string ("y$" ^ Int.to_string i) in
-*)
 
     let param_docs = Cont.Id.Hashtbl.create 0 in
     let add_param_docs label fn_name n =
@@ -94,7 +92,11 @@ let emit program =
 
     let rec emit_transfer parent stmts (transfer : Transfer.t) =
         let emit_expr : Expr.t -> PPrint.document = function
-            | PrimApp _ -> failwith "TODO"
+            | PrimApp {op = Import; universals = _; args} ->
+                assert (Vector.length args = 2);
+                string "require" ^^ parens (emit_use (Vector.get args 1))
+
+            | PrimApp {op; _} -> failwith ("TODO: " ^ Primop.to_string op)
 
             | Tuple vals -> (* OPTIMIZE: unbox tuples (in an earlier pass) *)
                 surround_separate_map 4 0 (brackets empty)
@@ -111,23 +113,24 @@ let emit program =
                         Name.to_doc label ^^ colon ^^ blank 1 ^^ emit_use field)
                     (Vector.to_list fields)
 
-            | With _ | Where _ -> failwith "TODO"
-
-(*
             | Where {base; fields} ->
                 let base_name = fresh () in
-                let stmt = infix 4 1 equals
+                let copy = infix 4 1 equals
                     (string "var" ^^ blank 1 ^^ base_name)
                     (string "Object.assign"
                     ^^ parens (braces empty ^^ comma ^^ break 1 ^^ emit_use base)) in
-                CCVector.push stmts stmt;
-                Vector.iter (fun (label, field) ->
-                    let stmt = infix 4 1 equals (base_name ^^ dot ^^ Name.to_doc label)
-                        (emit_use field) in
-                    CCVector.push stmts stmt
-                ) fields;
-                base_name
+                let assignments = fields |> Vector.map (fun (label, v) ->
+                     infix 4 1 equals (base_name ^^ dot ^^ Name.to_doc label) (emit_use v)) in
+                let fn = string "function" ^^ blank 1 ^^ parens empty ^^ blank 1
+                    ^^ surround_separate 4 1 (braces empty) (* NOTE: empty is actually impossible *)
+                        lbrace (semi ^^ break 1) rbrace
+                        (copy
+                        :: (Vector.to_list assignments
+                        @ [string "return" ^^ blank 1 ^^ base_name ^^ semi])) in
+                parens fn ^^ parens empty
 
+            | With _ -> failwith "TODO"
+(*
             | With {base; label; field} ->
                 let base_name = fresh () in
                 let stmt = infix 4 1 equals

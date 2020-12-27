@@ -1,7 +1,8 @@
 type t =
     | CellNew | CellInit | CellGet
-    | Int
-    | Type
+    | Int | String | Type
+    | TypeOf (* TODO: get rid of this? *)
+    | Import
     | GlobalSet | GlobalGet
 
 let of_string = function
@@ -9,7 +10,10 @@ let of_string = function
     | "cellInit" -> Some CellInit
     | "cellGet" -> Some CellGet
     | "int" -> Some Int
+    | "string" -> Some String
     | "type" -> Some Type
+    | "typeOf" -> Some TypeOf
+    | "import" -> Some Import
     | "globalSet" -> Some GlobalSet
     | "globalGet" -> Some GlobalGet
     | _ -> None
@@ -19,13 +23,16 @@ let to_string = function
     | CellInit -> "cellInit"
     | CellGet -> "cellGet"
     | Int -> "int"
+    | String -> "string"
     | Type -> "type"
+    | TypeOf -> "typeOf"
+    | Import -> "import"
     | GlobalSet -> "globalSet"
     | GlobalGet -> "globalGet"
 
 let to_doc op = PPrint.string (to_string op)
 
 let is_pure = function
-    | CellNew | Int | Type -> true
-    | CellInit | CellGet | GlobalSet | GlobalGet -> false
+    | CellNew | Int | String | Type | TypeOf -> true
+    | CellInit | CellGet | Import (* ? *) | GlobalSet | GlobalGet -> false
 
