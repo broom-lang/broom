@@ -153,6 +153,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
                 Vector.fold Env.push_val env defs'
             ) env decls in
             (* OPTIMIZE: Fields accumulator is not needed here, as `_` shows: *)
+            (* FIXME: fields accumulator was used to put fields in dependency order! *)
             let (env, _) = Env.push_row env (CCVector.freeze bindings) in
 
             Vector1.iter2 (elaborate_decl env)

@@ -335,6 +335,7 @@ and check_defs env defs =
     ) env defs in
     let pats = Vector.build pats in
     (* OPTIMIZE: Fields accumulator is not needed here, as `_` shows: *)
+    (* FIXME: fields accumulator was used to put fields in dependency order! *)
     let (env, _) = Env.push_rec env (CCVector.freeze bindings) in
 
     ( Source.zip (Source.seq (CCVector.to_seq bindings))

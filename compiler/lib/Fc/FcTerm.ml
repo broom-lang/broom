@@ -86,13 +86,13 @@ end = struct
                 lparen (comma ^^ break 1) rparen
                 (to_doc s) (Array.to_list exprs)
         | Focus {focusee; index} ->
-            selectee_to_doc s focusee ^^ dot ^^ string (Int.to_string index)
+            prefix 4 1 (selectee_to_doc s focusee) (dot ^^ string (Int.to_string index))
         | Fn {universals; param; body} ->
             string "fun"
             ^^ surround_separate_map 4 0 empty
                     (blank 1 ^^ langle) (comma ^^ break 1) rangle
                     (Type.binding_to_doc s) (Vector.to_list universals)
-            ^^ blank 1 ^^ def_to_doc s param ^^ blank 1
+            ^^ blank 1 ^^ parens (def_to_doc s param) ^^ blank 1
             ^^ surround 4 1 lbrace (to_doc s body) rbrace 
         | Let {defs; body} ->
             surround 4 1 (string "let" ^^ blank 1 ^^ lbrace)
@@ -171,13 +171,12 @@ end = struct
                     infix 4 1 equals (string (Name.basename label |> Option.get)) (to_doc s field))
                 (Array.to_list fields)
         | Where {base; fields} ->
-            infix 4 1 (string "where")
-                (to_doc s base)
-                (surround_separate_map 4 0 (braces empty)
-                    lbrace (comma ^^ break 1) rbrace
+            surround 4 0 (to_doc s base ^^ blank 1 ^^ string "where" ^^ blank 1 ^^ lbrace)
+                (separate_map (comma ^^ break 1) 
                     (fun (label, field) ->
                         infix 4 1 equals (Name.to_doc label) (to_doc s field))
                     (Array1.to_list fields))
+                rbrace
         | With {base; label; field} ->
             infix 4 1 (string "with") (base_to_doc s base)
                 (infix 4 1 equals (Name.to_doc label) (to_doc s field))
