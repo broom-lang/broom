@@ -138,21 +138,25 @@ end
 and Type : AstSigs.TYPE
     with type expr = Term.Expr.t
     with type pat = Term.Expr.pat
-    with type stmt = Term.Stmt.t
+    with type def = Term.Stmt.def
 = struct
     type expr = Term.Expr.t
     type pat = Term.Expr.pat
-    type stmt = Term.Stmt.t
+    type def = Term.Stmt.def
 
     type t =
         | Tuple of t with_pos Vector.t
-        | Pi of {domain : pat with_pos; eff : t with_pos option; codomain : t with_pos }
+        | Pi of {domain : pat with_pos; eff : t with_pos option; codomain : t with_pos}
         | Impli of {domain : pat with_pos; codomain : t with_pos}
-        | Declare of stmt Vector1.t * t with_pos
-        | Record of stmt Vector.t
-        | Row of stmt Vector.t
+        | Declare of decl Vector1.t * t with_pos
+        | Record of decl Vector.t
+        | Row of decl Vector.t
         | Path of expr
         | Prim of Prim.t
+
+    and decl =
+        | Def of def
+        | Decl of Util.span * pat with_pos * t with_pos
 
     let rec to_doc (typ : t with_pos) =
         let open PPrint in
@@ -174,18 +178,33 @@ and Type : AstSigs.TYPE
             string "__declare" ^^ blank 1
             ^^ surround_separate 4 0 (braces empty)
                 lbrace (semi ^^ break 1) rbrace
-                (Vector1.to_list (Vector1.map Term.Stmt.to_doc decls)
+                (Vector1.to_list (Vector1.map decl_to_doc decls)
                 @ [to_doc body])
 
         | Record stmts ->
             surround_separate_map 4 0 (braces colon)
                 (lbrace ^^ colon) (semi ^^ break 1) rbrace
-                Term.Stmt.to_doc (Vector.to_list stmts)
+                decl_to_doc (Vector.to_list stmts)
         | Row stmts ->
             surround_separate_map 4 0 (parens bar)
                 (lparen ^^ bar) (break 1 ^^ bar ^^ break 1) rparen
-                Term.Stmt.to_doc (Vector.to_list stmts)
+                decl_to_doc (Vector.to_list stmts)
         | Path expr -> Term.Expr.to_doc {typ with v = expr}
         | Prim pt -> Prim.to_doc pt
+
+    and decl_to_doc = function
+        | Def def -> Term.Stmt.def_to_doc def
+        | Decl (_, pat, typ) ->
+            PPrint.(infix 4 1 colon (Term.Expr.to_doc pat) (to_doc typ))
+
+    module Decl = struct
+        type t = decl
+
+        let to_doc = decl_to_doc
+
+        let pos = function
+            | Def (pos, _, _) -> pos
+            | Decl (pos, _, _) -> pos
+    end
 end
 

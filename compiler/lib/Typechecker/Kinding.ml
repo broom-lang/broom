@@ -193,7 +193,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
 
     and elab_row env pos decls =
         let row = Vector.fold_right (fun base -> function
-            | AStmt.Expr {v = Ann ({v = Var label; _}, typ); _} ->
+            | AType.Decl (_, {v = Var label; _}, typ) ->
                 let {TS.typ = field; kind = _} = elab env typ in
                 T.With {base; label; field}
             | _ -> failwith "compiler bug: bad record type field reached typechecker"
@@ -201,20 +201,16 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
         {typ = row; kind = kindof_F pos env row}
 
     and analyze_decl env = function
-        | AStmt.Def (_, pat, expr) ->
+        | AType.Def (_, pat, expr) ->
             let (pat, semiabs, defs') = C.elaborate_pat env pat in
             let expr' = AExpr.PrimApp (TypeOf, None, expr) in
             (pat, semiabs, defs', {expr with v = AType.Path expr'})
-        | AStmt.Expr {v = Ann (pat, typ); pos = _} ->
+        | Decl (_, pat, typ) ->
             let (pat, semiabs, defs') = C.elaborate_pat env pat in
             (pat, semiabs, defs', typ)
-        | AStmt.Expr expr as decl ->
-            Env.reportError env expr.pos (Err.InvalidDecl decl);
-            let (pat, semiabs, defs') = C.elaborate_pat env {expr with v = Tuple Vector.empty} in
-            (pat, semiabs, defs', {expr with v = AType.Tuple Vector.empty})
 
     and elaborate_decl env (defs, (_, lhs), rhs) decl =
-        let pos = AStmt.pos decl in
+        let pos = AType.Decl.pos decl in
         ignore (
             if Vector.length defs > 0
             then Env.find_rhst env pos (Vector.get defs 0).FExpr.name

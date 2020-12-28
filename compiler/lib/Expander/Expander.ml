@@ -173,9 +173,6 @@ let rec expand_typ define_toplevel env (typ : typ with_pos) : typ with_pos =
     | Record decls | Row decls ->
         let vars = CCVector.create () in
         let decls = expand_decls define_toplevel (CCVector.push vars) env decls in
-        let decls = decls |> Vector.map (function
-            | (Stmt.Def _ | Expr {v = Ann _; _}) as decl -> decl
-            | Expr _ -> failwith "non-decl stmt in Record") in
         let body : typ with_pos = match typ.v with
             | Record _ -> {typ with v = Record (Vector.build vars)}
             | Row _ -> {typ with v = Row (Vector.build vars)}
@@ -189,24 +186,24 @@ let rec expand_typ define_toplevel env (typ : typ with_pos) : typ with_pos =
     | Prim _ -> typ
 
 and expand_decl_pat define_toplevel report_def env = function
-    | Stmt.Def def ->
+    | Type.Def def ->
+        let report_def = function
+            | Stmt.Def def -> report_def (Type.Def def)
+            | _ -> failwith "unreachable" in
         let (def, env) = expand_def_pat define_toplevel report_def env def in
-        (Stmt.Def def, env)
-    | Expr {v = Ann (pat, typ); pos} ->
+        (Type.Def def, env)
+    | Decl (pos, pat, typ) ->
         let report_def = function
             | Stmt.Def (pos, pat, expr) ->
                 let path = Expr.PrimApp (TypeOf, None, expr) in
-                report_def (Stmt.Expr {v = Ann (pat, {pos; v = Path path}); pos})
+                report_def (Type.Decl (pos, pat, {pos; v = Path path}))
             | _ -> failwith "unreachable" in
         let (pat, env) = expand_pat define_toplevel report_def env pat in
-        (Expr {v = Ann (pat, typ); pos}, env)
-    | Expr _ as stmt -> (stmt, env)
+        (Decl (pos, pat, typ), env)
 
-and expand_decl define_toplevel env : stmt -> stmt = function
-    | Def def -> Def (expand_def define_toplevel env def)
-    | Expr {v = Ann (pat, typ); pos} ->
-        Expr {v = Ann (pat, expand_typ define_toplevel env typ); pos}
-    | Expr expr -> Expr (expand define_toplevel env expr)
+and expand_decl define_toplevel env = function
+    | Type.Def def -> Type.Def (expand_def define_toplevel env def)
+    | Decl (pos, pat, typ) -> Decl (pos, pat, expand_typ define_toplevel env typ)
 
 and expand_decls' define_toplevel report_def env decls =
     let decls' = CCVector.create () in

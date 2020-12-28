@@ -5,5 +5,5 @@ module rec Term : (AstSigs.TERM with type Expr.typ = Type.t)
 and Type : (AstSigs.TYPE
     with type expr = Term.Expr.t
     with type pat = Term.Expr.pat
-    with type stmt = Term.Stmt.t)
+    with type def = Term.Stmt.def)
 

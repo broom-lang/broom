@@ -180,9 +180,9 @@ nestable_without_pos :
     | "(" COMPARISON ")" { Var (Name.of_string $2) }
     | "(" ADDITIVE ")" { Var (Name.of_string $2) }
     | "(" MULTIPLICATIVE ")" { Var (Name.of_string $2) }
-    | "(" "|" stmt tail("|", stmt, ")") { proxy (Row (Vector.of_list ($3 :: $4))) }
+    | "(" "|" decl tail("|", decl, ")") { proxy (Row (Vector.of_list ($3 :: $4))) }
     | "(" "|" ")" { proxy (Row Vector.empty) }
-    | "{" ":" stmt tail(";", stmt, "}") { proxy (Record (Vector.of_list ($3 :: $4))) }
+    | "{" ":" decl tail(";", decl, "}") { proxy (Record (Vector.of_list ($3 :: $4))) }
     | "{" ":" "}" { proxy (Record Vector.empty) }
     | "(" ":" typ tail(",", typ, ")") { proxy (Ast.Type.Tuple (Vector.of_list ($3 :: $4))) }
     | "(" ":" ")" { proxy (Ast.Type.Tuple Vector.empty) }
@@ -223,4 +223,10 @@ typ_without_pos :
         Impli {domain = $1; codomain = {$3 with v = path $3.v}}
     }
     | ann_expr { path $1.v }
+
+(* ## Declarations *)
+
+decl :
+    | def { Def $1 }
+    | binapp ":" typ { Decl ($loc, $1, $3) }
 
