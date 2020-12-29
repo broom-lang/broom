@@ -99,9 +99,11 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
     | AExpr.Focus (tup, index) ->
         let {TS.term = tup; eff} = typeof env tup in
         (match M.focalize tup.pos env tup.typ (TupleL (index + 1)) with
-        | (Cf coerce, Tuple typs) when index < Vector.length typs ->
-            (* FIXME: coercing potentially nontrivial expr `tup`: *)
-            { term = FExpr.at expr.pos (Vector.get typs index) (FExpr.focus (coerce tup) index)
+        | (coerce, Tuple typs) when index < Vector.length typs ->
+            let tup = match coerce with
+                | Some coerce -> Coercer.apply coerce tup
+                | None -> tup in
+            { term = FExpr.at expr.pos (Vector.get typs index) (FExpr.focus tup index)
             ; eff }
         | _ -> failwith "compiler bug: focusee focalization returned non-tuple")
 
@@ -110,8 +112,9 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
     | AExpr.App (callee, Explicit, arg) ->
         let {TS.term = callee; eff = callee_eff} = typeof env callee in
         (match M.focalize callee.pos env callee.typ (PiL Hole) with
-        | (Cf coerce, Pi {universals; domain; eff = app_eff; codomain}) ->
-            let (uvs, domain, app_eff, codomain) = Env.instantiate_arrow env universals domain app_eff codomain in
+        | (coerce, Pi {universals; domain; eff = app_eff; codomain}) ->
+            let (uvs, domain, app_eff, codomain) =
+                Env.instantiate_arrow env universals domain app_eff codomain in
             ignore (M.solving_unify expr.pos env callee_eff app_eff);
             (* TODO: Effect opening à la Koka: *)
             let {TS.term = arg; eff = arg_eff} = check env domain arg in
@@ -119,8 +122,11 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
             (match codomain with
             | Exists _ -> failwith "TODO: existential codomain in App"
             | _ ->
+                let callee = match coerce with
+                    | Some coerce -> Coercer.apply coerce callee
+                    | None -> callee in
                 { term = FExpr.at expr.pos codomain
-                    (FExpr.app (coerce callee) (Vector.map (fun uv -> T.Uv uv) uvs) arg)
+                    (FExpr.app callee (Vector.map (fun uv -> T.Uv uv) uvs) arg)
                 ; eff = callee_eff })
         | _ -> failwith "compiler bug: callee focalization returned non-function")
 
@@ -442,8 +448,10 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
 
     | _ ->
         let {TS.term = expr; eff} = typeof env expr in
-        let Cf coerce = M.solving_subtype expr.pos env expr.typ typ in
-        {term = coerce expr; eff}
+        let term = match M.solving_subtype expr.pos env expr.typ typ with
+            | Some coerce -> Coercer.apply coerce expr
+            | None -> expr in
+        {term; eff}
 
 and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typing
 = fun env typ pos clauses -> match typ with

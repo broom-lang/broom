@@ -12,6 +12,8 @@ let of_vector vec =
 
 let to_vector = Fun.id
 
+let to_array = Vector.to_array
+
 let of_list = function
     | (_ :: _) as ls -> Some (Vector.of_list ls)
     | [] -> None

@@ -8,11 +8,6 @@ type typ = Fc.Type.t
 type 'a typing = {term : 'a; eff : typ}
 type 'a kinding = {typ : 'a; kind : Fc.Type.kind}
 
-(* Newtype to allow ignoring subtyping coercions without partial application warning: *)
-(* TODO: triv_expr with_pos -> expr with_pos to avoid bugs that would delay side effects
-         or that duplicate large/nontrivial terms: *)
-type coercer = Cf of (Fc.Term.Expr.t -> Fc.Term.Expr.t) [@unboxed]
-
 module type KINDING = sig
     type env
 
@@ -40,8 +35,8 @@ end
 module type MATCHING = sig
     type env
 
-    val focalize : span -> env -> typ -> Fc.Type.template -> coercer * typ
-    val solving_subtype : span -> env -> typ -> typ -> coercer
+    val focalize : span -> env -> typ -> Fc.Type.template -> Coercer.t option * typ
+    val solving_subtype : span -> env -> typ -> typ -> Coercer.t option
     val solving_unify : span -> env -> typ -> typ -> Fc.Type.coercion option
 end
 

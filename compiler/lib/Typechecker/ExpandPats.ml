@@ -29,7 +29,7 @@ type clause' = {pat : pat; emit : final_emitter}
 module State = struct
     type node =
         | Test of {matchee : var; clauses : (pat * var) Vector.t}
-        | Destructure of {defs : stmt Vector.t; body : var}
+        | Destructure of {defs : stmt Vector1.t; body : var}
         | Final of {mutable tmp_vars : final_naming Vector.t option; emit : final_emitter}
 
     type t =
@@ -126,18 +126,22 @@ let matcher pos typ matchee clauses =
                     let matchees'' = Vector.init width (fun i -> E.fresh_var (Vector.get typs i)) in
                     let matchees' = Vector.concat [Vector.sub matchees 0 coli; matchees''
                         ; Vector.sub matchees (coli + 1) (Vector.length matchees - (coli + 1))] in
-                    let defs = Stream.from (Source.zip_with (fun (matchee' : var) index ->
-                                let focusee = E.at pos matchee.vtyp (E.use matchee) in
-                                S.Def ( pos, matchee'
-                                    , E.at pos matchee'.vtyp (E.focus focusee index )))
-                            (Vector.to_source matchees'')
-                            (Source.count 0))
-                        |> Stream.into (Vector.sink ()) in
                     let body = matcher' matchees' pats acceptors in
-                    let var = E.fresh_var typ in
-                    let node : State.node = Destructure {defs; body} in
-                    Automaton.add states var.name {var; refcount = 1; frees = Some matchees; node};
-                    var
+                    (match Vector1.of_vector matchees'' with
+                    | Some matchees'' ->
+                        let defs = Stream.from (Source.zip_with (fun (matchee' : var) index ->
+                                    let focusee = E.at pos matchee.vtyp (E.use matchee) in
+                                    S.Def ( pos, matchee'
+                                        , E.at pos matchee'.vtyp (E.focus focusee index )))
+                                (Vector1.to_source matchees'')
+                                (Source.count 0))
+                            |> Stream.into (Vector.sink ())
+                            |> Vector1.of_vector |> Option.get in
+                        let var = E.fresh_var typ in
+                        let node : State.node = Destructure {defs; body} in
+                        Automaton.add states var.name {var; refcount = 1; frees = Some matchees; node};
+                        var
+                    | None -> body)
 
                 | Fn _ | Prim (Cell | SingleRep | Boxed | TypeIn | RowOf)
                 | EmptyRow | PromotedTuple _ | PromotedArray _ -> failwith "unreachable"
@@ -200,7 +204,7 @@ let emit pos codomain states start =
                             {E.pat; body = emit' target.name})))
             | Destructure {defs; body} ->
                 let expr = emit' body.name in
-                {expr with term = E.let' (Vector.to_array defs) expr}
+                {expr with term = E.let' (Vector1.to_array defs) expr}
             | Final {tmp_vars; emit} -> emit Inline (Option.get tmp_vars) in
 
         if state.refcount > 1 && not (Name.Hashtbl.mem shareds state_name)

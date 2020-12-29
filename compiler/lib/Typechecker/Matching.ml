@@ -20,7 +20,6 @@ module Err = TypeError
 
 type env = Env.t
 type span = Util.span
-type coercer = TyperSigs.coercer
 
 type 'a matching = {coercion : 'a; residual : Residual.t option}
 
@@ -82,7 +81,7 @@ let match_rows : Util.span -> Env.t -> T.t -> T.t -> Name.t CCVector.ro_vector
 
 (* # Focalization *)
 
-let focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
+let focalize : span -> Env.t -> T.t -> T.template -> Coercer.t option * T.t
 = fun pos env typ template ->
     let articulate_template uv_typ template = match uv_typ with
         | T.Uv uv ->
@@ -112,52 +111,53 @@ let focalize : span -> Env.t -> T.t -> T.template -> coercer * T.t
     let focalize_whnf typ = match typ with
         | T.Uv uv ->
             (match Env.get_uv env uv with
-            | Unassigned _ -> (TyperSigs.Cf Fun.id, articulate_template typ template)
+            | Unassigned _ -> (None, articulate_template typ template)
             | Assigned _ -> failwith "unreachable: Assigned uv in `focalize`.")
         | _ ->
             (match template with
             | TupleL min_length ->
                 (match typ with
-                | Tuple typs when Vector.length typs >= min_length -> (Cf Fun.id, typ)
+                | Tuple typs when Vector.length typs >= min_length -> (None, typ)
                 | _ ->
                     Env.reportError env pos (Unusable (template, typ));
                     let typ : T.t = Uv (Env.uv env T.aType) in
-                    (Cf Fun.id, articulate_template typ template))
+                    (None, articulate_template typ template))
             | PiL _ -> (* TODO: arity check (or to `typeof`/`App`?) *)
                 (match typ with
-                | Pi _ -> (Cf Fun.id, typ)
+                | Pi _ -> (None, typ)
                 | _ ->
                     Env.reportError env pos (Unusable (template, typ));
                     let typ : T.t = Uv (Env.uv env T.aType) in
-                    (Cf Fun.id, articulate_template typ template))
+                    (None, articulate_template typ template))
             | ProxyL _ ->
                 (match typ with
-                | Proxy _ -> (Cf Fun.id, typ)
+                | Proxy _ -> (None, typ)
                 | _ ->
                     let typ : T.t = Uv (Env.uv env T.aType) in
-                    (Cf Fun.id, articulate_template typ template))
+                    (None, articulate_template typ template))
             | WithL {base = _; label; field = _} ->
                 let (co, base, field) = pull_row pos env label typ in
-                let cof = match co with
-                    | Some co -> (fun castee ->
-                        E.at pos (With {base; label; field}) (E.cast castee co))
-                    | None -> Fun.id in
-                (Cf cof, With {base; label; field})
+                let coerce = co |> Option.map (fun co -> Coercer.coercer (fun castee ->
+                    E.at pos (With {base; label; field}) (E.cast castee co))) in
+                (coerce, With {base; label; field})
             | Hole -> failwith "unreachable: Hole as template in `focalize`.") in
 
     match K.eval env typ with
     | Some (typ', coercion) ->
-        let (Cf cf as coercer, typ) = focalize_whnf typ' in
-        ( (match coercion with
-          | Some coercion -> Cf (fun castee ->
-                cf (E.at pos typ' (E.cast castee coercion)))
-          | None -> coercer)
-        , typ )
+        let (coerce, typ) = focalize_whnf typ' in
+        let coerce = match (coercion, coerce) with
+          | (Some coercion, Some coerce) -> Some (Coercer.coercer (fun castee ->
+                Coercer.apply coerce (E.at pos typ' (E.cast castee coercion))))
+          | (Some coercion, None) -> Some (Coercer.coercer (fun castee ->
+                E.at pos typ' (E.cast castee coercion)))
+          | (None, Some _) -> coerce
+          | (None, None) -> None in
+        (coerce, typ)
     | None -> failwith "unreachable: `whnf` failed in `focalize`."
 
 (* # Subtyping *)
 
-let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
+let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
 = fun pos occ env typ super ->
     let empty = ResidualMonoid.empty in
     let combine = ResidualMonoid.combine in
@@ -228,31 +228,38 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
             | Assigned _ -> failwith "unreachable: `articulate` on assigned uv")
         | _ -> failwith "unreachable: `articulate` on non-uv" in
 
-    let subtype_whnf : bool -> T.t -> T.t -> coercer matching
+    let subtype_whnf : bool -> T.t -> T.t -> Coercer.t option matching
     = fun occ typ super -> match (typ, super) with
         | (Impli _, _) | (_, Impli _) -> failwith "TODO"
 
         | (Exists (existentials, body), _) ->
             let (env, skolems, typ) = Env.push_abs_skolems env existentials body in
-            let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
+            let {coercion = coerce; residual} = subtype pos occ env typ super in
             let skolems = Vector1.map fst skolems in
-            { coercion = Cf (fun expr ->
-                let var = E.fresh_var typ in
-                let use = E.at pos var.vtyp (E.use var) in
-                E.at pos super (E.unpack skolems var expr (coerce use)))
+            { coercion = Some (Coercer.coercer (match coerce with
+                | Some coerce -> (fun expr ->
+                    let var = E.fresh_var typ in
+                    let use = E.at pos var.vtyp (E.use var) in
+                    E.at pos super (E.unpack skolems var expr (Coercer.apply coerce use)))
+                | None -> (fun expr ->
+                    let var = E.fresh_var typ in
+                    let use = E.at pos var.vtyp (E.use var) in
+                    E.at pos super (E.unpack skolems var expr use))))
             ; residual = ResidualMonoid.skolemized (Vector.map snd (Vector1.to_vector skolems))
                 residual }
         | (_, Exists (existentials', body')) ->
             let (uvs, super) = Env.instantiate_abs env existentials' body' in
-            let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
+            let {coercion = coerce; residual} = subtype pos occ env typ super in
             let existentials = Vector1.map (fun uv -> T.Uv uv) uvs |> Vector1.to_vector in
-            (* FIXME: coercing potentially nonatomic `expr`: *)
-            { coercion = Cf (fun expr -> E.at pos super (E.pack existentials (coerce expr)))
+            { coercion = Some (Coercer.coercer (match coerce with
+                | Some coerce -> (fun expr ->
+                    E.at pos super (E.pack existentials (Coercer.apply coerce expr)))
+                | None -> (fun expr -> E.at pos super (E.pack existentials expr))))
             ; residual }
 
         (* TODO: uv <: Exists impredicativity clash *)
 
-        | (Uv uv, Uv uv') when uv = uv' -> {coercion = Cf Fun.id; residual = None}
+        | (Uv uv, Uv uv') when uv = uv' -> {coercion = None; residual = None}
         | (Uv uv, _) ->
             (match Env.get_uv env uv with
             | Unassigned _ ->
@@ -269,72 +276,87 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
         | (PromotedArray _, _) -> (match super with
             | PromotedArray _ ->
                 let {coercion = _; residual} = unify pos env typ super in
-                { coercion = Cf (fun _ -> failwith "Compiler bug: PromotedArray coercion called")
+                { coercion = Some (Coercer.coercer (fun _ -> failwith "Compiler bug: PromotedArray coercion called"))
                 ; residual }
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
-                {coercion = Cf Fun.id; residual = empty})
+                {coercion = None; residual = empty})
 
         | (PromotedTuple _, _) -> (match super with
             | PromotedTuple _ ->
                 let {coercion = _; residual} = unify pos env typ super in
-                { coercion = Cf (fun _ -> failwith "Compiler bug: PromotedTuple coercion called")
+                { coercion = Some (Coercer.coercer (fun _ -> failwith "Compiler bug: PromotedTuple coercion called"))
                 ; residual }
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
-                {coercion = Cf Fun.id; residual = empty})
+                {coercion = None; residual = empty})
 
         | (Tuple typs, _) -> (match super with
             | Tuple super_typs ->
                 if Vector.length typs = Vector.length super_typs then begin
                     let coercions = CCVector.create () in
-                    (* OPTIMIZE: `noop` as in unification: *)
-                    let residual = Vector.fold2 (fun residual typ super ->
-                        let {coercion = Cf coercion; residual = residual'} =
+                    let (residual, noop) = Vector.fold2 (fun (residual, noop) typ super ->
+                        let {coercion = coerce; residual = residual'} =
                             subtype pos occ env typ super in
-                        CCVector.push coercions (typ, coercion);
-                        combine residual residual'
-                    ) empty typs super_typs in
-                    { coercion = Cf (fun expr ->
-                        let var = E.fresh_var typ in
-                        let body = E.at pos super (E.values (coercions |> CCVector.mapi (fun i (typ, coerce) ->
-                            let use = E.at pos typ (E.use var) in
-                            coerce (E.at pos typ (E.focus use i))
-                        ) |> CCVector.to_array)) in
-                        E.at pos super (E.let' [|Def (pos, var, expr)|] body))
-                    ; residual }
+                        CCVector.push coercions (typ, Option.value ~default: Coercer.id coerce);
+                        (combine residual residual', noop && Option.is_none coerce)
+                    ) (empty, true) typs super_typs in
+                    let coercion = if not noop
+                        then Some (Coercer.coercer (fun expr ->
+                            let var = E.fresh_var typ in
+                            let body = E.at pos super (E.values (coercions |> CCVector.mapi (fun i (typ, coerce) ->
+                                let use = E.at pos typ (E.use var) in
+                                Coercer.apply coerce (E.at pos typ (E.focus use i))
+                            ) |> CCVector.to_array)) in
+                            E.at pos super (E.let' [|Def (pos, var, expr)|] body)))
+                        else None in
+                    {coercion; residual}
                 end else failwith "<: tuple lengths"
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
-                {coercion = Cf Fun.id; residual = empty})
+                {coercion = None; residual = empty})
 
+        (* FIXME: forall <: uv impredicativity clash (?) *)
         | (Pi {universals; domain; eff; codomain}, _) -> (match super with
             | Pi { universals = universals'; domain = domain'; eff = eff'; codomain = codomain'} ->
                 let (env, universals', domain', eff', codomain') =
                     Env.push_arrow_skolems env universals' domain' eff' codomain' in
                 let (uvs, domain, eff, codomain) =
                     Env.instantiate_arrow env universals domain eff codomain in
-                let {coercion = Cf coerce_domain; residual = residual} =
+                let {coercion = coerce_domain; residual = residual} =
                     subtype pos occ env domain' domain in
                 (* TODO: row opening à la Koka: *)
                 let {coercion = _; residual = eff_residual} = unify pos env eff eff' in
                 let residual = combine residual eff_residual in
-                let {coercion = Cf coerce_codomain; residual = codomain_residual} =
+                let {coercion = coerce_codomain; residual = codomain_residual} =
                     subtype pos occ env codomain codomain' in
                 let residual = combine residual codomain_residual in
 
                 let universals = Vector.map (fun uv -> T.Uv uv) uvs in
                 let universals' = Vector.map fst universals' in
-                let param = E.fresh_var domain' in
-                let arg = coerce_domain (E.at pos domain' (E.use param)) in
-                { coercion = TyperSigs.Cf (fun expr ->
-                    let body = E.at pos codomain (E.app expr universals arg) in
-                    let body = coerce_codomain body in
-                    E.at pos super (E.fn universals' param body))
-                ; residual = ResidualMonoid.skolemized (Vector.map snd universals') residual }
+                let coercion = match (coerce_domain, coerce_codomain) with
+                    | (Some coerce_domain, Some coerce_codomain) -> Some (Coercer.coercer (fun expr ->
+                        let param = E.fresh_var domain' in
+                        let arg = Coercer.apply coerce_domain (E.at pos domain' (E.use param)) in
+                        let body = E.at pos codomain (E.app expr universals arg) in
+                        let body = Coercer.apply coerce_codomain body in
+                        E.at pos super (E.fn universals' param body)))
+                    | (Some coerce_domain, None) -> Some (Coercer.coercer (fun expr ->
+                        let param = E.fresh_var domain' in
+                        let arg = Coercer.apply coerce_domain (E.at pos domain' (E.use param)) in
+                        let body = E.at pos codomain (E.app expr universals arg) in
+                        E.at pos super (E.fn universals' param body)))
+                    | (None, Some coerce_codomain) -> Some (Coercer.coercer (fun expr ->
+                        let param = E.fresh_var domain' in
+                        let arg = E.at pos domain' (E.use param) in
+                        let body = E.at pos codomain (E.app expr universals arg) in
+                        let body = Coercer.apply coerce_codomain body in
+                        E.at pos super (E.fn universals' param body)))
+                    | (None, None) -> None in
+                {coercion; residual = ResidualMonoid.skolemized (Vector.map snd universals') residual}
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
-                {coercion = Cf Fun.id; residual = empty})
+                {coercion = None; residual = empty})
 
         | (Record row, _) -> (match super with
             | Record super_row ->
@@ -343,62 +365,79 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
 
                 let fields_len = CCVector.length labels in
                 let {coercion = _; residual} = subtype pos occ env base super_base in
-                let field_cos = CCVector.create_with ~capacity: fields_len (TyperSigs.Cf Fun.id) in
-                let residual = (* OPTIMIZE: `noop_fieldcos` as in unification *)
-                    let rec loop residual i =
+                let field_cos = CCVector.create_with ~capacity: fields_len None in
+                let (residual, noop_fieldcos) =
+                    let rec loop residual noop_fieldcos i =
                         if i < fields_len
                         then begin
                             let {coercion = field_co; residual = residual'} =
                                 subtype pos occ env (CCVector.get fields i) (CCVector.get super_fields i) in
                             CCVector.push field_cos field_co;
-                            loop (combine residual residual') (i + 1)
-                        end else residual in
-                    loop residual 0 in
+                            loop (combine residual residual') (noop_fieldcos && Option.is_none field_co)
+                                (i + 1)
+                        end else (residual, noop_fieldcos) in
+                    loop residual true 0 in
 
-                let coerce = match super_base with
-                | EmptyRow -> (fun expr ->
-                    let var = E.fresh_var typ in
-                    let field i =
-                        let selectee = E.at pos typ (E.use var) in
-                        let label = CCVector.get labels i in
-                        let Cf coerce = CCVector.get field_cos i in
-                        let super = CCVector.get super_fields i in
-                        let selection = E.at pos super (E.select selectee label) in
-                        (label, coerce selection) in
-                    let body = E.at pos super (E.record (Array.init fields_len field)) in
-                    E.at pos super (E.let' [|Def (pos, var, expr)|] body))
-                | _ -> (fun expr ->
-                    let var = E.fresh_var typ in
-                    let field i =
-                        let selectee = E.at pos typ (E.use var) in
-                        let label = CCVector.get labels i in
-                        let Cf coerce = CCVector.get field_cos i in
-                        let super = CCVector.get super_fields i in
-                        let selection = E.at pos super (E.select selectee label) in
-                        (label, coerce selection) in
-                    let base = E.at pos typ (E.use var) in
-                    let body = E.at pos super (E.where base (Array.init fields_len field)) in
-                    E.at pos super (E.let' [|Def (pos, var, expr)|] body)) in
+                let coerce =
+                    if not noop_fieldcos
+                    then match super_base with
+                        | EmptyRow -> Some (Coercer.coercer (fun expr ->
+                            let var = E.fresh_var typ in
+                            let field i =
+                                let selectee = E.at pos typ (E.use var) in
+                                let label = CCVector.get labels i in
+                                let coerce = CCVector.get field_cos i |> Option.value ~default: Coercer.id in
+                                let super = CCVector.get super_fields i in
+                                let selection = E.at pos super (E.select selectee label) in
+                                (label, Coercer.apply coerce selection) in
+                            let body = E.at pos super (E.record (Array.init fields_len field)) in
+                            E.at pos super (E.let' [|Def (pos, var, expr)|] body)))
+                        | _ -> Some (Coercer.coercer (fun expr ->
+                            let var = E.fresh_var typ in
+                            let field i =
+                                let selectee = E.at pos typ (E.use var) in
+                                let label = CCVector.get labels i in
+                                let coerce = CCVector.get field_cos i |> Option.value ~default: Coercer.id in
+                                let super = CCVector.get super_fields i in
+                                let selection = E.at pos super (E.select selectee label) in
+                                (label, Coercer.apply coerce selection) in
+                            let base = E.at pos typ (E.use var) in
+                            let body = E.at pos super (E.where base (Array.init fields_len field)) in
+                            E.at pos super (E.let' [|Def (pos, var, expr)|] body)))
+                    else None in
 
-                { coercion = (match (co, super_co) with
-                    | (Some co, Some super_co) ->
-                        let typ' = Stream.from (Source.zip
-                                (labels |> CCVector.to_seq |> Source.seq)
-                                (fields |> CCVector.to_seq |> Source.seq))
-                            |> Stream.into (Sink.fold (fun base (label, field) ->
-                                T.With {base; label; field}) base) in
-                        TyperSigs.Cf (fun v ->
-                            let castee = coerce (E.at pos typ' (E.cast v co)) in
-                            E.at pos super (E.cast castee (Symm super_co)))
-                    | (Some co, None) -> Cf (fun v ->
-                        coerce (E.at pos super (E.cast v co)))
-                    | (None, Some co') -> Cf (fun v ->
-                        E.at pos super (E.cast (coerce v) (Symm co')))
-                    | (None, None) -> Cf coerce)
-                ; residual }
+                let coercion = match co with
+                    | Some co -> (match coerce with
+                        | Some coerce -> (match super_co with
+                            | Some super_co ->
+                                let typ' = Stream.from (Source.zip
+                                        (labels |> CCVector.to_seq |> Source.seq)
+                                        (fields |> CCVector.to_seq |> Source.seq))
+                                    |> Stream.into (Sink.fold (fun base (label, field) ->
+                                        T.With {base; label; field}) base) in
+                                Some (Coercer.coercer (fun expr ->
+                                    let castee = Coercer.apply coerce (E.at pos typ' (E.cast expr co)) in
+                                    E.at pos super (E.cast castee (Symm super_co))))
+                            | None -> Some (Coercer.coercer (fun expr ->
+                                Coercer.apply coerce (E.at pos super (E.cast expr co)))))
+                        | None -> (match super_co with
+                            | Some super_co -> Some (Coercer.coercer (fun expr ->
+                                E.at pos super (E.cast expr (Trans (co, Symm super_co)))))
+                            | None -> Some (Coercer.coercer (fun expr ->
+                                E.at pos super (E.cast expr co)))))
+                    | None -> (match coerce with
+                        | Some coerce -> (match super_co with
+                            | Some super_co -> Some (Coercer.coercer (fun expr ->
+                                E.at pos super (E.cast (Coercer.apply coerce expr) (Symm super_co))))
+                            | None -> Some coerce)
+                        | None -> (match super_co with
+                            | Some super_co -> Some (Coercer.coercer (fun expr ->
+                                E.at pos super (E.cast expr super_co)))
+                            | None -> None)) in
+                {coercion; residual}
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
-                {coercion = Cf Fun.id; residual = empty})
+                {coercion = None; residual = empty})
 
         | (With _, _) -> (match super with
             | With _ ->
@@ -416,17 +455,17 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                             loop (combine residual residual') (i + 1)
                         end else residual in
                     loop residual 0 in
-                { coercion = Cf Fun.id (* NOTE: Row types have no values so this will not get used *)
+                { coercion = None (* NOTE: Row types have no values so this will not get used *)
                 ; residual }
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
-                {coercion = Cf Fun.id; residual = empty})
+                {coercion = None; residual = empty})
 
         | (EmptyRow, _) -> (match super with
-            | EmptyRow -> {coercion = Cf Fun.id; residual = empty}
+            | EmptyRow -> {coercion = None; residual = empty}
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
-                {coercion = Cf Fun.id; residual = empty})
+                {coercion = None; residual = empty})
 
         | (Proxy carrie, _) -> (match super with
             | Proxy carrie' ->
@@ -450,46 +489,45 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
                 | Some (uv, impl) ->
                     Env.set_uv env pos uv (Assigned impl);
                     let expr = E.at pos super (E.proxy carrie') in
-                    {coercion = Cf (fun _ -> expr); residual = empty}
+                    {coercion = Some (Coercer.coercer (fun _ -> expr)); residual = empty}
                 | None -> (* TODO: Use unification (?) *)
-                    let {coercion = _; residual} = subtype pos occ env carrie carrie' in
-                    let {coercion = _; residual = residual'} = subtype pos occ env carrie' carrie in
+                    let {coercion = coerce; residual} = subtype pos occ env carrie carrie' in
+                    let {coercion = coerce'; residual = residual'} = subtype pos occ env carrie' carrie in
                     let expr = E.at pos super (E.proxy carrie') in
-                    {coercion = Cf (fun _ -> expr); residual = combine residual residual'})
+                    { coercion = (match (coerce, coerce') with
+                        | (None, None) -> None
+                        | _ -> Some (Coercer.coercer (fun _ -> expr)))
+                    ; residual = combine residual residual' })
 
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
-                {coercion = Cf Fun.id; residual = empty})
+                {coercion = None; residual = empty})
 
         | (App _, _) -> (match super with
             | App _ ->
                 let {coercion; residual} = unify_whnf pos env typ super in
-                { coercion =
-                    (match coercion with
-                    | Some co -> Cf (fun v -> E.at pos super (E.cast v co))
-                    | None -> Cf Fun.id)
+                { coercion = coercion |> Option.map (fun co ->
+                    Coercer.coercer (fun v -> E.at pos super (E.cast v co)))
                 ; residual }
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
-                {coercion = Cf Fun.id; residual = empty})
+                {coercion = None; residual = empty})
 
         | (Ov _, _) -> (match super with
             | Ov _ ->
                 let {coercion; residual} = unify_whnf pos env typ super in
-                { coercion =
-                    (match coercion with
-                    | Some co -> Cf (fun v -> E.at pos super (E.cast v co))
-                    | None -> Cf Fun.id)
+                { coercion = coercion |> Option.map (fun co ->
+                    Coercer.coercer (fun v -> E.at pos super (E.cast v co)))
                 ; residual }
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
-                {coercion = Cf Fun.id; residual = empty})
+                {coercion = None; residual = empty})
 
         | (Prim pt, _) -> (match super with
-            | Prim pt' when Prim.eq pt pt' -> {coercion = Cf Fun.id; residual = empty}
+            | Prim pt' when Prim.eq pt pt' -> {coercion = None; residual = empty}
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
-                {coercion = Cf Fun.id; residual = empty})
+                {coercion = None; residual = empty})
 
         | (Fn _, _) -> failwith "unreachable: Fn in subtype_whnf"
         | (Bv _, _) -> failwith "unreachable: Bv in subtype_whnf" in
@@ -498,26 +536,32 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> coercer matching
     let res =
         K.eval env typ >>= fun (typ', co) ->
         K.eval env super |> Option.map (fun (super', co') ->
-            let {coercion = Cf coerce; residual} = subtype_whnf occ typ' super' in
+            let {coercion = coerce; residual} = subtype_whnf occ typ' super' in
             { coercion =
-                (match (co, co') with
-                | (Some co, Some co') ->
-                    TyperSigs.Cf (fun v ->
-                        let castee = coerce (E.at pos typ' (E.cast v co)) in
-                        E.at pos super (E.cast castee (Symm co')))
-                | (Some co, None) -> Cf (fun v ->
-                    coerce (E.at pos typ' (E.cast v co)))
-                | (None, Some co') -> Cf (fun v ->
-                    E.at pos super (E.cast (coerce v) (Symm co')))
-                | (None, None) -> Cf coerce)
+                (match (co, coerce, co') with
+                | (Some co, Some coerce, Some co') -> Some (Coercer.coercer (fun v ->
+                    let castee = Coercer.apply coerce (E.at pos typ' (E.cast v co)) in
+                    E.at pos super (E.cast castee (Symm co'))))
+                | (Some co, Some coerce, None) -> Some (Coercer.coercer (fun v ->
+                    Coercer.apply coerce (E.at pos typ' (E.cast v co))))
+                | (Some co, None, Some co') -> Some (Coercer.coercer (fun v ->
+                    E.at pos super (E.cast v (Trans (co, Symm co')))))
+                | (Some co, None, None) -> Some (Coercer.coercer (fun v ->
+                    E.at pos super (E.cast v co)))
+                | (None, Some coerce, Some co') -> Some (Coercer.coercer (fun v ->
+                    E.at pos super (E.cast (Coercer.apply coerce v) (Symm co'))))
+                | (None, Some coerce, None) -> Some coerce
+                | (None, None, Some co') -> Some (Coercer.coercer (fun v ->
+                    E.at pos super (E.cast v co')))
+                | (None, None, None) -> None)
             ; residual }) in
     match res with
     | Some res -> res
     | None ->
         let patchable = ref (E.at pos super (E.const (Int 0))) in
-        { coercion = Cf (fun v ->
+        { coercion = Some (Coercer.coercer (fun v ->
             Env.set_expr env patchable v;
-            E.at pos super (E.patchable patchable))
+            E.at pos super (E.patchable patchable)))
         ; residual = Some (Sub (occ, typ, super, patchable)) }
 
 and occurs_check pos env uv typ =
@@ -645,7 +689,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
                     CCVector.push coercions coercion;
                     (combine residual residual', noop && Option.is_none coercion)
                 ) (empty, true) typs typs' in
-                { coercion = if noop
+                { coercion = if not noop
                     then Some (TupleCo (coercions |> CCVector.mapi (fun i -> function
                         | Some coercion -> coercion
                         | None -> T.Refl (Vector.get typs' i)
@@ -816,8 +860,9 @@ and solve pos env residual =
             ResidualMonoid.combine (solve env residual) (solve env residual')
 
         | Sub (occ, typ, super, patchable) ->
-            let {coercion = Cf coerce; residual} = subtype pos occ env typ super in
-            Env.set_expr env patchable (coerce !patchable);
+            let {coercion = coerce; residual} = subtype pos occ env typ super in
+            let coerce = Option.value ~default: Coercer.id coerce in
+            Env.set_expr env patchable (Coercer.apply coerce !patchable);
             residual
 
         | Unify (typ, typ', patchable) ->
@@ -830,11 +875,12 @@ and solve pos env residual =
     | Some residual -> Env.reportError env pos (Unsolvable residual))
 
 (* Public API *)
+(* NOTE: `focalize` is also public *)
 
 let solving_subtype pos env typ super =
-    let {coercion; residual} = subtype pos true env typ super in
+    let {coercion = coerce; residual} = subtype pos true env typ super in
     solve pos env residual;
-    coercion
+    coerce
 
 let solving_unify pos env typ super =
     let {coercion; residual} = unify pos env typ super in
