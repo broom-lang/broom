@@ -139,7 +139,6 @@ module type PROGRAM = sig
     module Builder : sig
         val create : Type.param Vector.t -> builder
         val express : builder -> Expr.t -> Expr.Id.t
-        val express_as : builder -> Expr.Id.t -> Expr.t -> unit
         val add_cont : builder -> Cont.Id.t -> Cont.t -> unit
         val build : builder -> Cont.Id.t -> t
 

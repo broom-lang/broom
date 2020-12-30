@@ -84,24 +84,17 @@ let emit program =
     let rec emit_transfer parent stmts (transfer : Transfer.t) =
         let emit_expr : Expr.t -> PPrint.document = function
             | PrimApp {op = Import; universals = _; args} ->
-                assert (Vector.length args = 3); (* FIXME *)
-                string "require" ^^ parens (emit_use (Vector.get args 2))
+                assert (Vector.length args = 2);
+                string "require" ^^ parens (emit_use (Vector.get args 1))
 
             | PrimApp {op; _} -> failwith ("TODO: " ^ Primop.to_string op)
-
-            | Tuple vals -> (* OPTIMIZE: unbox tuples (in an earlier pass) *)
-                surround_separate_map 4 0 (brackets empty)
-                    lbracket (comma ^^ break 1) rbracket
-                    emit_use (Vector.to_list vals)
-
-            | Focus {focusee; index} -> (* OPTIMIZE: parens not always necessary *)
-                parens (emit_use focusee) ^^ brackets (string (Int.to_string index))
 
             | Record fields ->
                 surround_separate_map 4 0 (braces empty)
                     lbrace (comma ^^ break 1) rbrace
                     (fun (label, field) ->
-                        Name.to_doc label ^^ colon ^^ blank 1 ^^ emit_use field)
+                        string (Name.basename label |> Option.get)
+                        ^^ colon ^^ blank 1 ^^ emit_use field)
                     (Vector.to_list fields)
 
             | Where {base; fields} ->
@@ -111,7 +104,9 @@ let emit program =
                     (string "Object.assign"
                     ^^ parens (braces empty ^^ comma ^^ break 1 ^^ emit_use base)) in
                 let assignments = fields |> Vector.map (fun (label, v) ->
-                     infix 4 1 equals (base_name ^^ dot ^^ Name.to_doc label) (emit_use v)) in
+                     infix 4 1 equals
+                        (base_name ^^ dot ^^ string (Name.basename label |> Option.get))
+                        (emit_use v)) in
                 let fn = string "function" ^^ blank 1 ^^ parens empty ^^ blank 1
                     ^^ surround_separate 4 1 (braces empty) (* NOTE: empty is actually impossible *)
                         lbrace (semi ^^ break 1) rbrace
@@ -129,14 +124,16 @@ let emit program =
                     (string "Object.assign"
                     ^^ parens (braces empty ^^ comma ^^ break 1 ^^ emit_use base)) in
                 CCVector.push stmts stmt;
-                let stmt = infix 4 1 equals (base_name ^^ dot ^^ Name.to_doc label)
+                let stmt = infix 4 1 equals
+                    (base_name ^^ dot ^^ string (Name.basename label |> Option.get))
                     (emit_use field) in
                 CCVector.push stmts stmt;
                 base_name
 *)
 
             | Select {selectee; field} -> (* OPTIMIZE: parens not always necessary *)
-                prefix 4 0 (parens (emit_use selectee)) (dot ^^ Name.to_doc field)
+                prefix 4 0 (parens (emit_use selectee))
+                    (dot ^^ string (Name.basename field |> Option.get))
 
             | Proxy _ -> string "0" (* OPTIMIZE: empty unboxed tuple = erase *)
 
@@ -146,7 +143,9 @@ let emit program =
 
             | Const c -> emit_const c
 
-            | Param _ -> failwith "compiler bug: Param in Cfg" in
+            | Param _ -> failwith "compiler bug: Param in Cfg"
+            | Tuple _ -> failwith "compiler bug: Tuple in Cfg"
+            | Focus _ -> failwith "compiler bug: Focus in Cfg" in
 
         let emit_clause ({pat; dest} : Transfer.clause) =
             let emit_pat : Transfer.Pattern.t -> PPrint.document = function

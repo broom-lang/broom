@@ -507,14 +507,24 @@ module Program = struct
             ; conts = Conts.empty
             ; transient = CCHashTrie.Transient.create () }
 
+        let expr (builder : builder) id = Exprs.get_exn id builder.exprs
+
         let express_as (builder : builder) id expr =
             builder.exprs <- Exprs.add_mut ~id: builder.transient id expr builder.exprs
 
-        let express builder expr =
-            (* TODO: 'peephole' optimizer (constant folding, GVN etc.) *)
-            let id = Expr.Id.fresh () in
-            express_as builder id expr;
-            id
+        let express builder (e : Expr.t) =
+            (* TODO: More 'peephole' optimization (constant folding, GVN etc.): *)
+            let folded = match e.term with
+                | Focus {focusee; index} -> (match (expr builder focusee).term with
+                    | Tuple fields -> Some (Vector.get fields index)
+                    | _ -> None)
+                | _ -> None in
+            match folded with
+            | Some id -> id
+            | None ->
+                let id = Expr.Id.fresh () in
+                express_as builder id e;
+                id
 
         let add_cont (builder : builder) id k =
             builder.conts <- Conts.add_mut ~id: builder.transient id k builder.conts
@@ -522,8 +532,6 @@ module Program = struct
         let build ({type_fns; exprs; transient; conts} : builder) main =
             CCHashTrie.Transient.freeze transient;
             {type_fns; exprs; conts; main}
-
-        let expr (builder : builder) id = Exprs.get_exn id builder.exprs
 
         type t = builder
     end
