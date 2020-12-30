@@ -31,14 +31,13 @@ let get_param (params : params) label index =
     Option.bind label_params (fun label_params ->
         Hashtbl.find_opt label_params index)
 
-let schedule program =
+let schedule_program program params =
     let module Renamings = Cps.Expr.Id.Hashtbl in
     let module VisitedSet = Cps.Expr.Id.HashSet in
     let main = match Stream.from (Cps.Program.exports program) |> Stream.into Sink.list with
         | [main] -> main
         | _ -> failwith "FIXME: multiple exports" in
 
-    let params = find_params program in
     let get_param = get_param params in
 
     let builder = Builder.create (Cps.Program.type_fns program) main in
@@ -52,7 +51,18 @@ let schedule program =
     let set_visited = VisitedSet.insert visiteds in
 
     (* TODO: Remove PrimApp-ordering state edges, emit `Expr` stmts when necessary. *)
-    let rec emit_expr id =
+    let rec emit_use id =
+        let emit_expr id ({Cps.Expr.pos; cont = parent; typ; term} as expr) =
+            match parent with
+            | Some parent -> (match term with
+                | Param {label; index} -> Builder.add_param builder label index id
+                | _ ->
+                    emit_cont parent;
+                    Cps.Expr.iter_labels emit_cont expr;
+                    let term = Cps.Expr.map_uses' emit_use term in
+                    Builder.define builder parent {Cfg.Stmt.pos; typ; term = (Vector.singleton id, term)})
+            | None -> failwith "compiler bug: unparented expr in ScheduleData" in
+
         match rename id with
         | Some id -> id
         | None ->
@@ -60,14 +70,7 @@ let schedule program =
             then ()
             else begin
                 set_visited id;
-                let {Cps.Expr.pos; cont = parent; typ; term} as expr = Cps.Program.expr program id in
-                match parent with
-                | Some parent ->
-                    emit_cont parent;
-                    Cps.Expr.iter_labels emit_cont expr;
-                    let term = Cps.Expr.map_uses' emit_expr term in
-                    Builder.define builder parent {Cfg.Stmt.pos; typ; term = Def (id, term)}
-                | None -> failwith "compiler bug: unparented expr in ScheduleData"
+                emit_expr id (Cps.Program.expr program id)
             end;
             id
 
@@ -75,24 +78,24 @@ let schedule program =
         let term : Cfg.Transfer.t' = match term with
             | Goto {universals; callee; args} ->
                 emit_cont callee;
-                Goto {universals; callee; args = Vector.map emit_expr args}
+                Goto {universals; callee; args = Vector.map emit_use args}
 
             | Jump {universals; callee; args} ->
-                Jump {universals; callee = emit_expr callee
-                    ; args = Vector.map emit_expr args}
+                Jump {universals; callee = emit_use callee
+                    ; args = Vector.map emit_use args}
 
             | Return (universals, args) ->
-                Return (universals, Vector.map emit_expr args)
+                Return (universals, Vector.map emit_use args)
 
             | Match {matchee; state; clauses} ->
-                let matchee = emit_expr matchee in
-                let state = emit_expr state in
+                let matchee = emit_use matchee in
+                let state = emit_use state in
                 Vector.iter (emit_clause state) clauses;
                 Match {matchee; clauses}
 
             | PrimApp {op; universals; state; args; clauses} ->
-                let state = emit_expr state in
-                let args = Vector.map emit_expr args in
+                let state = emit_use state in
+                let args = Vector.map emit_use args in
                 Vector.iter (emit_clause state) clauses;
                 PrimApp {op; universals; args; clauses} in
         {pos; term}
@@ -102,8 +105,6 @@ let schedule program =
         then ()
         else begin
             let ({params; body; _} as cont) : Cps.Cont.t = Cps.Program.cont program label in
-            (* FIXME: Need to shift Params so that `$1 # 1` -> `$1 # 0` etc.
-                But that will become irrelevant if `Cfg` is switched to named params instead. *)
             Builder.add_cont builder label {cont with
                 params = Vector.sub params 1 (Vector.length params - 1)};
             Option.iter (fun state -> add_renaming state state') (get_param label 0);
@@ -123,4 +124,8 @@ let schedule program =
 
     Source.each emit_cont (Cps.Program.exports program);
     Builder.build builder
+
+(* # All Together Now *)
+
+let schedule program = schedule_program program (find_params program)
 

@@ -62,15 +62,6 @@ let emit program =
         counter := i + 1;
         string ("y$" ^ Int.to_string i) in
 
-    let param_docs = Cont.Id.Hashtbl.create 0 in
-    let add_param_docs label fn_name n =
-        let docs = Stream.iota n
-            |> Stream.map (fun i -> fn_name ^^ underscore ^^ string (Int.to_string i))
-            |> Stream.into (Vector.sink ()) in
-        Cont.Id.Hashtbl.add param_docs label docs;
-        docs in
-    let emit_param label i = Vector.get (Cont.Id.Hashtbl.find param_docs label) i in
-
     let uses = Uses.create 0 in
     let add_var_name (var : Expr.Id.t) =
         let doc = string ("x$" ^ Int.to_string (var :> int)) in
@@ -149,13 +140,13 @@ let emit program =
 
             | Proxy _ -> string "0" (* OPTIMIZE: empty unboxed tuple = erase *)
 
-            | Param {label; index} -> emit_param label index
             | Label label -> (* TODO: Assumes Label node has not been duplicated; stop that *)
                 let cont = Program.cont program label in
-                let name_doc = emit_label label in
-                emit_fn label name_doc cont
+                emit_fn label cont
 
-            | Const c -> emit_const c in
+            | Const c -> emit_const c
+
+            | Param _ -> failwith "compiler bug: Param in Cfg" in
 
         let emit_clause ({pat; dest} : Transfer.clause) =
             let emit_pat : Transfer.Pattern.t -> PPrint.document = function
@@ -167,8 +158,11 @@ let emit program =
             emit_pat pat ^^ colon
             ^^ nest 4 (hardline ^^ emit_transfer dest stmts transfer) in
 
-        let emit_stmt (stmt : Stmt.t) = match stmt.term with
-            | Def (var, expr) ->
+        let emit_stmt ({term = (vars, expr); pos; typ = _} : Stmt.t) =
+            match Vector.length vars with
+            | 0 -> emit_expr expr ^^ semi ^^ break 1
+            | 1 ->
+                let var = Vector.get vars 0 in
                 let expr_doc = emit_expr expr in
                 if is_inlineable parent var expr
                 then begin
@@ -179,7 +173,7 @@ let emit program =
                     infix 4 1 equals (string "var" ^^ blank 1 ^^ name)
                         expr_doc ^^ semi ^^ break 1
                 end
-            | Expr expr -> emit_expr expr ^^ semi ^^ break 1 in
+            | _ -> failwith ("compiler bug: > 1 vars reached emit_stmt at " ^ Util.span_to_string pos) in
 
         let stmts = concat_map emit_stmt (Vector.to_list stmts) in
         let transfer = match transfer.term with
@@ -214,18 +208,18 @@ let emit program =
     and emit_block parent stmts transfer =
         surround 4 1 lbrace (emit_transfer parent stmts transfer) rbrace
 
-    and emit_fn label name_doc {Cont.pos = _; name = _; universals = _; params; stmts; transfer} =
-        let param_docs = add_param_docs label name_doc (Vector.length params) in
+    and emit_fn label {Cont.pos = _; name = _; universals = _; params; stmts; transfer} =
+        let params_doc = surround_separate_map 4 0 (parens empty) lparen (comma ^^ break 1) rparen
+            (fun param -> add_var_name (fst param)) (Vector.to_list params) in
         string "function" ^^ blank 1
-        ^^ surround_separate 4 0 (parens empty) lparen (comma ^^ break 1) rparen
-            (Vector.to_list param_docs) ^^ blank 1
+        ^^ params_doc ^^ blank 1
         ^^ emit_block label stmts transfer in
 
     let emit_export label =
         let cont = Program.cont program label in
         let name_doc = emit_label label in
         prefix 4 1 (string "var" ^^ blank 1 ^^ name_doc ^^ blank 1 ^^ equals)
-            (emit_fn label name_doc cont ^^ semi ^^ hardline) in
+            (emit_fn label cont ^^ semi ^^ hardline) in
 
     Stream.from (Program.exports program)
     |> Stream.into Sink.list

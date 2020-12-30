@@ -16,10 +16,7 @@ module type STMT = sig
     module Expr : EXPR
     type var = Expr.Id.t
 
-    type t' =
-        | Def of var * Expr.t
-        | Expr of Expr.t
-
+    type t' = var Vector.t * Expr.t
     type t = {pos : span; typ : Type.t; term : t'}
 
     val to_doc : t -> PPrint.document
@@ -52,16 +49,19 @@ end
 
 module type CONT = sig
     module Type : TYPE
+    module Expr : EXPR
     module Stmt : STMT
     module Transfer : TRANSFER
 
     module Id : Id.S
 
+    type param = Expr.Id.t * Type.t
+
     type t =
         { pos : span
         ; name : Name.t option
         ; universals : Type.param Vector.t
-        ; params : Type.t Vector.t (* TODO: Replace Param nodes with Expr.Id.t:s here *)
+        ; params : param Vector.t
         ; stmts : Stmt.t Vector.t
         ; transfer : Transfer.t }
 
@@ -69,6 +69,8 @@ module type CONT = sig
 end
 
 module type PROGRAM = sig
+    module Type : TYPE
+    module Expr : EXPR
     module Stmt : STMT
     module Transfer : TRANSFER
     module Cont : CONT
@@ -86,6 +88,7 @@ module type PROGRAM = sig
         val add_cont : builder -> Cps.Cont.Id.t -> Cps.Cont.t -> unit
         val cont_mem : builder -> Cps.Cont.Id.t -> bool
         val define : builder -> Cont.Id.t -> Stmt.t -> unit
+        val add_param : builder -> Cont.Id.t -> int -> Expr.Id.t -> unit
         val set_transfer : builder -> Cps.Cont.Id.t -> Transfer.t -> unit
         val build : builder -> t
         

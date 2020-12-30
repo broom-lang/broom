@@ -25,24 +25,25 @@ module Stmt = struct
     module Expr = Expr
     type var = Expr.Id.t
 
-    type t' =
-        | Def of var * Expr.t
-        | Expr of Expr.t
+    type t' = var Vector.t * Expr.t
 
     type t = {pos : span; typ : Type.t; term : t'}
 
-    let to_doc {pos = _; typ; term} = match term with
-        | Def (var, expr) ->
-            PPrint.(infix 4 1 equals
-                (infix 4 1 colon (Expr.Id.to_doc var) (Type.to_doc typ))
-                (Expr.to_doc expr))
-        | Expr expr -> Expr.to_doc expr
+    let to_doc {pos = _; typ; term = (vars, expr)} =
+        if Vector.length vars > 0 then begin
+            let open PPrint in
+            infix 4 1 equals
+                (infix 4 1 colon
+                    (separate_map (comma ^^ break 1) Expr.Id.to_doc (Vector.to_list vars))
+                    (Type.to_doc typ))
+                (Expr.to_doc expr)
+        end else Expr.to_doc expr
 
-    let iter_uses f (stmt : t) = match stmt.term with
-        | Def (_, expr) | Expr expr -> Expr.iter_uses f expr
+    let expr {term = (_, expr); _} = expr
 
-    let iter_labels f (stmt : t) = match stmt.term with
-        | Def (_, expr) | Expr expr -> Expr.iter_labels f expr
+    let iter_uses f stmt = Expr.iter_uses f (expr stmt)
+
+    let iter_labels f stmt = Expr.iter_labels f (expr stmt)
 end
 
 module Transfer = struct
@@ -126,14 +127,18 @@ end
 
 module Cont = struct
     module Type = Type
+    module Expr = Expr
     module Stmt = Stmt
     module Transfer = Transfer
+
+    type param = Expr.Id.t * Type.t
 
     type builder =
         { pos : span
         ; name : Name.t option
         ; universals : Type.param Vector.t
         ; params : Type.t Vector.t
+        ; param_ids : (int, Expr.Id.t) Hashtbl.t
         ; stmts : Stmt.t CCVector.vector
         ; mutable transfer : Transfer.t option }
 
@@ -141,9 +146,11 @@ module Cont = struct
         { pos : span
         ; name : Name.t option
         ; universals : Type.param Vector.t
-        ; params : Type.t Vector.t
+        ; params : param Vector.t
         ; stmts : Stmt.t Vector.t
         ; transfer : Transfer.t }
+
+    let param_to_doc (id, typ) = PPrint.(infix 4 1 colon (Expr.Id.to_doc id) (Type.to_doc typ))
 
     let def_to_doc label {pos = _; name; universals; params; stmts; transfer} =
         let open PPrint in
@@ -155,7 +162,7 @@ module Cont = struct
             Type.param_to_doc (Vector.to_list universals)
         ^^ surround_separate_map 4 0 (parens empty)
             lparen (comma ^^ break 1) rparen
-            Type.to_doc (Vector.to_list params)
+            param_to_doc (Vector.to_list params)
         ^^ blank 1 ^^ equals ^^ blank 1
         ^^ surround 4 1 lbrace
             (separate_map (semi ^^ hardline) Stmt.to_doc (Vector.to_list stmts)
@@ -164,16 +171,25 @@ module Cont = struct
 
     module Builder = struct
         let create ({pos; name; universals; params; body = _} : Cps.Cont.t) : builder =
-            { pos; name; universals; params
+            { pos; name; universals; params; param_ids = Hashtbl.create 0
             ; stmts = CCVector.create (); transfer = None }
 
         let define ({stmts; _} : builder) stmt = CCVector.push stmts stmt
 
+        let add_param ({param_ids; _} : builder) index id = Hashtbl.add param_ids index id
+
         let set_transfer (builder : builder) transfer =
             builder.transfer <- Some transfer
 
-        let build ({pos; name; universals; params; stmts; transfer} : builder) =
-            { pos; name; universals; params; transfer = Option.get transfer
+        let build ({pos; name; universals; params; param_ids; stmts; transfer} : builder) =
+            { pos; name; universals
+            ; params = Stream.from (Vector.to_source params)
+                |> Stream.indexed
+                |> Stream.map (fun (i, typ) -> match Hashtbl.find_opt param_ids i with
+                    | Some id -> (id, typ)
+                    | None -> (Expr.Id.fresh (), typ))
+                |> Stream.into (Vector.sink ())
+            ; transfer = Option.get transfer
             ; stmts = stmts |> CCVector.to_array |> Vector.of_array_unsafe }
 
         type t = builder
@@ -183,6 +199,8 @@ module Cont = struct
 end
 
 module Program = struct
+    module Type = Type
+    module Expr = Expr
     module Stmt = Stmt
     module Transfer = Transfer
     module Cont = Cont
@@ -231,6 +249,9 @@ module Program = struct
 
         let define {conts; _} label stmt =
             Cont.Builder.define (Conts.get_exn label conts) stmt
+
+        let add_param {conts; _} label index id =
+            Cont.Builder.add_param (Conts.get_exn label conts) index id
 
         let set_transfer {conts; _} label transfer =
             Cont.Builder.set_transfer (Conts.get_exn label conts) transfer
