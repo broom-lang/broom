@@ -2,6 +2,8 @@ open Streaming
 module Builder = Cfg.Program.Builder
 module Params = Cps.Cont.Id.Hashtbl
 
+(* TODO: Get rid of remaining tuples (e.g. primop results, also non-state ones. *)
+
 type params = (int, Cps.Expr.Id.t) Hashtbl.t Params.t
 
 let is_param : Cps.Expr.t' -> bool = function
