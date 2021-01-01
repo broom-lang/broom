@@ -14,16 +14,17 @@ let of_string = function
     | "ieq" -> Some IEq
     | _ -> None
 
-let to_string = function
-    | IAdd -> "iadd"
-    | ISub -> "isub"
-    | IMul -> "imul"
-    | IDiv -> "idiv"
-    | ILt -> "ilt"
-    | ILe -> "ile"
-    | IGt -> "igt"
-    | IGe -> "ige"
-    | IEq -> "ieq"
+let grammar =
+    let open Grammar in let open Grammar.Infix in
+    text "iadd" *> pure IAdd
+    <|> text "isub" *> pure ISub
+    <|> text "imul" *> pure IMul
+    <|> text "idiv" *> pure IDiv
+    <|> text "ilt" *> pure ILt
+    <|> text "ile" *> pure ILe
+    <|> text "igt" *> pure IGt
+    <|> text "ige" *> pure IGe
+    <|> text "ieq" *> pure IEq
 
-let to_doc op = PPrint.string (to_string op)
+let to_doc = PPrinter.of_grammar grammar
 

@@ -2,9 +2,25 @@ type t =
     | Int of int
     | String of string
 
-let to_doc c =
-    let open PPrint in
-    match c with
-    | Int n -> string (Int.to_string n)
-    | String s -> dquotes (string s)
+let int = PIso.piso (fun n -> Some (Int n)) (function
+    | Int n -> Some n
+    | _ -> None)
+
+let string = PIso.piso (fun s -> Some (String s)) (function
+    | String s -> Some s
+    | _ -> None)
+
+let grammar =
+    let open PIso in let open Grammar.Infix in
+    let strings =
+        let open Grammar in
+        let cs = many (subset ((<>) '"') <$> char) in
+        let f = piso
+            (fun cs -> Some (List.to_seq cs |> String.of_seq))
+            (fun s -> Some (String.to_seq s |> List.of_seq)) in
+        token '"' *> (f <$> cs) <* token '"' in
+    int <$> Grammar.int
+    <|> (string <$> strings)
+
+let to_doc = PPrinter.of_grammar grammar
 

@@ -30,7 +30,20 @@ let to_string = function
     | GlobalSet -> "globalSet"
     | GlobalGet -> "globalGet"
 
-let to_doc op = PPrint.string (to_string op)
+let grammar =
+    let open Grammar in let open Grammar.Infix in
+    text "cellNew" *> pure CellNew
+    <|> text "cellInit" *> pure CellInit
+    <|> text "cellGet" *> pure CellGet
+    <|> text "int" *> pure Int
+    <|> text "string" *> pure String
+    <|> text "type" *> pure Type
+    <|> text "typeOf" *> pure TypeOf
+    <|> text "import" *> pure Import
+    <|> text "globalSet" *> pure GlobalSet
+    <|> text "globalGet" *> pure GlobalGet
+
+let to_doc = PPrinter.of_grammar grammar
 
 let is_pure = function
     | CellNew | Int | String | Type | TypeOf -> true

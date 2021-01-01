@@ -4,18 +4,19 @@ type t =
     | SingleRep (* = *) | Boxed
     | TypeIn | RowOf
 
-let to_string = function
-    | Int -> "int"
-    | Bool -> "bool"
-    | Array -> "array"
-    | String -> "string"
-    | Cell -> "cell"
-    | SingleRep -> "singleRep"
-    | Boxed -> "boxed"
-    | TypeIn -> "typeIn"
-    | RowOf -> "rowOf"
+let grammar =
+    let open Grammar in let open Grammar.Infix in
+    text "int" *> pure Int
+    <|> text "bool" *> pure Bool
+    <|> text "array" *> pure Array
+    <|> text "string" *> pure String
+    <|> text "cell" *> pure Cell
+    <|> text "singleRep" *> pure SingleRep
+    <|> text "boxed" *> pure Boxed
+    <|> text "typeIn" *> pure TypeIn
+    <|> text "rowOf" *> pure RowOf
 
-let to_doc pt = PPrint.string (to_string pt)
+let to_doc = PPrinter.of_grammar grammar
 
 let eq = (=)
 
