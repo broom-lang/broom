@@ -25,8 +25,18 @@ let of_grammar g =
                 | Some _ as res -> res
                 | None -> p' x)
         | Fail -> Fun.const None
-        | Fix f -> (fun x -> of' (f (Grammar.fix f)) x) (* OPTIMIZE *)
-        | Token -> (fun c -> Some (char c)) in
+        | Fix f ->
+            let rec p = lazy (of' (f (Grammar.printer (fun x -> Lazy.force p x)))) in
+            Lazy.force p
+        | Token -> (fun c -> Some (char c))
+
+        | Printer p -> p
+        | Group g ->
+            let p = of' g in
+            (fun x -> p x |> Option.map group)
+        | Nest (n, g) ->
+            let p = of' g in
+            (fun x -> p x |> Option.map (nest n)) in
     let p = of' g in
     fun x -> p x |> Option.get
 

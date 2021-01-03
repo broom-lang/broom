@@ -94,90 +94,188 @@ and Typ : FcTypeSigs.TYPE
 
     (* --- *)
 
+    let rec non_uv_head s = function
+        | Uv uv -> (match Uv.get s uv with
+            | Assigned typ -> non_uv_head s typ
+            | Unassigned _ -> failwith "TODO: Unassigned")
+        | typ -> typ
+
+    let grammar s =
+        let exists = PIso.prism (fun (existentials, body) -> Exists (existentials, body))
+            (fun typ ->
+                match non_uv_head s typ with
+                | Exists (existentials, body) -> Some (existentials, body)
+                | _ -> None) in
+
+        let pi = PIso.prism (fun (universals, domain, eff, codomain) ->
+                Pi {universals; domain; eff; codomain}) (fun typ ->
+            match non_uv_head s typ with
+            | Pi {universals; domain; eff; codomain} -> Some (universals, domain, eff, codomain)
+            | _ -> None) in
+
+        let impli = PIso.prism (fun (universals, domain, codomain) ->
+                Impli {universals; domain; codomain}) (fun typ ->
+            match non_uv_head s typ with
+            | Impli {universals; domain; codomain} -> Some (universals, domain, codomain)
+            | _ -> None) in
+
+        let promoted_array = PIso.prism (fun typs -> PromotedArray typs) (fun typ ->
+            match non_uv_head s typ with
+            | PromotedArray typs -> Some typs
+            | _ -> None) in
+
+        let promoted_tuple = PIso.piso (fun typs ->
+                if Vector.length typs <> 1 then Some (PromotedTuple typs) else None)
+            (fun typ ->
+                match non_uv_head s typ with
+                | PromotedTuple typs -> Some typs
+                | _ -> None) in
+
+        let tuple = PIso.prism (fun typs -> Tuple typs) (fun typ ->
+            match non_uv_head s typ with
+            | Tuple typs -> Some typs
+            | _ -> None) in
+
+        let record = PIso.prism (fun typ -> Record typ) (fun typ ->
+            match non_uv_head s typ with
+            | Record typ -> Some typ
+            | _ -> None) in
+
+        let empty_row = PIso.prism (fun () -> EmptyRow) (fun typ ->
+            match non_uv_head s typ with
+            | EmptyRow -> Some ()
+            | _ -> None) in
+
+        let proxy = PIso.prism (fun typ -> Proxy typ) (fun typ ->
+            match non_uv_head s typ with
+            | Proxy typ -> Some typ
+            | _ -> None) in
+
+        let fn = PIso.prism (fun (param, body) -> Fn (param, body)) (fun typ ->
+            match non_uv_head s typ with
+            | Fn (param, body) -> Some (param, body)
+            | _ -> None) in
+
+        let app = PIso.prism (fun (callee, arg) -> App (callee, arg)) (fun typ ->
+            match non_uv_head s typ with
+            | App (callee, arg) -> Some (callee, arg)
+            | _ -> None) in
+
+        let bv = PIso.prism (fun (depth, sibli) ->
+                Bv {depth; sibli; (* HACK: *) kind = EmptyRow})
+            (fun typ -> 
+                match non_uv_head s typ with
+                | Bv {depth; sibli; kind = _} -> Some (depth, sibli)
+                | _ -> None) in
+
+        let prim = PIso.prism (fun op -> Prim op) (fun typ ->
+            match non_uv_head s typ with
+            | Prim op -> Some op
+            | _ -> None) in
+
+        let open Grammar in let open Grammar.Infix in
+        fix (fun typ ->
+            let promoted_array =
+                surround_separate 4 0 (brackets (pure Vector.empty))
+                    lbracket (comma <* break 1) rbracket typ
+                |> map promoted_array in
+
+            let promoted_tuple =
+                surround_separate 4 0 (parens (pure Vector.empty))
+                    lparen (comma <* break 1) rparen typ
+                |> map promoted_tuple in
+
+            let tuple =
+                surround_separate 4 0 (parens (colon *> pure Vector.empty))
+                    (lparen <* colon) (comma <* break 1) rparen typ
+                |> map tuple in
+
+            let surrounded =
+                promoted_array <|> promoted_tuple <|> tuple
+                <|> (record <$> braces typ)
+                <|> (empty_row <$> parens bar)
+                <|> (proxy <$> brackets (equals *> typ))
+                <|> parens typ in
+
+            let atom =
+                let ov = PIso.prism (fun _ -> failwith "TODO") (fun typ ->
+                    match non_uv_head s typ with
+                    | Ov ((name, _), _) -> Some name
+                    | _ -> None) in
+                ov <$> Name.grammar
+                <|> (bv <$> (caret *> int <*> slash *> int))
+                <|> (prim <$> text "__" *> Prim.grammar) in
+
+            let nestable = atom <|> surrounded in
+
+            let app = app <$> (nestable <* break 1 <*> nestable)
+                <|> nestable in
+
+            let non_fn = 
+                let f = PIso.iso (fun (base, fields) ->
+                    List.fold_left (fun base (label, field) -> With {base; label; field})
+                        base fields)
+                    (fun typ ->
+                        let rec loop fields typ =
+                            match non_uv_head s typ with
+                            | With {base; label; field} ->
+                                loop ((label, field) :: fields) base
+                            | base -> (base, fields) in
+                        loop [] typ) in
+                let label =
+                    PIso.string <$> (many1 (sat (Fun.negate (String.contains " \t\r\n"))))
+                    |> map Name.basename_iso in
+                f <$> prefix 4 1 app (many (text "with" *> blank 1 *> infix 4 1 equals label app)) in
+
+            let exists =
+                let adapt = PIso.iso (fun (existentials, body) ->
+                        (Option.get (Vector1.of_list existentials), body))
+                    (fun (existentials, body) -> (Vector1.to_list existentials, body)) in
+                let existentials = separate1 (blank 1) typ in
+                PIso.comp exists adapt <$> infix 4 1 dot (text "exists" *> existentials) typ in
+
+            let pi =
+                let adapt = PIso.iso (fun (universals, ((domain, eff), codomain)) ->
+                        ( Vector.of_list (Option.value ~default: [] universals)
+                        , Option.value ~default: EmptyRow eff
+                        , domain, codomain ))
+                    (fun (universals, domain, eff, codomain) ->
+                        let universals = match Vector.length universals with
+                            | 0 -> None
+                            | _ -> Some (Vector.to_list universals) in
+                        let eff = match non_uv_head s eff with
+                            | EmptyRow -> None
+                            | eff -> Some eff in
+                        (universals, ((domain, eff), codomain))) in
+                let universals = text "forall" *> blank 1 *> separate1 (blank 1) typ <* dot in
+                let arrow = opt (text "-!" *> blank 1 *> non_fn) <* text "->" in
+                let monomorphic = prefix 4 1 (non_fn <*> arrow) typ in
+                PIso.comp pi adapt <$> prefix 4 1 (opt universals) monomorphic in
+
+            let impli =
+                let adapt = PIso.iso (fun (universals, (domain, codomain)) ->
+                        ( Vector.of_list (Option.value ~default: [] universals)
+                        , domain, codomain ))
+                    (fun (universals, domain, codomain) ->
+                        let universals = match Vector.length universals with
+                            | 0 -> Some (Vector.to_list universals)
+                            | _ -> None in
+                        (universals, (domain, codomain))) in
+                let universals = text "forall" *> blank 1 *> separate1 (blank 1) typ <* dot in
+                let monomorphic = infix 4 1 (text "=>") non_fn typ in
+                PIso.comp impli adapt <$> prefix 4 1 (opt universals) monomorphic in
+
+            exists <|> pi <|> impli
+            <|> (fn <$> (infix 4 1 dot (text "fn" *> blank 1 *> non_fn) typ))
+            <|> non_fn)
+
+    let to_doc s = PPrinter.of_grammar (grammar s) (* OPTIMIZE *)
+
     let rec kind_to_doc s kind = to_doc s kind
 
     and kinds_to_doc s kinds = PPrint.(separate_map (break 1) (kind_to_doc s) kinds)
 
-    and to_doc s typ =
-        let open PPrint in
-        match typ with
-        | Exists (params, body) ->
-            prefix 4 1 (group (string "exists" ^/^ (kinds_to_doc s) (Vector1.to_list params)))
-                (dot ^^ blank 1 ^^ to_doc s body)
-        | PromotedArray typs ->
-            surround_separate_map 4 0 (brackets empty)
-                lbracket (comma ^^ break 1) rbracket
-                (to_doc s) (Vector.to_list typs)
-        | PromotedTuple typs ->
-            surround_separate_map 4 0 (parens empty)
-                lparen (comma ^^ break 1) rparen
-                (to_doc s) (Vector.to_list typs)
-        | Tuple typs ->
-            surround_separate_map 4 0 (parens colon)
-                (lparen ^^ colon) (comma ^^ break 1) rparen
-                (to_doc s) (Vector.to_list typs)
-        | Pi {universals; domain; eff; codomain} ->
-            let codoc = string "->" ^^ blank 1 ^^ to_doc s codomain in
-            let doc = prefix 4 1 (to_doc s domain)
-                (match eff with
-                | EmptyRow -> codoc
-                | eff -> prefix 4 1 (string "-!" ^^ blank 1 ^^ to_doc s eff) codoc) in
-            if Vector.length universals > 0
-            then prefix 4 1
-                (string "forall" ^^ blank 1 ^^ kinds_to_doc s (Vector.to_list universals))
-                (dot ^^ blank 1 ^^ doc)
-            else doc
-        | Impli {universals; domain; codomain} ->
-            let doc = prefix 4 1 (to_doc s domain)
-                (string "=>" ^^ blank 1 ^^ to_doc s codomain) in
-            if Vector.length universals > 0
-            then prefix 4 1
-                (string "forall" ^^ blank 1 ^^ kinds_to_doc s (Vector.to_list universals))
-                (dot ^^ blank 1 ^^ doc)
-            else doc
-        | Record row -> braces (to_doc s row)
-        | With {base; label; field} ->
-            infix 4 1 (string "with") (base_to_doc s base)
-                (infix 4 1 colon (Name.to_doc label) (to_doc s field))
-        | EmptyRow -> parens (bar)
-        | Proxy typ -> brackets (equals ^^ blank 1 ^^ to_doc s typ)
-        | Fn (param, body) ->
-            prefix 4 1
-                (string "fun" ^^ blank 1 ^^ kind_to_doc s param)
-                (dot ^^ blank 1 ^^ to_doc s body)
-        | App (callee, arg) -> callee_to_doc s callee ^/^ arg_to_doc s arg
-        | Bv {depth; sibli; kind = _} ->
-            caret ^^ string (Int.to_string depth) ^^ slash
-                ^^ string (Int.to_string sibli)
-        | Ov ((name, _), _) -> Name.to_doc name
-        | Uv uv -> uv_to_doc s uv
-        | Prim pt -> string "__" ^^ Prim.to_doc pt
-
-    and base_to_doc s = function
-        | (Pi _ | Fn _) as base -> PP.parens (to_doc s base)
-        | Uv uv ->
-            (match Uv.get s uv with
-            | Assigned typ -> base_to_doc s typ
-            | Unassigned _ -> uv_to_doc s uv)
-        | base -> to_doc s base
-
-    and callee_to_doc s = function
-        | (Pi _ | Fn _) as callee -> PP.parens (to_doc s callee)
-        | Uv uv ->
-            (match Uv.get s uv with
-            | Assigned typ -> callee_to_doc s typ
-            | Unassigned _ -> uv_to_doc s uv)
-        | callee -> to_doc s callee
-
-    and arg_to_doc s = function
-        | (Pi _ | Fn _ (*| App _*)) as arg -> PP.parens (to_doc s arg)
-        | Uv uv ->
-            (match Uv.get s uv with
-            | Assigned typ -> arg_to_doc s typ
-            | Unassigned _ -> uv_to_doc s uv)
-        | arg -> to_doc s arg
-
-    and template_to_doc s tpl =
+    let rec template_to_doc s tpl =
         let open PPrint in
         match tpl with
         | TupleL length ->
@@ -203,10 +301,6 @@ and Typ : FcTypeSigs.TYPE
     and universal_to_doc s universals body =
         PPrint.(prefix 4 1 (group (string "forall" ^/^ (kinds_to_doc s) (Vector.to_list universals)))
             (dot ^^ blank 1 ^^ body))
-
-    and uv_to_doc s uv = match Uv.get s uv with
-        | Unassigned (id, _, _) -> PPrint.(qmark ^^ string (Int.to_string id))
-        | Assigned t -> to_doc s t
 
     let rec coercion_to_doc s co =
         let open PPrint in

@@ -55,5 +55,12 @@ let to_string n =
         | None -> "$" in
     prefix ^ Int.to_string n
 
+let basename_iso = PIso.prism of_string basename
+
 let to_doc n = PPrint.string (to_string n)
+
+let grammar =
+    let open Grammar in let open Grammar.Infix in
+    PIso.string <$> many1 (sat (Fun.negate (String.contains " \t\r\n")))
+    |> map basename_iso (* FIXME *)
 

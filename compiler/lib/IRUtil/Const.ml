@@ -11,11 +11,11 @@ let string = PIso.piso (fun s -> Some (String s)) (function
     | _ -> None)
 
 let grammar =
-    let open PIso in let open Grammar.Infix in
+    let open Grammar.Infix in
     let strings =
         let open Grammar in
-        let cs = many (subset ((<>) '"') <$> char) in
-        let f = piso
+        let cs = many (PIso.subset ((<>) '"') <$> char) in
+        let f = PIso.piso
             (fun cs -> Some (List.to_seq cs |> String.of_seq))
             (fun s -> Some (String.to_seq s |> List.of_seq)) in
         token '"' *> (f <$> cs) <* token '"' in

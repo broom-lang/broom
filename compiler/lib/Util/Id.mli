@@ -9,6 +9,7 @@ module type S = sig
 
     val to_string : t -> string
     val to_doc : t -> PPrint.document
+    val grammar : t Grammar.t
 
     module HashMap : CCHashTrie.S with type key = t
     module Hashtbl : Hashtbl.S with type key = t
