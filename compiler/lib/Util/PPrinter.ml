@@ -38,5 +38,7 @@ let of_grammar g =
             let p = of' g in
             (fun x -> p x |> Option.map (nest n)) in
     let p = of' g in
-    fun x -> p x |> Option.get
+    fun x -> match p x with
+        | Some doc -> doc
+        | None -> failwith "PPrinter failed; probably due to incomplete Grammar"
 

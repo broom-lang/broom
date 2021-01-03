@@ -57,10 +57,12 @@ let infix n b op l r = prefix n b (l <* blank b <* op) r
 
 let separate1 sep g = cons <$> (g <*> many (sep *> g))
 
+let separate sep g = separate1 sep g <|> pure []
+
 let between l r g = l *> g <* r
 
 let surround n b l g r =
-    group (between l r (nest n (break b *> g)) <* break b)
+    group (between l r (nest n (break b *> g) <* break b))
 
 let surround_separate n b void l sep r g =
     surround n b l (vector <$> separate1 sep g) r
@@ -105,6 +107,7 @@ let braces g = between lbrace rbrace g
 let dot = token '.'
 let comma = token ','
 let colon = token ':'
+let semi = token ';'
 
 let equals = token '='
 let bar = token '|'

@@ -21,13 +21,17 @@ val fail : 'a t
 val fix : ('a t -> 'a t) -> 'a t
 val printer : ('a -> PPrint.document option) -> 'a t
 
+val nest : int -> 'a t -> 'a t
+
 val opt : 'a t -> 'a option t
 val many : 'a t -> 'a list t
 val many1 : 'a t -> 'a list t
+val separate : unit t -> 'a t -> 'a list t
 val separate1 : unit t -> 'a t -> 'a list t
 
 val prefix : int -> int -> 'a t -> 'b t -> ('a * 'b) t
 val infix : int -> int -> unit t -> 'a t -> 'b t -> ('a * 'b) t
+val surround : int -> int -> unit t -> 'a t -> unit t -> 'a t
 val surround_separate : int -> int -> 'a Vector.t t
     -> unit t -> unit t -> unit t
     -> 'a t -> 'a Vector.t t 
@@ -54,6 +58,7 @@ val braces : 'a t -> 'a t
 val dot : unit t
 val comma : unit t
 val colon : unit t
+val semi : unit t
 
 val equals : unit t
 val bar : unit t
