@@ -194,7 +194,7 @@ and Typ : FcTypeSigs.TYPE
                 promoted_array <|> promoted_tuple <|> tuple
                 <|> (record <$> braces typ)
                 <|> (empty_row <$> parens bar)
-                <|> (proxy <$> brackets (equals *> typ))
+                <|> (proxy <$> brackets (equals *> blank 1 *> typ))
                 <|> parens typ in
 
             let atom =
@@ -214,43 +214,45 @@ and Typ : FcTypeSigs.TYPE
             let non_fn = 
                 let f = PIso.iso (fun (base, fields) ->
                     List.fold_left (fun base (label, field) -> With {base; label; field})
-                        base fields)
+                        base (Option.value ~default: [] fields))
                     (fun typ ->
                         let rec loop fields typ =
                             match non_uv_head s typ with
                             | With {base; label; field} ->
                                 loop ((label, field) :: fields) base
-                            | base -> (base, fields) in
+                            | base -> (match fields with
+                                | _ :: _ -> (base, Some fields)
+                                | [] -> (base, None)) in
                         loop [] typ) in
                 let label =
                     PIso.string <$> (many1 (sat (Fun.negate (String.contains " \t\r\n"))))
                     |> map Name.basename_iso in
-                f <$> prefix 4 1 app (many (text "with" *> blank 1 *> infix 4 1 equals label app)) in
+                f <$> (app <*> opt (break 1 *> (many1 (text "with" *> blank 1 *> infix 4 1 equals label app)))) in
 
             let exists =
                 let adapt = PIso.iso (fun (existentials, body) ->
                         (Option.get (Vector1.of_list existentials), body))
                     (fun (existentials, body) -> (Vector1.to_list existentials, body)) in
-                let existentials = separate1 (blank 1) typ in
+                let existentials = separate1 (blank 1) nestable in
                 PIso.comp exists adapt <$> infix 4 1 dot (text "exists" *> existentials) typ in
 
             let pi =
                 let adapt = PIso.iso (fun (universals, ((domain, eff), codomain)) ->
-                        ( Vector.of_list (Option.value ~default: [] universals)
+                        ( Vector.of_list universals
                         , Option.value ~default: EmptyRow eff
                         , domain, codomain ))
                     (fun (universals, domain, eff, codomain) ->
-                        let universals = match Vector.length universals with
-                            | 0 -> None
-                            | _ -> Some (Vector.to_list universals) in
                         let eff = match non_uv_head s eff with
                             | EmptyRow -> None
                             | eff -> Some eff in
-                        (universals, ((domain, eff), codomain))) in
-                let universals = text "forall" *> blank 1 *> separate1 (blank 1) typ <* dot in
-                let arrow = opt (text "-!" *> blank 1 *> non_fn) <* text "->" in
-                let monomorphic = prefix 4 1 (non_fn <*> arrow) typ in
-                PIso.comp pi adapt <$> prefix 4 1 (opt universals) monomorphic in
+                        (Vector.to_list universals, ((domain, eff), codomain))) in
+                let universals = text "forall" *> blank 1 *> separate1 (blank 1) nestable
+                    <* blank 1 <* dot in
+                let arrow = opt (text "-!" *> blank 1 *> non_fn <* blank 1) <* text "->" in
+                let monomorphic = prefix 4 1 (non_fn <*> blank 1 *> arrow) typ in
+                PIso.comp pi adapt <$>
+                    (prefix 4 1 universals monomorphic
+                    <|> (pure [] <*> monomorphic)) in
 
             let impli =
                 let adapt = PIso.iso (fun (universals, (domain, codomain)) ->
@@ -261,7 +263,8 @@ and Typ : FcTypeSigs.TYPE
                             | 0 -> Some (Vector.to_list universals)
                             | _ -> None in
                         (universals, (domain, codomain))) in
-                let universals = text "forall" *> blank 1 *> separate1 (blank 1) typ <* dot in
+                let universals = text "forall" *> blank 1 *> separate1 (blank 1) nestable
+                    <* blank 1 <* dot in
                 let monomorphic = infix 4 1 (text "=>") non_fn typ in
                 PIso.comp impli adapt <$> prefix 4 1 (opt universals) monomorphic in
 
