@@ -89,14 +89,19 @@ module type ENV = sig
 
     val close : t -> int Name.Map.t -> T.t -> T.t
     val close_template : t -> int Name.Map.t -> T.template -> T.template
+    val close_coercion : t -> int Name.Map.t -> T.coercion -> T.coercion
 
     val reabstract : t -> T.t -> T.ov Vector.t * T.t
     val push_abs_skolems : t -> T.kind Vector1.t -> T.t -> t * T.ov Vector1.t * T.t
     val push_arrow_skolems : t -> T.kind Vector.t -> T.t -> T.t -> T.t
         -> t * T.ov Vector.t * T.t * T.t * T.t
+    val push_impli_skolems : t -> T.kind Vector.t -> T.t -> T.t
+        -> t * T.ov Vector.t * T.t * T.t
     val instantiate_abs : t -> T.kind Vector1.t -> T.t -> T.uv Vector1.t * T.t
     val instantiate_arrow : t -> T.kind Vector.t -> T.t -> T.t -> T.t
         -> T.uv Vector.t * T.t * T.t * T.t
+    val instantiate_impli : t -> T.kind Vector.t -> T.t -> T.t
+        -> T.uv Vector.t * T.t * T.t
     val instantiate_primop : t -> T.kind Vector.t -> T.t Vector.t -> T.t -> T.t
         -> T.uv Vector.t * T.t Vector.t * T.t * T.t
     val instantiate_branch : t -> T.kind Vector.t -> T.t Vector.t -> T.t -> T.t Vector.t

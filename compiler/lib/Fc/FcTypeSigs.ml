@@ -42,12 +42,14 @@ module type TYPE = sig
     and 'a field = {label : string; typ : 'a}
 
     and coercion =
+        | ExistsCo of kind Vector1.t * coercion
         | Refl of typ
         | Symm of coercion
         | Trans of coercion * coercion
         | Comp of coercion * coercion Vector1.t
         | Inst of coercion * typ Vector1.t
         | AUse of Name.t
+        | PiCo of {universals : kind Vector.t; domain : coercion; codomain : coercion}
         | PromotedArrayCo of coercion Vector.t
         | PromotedTupleCo of coercion Vector.t
         | TupleCo of coercion Vector.t

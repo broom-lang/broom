@@ -76,12 +76,14 @@ and Typ : FcTypeSigs.TYPE
     and 'a field = {label : string; typ : 'a}
 
     and coercion =
+        | ExistsCo of kind Vector1.t * coercion
         | Refl of typ
         | Symm of coercion
         | Trans of coercion * coercion
         | Comp of coercion * coercion Vector1.t
         | Inst of coercion * typ Vector1.t
         | AUse of Name.t
+        | PiCo of {universals : kind Vector.t; domain : coercion; codomain : coercion}
         | PromotedArrayCo of coercion Vector.t
         | PromotedTupleCo of coercion Vector.t
         | TupleCo of coercion Vector.t
@@ -310,6 +312,11 @@ and Typ : FcTypeSigs.TYPE
     let rec coercion_to_doc s co =
         let open PPrint in
         match co with
+        | ExistsCo (existentials, body) ->
+            infix 4 1 dot
+                (string "exists" ^^ blank 1
+                    ^^ separate_map (blank 1) (kind_to_doc s) (Vector1.to_list existentials))
+                (coercion_to_doc s body)
         | Refl typ -> to_doc s typ
         | Symm co -> string "symm" ^^ blank 1 ^^ coercion_to_doc s co
         | Trans (co, co') ->
@@ -322,6 +329,15 @@ and Typ : FcTypeSigs.TYPE
             Vector1.fold (fun doc arg -> infix 4 1 at doc (to_doc s arg))
                 (instantiee_to_doc s co) args
         | AUse name -> Name.to_doc name
+        | PiCo {universals; domain; codomain} ->
+            let body_doc = infix 4 1 (string "->")
+                (coercion_to_doc s domain) (coercion_to_doc s codomain) in
+            (match Vector.length universals with
+            | 0 -> body_doc
+            | _ -> infix 4 1 dot
+                (string "forall" ^^ blank 1
+                    ^^ separate_map (blank 1) (kind_to_doc s) (Vector.to_list universals))
+                body_doc)
         | PromotedArrayCo coercions ->
             surround_separate_map 4 0 (brackets empty)
                 lbracket (comma ^^ break 1) rbracket

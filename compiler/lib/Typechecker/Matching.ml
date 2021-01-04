@@ -1,6 +1,12 @@
 open Streaming
 open Asserts
 
+module OvHashSet = CCHashSet.Make (struct
+    type t = Fc.Type.ov
+    let hash = Hashtbl.hash (* HACK *)
+    let equal = (=) (* HACK *)
+end)
+
 module ResidualMonoid = struct
     include Monoid.OfSemigroup(Residual)
 
@@ -319,7 +325,6 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matchi
                 Env.reportError env pos (SubType (typ, super));
                 {coercion = None; residual = empty})
 
-        (* FIXME: forall <: uv impredicativity clash (?) *)
         | (Pi {universals; domain; eff; codomain}, _) -> (match super with
             | Pi { universals = universals'; domain = domain'; eff = eff'; codomain = codomain'} ->
                 let (env, universals', domain', eff', codomain') =
@@ -634,8 +639,30 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             {coercion = None; residual = empty}
         | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `typ` in `unify_whnf`")
 
-    | (Exists _, _) -> (match typ' with
-        | Exists _ -> todo (Some pos)
+    | (Exists (existentials, body), _) -> (match typ' with
+        | Exists (existentials', body') ->
+            let (env, skolems, body) = Env.push_abs_skolems env existentials body in
+            let (uvs, body') = Env.instantiate_abs env existentials' body' in
+
+            let {coercion = body_co; residual} = unify pos env body body' in
+
+            (let seen = OvHashSet.create 0 in
+            uvs |> Vector1.iter (fun uv -> match Env.get_uv env uv with
+                | Assigned (Ov ov) when Vector1.exists ((=) ov) skolems ->
+                    if not (OvHashSet.mem seen ov)
+                    then OvHashSet.insert seen ov
+                    else failwith ("insufficiently abstract rhs at " ^ Util.span_to_string pos)
+                | Assigned _ -> failwith ("insufficiently abstract lhs at " ^ Util.span_to_string pos)
+                | Unassigned _ -> ()
+            ));
+
+            let subst = Vector1.foldi (fun subst i ((name, _), _) ->
+                Name.Map.add name i subst
+            ) Name.Map.empty skolems in
+            let body_co : T.coercion = match body_co with
+                | Some body_co -> Env.close_coercion env subst body_co
+                | None -> Refl body' in
+            {coercion = Some (ExistsCo (existentials', body_co)); residual}
         | _ ->
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})
@@ -703,14 +730,75 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})
 
-    | (Pi _, _) -> (match typ' with
-        | Pi _ -> todo (Some pos)
+    | (Pi {universals; domain; eff; codomain}, _) -> (match typ' with
+        | Pi {universals = universals'; domain = domain'; eff = eff'; codomain = codomain'} ->
+            let (env, skolems, domain', eff', codomain') =
+                Env.push_arrow_skolems env universals' domain' eff' codomain' in
+            let (uvs, domain, eff, codomain) =
+                Env.instantiate_arrow env universals domain eff codomain in
+
+            let {coercion = domain_co; residual = domain_resi} = unify pos env domain' domain in
+            let {coercion = _; residual = eff_resi} = unify pos env eff eff' in
+            let {coercion = codomain_co; residual = codomain_resi} =
+                unify pos env codomain' codomain in
+
+            (let seen = OvHashSet.create 0 in
+            uvs |> Vector.iter (fun uv -> match Env.get_uv env uv with
+                | Assigned (Ov ov) when Vector.exists ((=) ov) skolems ->
+                    if not (OvHashSet.mem seen ov)
+                    then OvHashSet.insert seen ov
+                    else failwith ("insufficiently polymorphic lhs at " ^ Util.span_to_string pos)
+                | Assigned _ -> failwith ("insufficiently polymorphic rhs at " ^ Util.span_to_string pos)
+                | Unassigned _ -> ()
+            ));
+
+            let subst = Vector.foldi (fun subst i ((name, _), _) ->
+                Name.Map.add name i subst
+            ) Name.Map.empty skolems in
+            { coercion = Some (PiCo {universals = universals'
+                ; domain = (match domain_co with
+                    | Some domain_co -> Env.close_coercion env subst domain_co
+                    | None -> Refl domain')
+                ; codomain = (match codomain_co with
+                    | Some codomain_co -> Env.close_coercion env subst codomain_co
+                    | None -> Refl domain')})
+            ; residual = domain_resi |> combine eff_resi |> combine codomain_resi }
         | _ ->
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})
 
-    | (Impli _, _) -> (match typ' with
-        | Impli _ -> todo (Some pos)
+    | (Impli {universals; domain; codomain}, _) -> (match typ' with
+        | Impli {universals = universals'; domain = domain'; codomain = codomain'} ->
+            let (env, skolems, domain', codomain') =
+                Env.push_impli_skolems env universals' domain' codomain' in
+            let (uvs, domain, codomain) =
+                Env.instantiate_impli env universals domain codomain in
+
+            let {coercion = domain_co; residual = domain_resi} = unify pos env domain' domain in
+            let {coercion = codomain_co; residual = codomain_resi} =
+                unify pos env codomain' codomain in
+
+            (let seen = OvHashSet.create 0 in
+            uvs |> Vector.iter (fun uv -> match Env.get_uv env uv with
+                | Assigned (Ov ov) when Vector.exists ((=) ov) skolems ->
+                    if not (OvHashSet.mem seen ov)
+                    then OvHashSet.insert seen ov
+                    else failwith ("insufficiently polymorphic lhs at " ^ Util.span_to_string pos)
+                | Assigned _ -> failwith ("insufficiently polymorphic rhs at " ^ Util.span_to_string pos)
+                | Unassigned _ -> ()
+            ));
+
+            let subst = Vector.foldi (fun subst i ((name, _), _) ->
+                Name.Map.add name i subst
+            ) Name.Map.empty skolems in
+            { coercion = Some (PiCo {universals = universals'
+                ; domain = (match domain_co with
+                    | Some domain_co -> Env.close_coercion env subst domain_co
+                    | None -> Refl domain')
+                ; codomain = (match codomain_co with
+                    | Some codomain_co -> Env.close_coercion env subst codomain_co
+                    | None -> Refl domain')})
+            ; residual = combine domain_resi codomain_resi }
         | _ ->
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})

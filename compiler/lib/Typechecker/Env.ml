@@ -258,6 +258,38 @@ let rec close' env depth substitution : T.t -> T.t = function
         | Unassigned _ -> typ)
     | (Bv _ | Prim _) as typ -> typ
 
+let rec close_coercion' env depth substitution : T.coercion -> T.coercion = function
+    | ExistsCo (params, body) ->
+        let depth = depth + 1 in
+        ExistsCo (params, close_coercion' env depth substitution body)
+    | PiCo {universals; domain; codomain} ->
+        let depth = depth + 1 in
+        PiCo { universals
+           ; domain = close_coercion' env depth substitution domain
+           ; codomain = close_coercion' env depth substitution codomain }
+    | PromotedArrayCo typs ->
+        PromotedArrayCo (Vector.map (close_coercion' env depth substitution) typs)
+    | PromotedTupleCo typs ->
+        PromotedTupleCo (Vector.map (close_coercion' env depth substitution) typs)
+    | TupleCo cos -> TupleCo (Vector.map (close_coercion' env depth substitution) cos)
+    | RecordCo row -> RecordCo (close_coercion' env depth substitution row)
+    | WithCo {base; label; field} ->
+        WithCo {base = close_coercion' env depth substitution base
+            ; label; field = close_coercion' env depth substitution field}
+    | ProxyCo co -> ProxyCo (close_coercion' env depth substitution co)
+    | Refl typ -> Refl (close' env depth substitution typ)
+    | Symm co -> Symm (close_coercion' env depth substitution co)
+    | Trans (co, co') -> Trans (close_coercion' env depth substitution co
+        , close_coercion' env depth substitution co')
+    | Comp (co, cos) -> Comp (close_coercion' env depth substitution co
+        , Vector1.map (close_coercion' env depth substitution) cos)
+    | Inst (co, typs) -> Inst (close_coercion' env depth substitution co
+        , Vector1.map (close' env depth substitution) typs)
+    | AUse _ as co -> co
+    | Patchable r as co ->
+        set_coercion env r (close_coercion' env depth substitution !r);
+        co
+
 and close_template' env depth substitution = function
     | T.TupleL _ as template -> template
     | T.PiL codomain -> T.PiL (close_template' env depth substitution codomain)
@@ -269,6 +301,7 @@ and close_template' env depth substitution = function
 
 let close env = close' env 0
 let close_template env = close_template' env 0
+let close_coercion env = close_coercion' env 0
 
 (* --- *)
 
@@ -293,6 +326,13 @@ let push_arrow_skolems env universals domain eff codomain =
     , expose env substitution eff
     , expose env substitution codomain )
 
+let push_impli_skolems env universals domain codomain =
+    let (env, skolems) = push_skolems env universals in
+    let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
+    ( env, skolems
+    , expose env substitution domain
+    , expose env substitution codomain )
+
 let instantiate_abs env existentials body =
     let uvs = Vector1.map (uv env) existentials in
     let substitution = uvs |> Vector1.to_vector |> Vector.map (fun uv -> T.Uv uv) in
@@ -304,6 +344,13 @@ let instantiate_arrow env universals domain eff codomain =
     ( uvs
     , expose env substitution domain
     , expose env substitution eff
+    , expose env substitution codomain )
+
+let instantiate_impli env universals domain codomain =
+    let uvs = Vector.map (uv env) universals in
+    let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
+    ( uvs
+    , expose env substitution domain
     , expose env substitution codomain )
 
 let instantiate_primop env universals domain app_eff codomain =
