@@ -114,6 +114,7 @@ let focalize : span -> Env.t -> T.t -> T.template -> Coercer.t option * T.t
             (match Env.get_uv env uv with
             | Unassigned _ -> (None, articulate_template typ template)
             | Assigned _ -> unreachable (Some pos) ~msg: "Assigned uv in `focalize`.")
+        | Impli _ -> todo (Some pos)
         | _ ->
             (match template with
             | TupleL min_length ->
@@ -231,6 +232,21 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matchi
 
     let subtype_whnf : bool -> T.t -> T.t -> Coercer.t option matching
     = fun occ typ super -> match (typ, super) with
+        (* TODO: uv impredicativity clashes *)
+        | (Uv uv, Uv uv') when uv = uv' -> {coercion = None; residual = None}
+        | (Uv uv, _) ->
+            (match Env.get_uv env uv with
+            | Unassigned _ ->
+                if occ then occurs_check pos env uv super else ();
+                subtype pos false env (articulate pos env typ super) super
+            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `typ` in `subtype_whnf`")
+        | (_, Uv uv) ->
+            (match Env.get_uv env uv with
+            | Unassigned _ ->
+                if occ then occurs_check pos env uv typ else ();
+                subtype pos false env typ (articulate pos env super typ)
+            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `super` in `subtype_whnf`")
+
         | (Impli _, _) | (_, Impli _) -> todo (Some pos)
 
         | (Exists (existentials, body), _) ->
@@ -257,22 +273,6 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matchi
                     E.at pos super (E.pack existentials (Coercer.apply coerce expr)))
                 | None -> (fun expr -> E.at pos super (E.pack existentials expr))))
             ; residual }
-
-        (* TODO: uv <: Exists impredicativity clash *)
-
-        | (Uv uv, Uv uv') when uv = uv' -> {coercion = None; residual = None}
-        | (Uv uv, _) ->
-            (match Env.get_uv env uv with
-            | Unassigned _ ->
-                if occ then occurs_check pos env uv super else ();
-                subtype pos false env (articulate pos env typ super) super
-            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `typ` in `subtype_whnf`")
-        | (_, Uv uv) ->
-            (match Env.get_uv env uv with
-            | Unassigned _ ->
-                if occ then occurs_check pos env uv typ else ();
-                subtype pos false env typ (articulate pos env super typ)
-            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `super` in `subtype_whnf`")
 
         | (PromotedArray _, _) -> (match super with
             | PromotedArray _ ->
@@ -625,14 +625,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
 = fun pos env typ typ' ->
     let open ResidualMonoid in
     match (typ, typ') with
-    | (Impli _, _) | (_, Impli _) -> todo (Some pos)
-
-    | (Exists _, _) -> (match typ' with
-        | Exists _ -> todo (Some pos)
-        | _ ->
-            Env.reportError env pos (Unify (typ, typ'));
-            {coercion = None; residual = empty})
-
+    (* TODO: uv impredicativity clashes: *)
     | (Uv uv, typ') | (typ', Uv uv) ->
         (match Env.get_uv env uv with
         | Unassigned (_, _, level) -> (* FIXME: use uv kind *)
@@ -640,6 +633,12 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             Env.set_uv env pos uv (Assigned typ');
             {coercion = None; residual = empty}
         | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `typ` in `unify_whnf`")
+
+    | (Exists _, _) -> (match typ' with
+        | Exists _ -> todo (Some pos)
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
 
     | (PromotedArray typs, _) -> (match typ' with
         | PromotedArray typs' ->
@@ -706,6 +705,12 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
 
     | (Pi _, _) -> (match typ' with
         | Pi _ -> todo (Some pos)
+        | _ ->
+            Env.reportError env pos (Unify (typ, typ'));
+            {coercion = None; residual = empty})
+
+    | (Impli _, _) -> (match typ' with
+        | Impli _ -> todo (Some pos)
         | _ ->
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})
