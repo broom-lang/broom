@@ -1,4 +1,5 @@
 open Streaming
+open Asserts
 
 module T = Fc.Type
 module E = Fc.Term.Expr
@@ -24,22 +25,22 @@ type shape =
     | Scalar
     | Unknown
 
-let rec join shape shape' = match shape with
+let rec join pos shape shape' = match shape with
     | Tuple shapes -> (match shape' with
-        | Tuple shapes' -> Stream.from (Source.zip_with join
+        | Tuple shapes' -> Stream.from (Source.zip_with (join pos)
                 (Vector.to_source shapes) (Vector.to_source shapes'))
             |> Stream.into (Sink.unzip
                 (Vector.sink () |> Sink.map (fun shapes -> Tuple shapes))
                 (Sink.fold (||) false))
         | Unknown -> (shape, false)
-        | _ -> failwith "unreachable")
+        | _ -> unreachable (Some pos))
 
     | Record fields -> (match shape' with
         | Record fields' ->
             Stream.from (Source.seq (Name.Map.to_seq fields'))
                 |> Stream.map (fun (label, shape') ->
                     let (shape, changed) = match Name.Map.find_opt label fields with
-                        | Some shape -> join shape shape'
+                        | Some shape -> join pos shape shape'
                         | None -> (shape', true) in
                     ((label, shape), changed))
                 |> Stream.into (Sink.unzip
@@ -49,20 +50,20 @@ let rec join shape shape' = match shape with
                     |> Sink.map (fun fields -> Record fields))
                     (Sink.fold (||) false))
         | Unknown -> (shape, false)
-        | _ -> failwith "unreachable")
+        | _ -> unreachable (Some pos))
 
     | Closure (clovers, codomain) -> (match shape' with
         | Closure (clovers', codomain') ->
-            let (codomain, codomain_changed) = join codomain codomain' in
+            let (codomain, codomain_changed) = join pos codomain codomain' in
             ( Closure (Support.union clovers clovers', codomain)
             , codomain_changed || not (Support.equal clovers clovers') )
         | Unknown -> (shape, false)
-        | _ -> failwith "unreachable")
+        | _ -> unreachable (Some pos))
 
     | Scalar -> (match shape' with
         | Scalar -> (shape, false)
         | Unknown -> (shape, false)
-        | _ -> failwith "unreachable")
+        | _ -> unreachable (Some pos))
 
     | Unknown -> (match shape' with
         | Unknown -> (shape, false)
@@ -100,7 +101,7 @@ module Shapes : sig
 
     val create : unit -> t
     val length : t -> int
-    val refine : t -> Name.t -> shape -> bool
+    val refine : Util.span -> t -> Name.t -> shape -> bool
     val find : t -> Name.t -> shape
 end = struct
     type t = shape Name.Hashtbl.t
@@ -112,9 +113,9 @@ end = struct
         Name.Hashtbl.find_opt shapes id
         |> Option.value ~default: Unknown
 
-    let refine shapes id shape' =
+    let refine pos shapes id shape' =
         let shape = find shapes id in
-        let (shape, changed) = join shape shape' in
+        let (shape, changed) = join pos shape shape' in
         Name.Hashtbl.replace shapes id shape;
         changed
 end
@@ -220,13 +221,13 @@ let analyze expr =
             |> Stream.map (fun ({res = _; prim_body} : E.prim_clause) ->
                 shapeof env ctx prim_body)
             |> Stream.into (Sink.unzip
-                (Sink.fold (fun shape shape' -> fst (join shape shape')) Unknown)
+                (Sink.fold (fun shape shape' -> fst (join expr.pos shape shape')) Unknown)
                 (Sink.fold Support.union support))
 
         | Unpack {existentials = _; var = {name; _}; value; body} ->
             let (def_shape, def_support) = shapeof env Naming value in
             (* Need `let changed'` because `&&` is short-circuiting: *)
-            let changed' = Shapes.refine shapes name def_shape in
+            let changed' = Shapes.refine expr.pos shapes name def_shape in
             changed := !changed && changed';
             let (shape, body_support) = shapeof env ctx body in
             (shape, Support.union def_support body_support)
@@ -236,18 +237,18 @@ let analyze expr =
             Stream.from (Vector.to_source clauses)
             |> Stream.map (fun ({pat = _; body} : E.clause) -> shapeof env ctx body)
             |> Stream.into (Sink.unzip
-                (Sink.fold (fun shape shape' -> fst (join shape shape')) Unknown)
+                (Sink.fold (fun shape shape' -> fst (join expr.pos shape shape')) Unknown)
                 (Sink.fold Support.union support))
 
         | Let {defs; body} ->
             let defs_support = Array1.fold_left (fun support -> function
-                | S.Def (_, ({name; _} : E.var), value) ->
+                | S.Def (pos, ({name; _} : E.var), value) ->
                     let (shape, def_support) = shapeof env Naming value in
                     (* Need `let changed'` because `&&` is short-circuiting: *)
-                    let changed' = Shapes.refine shapes name shape in
+                    let changed' = Shapes.refine pos shapes name shape in
                     changed := !changed && changed';
                     Support.union support def_support
-                | S.Expr expr ->
+                | Expr expr ->
                     let (_, support') = shapeof env Naming expr in
                     Support.union support support'
             ) Support.empty defs in
@@ -259,7 +260,7 @@ let analyze expr =
             let defs_support = Array1.fold_left (fun support (_, ({name; _} : E.var), value) ->
                 let (shape, def_support) = shapeof env Naming value in
                 (* Need `let changed'` because `&&` is short-circuiting: *)
-                let changed' = Shapes.refine shapes name shape in
+                let changed' = Shapes.refine expr.pos shapes name shape in
                 changed := !changed && changed';
                 Env.initialize env name;
                 Support.union support def_support
@@ -357,7 +358,7 @@ module VarRefs : sig
 
     val create : int -> t
     val add : t -> E.var -> unit
-    val initialize : t -> E.var -> unit
+    val initialize : Util.span -> t -> E.var -> unit
     val find : t -> E.var -> deref_state
 end = struct
     type t = deref_state option Name.Hashtbl.t
@@ -366,11 +367,11 @@ end = struct
 
     let add vrs (var : E.var) = Name.Hashtbl.add vrs var.name None
 
-    let initialize vrs (var : E.var) =
+    let initialize pos vrs (var : E.var) =
         let state = match Name.Hashtbl.find vrs var.name with
             | Some (Forward {cell}) -> WasForward {cell}
             | Some Backward | None -> Backward
-            | Some (WasForward _) -> failwith "unreachable" in
+            | Some (WasForward _) -> unreachable (Some pos) in
         Name.Hashtbl.replace vrs var.name (Some state)
 
     let find vrs (var : E.var) = match Name.Hashtbl.find_opt vrs var.name with
@@ -392,7 +393,7 @@ let emit shapes expr =
             let defs = Stream.from (Array1.to_source defs)
                 |> Stream.flat_map (fun (pos, var, value) ->
                     let value = emit value in
-                    VarRefs.initialize vrs var;
+                    VarRefs.initialize pos vrs var;
                     match VarRefs.find vrs var with
                     | WasForward {cell} ->
                         Stream.double (S.Def (pos, var, value))
@@ -403,7 +404,7 @@ let emit shapes expr =
                                         E.at pos cell.vtyp (E.use cell)
                                         ; E.at value.pos value.typ (E.use var)]))))))
                     | Backward -> Stream.single (S.Def (pos, var, value))
-                    | Forward _ -> failwith "unreachable")
+                    | Forward _ -> unreachable (Some pos))
                 |> Stream.into Sink.array in
             let body = emit body in
             let cell_defs = Stream.from (Source.array defs)
@@ -412,10 +413,10 @@ let emit shapes expr =
                         | Backward -> Stream.empty
                         | WasForward {cell} ->
                             let arg = E.at pos (Tuple Vector.empty)
-                                (E.values (Array.init 0 (fun _ -> failwith "unreachable"))) in
+                                (E.values (Array.init 0 (fun _ -> unreachable (Some pos)))) in
                             let value = E.at pos cell.vtyp (E.primapp CellNew Vector.empty arg) in
                             Stream.single (S.Def (pos, cell, value))
-                        | Forward _ -> failwith "unreachable")
+                        | Forward _ -> unreachable (Some pos))
                     | Expr _ -> Stream.empty)
                 |> Stream.into Sink.array in
             E.at expr.pos expr.typ (E.let' (Array.append cell_defs defs) body)

@@ -1,3 +1,5 @@
+open Asserts
+
 module T = Fc.Type
 module E = Fc.Term.Expr
 module TS = TyperSigs
@@ -128,8 +130,8 @@ let generate env binding =
             TxRef.set env.tx_log bindings (ov :: !bindings);
             ov
         | _ :: scopes' -> generate scopes'
-        | [] -> failwith "Typer.generate: missing root Hoisting scope"
-    in generate env.scopes
+        | [] -> unreachable None in
+    generate env.scopes
 
 let get_implementation (env : t) (((name, _), _) : T.ov) =
     let rec get = function
@@ -148,7 +150,7 @@ let type_fns (env : t) =
             List.iter (fun (binding, _) -> CCVector.push tfns binding) !ovs;
             Vector.build tfns
         | _ :: scopes' -> loop scopes'
-        | [] -> failwith "unreachable" in
+        | [] -> unreachable None in
     loop env.scopes
 
 let uv (env : t) kind = Fc.Uv.make env.tx_log kind env.level
@@ -162,11 +164,11 @@ let set_uv (env : t) pos uv v = match get_uv env uv with
         | Uv.Unassigned _ -> ()
         | Assigned typ -> ignore (M.solving_unify pos env kind (K.kindof_F pos env typ)));
         Fc.Uv.set env.tx_log uv v
-    | Assigned _ -> failwith "compiler bug: tried to set Assigned uv"
+    | Assigned _ -> bug (Some pos) ~msg: "tried to set Assigned uv"
 
 let sibling (env : t) kind uv = match get_uv env uv with
     | Unassigned (_, _, level) -> Fc.Uv.make env.tx_log kind level
-    | Assigned _ -> failwith "unreachable"
+    | Assigned _ -> unreachable None
 
 let set_expr (env : t) ref expr = TxRef.set env.tx_log ref expr
 let set_coercion (env : t) ref coercion = TxRef.set env.tx_log ref coercion
@@ -364,7 +366,7 @@ let find (env : t) pos name =
 let find_rhs (env : t) pos name =
     let rec find scopes = match scopes with
         | Vals bindings :: scopes -> (match Name.Map.find_opt name bindings with
-            | Some _ -> failwith "compiler bug: `Env.find_rhs` found `Vals` scope"
+            | Some _ -> bug (Some pos) ~msg: "`Env.find_rhs` found `Vals` scope"
             | None -> find scopes)
         | Rec (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some (var, binding) ->
@@ -376,25 +378,25 @@ let find_rhs (env : t) pos name =
                     TxRef.set env.tx_log binding (Black typing);
                     TxRef.set env.tx_log fields (var :: !fields);
                     typing
-                | Grey -> failwith "compiler bug: `Env.find_rlhs` found `Grey` binding"
+                | Grey -> bug (Some pos) ~msg: "`Env.find_rlhs` found `Grey` binding"
                 | Black typing -> typing)
             | None -> find scopes')
         | Row (bindings, _) :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some _ -> failwith "compiler bug: `Env.find_rhs` found `Row` scope."
+            | Some _ -> bug (Some pos) ~msg: "`Env.find_rhs` found `Row` scope."
             | None -> find scopes')
         | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
         | [] ->
             reportError env pos (Unbound name);
-            failwith "TODO: find_rhs unbound lie" in
+            todo (Some pos) ~msg: "find_rhs unbound lie" in
     find env.scopes
 
 let find_rhst (env : t) pos name =
     let rec find scopes = match scopes with
         | Vals bindings :: scopes -> (match Name.Map.find_opt name bindings with
-            | Some _ -> failwith "compiler bug: `Env.find_rhs` found `Vals` scope"
+            | Some _ -> bug (Some pos) ~msg: "`Env.find_rhs` found `Vals` scope"
             | None -> find scopes)
         | Rec (bindings, _) :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some _ -> failwith "compiler bug: `Env.find_rhst` found `Rec` scope."
+            | Some _ -> bug (Some pos) ~msg: "`Env.find_rhst` found `Rec` scope."
             | None -> find scopes')
         | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some (var, binding) ->
@@ -408,13 +410,13 @@ let find_rhst (env : t) pos name =
                     TxRef.set env.tx_log binding (BlackT kinding);
                     TxRef.set env.tx_log fields (var :: !fields);
                     kinding
-                | GreyT -> failwith "compiler bug: `Env.find_rhst` found `GreyT` binding"
+                | GreyT -> bug (Some pos) ~msg: "`Env.find_rhst` found `GreyT` binding"
                 | BlackT kinding -> kinding)
             | None -> find scopes')
         | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
         | [] ->
             reportError env pos (Unbound name);
-            failwith "TODO: find_rhst unbound lie" in
+            todo (Some pos) ~msg: "find_rhst unbound lie" in
     find env.scopes
 
 end

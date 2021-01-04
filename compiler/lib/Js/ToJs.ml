@@ -1,4 +1,6 @@
 open Streaming
+open Asserts
+
 open Cfg
 
 module Uses = Expr.Id.Hashtbl
@@ -249,12 +251,12 @@ let to_js program =
         | String s -> Js.String s in
 
     let rec emit_transfer parent stmts (transfer : Transfer.t) =
-        let emit_expr : Expr.t -> Js.expr = function
+        let emit_expr pos : Expr.t -> Js.expr = function
             | PrimApp {op = Import; universals = _; args} ->
                 assert (Vector.length args = 2);
                 Call (UseExtern "require", Vector.map emit_use (Vector.sub args 1 1))
 
-            | PrimApp {op; _} -> failwith ("TODO: " ^ Primop.to_string op)
+            | PrimApp {op; _} -> todo (Some pos) ~msg: (Primop.to_string op)
 
             | Record fields -> Object (Vector.map (fun (label, field) ->
                 (Name.basename label |> Option.get, emit_use field))
@@ -274,7 +276,7 @@ let to_js program =
                     |> Stream.into (Vector.sink ()) in
                 Call (Js.Function (Vector.empty, body), Vector.empty)
 
-            | With _ -> failwith "TODO"
+            | With _ -> todo (Some pos)
 (*
             | With {base; label; field} ->
                 let base_name = fresh () in
@@ -301,9 +303,9 @@ let to_js program =
 
             | Const c -> emit_const c
 
-            | Param _ -> failwith "compiler bug: Param in Cfg"
-            | Tuple _ -> failwith "compiler bug: Tuple in Cfg"
-            | Focus _ -> failwith "compiler bug: Focus in Cfg" in
+            | Param _ -> bug (Some pos) ~msg: "Param in Cfg"
+            | Tuple _ -> bug (Some pos) ~msg: "Tuple in Cfg"
+            | Focus _ -> bug (Some pos) ~msg: "Focus in Cfg" in
 
         let emit_clause ({pat; dest} : Transfer.clause) =
             let emit_pat : Transfer.Pattern.t -> Js.expr option = function
@@ -316,10 +318,10 @@ let to_js program =
 
         let emit_stmt ({term = (vars, expr); pos; typ = _} : Stmt.t) : Js.stmt Vector.t =
             match Vector.length vars with
-            | 0 -> Vector.singleton (Js.Expr (emit_expr expr))
+            | 0 -> Vector.singleton (Js.Expr (emit_expr pos expr))
             | 1 ->
                 let var = Vector.get vars 0 in
-                let expr' = emit_expr expr in
+                let expr' = emit_expr pos expr in
                 if is_inlineable parent var expr
                 then begin
                     add_var_expr var expr';
@@ -328,7 +330,7 @@ let to_js program =
                     let name = add_var_name var in
                     Vector.singleton (Js.Var (name, expr'))
                 end
-            | _ -> failwith ("compiler bug: > 1 vars reached emit_stmt at " ^ Util.span_to_string pos) in
+            | _ -> bug (Some pos) ~msg: "> 1 vars reached emit_stmt" in
 
         let stmts = Vector.flat_map emit_stmt stmts in
         let transfer = match transfer.term with
@@ -341,7 +343,7 @@ let to_js program =
             | Match {matchee; clauses} ->
                 Switch (emit_use matchee, Vector.map emit_clause clauses)
 
-            | PrimApp _ -> failwith "TODO"
+            | PrimApp _ -> todo (Some transfer.pos)
 
             | Return (_, args) -> Return (Array (Vector.map emit_use args)) in
         Stream.concat (Stream.from (Vector.to_source stmts)) (Stream.single transfer)

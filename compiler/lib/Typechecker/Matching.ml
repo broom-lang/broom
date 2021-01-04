@@ -1,4 +1,5 @@
 open Streaming
+open Asserts
 
 module ResidualMonoid = struct
     include Monoid.OfSemigroup(Residual)
@@ -37,7 +38,7 @@ fun co base label field ->
 
 (* Massage `typ` into a `With`, returning `(coercion, base, field_t)`: *)
 let pull_row pos env label' typ : T.coercion option * T.t * T.t =
-    let rec pull typ = match K.eval env typ with
+    let rec pull typ = match K.eval pos env typ with
         | Some (With {base; label; field}, co) when label = label' -> (co, base, field)
         | Some (With {base; label; field}, co) ->
             let (base_co, base, field'') = pull base in
@@ -52,7 +53,7 @@ let pull_row pos env label' typ : T.coercion option * T.t * T.t =
             let template = T.WithL {base = Hole; label = label'; field = Hole} in
             Env.reportError env pos (Unusable (template, typ));
             (None, Uv (Env.uv env T.aRow), Uv (Env.uv env T.aType))
-        | None -> failwith "TODO: pull_row None" in
+        | None -> todo (Some pos) ~msg: "pull_row None" in
     pull typ
 
 let match_rows : Util.span -> Env.t -> T.t -> T.t -> Name.t CCVector.ro_vector
@@ -62,7 +63,7 @@ let match_rows : Util.span -> Env.t -> T.t -> T.t -> Name.t CCVector.ro_vector
     let labels = CCVector.create () in
     let fields = CCVector.create () in
     let fields' = CCVector.create () in
-    let rec matchem row row' = match K.eval env row' with
+    let rec matchem row row' = match K.eval pos env row' with
         | Some (With {base = base'; label = label'; field = field'}, co') ->
             (* OPTIMIZE: computing `co` n times is probably redundant: *)
             let (co, base, field) = pull_row pos env label' row in
@@ -73,7 +74,7 @@ let match_rows : Util.span -> Env.t -> T.t -> T.t -> Name.t CCVector.ro_vector
             ( trans_with co base_co label' field, base
             , base', trans_with co' base_co' label' field' )
         | Some (base', co') -> (None, row, base', co')
-        | None -> failwith "TODO: match_rows None" in
+        | None -> todo (Some pos) ~msg: "match_rows None" in
     let (co, base, base', co') = matchem row row' in
     ( CCVector.freeze labels
     , co, base, CCVector.freeze fields
@@ -102,17 +103,17 @@ let focalize : span -> Env.t -> T.t -> T.template -> Coercer.t option * T.t
                     | WithL {base = _; label; field = _} ->
                         (uv, (With {base = Uv (sibling env T.aRow uv)
                             ; label; field = Uv (sibling env T.aType uv)}))
-                    | Hole -> failwith "unreachable: Hole as template in `articulate_template`" in
+                    | Hole -> unreachable (Some pos) ~msg: "Hole as template in `articulate_template`" in
                 Env.set_uv env pos uv (Assigned typ);
                 typ
-            | Assigned _ -> failwith "unreachable: `articulate_template` on assigned uv")
-        | _ -> failwith "unreachable: `articulate_template` on non-uv" in
+            | Assigned _ -> unreachable (Some pos) ~msg: "`articulate_template` on assigned uv")
+        | _ -> unreachable (Some pos) ~msg: "`articulate_template` on non-uv" in
 
     let focalize_whnf typ = match typ with
         | T.Uv uv ->
             (match Env.get_uv env uv with
             | Unassigned _ -> (None, articulate_template typ template)
-            | Assigned _ -> failwith "unreachable: Assigned uv in `focalize`.")
+            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned uv in `focalize`.")
         | _ ->
             (match template with
             | TupleL min_length ->
@@ -140,9 +141,9 @@ let focalize : span -> Env.t -> T.t -> T.template -> Coercer.t option * T.t
                 let coerce = co |> Option.map (fun co -> Coercer.coercer (fun castee ->
                     E.at pos (With {base; label; field}) (E.cast castee co))) in
                 (coerce, With {base; label; field})
-            | Hole -> failwith "unreachable: Hole as template in `focalize`.") in
+            | Hole -> unreachable (Some pos) ~msg: "Hole as template in `focalize`.") in
 
-    match K.eval env typ with
+    match K.eval pos env typ with
     | Some (typ', coercion) ->
         let (coerce, typ) = focalize_whnf typ' in
         let coerce = match (coercion, coerce) with
@@ -153,7 +154,7 @@ let focalize : span -> Env.t -> T.t -> T.template -> Coercer.t option * T.t
           | (None, Some _) -> coerce
           | (None, None) -> None in
         (coerce, typ)
-    | None -> failwith "unreachable: `whnf` failed in `focalize`."
+    | None -> unreachable (Some pos) ~msg: "`whnf` failed in `focalize`."
 
 (* # Subtyping *)
 
@@ -173,7 +174,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matchi
                             if level' <= level
                             then (uv, template)
                             else (uv', uv_typ)
-                        | Assigned _ -> failwith "unreachable: Assigned as template of `articulate`")
+                        | Assigned _ -> unreachable (Some pos) ~msg: "Assigned as template of `articulate`")
 
                     | Ov ((_, level') as ov) ->
                         if level' <= level
@@ -220,17 +221,17 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matchi
                             , Uv (sibling env (K.kindof_F pos env arg) uv)) )
                     | Prim pt -> (uv, Prim pt)
 
-                    | Exists _ -> failwith "unreachable: `Exists` as template of `articulate`"
-                    | Fn _ -> failwith "unreachable: `Fn` as template of `articulate`"
-                    | Bv _ -> failwith "unreachable: `Bv` as template of `articulate`" in
+                    | Exists _ -> unreachable (Some pos) ~msg: "`Exists` as template of `articulate`"
+                    | Fn _ -> unreachable (Some pos) ~msg: "`Fn` as template of `articulate`"
+                    | Bv _ -> unreachable (Some pos) ~msg: "`Bv` as template of `articulate`" in
                 Env.set_uv env pos uv (Assigned typ);
                 typ
-            | Assigned _ -> failwith "unreachable: `articulate` on assigned uv")
-        | _ -> failwith "unreachable: `articulate` on non-uv" in
+            | Assigned _ -> unreachable (Some pos) ~msg: "`articulate` on assigned uv")
+        | _ -> unreachable (Some pos) ~msg: "`articulate` on non-uv" in
 
     let subtype_whnf : bool -> T.t -> T.t -> Coercer.t option matching
     = fun occ typ super -> match (typ, super) with
-        | (Impli _, _) | (_, Impli _) -> failwith "TODO"
+        | (Impli _, _) | (_, Impli _) -> todo (Some pos)
 
         | (Exists (existentials, body), _) ->
             let (env, skolems, typ) = Env.push_abs_skolems env existentials body in
@@ -265,18 +266,19 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matchi
             | Unassigned _ ->
                 if occ then occurs_check pos env uv super else ();
                 subtype pos false env (articulate pos env typ super) super
-            | Assigned _ -> failwith "unreachable: Assigned `typ` in `subtype_whnf`")
+            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `typ` in `subtype_whnf`")
         | (_, Uv uv) ->
             (match Env.get_uv env uv with
             | Unassigned _ ->
                 if occ then occurs_check pos env uv typ else ();
                 subtype pos false env typ (articulate pos env super typ)
-            | Assigned _ -> failwith "unreachable: Assigned `super` in `subtype_whnf`")
+            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `super` in `subtype_whnf`")
 
         | (PromotedArray _, _) -> (match super with
             | PromotedArray _ ->
                 let {coercion = _; residual} = unify pos env typ super in
-                { coercion = Some (Coercer.coercer (fun _ -> failwith "Compiler bug: PromotedArray coercion called"))
+                { coercion = Some (Coercer.coercer (fun _ ->
+                    bug (Some pos) ~msg: "PromotedArray coercion called"))
                 ; residual }
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
@@ -285,7 +287,8 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matchi
         | (PromotedTuple _, _) -> (match super with
             | PromotedTuple _ ->
                 let {coercion = _; residual} = unify pos env typ super in
-                { coercion = Some (Coercer.coercer (fun _ -> failwith "Compiler bug: PromotedTuple coercion called"))
+                { coercion = Some (Coercer.coercer (fun _ ->
+                    bug (Some pos) ~msg: "PromotedTuple coercion called"))
                 ; residual }
             | _ ->
                 Env.reportError env pos (SubType (typ, super));
@@ -484,7 +487,7 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matchi
                             check_uv_assignee pos env uv level max_uv_level carrie;
                             Some (uv, carrie)
                         | Assigned typ -> leftmost_callee max_uv_level typ)
-                    | _ -> failwith "FIXME: leftmost_callee" in
+                    | _ -> todo (Some pos) in
                 (match leftmost_callee Int.max_int carrie' with
                 | Some (uv, impl) ->
                     Env.set_uv env pos uv (Assigned impl);
@@ -529,13 +532,13 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matchi
                 Env.reportError env pos (SubType (typ, super));
                 {coercion = None; residual = empty})
 
-        | (Fn _, _) -> failwith "unreachable: Fn in subtype_whnf"
-        | (Bv _, _) -> failwith "unreachable: Bv in subtype_whnf" in
+        | (Fn _, _) -> unreachable (Some pos) ~msg: "Fn in subtype_whnf"
+        | (Bv _, _) -> unreachable (Some pos) ~msg: "Bv in subtype_whnf" in
 
     let (>>=) = Option.bind in
     let res =
-        K.eval env typ >>= fun (typ', co) ->
-        K.eval env super |> Option.map (fun (super', co') ->
+        K.eval pos env typ >>= fun (typ', co) ->
+        K.eval pos env super |> Option.map (fun (super', co') ->
             let {coercion = coerce; residual} = subtype_whnf occ typ' super' in
             { coercion =
                 (match (co, coerce, co') with
@@ -597,8 +600,8 @@ and occurs_check pos env uv typ =
 and unify pos env typ typ' : T.coercion option matching =
     let (>>=) = Option.bind in
     let res =
-        K.eval env typ >>= fun (typ, co) ->
-        K.eval env typ' |> Option.map (fun (typ', co'') ->
+        K.eval pos env typ >>= fun (typ, co) ->
+        K.eval pos env typ' |> Option.map (fun (typ', co'') ->
         let {coercion = co'; residual} = unify_whnf pos env typ typ' in
         { coercion =
             (match (co, co', co'') with
@@ -622,10 +625,10 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
 = fun pos env typ typ' ->
     let open ResidualMonoid in
     match (typ, typ') with
-    | (Impli _, _) | (_, Impli _) -> failwith "TODO"
+    | (Impli _, _) | (_, Impli _) -> todo (Some pos)
 
     | (Exists _, _) -> (match typ' with
-        | Exists _ -> failwith "TODO: unify existentials"
+        | Exists _ -> todo (Some pos)
         | _ ->
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})
@@ -636,7 +639,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             check_uv_assignee pos env uv level Int.max_int typ';
             Env.set_uv env pos uv (Assigned typ');
             {coercion = None; residual = empty}
-        | Assigned _ -> failwith "unreachable: Assigned `typ` in `unify_whnf`")
+        | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `typ` in `unify_whnf`")
 
     | (PromotedArray typs, _) -> (match typ' with
         | PromotedArray typs' ->
@@ -702,7 +705,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             {coercion = None; residual = empty})
 
     | (Pi _, _) -> (match typ' with
-        | Pi _ -> failwith "TODO: unify Pi"
+        | Pi _ -> todo (Some pos)
         | _ ->
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})
@@ -803,8 +806,8 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             Env.reportError env pos (Unify (typ, typ'));
             {coercion = None; residual = empty})
 
-    | (Fn _, _) -> failwith "unreachable: Fn in unify_whnf"
-    | (Bv _, _) -> failwith "unreachable: Bv in unify_whnf"
+    | (Fn _, _) -> unreachable (Some pos) ~msg: "Fn in unify_whnf"
+    | (Bv _, _) -> unreachable (Some pos) ~msg: "Bv in unify_whnf"
 
 (* Occurs check, ov escape check, HKT capturability check and uv level updates.
    Complected for speed. *)

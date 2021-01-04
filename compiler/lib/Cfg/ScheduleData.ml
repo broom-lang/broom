@@ -1,4 +1,6 @@
 open Streaming
+open Asserts
+
 module Builder = Cfg.Program.Builder
 module Params = Cps.Cont.Id.Hashtbl
 
@@ -23,7 +25,7 @@ let find_params program =
     |> Stream.into (Sink.each (fun (id, (expr : Cps.Expr.t)) ->
         match expr.term with
         | Cps.Expr.Param {label; index} -> add_param label index id
-        | _ -> failwith "unreachable"));
+        | _ -> unreachable (Some expr.pos)));
     params
 
 let get_param (params : params) label index =
@@ -36,7 +38,7 @@ let schedule_program program params =
     let module VisitedSet = Cps.Expr.Id.HashSet in
     let main = match Stream.from (Cps.Program.exports program) |> Stream.into Sink.list with
         | [main] -> main
-        | _ -> failwith "FIXME: multiple exports" in
+        | _ -> todo None ~msg: "multiple exports" in
 
     let get_param = get_param params in
 
@@ -77,7 +79,7 @@ let schedule_program program params =
                                 assert (Vector.length typs' = 0);
                                 Vector.singleton state
                             | _ -> Vector.of_list [state; id])
-                        | _ -> failwith "compiler bug: invalid impure primop" in
+                        | _ -> bug (Some pos) ~msg: "invalid impure primop" in
                     add_renamings id defs;
                     Builder.define builder parent {Cfg.Stmt.pos; typ
                         ; term = (Vector.sub defs 1 (Vector.length defs - 1), term)};
@@ -88,7 +90,7 @@ let schedule_program program params =
                     let term = Cps.Expr.map_uses' emit_use term in
                     Builder.define builder parent {Cfg.Stmt.pos; typ; term = (Vector.singleton id, term)};
                     id)
-            | None -> failwith "compiler bug: unparented expr in ScheduleData"
+            | None -> bug (Some pos) ~msg: "unparented expr in ScheduleData"
 
         and emit_use' id =
             if is_visited id

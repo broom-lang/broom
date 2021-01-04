@@ -1,3 +1,5 @@
+open Asserts
+
 module Expr = Fc.Term.Expr
 module Stmt = Fc.Term.Stmt
 type expr = Expr.t
@@ -55,8 +57,8 @@ module Env = struct
         let create () = Name.Hashtbl.create 0
         let find = Fun.flip Name.Hashtbl.find_opt
 
-        let add k v scope = match Name.Hashtbl.find_opt scope k with
-            | Some _ -> failwith "compiler bug: double definition"
+        let add pos k v scope = match Name.Hashtbl.find_opt scope k with
+            | Some _ -> bug (Some pos) ~msg: "double definition"
             | None -> Name.Hashtbl.add scope k v
     end
 
@@ -64,18 +66,18 @@ module Env = struct
 
     let empty = []
 
-    let find env name = match List.find_map (Scope.find name) env with
+    let find pos env name = match List.find_map (Scope.find name) env with
         | Some v -> v
-        | None -> failwith "compiler bug: unbound variable at runtime"
+        | None -> bug (Some pos) ~msg: "unbound variable at runtime"
 
     let push env = Scope.create () :: env
 
-    let add env k v = match env with
-        | scope :: _ -> Scope.add k v scope
-        | [] -> failwith "compiler bug: tried to set unbound variable at runtime"
+    let add pos env k v = match env with
+        | scope :: _ -> Scope.add pos k v scope
+        | [] -> bug (Some pos) ~msg: "tried to set unbound variable at runtime"
 end
 
-let match_failure () = failwith "compiler bug: pattern matching failed at runtime"
+let match_failure pos = bug (Some pos) ~msg: "pattern matching failed at runtime"
 
 (* The interpreter is written in CPS because control effects need first-class continuations: *)
 
@@ -104,21 +106,21 @@ let run (ns : Namespace.t) program =
         | Focus {focusee; index} ->
             let k : cont = function
                 | Tuple vs when index < Vector.length vs -> k (Vector.get vs index)
-                | Tuple _ -> failwith "compiler bug: tuple index out of bounds"
-                | _ -> failwith "compiler bug: tuple-indexing non-tuple at runtime" in
+                | Tuple _ -> bug (Some expr.pos) ~msg: "tuple index out of bounds"
+                | _ -> bug (Some expr.pos) ~msg: "tuple-indexing non-tuple at runtime" in
             eval env k focusee
 
         | Fn {universals = _; param = {name; _}; body} ->
             k (Fn (fun k v ->
                 let env = Env.push env in
-                Env.add env name v;
+                Env.add expr.pos env name v;
                 eval env k body))
 
         | App {callee; universals = _; arg} ->
             let apply f v = f k v in
             let eval_arg : cont = function
                 | Fn f -> eval env (apply f) arg
-                | _ -> failwith "compiler bug: tried to call non-fn at runtime" in
+                | _ -> bug (Some expr.pos) ~msg: "tried to call non-fn at runtime" in
             eval env eval_arg callee
 
         | PrimApp {op; universals = _; arg} ->
@@ -130,18 +132,18 @@ let run (ns : Namespace.t) program =
                         | (Cell cell, v) -> (match !cell with
                             | None -> cell := Some v; k (Tuple Vector.empty)
                             | Some _ ->
-                                failwith "compiler bug: cellInit on initialized cell at runtime")
-                        | _ -> failwith "compiler bug: cellInit on non-cell at runtime")
-                    | _ -> failwith "compiler bug: invalid primop arg")
+                                bug (Some expr.pos) ~msg: "cellInit on initialized cell at runtime")
+                        | _ -> bug (Some expr.pos) ~msg: "cellInit on non-cell at runtime")
+                    | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
                 | CellGet -> (match arg with
                     | Tuple args when Vector.length args = 1 ->
                         (match Vector.get args 0 with
                         | Cell cell -> (match !cell with
                             | Some v -> k v
                             | None ->
-                                failwith "compiler bug: cellGet on uninitialized cell at runtime")
-                        | _ -> failwith "compiler bug: cellGet on non-cell at runtime")
-                    | _ -> failwith "compiler bug: invalid primop arg")
+                                bug (Some expr.pos) ~msg: "cellGet on uninitialized cell at runtime")
+                        | _ -> bug (Some expr.pos) ~msg: "cellGet on non-cell at runtime")
+                    | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
                 | Int | String | Type | TypeOf -> k Proxy
                 | GlobalSet -> (match arg with
                     | Tuple args when Vector.length args = 2 ->
@@ -149,15 +151,15 @@ let run (ns : Namespace.t) program =
                         | String name ->
                             Namespace.add ns (Name.of_string name) (Vector.get args 1);
                             k (Tuple Vector.empty)
-                        | _ -> failwith "compiler bug: globalSet name not a string at runtime")
-                    | _ -> failwith "compiler bug: invalid primop arg")
+                        | _ -> bug (Some expr.pos) ~msg: "globalSet name not a string at runtime")
+                    | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
                 | GlobalGet -> (match arg with
                     | Tuple args when Vector.length args = 1 ->
                         (match Vector.get args 0 with
                         | String name -> k (Namespace.find ns (Name.of_string name))
-                        | _ -> failwith "compiler bug: globalGet name not a string at runtime")
-                    | _ -> failwith "compiler bug: invalid primop arg")
-                | Import -> failwith "TODO: foreign import in interpreter" in
+                        | _ -> bug (Some expr.pos) ~msg: "globalGet name not a string at runtime")
+                    | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
+                | Import -> todo (Some expr.pos) ~msg: "foreign import in interpreter" in
             eval env apply_op arg
 
         | PrimBranch {op; universals = _; arg; clauses = _} -> (* FIXME: use `clauses` *)
@@ -170,9 +172,9 @@ let run (ns : Namespace.t) program =
                             | ISub -> a - b
                             | IMul -> a * b
                             | IDiv -> a / b
-                            | _ -> failwith "unreachable"))
-                        | _ -> failwith "compiler bug: invalid primop args")
-                    | _ -> failwith "compiler bug: invalid primop arg")
+                            | _ -> unreachable (Some expr.pos)))
+                        | _ -> bug (Some expr.pos) ~msg: "invalid primop args")
+                    | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
                 | ILt | ILe | IGt | IGe | IEq -> (match arg with
                     | Tuple args when Vector.length args = 2 ->
                         (match (Vector.get args 0, Vector.get args 1) with
@@ -182,13 +184,13 @@ let run (ns : Namespace.t) program =
                             | IGt -> a > b
                             | IGe -> a >= b
                             | IEq -> Int.equal a b
-                            | _ -> failwith "unreachable"))
-                        | _ -> failwith "compiler bug: invalid primop args")
-                    | _ -> failwith "compiler bug: invalid primop arg") in
+                            | _ -> unreachable (Some expr.pos)))
+                        | _ -> bug (Some expr.pos) ~msg: "invalid primop args")
+                    | _ -> bug (Some expr.pos) ~msg: "invalid primop arg") in
             eval env apply_op arg
 
         | Match {matchee; clauses} -> (match Vector.length clauses with
-            | 0 -> match_failure ()
+            | 0 -> match_failure expr.pos
             | len ->
                 let rec eval_clause i v =
                     if i < len then begin
@@ -198,13 +200,13 @@ let run (ns : Namespace.t) program =
                             (fun () -> eval env k body)
                             (fun () -> eval_clause (i + 1) v)
                             pat v
-                    end else match_failure () in
+                    end else match_failure expr.pos in
                 eval env (eval_clause 0) matchee)
 
         | Unpack {existentials = _; var = {name; _}; value = vexpr; body} ->
             let k v = 
                 let env = Env.push env in
-                Env.add env name v;
+                Env.add expr.pos env name v;
                 eval env k body in
             eval env k vexpr
 
@@ -212,9 +214,9 @@ let run (ns : Namespace.t) program =
             let env = Env.push env in
             let rec define i =
                 if i < Array1.length defs then match Array1.get defs i with
-                    | Def (_, {Expr.name; _}, vexpr) ->
+                    | Def (pos, {Expr.name; _}, vexpr) ->
                         let k v =
-                            Env.add env name v;
+                            Env.add pos env name v;
                             define (i + 1) in
                         eval env k vexpr
                     | Expr expr ->
@@ -226,7 +228,7 @@ let run (ns : Namespace.t) program =
         | LetType {body = expr; _} | Axiom {body = expr; _}
         | Cast {castee = expr; _} | Pack {impl = expr; _} -> eval env k expr
 
-        | Use {name; _} -> k (Env.find env name)
+        | Use {name; _} -> k (Env.find expr.pos env name)
 
         | Record fields -> (match Array.length fields with
             | 0 -> k (Record Name.Map.empty)
@@ -239,7 +241,7 @@ let run (ns : Namespace.t) program =
                             let (label, expr) = Array.get fields i in
                             eval env (eval_fields i r label) expr
                         end else k (Record r)
-                    end else failwith "compiler bug: duplicate record fields" in
+                    end else bug (Some expr.pos) ~msg: "duplicate record fields" in
                 let (label, expr) = Array.get fields 0 in
                 eval env (eval_fields 0 Name.Map.empty label) expr)
 
@@ -253,12 +255,12 @@ let run (ns : Namespace.t) program =
                         let (label, expr) = Array1.get fields i in
                         eval env (eval_fields i base label) expr
                     end else k (Record base)
-                end else failwith "compiler bug: `where` a new label" in
+                end else bug (Some expr.pos) ~msg: "`where` a new label" in
             let k : cont = function
                 | Record base ->
                     let (label, expr) = Array1.get fields 0 in
                     eval env (eval_fields 0 base label) expr
-                | _ -> failwith "compiler bug: `where` to a non-record" in
+                | _ -> bug (Some expr.pos) ~msg: "`where` to a non-record" in
             eval env k base
 
         | With {base; label; field} ->
@@ -266,16 +268,16 @@ let run (ns : Namespace.t) program =
                 | Record fields when not (Name.Map.mem label fields) ->
                     let k fv = k (Record (Name.Map.add label fv fields)) in
                     eval env k field
-                | Record _ -> failwith "compiler bug: `with` pre-existing field"
-                |_ -> failwith "compiler bug: `with` to a non_record" in
+                | Record _ -> bug (Some expr.pos) ~msg: "`with` pre-existing field"
+                |_ -> bug (Some expr.pos) ~msg: "`with` to a non_record" in
             eval env k base
 
         | Select {selectee; label} ->
             let k : cont = function
                 | Record fields -> (match Name.Map.find_opt label fields with
                     | Some v -> k v
-                    | None -> failwith "compiler bug: field not found")
-                | _ -> failwith "compiler bug: tried to select from non-record at runtime" in
+                    | None -> bug (Some expr.pos) ~msg: "field not found")
+                | _ -> bug (Some expr.pos) ~msg: "tried to select from non-record at runtime" in
             eval env k selectee
 
         | Proxy _ -> k Proxy
@@ -284,11 +286,11 @@ let run (ns : Namespace.t) program =
 
         | Patchable eref -> TxRef.(eval env k !eref)
 
-        | Letrec _ -> failwith "compiler bug: encountered `letrec` at runtime"
+        | Letrec _ -> bug (Some expr.pos) ~msg: "encountered `letrec` at runtime"
 
     and bind : Env.t -> cont' -> cont' -> pat -> cont
     = fun env then_k else_k pat v -> match pat.pterm with
-        | VarP {name; _} -> Env.add env name v; then_k ()
+        | VarP {name; _} -> Env.add pat.ppos env name v; then_k ()
         | WildP _ -> then_k ()
         | ConstP (Int n) -> (match v with
             | Int n' when n' = n -> then_k ()
@@ -296,7 +298,7 @@ let run (ns : Namespace.t) program =
         | ConstP (String s) -> (match v with
             | String s' when s' = s -> then_k ()
             | _ -> else_k ())
-        | TupleP _ | ProxyP _ -> failwith "unreachable" in
+        | TupleP _ | ProxyP _ -> unreachable (Some pat.ppos) in
 
     let {type_fns = _; defs; main} : Fc.Program.t = program in
     let pos =

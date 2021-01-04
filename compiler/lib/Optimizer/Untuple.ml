@@ -48,7 +48,7 @@ let gather_program_params program : Params.t =
     |> Stream.filter (fun (_, expr) -> is_param expr)
     |> Stream.each (fun (id, (expr : Expr.t)) -> match expr.term with
         | Expr.Param {label; index} -> Params.add params label index id expr
-        | _ -> failwith "unreachable");
+        | _ -> Asserts.unreachable None);
 
     params
 

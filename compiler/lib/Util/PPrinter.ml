@@ -40,5 +40,5 @@ let of_grammar g =
     let p = of' g in
     fun x -> match p x with
         | Some doc -> doc
-        | None -> failwith "PPrinter failed; probably due to incomplete Grammar"
+        | None -> Asserts.bug None ~msg: "PPrinter failed; probably due to incomplete Grammar"
 

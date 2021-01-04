@@ -1,3 +1,5 @@
+open Asserts
+
 open Cps
 module Builder = Program.Builder
 module FExpr = Fc.Term.Expr
@@ -31,7 +33,7 @@ type meta_cont =
 
 let log = TxRef.log () (* HACK *)
 
-let convert_typ state_typ =
+let convert_typ pos state_typ =
     let rec convert : Fc.Type.t -> Type.t = function
         | Tuple typs -> Tuple (Vector.map convert typs)
         | PromotedTuple typs -> PromotedTuple (Vector.map convert typs)
@@ -51,14 +53,14 @@ let convert_typ state_typ =
         | Prim p -> Prim p
         | Uv r -> (match Fc.Uv.get log r with
             | Assigned typ -> convert typ
-            | Unassigned _ -> failwith "compiler bug (FIXME): unassigned uv in CPS conversion")
-        | _ -> failwith "TODO" in
+            | Unassigned _ -> todo (Some pos) ~msg: "unassigned uv in CPS conversion")
+        | _ -> todo (Some pos) in
     convert
 
 let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
     let builder = Builder.create type_fns in
-    let state_typ = convert_typ ((* HACK *) Prim Int) state_typ in
-    let convert_typ = convert_typ state_typ in
+    let state_typ = convert_typ main_body.pos ((* HACK *) Prim Int) state_typ in
+    let convert_typ = convert_typ main_body.pos state_typ in
     let (main_span, main_body) =
         let pos =
             ( (if Vector.length defs > 0
@@ -293,15 +295,15 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
 
         | Patchable r -> TxRef.(convert parent state k env !r)
 
-        | Letrec _ -> failwith "compiler bug: encountered `letrec` in CPS conversion"
+        | Letrec _ -> bug (Some expr.pos) ~msg: "encountered `letrec` in CPS conversion"
 
-        | _ -> failwith "TODO"
+        | _ -> todo (Some expr.pos)
 
     and convert_pattern pat : Pattern.t = match pat.pterm with
         | ConstP c -> Const c
         | WildP _ -> Wild
         | VarP _ | TupleP _ | ProxyP _ ->
-            failwith "compiler bug: unexpanded pattern in CPS conversion"
+            bug (Some pat.ppos) ~msg: "unexpanded pattern in CPS conversion"
 
     and continue k parent state value = match k with
         | FnK {pos = _; domain = _; f} -> f ~parent ~state ~value
@@ -330,10 +332,10 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
 
     and cont_value parent k =
         match trivialize_cont k with
-        | FnK _ -> failwith "unreachable"
         | ExprK {pos = _; id} -> id
         | DirectK {pos; typ; label} ->
-            Builder.express builder {pos; cont = parent; typ; term = Label label} in
+            Builder.express builder {pos; cont = parent; typ; term = Label label}
+        | FnK _ -> unreachable None in
 
     let convert_export pos name params (body : FExpr.t) =
         let id = Cont.Id.fresh () in

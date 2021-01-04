@@ -1,4 +1,5 @@
 open Streaming
+open Asserts
 
 module TS = TyperSigs
 
@@ -105,7 +106,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
                 | None -> tup in
             { term = FExpr.at expr.pos (Vector.get typs index) (FExpr.focus tup index)
             ; eff }
-        | _ -> failwith "compiler bug: focusee focalization returned non-tuple")
+        | _ -> bug (Some tup.pos) ~msg: "focusee focalization returned non-tuple")
 
     | AExpr.Fn (plicity, clauses) -> elaborate_fn env expr.pos plicity clauses
 
@@ -120,7 +121,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
             let {TS.term = arg; eff = arg_eff} = check env domain arg in
             ignore (M.solving_unify expr.pos env arg_eff app_eff);
             (match codomain with
-            | Exists _ -> failwith "TODO: existential codomain in App"
+            | Exists _ -> todo (Some expr.pos) ~msg: "existential codomain in App"
             | _ ->
                 let callee = match coerce with
                     | Some coerce -> Coercer.apply coerce callee
@@ -128,11 +129,11 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
                 { term = FExpr.at expr.pos codomain
                     (FExpr.app callee (Vector.map (fun uv -> T.Uv uv) uvs) arg)
                 ; eff = callee_eff })
-        | _ -> failwith "compiler bug: callee focalization returned non-function")
+        | _ -> bug (Some callee.pos) ~msg: "callee focalization returned non-function")
 
-    | AExpr.App (_, Implicit, _) -> failwith "TODO"
+    | AExpr.App (_, Implicit, _) -> todo (Some expr.pos)
 
-    | AExpr.PrimApp (_, Some _, _) -> failwith "TODO"
+    | AExpr.PrimApp (_, Some _, _) -> todo (Some expr.pos)
     | AExpr.PrimApp (op, None, arg) ->
         let (universals, domain, app_eff, codomain) = primop_typ op in
         let (uvs, domain, app_eff, codomain) =
@@ -147,7 +148,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         { term = FExpr.at expr.pos codomain (FExpr.primapp op (Vector.map (fun uv -> T.Uv uv) uvs) arg)
         ; eff = app_eff }
 
-    | AExpr.PrimBranch (_, Some _, _, _) -> failwith "TODO"
+    | AExpr.PrimBranch (_, Some _, _, _) -> todo (Some expr.pos)
     | AExpr.PrimBranch (op, None, arg, clauses) ->
         let (universals, domain, app_eff, codomain) = branchop_typ op in
         let (uvs, domain, app_eff, codomain) =
@@ -189,7 +190,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
                 CCVector.push fields (label, term);
                 ignore (M.solving_unify expr.pos env eff' eff);
                 T.With {base; label; field = term.typ}
-            | _ -> failwith "compiler bug: bad record field reached typechecker"
+            | _ -> bug (Some expr.pos) ~msg: "bad record field reached typechecker"
         ) T.EmptyRow stmts in
         { term = FExpr.at expr.pos (T.Record row) (FExpr.record (CCVector.to_array fields))
         ; eff = eff }
@@ -222,13 +223,13 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
                     (FExpr.values [|namexpr|])))
             ; eff = EmptyRow }
 
-    | AExpr.Wild _ -> failwith "TODO: elaborate _ expression"
+    | AExpr.Wild _ -> todo (Some expr.pos) ~msg: "elaborate _ expression"
 
     | AExpr.Const c ->
         {term = FExpr.at expr.pos (const_typ c) (FExpr.const c); eff = EmptyRow}
 
     | AppSequence _ ->
-        failwith "compiler bug: typechecker encountered AppSequence expression"
+        bug (Some expr.pos) ~msg: "typechecker encountered AppSequence expression"
 
 and elaborate_fn : Env.t -> Util.span -> Util.plicity -> AExpr.clause Vector.t -> FExpr.t typing
 = fun env pos plicity clauses -> match Vector.to_seq clauses () with
@@ -255,7 +256,7 @@ and elaborate_fn : Env.t -> Util.span -> Util.plicity -> AExpr.clause Vector.t -
                  ; codomain = Env.close env substitution codomain })
             (FExpr.fn universals param body)
         ; eff = EmptyRow }
-    | Nil -> failwith "TODO: clauseless fn"
+    | Nil -> todo (Some pos) ~msg: "clauseless fn"
 
 and elaborate_clause env plicity {params; body} =
     let (pat, domain, env) = elaborate_param env params in
@@ -423,7 +424,7 @@ and implement : Env.t -> T.ov Vector.t * T.t -> AExpr.t with_pos -> FExpr.t typi
 
 and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
 = fun env typ expr -> match (typ, expr.v) with
-    | (Impli _, _) -> failwith "TODO"
+    | (Impli _, _) -> todo (Some expr.pos)
 
     | (Pi _, AExpr.Fn (Explicit, clauses)) -> check_fn env typ expr.pos clauses
     | (Pi _, AExpr.Fn (Implicit, _)) -> failwith "plicity mismatch"
@@ -467,8 +468,8 @@ and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typ
             let body = ExpandPats.expand_clauses pos codomain matchee (Vector1.to_vector clauses) in
             { term = FExpr.at pos typ (FExpr.fn (* FIXME: *) Vector.empty param body)
             ; eff = EmptyRow }
-        | None -> failwith "TODO: check clauseless fn")
-    | _ -> failwith "unreachable: non-Pi `typ` in `check_fn`"
+        | None -> todo (Some pos) ~msg: "check clauseless fn")
+    | _ -> unreachable (Some pos) ~msg: "non-Pi `typ` in `check_fn`"
 
 and check_clause env domain eff codomain {params; body} =
     let (pat, body_env) = check_param env domain params in
@@ -529,7 +530,7 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
         ({ppos = pat.pos; pterm = ConstP c; ptyp}, (Vector.empty, ptyp), Vector.empty)
 
     | AExpr.Focus _ | Let _ | App _ | PrimApp _ | PrimBranch _ | Select _ | Record _ ->
-        failwith "TODO in elaborate_pat"
+        todo (Some pat.pos) ~msg: "in elaborate_pat"
 
     | AExpr.Fn _ ->
         Env.reportError env pat.pos (NonPattern pat.v);
@@ -540,7 +541,7 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
         ( {ppos = pat.pos; pterm = VarP var; ptyp}, (Vector.empty, ptyp)
         , Vector.singleton var )
 
-    | AppSequence _ -> failwith "compiler bug: typechecker encountered AppSequence pattern"
+    | AppSequence _ -> bug (Some pat.pos) ~msg: "typechecker encountered AppSequence pattern"
 
 (* ## Checking *)
 
@@ -593,13 +594,13 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
         ({ppos = pat.pos; pterm = ConstP c; ptyp}, Vector.empty)
 
     | AExpr.Focus _ | Let _ | App _ | PrimApp _ | PrimBranch _ | Select _ | Record _ ->
-        failwith "TODO in check_pat"
+        todo (Some pat.pos) ~msg: "in check_pat"
 
     | AExpr.Fn _ ->
         Env.reportError env pat.pos (NonPattern pat.v);
         ({ppos = pat.pos; pterm = WildP (Name.of_string ""); ptyp}, Vector.empty)
 
-    | AppSequence _ -> failwith "compiler bug: typechecker encountered AppSequence pattern"
+    | AppSequence _ -> bug (Some pat.pos) ~msg: "typechecker encountered AppSequence pattern"
 
 (* # Statement Typing *)
 

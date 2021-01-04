@@ -1,3 +1,5 @@
+open Asserts
+
 module TS = TyperSigs
 
 module Make (Env : TS.ENV)
@@ -52,8 +54,8 @@ let rec kindof_F pos env : T.t -> T.kind = function
             if Vector.length universals = 0 then begin
                 check_F pos env domain arg;
                 codomain
-            end else failwith "TODO: universals in type application"
-        | _ -> failwith "unreachable: invalid type application in `kindof_F`.")
+            end else todo (Some pos) ~msg: "universals in type application"
+        | _ -> unreachable (Some pos) ~msg: "invalid type application in `kindof_F`.")
     | Ov ((_, kind), _) -> kind
     | Bv {kind; _} -> kind
     | Uv uv -> (match Env.get_uv env uv with
@@ -178,7 +180,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
             | (_, Proxy typ) ->
                 let (_, typ) = reabstract env typ in
                 {typ; kind = kindof_F pos env typ}
-            | _ -> failwith "unreachable")
+            | _ -> unreachable (Some pos))
 
         (*| AType.Singleton expr ->
             (match C.typeof env expr with
@@ -197,7 +199,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
             | AType.Decl (_, {v = Var label; _}, typ) ->
                 let {TS.typ = field; kind = _} = elab env typ in
                 T.With {base; label; field}
-            | _ -> failwith "compiler bug: bad record type field reached typechecker"
+            | _ -> bug (Some pos) ~msg: "bad record type field reached typechecker"
         ) EmptyRow decls in
         {typ = row; kind = kindof_F pos env row}
 
@@ -238,7 +240,7 @@ and check env kind ({v = _; pos} as typ) =
     ignore (M.solving_unify pos env kind' kind);
     typ
 
-and eval env typ =
+and eval pos env typ =
     let (let*) = Option.bind in
     let (let+) = Fun.flip Option.map in
 
@@ -271,7 +273,7 @@ and eval env typ =
         | ( Exists _ | PromotedArray _ | PromotedTuple _
           | Tuple _ | Pi _ | Impli _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ) as typ ->
             Some (typ, None)
-        | Bv _ -> failwith "unreachable: `Bv` in `eval`"
+        | Bv _ -> unreachable (Some pos) ~msg: "`Bv` in `eval`"
 
     and apply callee arg = match callee with
         (* NOTE: Arg kinds do not need to be checked here because all `App`s originate from functors: *)
@@ -280,11 +282,11 @@ and eval env typ =
         | Uv uv ->
             (match Env.get_uv env uv with
             | Unassigned _ -> None
-            | Assigned _ -> failwith "unreachable: Assigned in `apply`.")
+            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned in `apply`.")
         | Exists _ | PromotedArray _ | PromotedTuple _
         | Tuple _ | Pi _ | Impli _ | Record _ | With _ | EmptyRow | Proxy _ ->
-            failwith "unreachable: uncallable type in `eval/apply`"
-        | Bv _ -> failwith "unreachable: `Bv` in `eval/apply`"
+            unreachable (Some pos) ~msg: "uncallable type in `eval.apply`"
+        | Bv _ -> unreachable (Some pos) ~msg: "`Bv` in `eval.apply`"
     in eval typ
 end
 

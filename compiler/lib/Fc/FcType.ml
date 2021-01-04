@@ -1,3 +1,5 @@
+open Asserts
+
 module rec Uv : FcTypeSigs.UV
     with type kind = Typ.kind
     with type typ = Typ.t
@@ -97,7 +99,7 @@ and Typ : FcTypeSigs.TYPE
     let rec non_uv_head s = function
         | Uv uv -> (match Uv.get s uv with
             | Assigned typ -> non_uv_head s typ
-            | Unassigned _ -> failwith "TODO: Unassigned")
+            | Unassigned _ -> todo None ~msg: "Unassigned")
         | typ -> typ
 
     let grammar s =
@@ -198,7 +200,7 @@ and Typ : FcTypeSigs.TYPE
                 <|> parens typ in
 
             let atom =
-                let ov = PIso.prism (fun _ -> failwith "TODO") (fun typ ->
+                let ov = PIso.prism (fun _ -> todo None) (fun typ ->
                     match non_uv_head s typ with
                     | Ov ((name, _), _) -> Some name
                     | _ -> None) in

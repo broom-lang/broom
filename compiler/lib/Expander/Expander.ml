@@ -1,4 +1,5 @@
 open Streaming
+open Asserts
 
 type 'a with_pos = 'a Util.with_pos
 
@@ -176,7 +177,7 @@ let rec expand_typ define_toplevel env (typ : typ with_pos) : typ with_pos =
         let body : typ with_pos = match typ.v with
             | Record _ -> {typ with v = Record (Vector.build vars)}
             | Row _ -> {typ with v = Row (Vector.build vars)}
-            | _ -> failwith "unreachable" in
+            | _ -> unreachable (Some typ.pos) in
         (match Vector1.of_vector decls with
         | Some decls -> {typ with v = Declare (decls, body)}
         | None -> body)
@@ -189,7 +190,7 @@ and expand_decl_pat define_toplevel report_def env = function
     | Type.Def def ->
         let report_def = function
             | Stmt.Def def -> report_def (Type.Def def)
-            | _ -> failwith "unreachable" in
+            | stmt -> unreachable (Some (Stmt.pos stmt)) in
         let (def, env) = expand_def_pat define_toplevel report_def env def in
         (Type.Def def, env)
     | Decl (pos, pat, typ) ->
@@ -197,7 +198,7 @@ and expand_decl_pat define_toplevel report_def env = function
             | Stmt.Def (pos, pat, expr) ->
                 let path = Expr.PrimApp (TypeOf, None, expr) in
                 report_def (Type.Decl (pos, pat, {pos; v = Path path}))
-            | _ -> failwith "unreachable" in
+            | stmt -> unreachable (Some (Stmt.pos stmt)) in
         let (pat, env) = expand_pat define_toplevel report_def env pat in
         (Decl (pos, pat, typ), env)
 
@@ -234,7 +235,7 @@ and expand define_toplevel env expr : expr with_pos = match expr.v with
         (match Env.find (snd (Bindings.find env cname)) with
         | Some (Var id) ->
             {expr with v = App (id, Explicit, (expand define_toplevel env arg))}
-        | Some _ -> failwith "TODO"
+        | Some _ -> todo (Some expr.pos)
         | None -> (match Name.basename cname with
             | Some "let" -> expand_let define_toplevel env expr.pos arg
             | Some "include" -> expand_include env arg
@@ -276,7 +277,7 @@ and expand define_toplevel env expr : expr with_pos = match expr.v with
         {expr with v = Proxy ((expand_typ define_toplevel env {expr with v = typ}).v)}
     | Var name -> (match Env.find (snd (Bindings.find env name)) with
         | Some (Var id) -> id
-        | Some _ -> failwith "TODO"
+        | Some _ -> todo (Some expr.pos)
         | None -> failwith ("unbound: " ^ Name.to_string name
             ^ " at " ^ Util.span_to_string expr.pos))
     | Wild _ -> failwith "stray `_`"
@@ -286,7 +287,9 @@ and expand_let define_toplevel env pos (arg : expr with_pos) = match arg.v with
     | Record stmts ->
         let defs = Stream.from (Vector.to_source stmts)
             |> Stream.take_while (function Stmt.Def _ -> true | Expr _ -> false)
-            |> Stream.map (function Stmt.Def def -> def | Expr _ -> failwith "unreachable")
+            |> Stream.map (function
+                | Stmt.Def def -> def
+                | Expr expr -> unreachable (Some expr.pos))
             |> Stream.into (Vector.sink ()) in
         if Vector.length defs = Vector.length stmts - 1
         then match Vector.get stmts (Vector.length stmts - 1) with
@@ -297,15 +300,15 @@ and expand_let define_toplevel env pos (arg : expr with_pos) = match arg.v with
                 | Some defs -> {pos; v = Let (defs, body)}
                 | None -> body)
             | _ -> failwith "dangling stmts in `let`"
-        else failwith "TODO"
+        else todo (Some pos)
     | _ -> failwith "non-record `let` arg"
 
 and expand_include env (arg : expr with_pos) = match arg.v with
     | Const (String filename) -> (* FIXME: error handling: *)
         let path = match Env.find (snd (Bindings.find env (Name.of_string "__BROOMPATH"))) with
             | Some (BroomPath path) -> path
-            | Some _ -> failwith "compiler bug: __BROOMPATH has wrong type"
-            | None -> failwith "compiler bug: __BROOMPATH unbound" in
+            | Some _ -> bug (Some arg.pos) ~msg: "__BROOMPATH has wrong type"
+            | None -> bug (Some arg.pos) ~msg: "__BROOMPATH unbound" in
         let filename = path |> List.find_map (fun dir ->
             let filename = Filename.concat dir filename ^ ".brm" in
             if Sys.file_exists filename
@@ -336,8 +339,8 @@ and expand_require define_toplevel env pos (arg : expr with_pos) = match arg.v w
                     let def : def = (pos, var, load) in
                     define_toplevel def;
                     name)
-            | Some _ -> failwith "compiler bug: __requireCache has wrong type"
-            | None -> failwith "compiler bug: __requireCache is unbound" in
+            | Some _ -> bug (Some pos) ~msg: "__requireCache has wrong type"
+            | None -> bug (Some pos) ~msg: "__requireCache is unbound" in
         {pos; v = Var name}
     | _ -> failwith "non-string-literal `include` arg"
 
@@ -366,7 +369,7 @@ and expand_pat define_toplevel report_def env (pat : pat with_pos) =
         Env.add name' (Var id');
         ({pat with v = Var name'}, Bindings.add env name (None, name'))
     | Wild _ | Const _ -> (pat, env)
-    | _ -> failwith ("TODO: pat at " ^ Util.span_to_string pat.pos)
+    | _ -> todo (Some pat.pos)
 
 and expand_clause define_toplevel env ({params; body} : clause) : clause =
     let (params, env) = expand_pat define_toplevel ignore env params in

@@ -49,7 +49,7 @@ let build path debug check_only filename outfile =
                 let (defs, entry) = Expander.expand_program (Expander.Bindings.empty path) defs entry in
                 match Vector1.of_vector defs with
                 | Some defs -> {Util.pos; v = Ast.Term.Expr.Let (defs, entry)}
-                | None -> failwith "compiler bug: program expansion succeeded without main function" in
+                | None -> Asserts.bug (Some pos) ~msg: "program expansion succeeded without main function" in
             if debug then begin
                 debug_heading "Expanded AST";
                 pprint (Ast.Term.Expr.to_doc program ^^ twice hardline);

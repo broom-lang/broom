@@ -1,3 +1,5 @@
+module Asserts = Asserts
+
 module StringHashtbl = Hashtbl.Make (struct
     type t = string
 

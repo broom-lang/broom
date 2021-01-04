@@ -1,4 +1,5 @@
 open Streaming
+open Asserts
 
 module T = Fc.Type
 module E = Fc.Term.Expr
@@ -56,7 +57,7 @@ let split_int : pat Matrix.t -> int -> pat Matrix.t * IntSet.t IntMap.t * IntSet
     let step (singles, defaults) (i, (pat : pat)) = match pat.pterm with
         | ConstP (Int n) -> (add_single singles n i, defaults)
         | VarP _ | WildP _ -> (singles, IntSet.add i defaults)
-        | ConstP _ | TupleP _ | ProxyP _ -> failwith "unreachable" in
+        | ConstP _ | TupleP _ | ProxyP _ -> unreachable (Some pat.ppos) in
     let (col', (singles, defaults)) =
         Stream.from (Source.zip (Source.count 0) (Option.get (Matrix.col col pats)))
         |> Stream.into (Sink.zip
@@ -71,7 +72,7 @@ let split_tuple pats coli width =
     let subpats (pat : pat) = match pat.pterm with
         | TupleP pats -> pats
         | VarP _ | WildP _ -> Vector.init width (fun _ -> {pat with pterm = WildP (Name.of_string "")})
-        | ProxyP _ | ConstP _ -> failwith "unreachable" in
+        | ProxyP _ | ConstP _ -> unreachable (Some pat.ppos) in
     let cols' = Stream.from (Option.get (Matrix.col coli pats))
         |> Stream.map subpats
         |> Matrix.of_rows in
@@ -144,15 +145,15 @@ let matcher pos typ matchee clauses =
                     | None -> body)
 
                 | Fn _ | Prim (Cell | SingleRep | Boxed | TypeIn | RowOf)
-                | EmptyRow | PromotedTuple _ | PromotedArray _ -> failwith "unreachable"
+                | EmptyRow | PromotedTuple _ | PromotedArray _ -> unreachable (Some pos)
 
-                | _ -> failwith "TODO: pattern expansion")
+                | _ -> todo (Some pos) ~msg: "pattern expansion")
             else begin
                 let tmp_vars = Stream.from (Source.zip (Vector.to_source matchees) row)
                     |> Stream.filter (fun (_, pat) -> is_named pat)
                     |> Stream.map (function
                         | (tmp_var, {E.pterm = VarP src_var; _}) -> {tmp_var; src_var}
-                        | _ -> failwith "unreachable")
+                        | _ -> unreachable (Some pos))
                     |> Stream.into Sink.array in
                 Array.sort (fun {src_var; _} {src_var = src_var'; _} ->
                     E.Var.compare src_var src_var'
@@ -164,7 +165,7 @@ let matcher pos typ matchee clauses =
                     acceptor.frees <- Some matchees;
                     node.tmp_vars <- Some tmp_vars;
                     acceptor.var
-                | _ -> failwith "compiler bug: non-Final node as acceptor"
+                | _ -> bug (Some pos) ~msg: "non-Final node as acceptor"
             end
 
         | None -> failwith "nonexhaustive matching" in
@@ -189,12 +190,12 @@ let emit pos codomain states start =
         let emit_shared ({var; frees = _; refcount = _; node} : State.t) = (* TODO: use `frees`? *)
             match node with
             | Final {tmp_vars; emit} -> emit (Shared var) (Option.get tmp_vars)
-            | _ -> failwith "TODO: shared intermediate pattern matching state 1st encounter" in
+            | _ -> todo (Some pos) ~msg: "shared intermediate pattern matching state 1st encounter" in
 
         let emit_redirect ({var; refcount = _; frees = _; node} : State.t) =
             match node with
             | Final {tmp_vars; emit} -> emit (Redirect var) (Option.get tmp_vars)
-            | _ -> failwith "TODO: emit_redirect to non-final state" in
+            | _ -> todo (Some pos) ~msg: "emit_redirect to non-final state" in
 
         let emit_inline ({node; _} : State.t) = match node with
             | Test {matchee; clauses} ->

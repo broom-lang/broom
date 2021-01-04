@@ -14,7 +14,7 @@ module type KINDING = sig
     val kindof_F : span -> env -> Fc.Type.t -> Fc.Type.kind
     val kindof : env -> Ast.Type.t with_pos -> typ kinding
     val check : env -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
-    val eval : env -> typ -> (typ * Fc.Type.coercion option) option
+    val eval : Util.span -> env -> typ -> (typ * Fc.Type.coercion option) option
 end
 
 module type TYPING = sig

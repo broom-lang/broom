@@ -35,7 +35,7 @@ let rec cause_to_doc s pos err =
         | PiL _ -> string "is uncallable"
         | WithL {base = _; label; field = _} -> string "lacks the field" ^/^ Name.to_doc label
         | ProxyL _ -> string "is not a type"
-        | Hole -> failwith "unreachable: Unusable as Hole")
+        | Hole -> Asserts.unreachable (Some pos) ~msg: "unusable as Hole")
 
     | TupleWidth (typ, typ_width, expr, expr_width) ->
         Ast.Term.Expr.to_doc {v = expr; pos} ^/^ string "has" ^/^ string (Int.to_string expr_width)
