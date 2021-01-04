@@ -54,8 +54,9 @@ module type ENV = sig
     val find : t -> Util.span -> Name.t -> Fc.Term.Expr.var * bool
     val find_rhs : t -> Util.span -> Name.t -> Fc.Term.Expr.t typing
     val find_rhst : t -> Util.span -> Name.t -> Fc.Type.t kinding
+    val implicits : t -> Fc.Term.Expr.var Streaming.Stream.t
 
-    val push_val : t -> Fc.Term.Expr.var -> t
+    val push_val : Util.plicity -> t -> Fc.Term.Expr.var -> t
     val push_rec : t
         -> ( Fc.Term.Expr.var Vector.t
            * (T.ov Vector.t * T.t) * Ast.Term.Expr.t with_pos ) CCVector.ro_vector

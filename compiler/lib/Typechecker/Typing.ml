@@ -162,7 +162,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         let clauses = Stream.from (Source.zip (Vector.to_source codomain) (Vector.to_source clauses))
             |> Stream.map (fun (codomain, {AExpr.params; body}) ->
                 let (pat, vars) = check_pat env codomain params in
-                let env = Vector.fold Env.push_val env vars in
+                let env = Vector.fold (Env.push_val Explicit) env vars in
                 let pat = match pat.pterm with
                     | VarP var -> Some var
                     | TupleP pats when Vector.length pats = 0 -> None
@@ -237,7 +237,7 @@ and elaborate_fn : Env.t -> Util.span -> Util.plicity -> AExpr.clause Vector.t -
         let (env, universals) = Env.push_existential env in
         let (domain, {TS.term = clause; eff}) = elaborate_clause env plicity clause in
         let codomain = clause.FExpr.body.typ in
-        let clauses' = Seq.map (check_clause env domain eff codomain) clauses' in
+        let clauses' = Seq.map (check_clause plicity env domain eff codomain) clauses' in
         let clauses = Vector.of_seq (fun () -> Seq.Cons (clause, clauses')) in
         let clauses = clauses |> Vector.map (fun ({FExpr.pat; body = _} as clause) ->
             {ExpandPats.pat; emit = emit_clause_body clause}
@@ -259,7 +259,7 @@ and elaborate_fn : Env.t -> Util.span -> Util.plicity -> AExpr.clause Vector.t -
     | Nil -> todo (Some pos) ~msg: "clauseless fn"
 
 and elaborate_clause env plicity {params; body} =
-    let (pat, domain, env) = elaborate_param env params in
+    let (pat, domain, env) = elaborate_param plicity env params in
     let eff = match plicity with
         | Explicit -> T.Uv (Env.uv env T.aRow)
         | Implicit -> T.EmptyRow in
@@ -338,7 +338,7 @@ and check_defs env defs =
         let (pat, semiabs, vars, expr) = analyze_def env def in
         CCVector.push pats pat;
         CCVector.push bindings (vars, semiabs, expr);
-        Vector.fold Env.push_val env vars
+        Vector.fold (Env.push_val Explicit) env vars
     ) env defs in
     let pats = Vector.build pats in
     (* OPTIMIZE: Fields accumulator is not needed here, as `_` shows: *)
@@ -460,7 +460,7 @@ and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typ
         (match Vector1.of_vector clauses with
         | Some clauses ->
             let clauses = clauses |> Vector1.map (fun clause ->
-                let clause = check_clause env domain eff codomain clause in
+                let clause = check_clause Explicit env domain eff codomain clause in
                 {ExpandPats.pat = clause.FExpr.pat; emit = emit_clause_body clause}
             ) in
             let param = FExpr.fresh_var domain in
@@ -471,8 +471,8 @@ and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typ
         | None -> todo (Some pos) ~msg: "check clauseless fn")
     | _ -> unreachable (Some pos) ~msg: "non-Pi `typ` in `check_fn`"
 
-and check_clause env domain eff codomain {params; body} =
-    let (pat, body_env) = check_param env domain params in
+and check_clause plicity env domain eff codomain {params; body} =
+    let (pat, body_env) = check_param plicity env domain params in
     let {TS.term = body; eff = body_eff} = check_abs body_env codomain body in
     ignore (M.solving_unify body.pos env body_eff eff);
     {pat; body}
@@ -481,15 +481,15 @@ and check_clause env domain eff codomain {params; body} =
 
 (* ## Synthesis *)
 
-and elaborate_param env param =
+and elaborate_param plicity env param =
     let (param, (_, typ), vars) = elaborate_pat env param in
-    (param, typ, Vector.fold Env.push_val env vars)
+    (param, typ, Vector.fold (Env.push_val plicity) env vars)
 
 and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector.t =
     let elaborate_pats env pats =
         let step (env, pats, typs, defs) pat =
             let (pat, (_, typ), defs') = elaborate_pat env pat in
-            let env = Vector.fold Env.push_val env defs' in
+            let env = Vector.fold (Env.push_val Explicit) env defs' in
             (env, pat :: pats, typ :: typs, Vector.append defs defs') in
         let (_, pats, typs, defs) = Vector.fold step (env, [], [], Vector.empty) pats in
         (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), defs) in
@@ -545,9 +545,9 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
 
 (* ## Checking *)
 
-and check_param env domain param =
+and check_param plicity env domain param =
     let (param, vars) = check_pat env domain param in
-    (param, Vector.fold Env.push_val env vars)
+    (param, Vector.fold (Env.push_val plicity) env vars)
 
 (* TODO: use coercions (and subtyping ?): *)
 and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vector.t
@@ -555,7 +555,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
     let check_pats env domain pats =
         let step (env, pats, defs) domain pat =
             let (pat, defs') = check_pat env domain pat in
-            (Vector.fold Env.push_val env defs, pat :: pats, Vector.append defs defs') in
+            (Vector.fold (Env.push_val Explicit) env defs, pat :: pats, Vector.append defs defs') in
         if Vector.length domain = Vector.length pats then begin
             let (_, pats, defs) = Vector.fold2 step (env, [], Vector.empty) domain pats in
             (Vector.of_list (List.rev pats), defs)
@@ -612,7 +612,7 @@ let check_stmt : Env.t -> AStmt.t -> FStmt.t Vector.t typing * T.t * Env.t
         let defs = expand_def vars pos pat expr
             |> Stream.map (fun def -> FStmt.Def def)
             |> Stream.into (Vector.sink ()) in
-        ({term = defs; eff}, expr.typ, Vector.fold Env.push_val env vars)
+        ({term = defs; eff}, expr.typ, Vector.fold (Env.push_val Explicit) env vars)
 
     | AStmt.Expr expr ->
         let typing = typeof env expr in
@@ -634,7 +634,7 @@ let check_interactive_stmt env = function
                             (FExpr.at pos (Tuple Vector.empty)
                             (FExpr.values [|namexpr; FExpr.at pos typ (FExpr.use var)|]))))))
             |> Stream.into Sink.array in
-        (stmts, eff, Vector.fold Env.push_val env vars)
+        (stmts, eff, Vector.fold (Env.push_val Explicit) env vars)
     | Expr expr ->
         let {TS.term = expr; eff} = typeof env expr in
         ([|FStmt.Expr expr|], eff, env)

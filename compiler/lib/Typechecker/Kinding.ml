@@ -152,7 +152,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
             let _ = Vector1.fold (fun env decl ->
                 let (_, semiabs, defs', rhs) = analyze_decl env decl in
                 CCVector.push bindings (defs', semiabs, rhs);
-                Vector.fold Env.push_val env defs'
+                Vector.fold (Env.push_val Explicit) env defs'
             ) env decls in
             (* OPTIMIZE: Fields accumulator is not needed here, as `_` shows: *)
             (* FIXME: fields accumulator was used to put fields in dependency order! *)
@@ -191,7 +191,7 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
 
     and elab_domain env (domain : AExpr.t with_pos) =
         let (_, (_, domain), defs) = C.elaborate_pat env domain in
-        let env = Vector.fold Env.push_val env defs in
+        let env = Vector.fold (Env.push_val Explicit) env defs in
         (domain, env)
 
     and elab_row env pos decls =

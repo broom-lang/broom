@@ -1,3 +1,4 @@
+open Streaming
 open Asserts
 
 module T = Fc.Type
@@ -6,7 +7,7 @@ module TS = TyperSigs
 
 type 'a with_pos = 'a Util.with_pos
 type uv = Fc.Uv.t
-type var = E.var
+type var = Util.plicity * E.var
 
 type vals_binding =
     | White of (T.ov Vector.t * T.t) * Ast.Term.Expr.t with_pos
@@ -22,8 +23,8 @@ type scope =
     | Hoisting of T.ov list TxRef.rref * T.level
     | Rigid of T.ov Vector.t
     | Vals of var Name.Map.t
-    | Rec of (var * vals_binding TxRef.rref) Name.Map.t * var list TxRef.rref
-    | Row of (var * row_binding TxRef.rref) Name.Map.t * var list TxRef.rref
+    | Rec of (var * vals_binding TxRef.rref) Name.Map.t * E.var list TxRef.rref
+    | Row of (var * row_binding TxRef.rref) Name.Map.t * E.var list TxRef.rref
     | Axiom of (Name.t * T.ov * uv) Name.Map.t
 
 type env =
@@ -78,16 +79,18 @@ let reportError (env : t) pos error = env.errorHandler pos error
 let wrapErrorHandler (env : t) middleware =
     {env with errorHandler = middleware env.errorHandler}
 
-let push_val (env : t) (var : var) =
+let push_val plicity (env : t) (var : E.var) =
     match env.scopes with
     | Vals bindings :: scopes' ->
-        {env with scopes = Vals (Name.Map.add var.name var bindings) :: scopes'}
-    | scopes -> {env with scopes = Vals (Name.Map.singleton var.name var) :: scopes}
+        {env with scopes = Vals (Name.Map.add var.name (plicity, var) bindings) :: scopes'}
+    | scopes ->
+        {env with scopes = Vals (Name.Map.singleton var.name (plicity, var)) :: scopes}
 
 let push_rec env stmts =
     let bindings = CCVector.fold (fun bindings (defs, semiabs, expr) ->
-        Vector.fold (fun bindings (var : var) ->
-            Name.Map.add var.name (var, ref (White (semiabs, expr))) bindings
+        Vector.fold (fun bindings (var : E.var) ->
+            Name.Map.add var.name ((Util.Explicit, var)
+                , ref (White (semiabs, expr))) bindings
         ) bindings defs
     ) Name.Map.empty stmts in
     let fields = ref [] in
@@ -95,8 +98,9 @@ let push_rec env stmts =
 
 let push_row env decls =
     let bindings = CCVector.fold (fun bindings (defs, semiabs, rhs) ->
-        Vector.fold (fun bindings (var : var) ->
-            Name.Map.add var.name (var, ref (WhiteT (semiabs, rhs))) bindings
+        Vector.fold (fun bindings (var : E.var) ->
+            Name.Map.add var.name ((Util.Explicit, var)
+                , ref (WhiteT (semiabs, rhs))) bindings
         ) bindings defs
     ) Name.Map.empty decls in
     let fields = ref [] in
@@ -372,12 +376,12 @@ let instantiate_branch env universals domain app_eff codomain =
 let find (env : t) pos name =
     let rec find scopes = match scopes with
         | Vals bindings :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some var -> (match scopes' with
+            | Some (_, var) -> (match scopes' with
                 | [Hoisting _] -> (var, true)
                 | _ -> (var, false))
             | None -> find scopes')
         | Rec (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some (var, binding) ->
+            | Some ((_, var), binding) ->
                 (match !binding with
                 | White (semiabs, expr) ->
                     let env = {env with scopes} in
@@ -390,7 +394,7 @@ let find (env : t) pos name =
                 (var, false)
             | None -> find scopes')
         | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some (var, binding) ->
+            | Some ((_, var), binding) ->
                 (match !binding with
                 | WhiteT ((_, lhs), rhs) ->
                     let env = {env with scopes} in
@@ -416,7 +420,7 @@ let find_rhs (env : t) pos name =
             | Some _ -> bug (Some pos) ~msg: "`Env.find_rhs` found `Vals` scope"
             | None -> find scopes)
         | Rec (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some (var, binding) ->
+            | Some ((_, var), binding) ->
                 (match !binding with
                 | White (semiabs, expr) ->
                     let env = {env with scopes} in
@@ -446,7 +450,7 @@ let find_rhst (env : t) pos name =
             | Some _ -> bug (Some pos) ~msg: "`Env.find_rhst` found `Rec` scope."
             | None -> find scopes')
         | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
-            | Some (var, binding) ->
+            | Some ((_, var), binding) ->
                 (match !binding with
                 | WhiteT ((_, lhs), rhs) ->
                     let env = {env with scopes} in
@@ -465,6 +469,23 @@ let find_rhst (env : t) pos name =
             reportError env pos (Unbound name);
             todo (Some pos) ~msg: "find_rhst unbound lie" in
     find env.scopes
+
+let scope_vars = function
+    | Vals bindings ->
+        Stream.from (Source.seq (Name.Map.to_seq bindings))
+        |> Stream.map snd
+    | Rec (bindings, _) ->
+        Stream.from (Source.seq (Name.Map.to_seq bindings))
+        |> Stream.map (fun (_, (var, _)) -> var)
+    | Row (bindings, _) ->
+        Stream.from (Source.seq (Name.Map.to_seq bindings))
+        |> Stream.map (fun (_, (var, _)) -> var)
+    | Hoisting _ | Rigid _ | Axiom _ -> Stream.empty
+
+let implicits (env : t) = Stream.from (Source.list env.scopes)
+    |> Stream.flat_map scope_vars
+    |> Stream.filter (function (Util.Explicit, _) -> false | (Implicit, _) -> true)
+    |> Stream.map snd
 
 end
 
