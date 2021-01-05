@@ -56,8 +56,8 @@ let pull_row pos env label' typ : T.coercion option * T.t * T.t =
             Env.set_uv env pos uv (Assigned (With {base; label = label'; field}));
             (co, base, field)
         | Some _ ->
-            let template = T.WithL {base = Hole; label = label'; field = Hole} in
-            Env.reportError env pos (Unusable (template, typ));
+            (*let template = T.WithL {base = Hole; label = label'; field = Hole} in*)
+            let () = todo (Some pos) (* Env.reportError env pos (Unusable (template, typ))*) in
             (None, Uv (Env.uv env T.aRow), Uv (Env.uv env T.aType))
         | None -> todo (Some pos) ~msg: "pull_row None" in
     pull typ
@@ -95,21 +95,7 @@ let focalize : span -> Env.t -> T.t -> T.template -> Coercer.t option * T.t
             (match Env.get_uv env uv with
             | Unassigned _ ->
                 let (uv, typ) = match template with
-                    | T.TupleL _ -> failwith "cannot articulate tuple; width unknown"
-                    | PiL _ ->
-                        let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-                        let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-                        (uv, T.Pi { universals = Vector.of_list []
-                                ; domain = T.Uv (sibling env dkind uv)
-                                ; eff = Uv (sibling env T.aRow uv)
-                                ; codomain = Uv (sibling env cdkind uv) })
-                    | ProxyL _ ->
-                        let kind = T.Uv (sibling env T.aKind uv) in
-                        (uv, Proxy (Uv (sibling env kind uv)))
-                    | WithL {base = _; label; field = _} ->
-                        (uv, (With {base = Uv (sibling env T.aRow uv)
-                            ; label; field = Uv (sibling env T.aType uv)}))
-                    | Hole -> unreachable (Some pos) ~msg: "Hole as template in `articulate_template`" in
+                    | T.TupleL _ -> failwith "cannot articulate tuple; width unknown" in
                 Env.set_uv env pos uv (Assigned typ);
                 typ
             | Assigned _ -> unreachable (Some pos) ~msg: "`articulate_template` on assigned uv")
@@ -129,26 +115,7 @@ let focalize : span -> Env.t -> T.t -> T.template -> Coercer.t option * T.t
                 | _ ->
                     Env.reportError env pos (Unusable (template, typ));
                     let typ : T.t = Uv (Env.uv env T.aType) in
-                    (None, articulate_template typ template))
-            | PiL _ -> (* TODO: arity check (or to `typeof`/`App`?) *)
-                (match typ with
-                | Pi _ -> (None, typ)
-                | _ ->
-                    Env.reportError env pos (Unusable (template, typ));
-                    let typ : T.t = Uv (Env.uv env T.aType) in
-                    (None, articulate_template typ template))
-            | ProxyL _ ->
-                (match typ with
-                | Proxy _ -> (None, typ)
-                | _ ->
-                    let typ : T.t = Uv (Env.uv env T.aType) in
-                    (None, articulate_template typ template))
-            | WithL {base = _; label; field = _} ->
-                let (co, base, field) = pull_row pos env label typ in
-                let coerce = co |> Option.map (fun co -> Coercer.coercer (fun castee ->
-                    E.at pos (With {base; label; field}) (E.cast castee co))) in
-                (coerce, With {base; label; field})
-            | Hole -> unreachable (Some pos) ~msg: "Hole as template in `focalize`.") in
+                    (None, articulate_template typ template))) in
 
     match K.eval pos env typ with
     | Some (typ', coercion) ->

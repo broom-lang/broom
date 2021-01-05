@@ -66,12 +66,7 @@ and Typ : FcTypeSigs.TYPE
         | Uv of uv
         | Prim of Prim.t
 
-    and template =
-        | TupleL of int
-        | PiL of template
-        | WithL of {base : template; label : Name.t; field : template}
-        | ProxyL of t
-        | Hole
+    and template = TupleL of int
 
     and 'a field = {label : string; typ : 'a}
 
@@ -282,25 +277,13 @@ and Typ : FcTypeSigs.TYPE
 
     and kinds_to_doc s kinds = PPrint.(separate_map (break 1) (kind_to_doc s) kinds)
 
-    let rec template_to_doc s tpl =
+    let template_to_doc _ tpl =
         let open PPrint in
         match tpl with
         | TupleL length ->
             surround_separate 4 0 (parens empty)
                 lparen (comma ^^ break 1) rparen
                 (List.init length (fun _ -> underscore))
-        | PiL codomain ->
-            let domain_doc = parens empty in
-            infix 4 1 (string "->") domain_doc (template_to_doc s codomain)
-        | WithL {base; label; field} ->
-            infix 4 1 (string "with") (basel_to_doc s base)
-                (infix 4 1 colon (Name.to_doc label) (template_to_doc s field))
-        | ProxyL path -> brackets (equals ^^ blank 1 ^^ to_doc s path)
-        | Hole -> underscore
-
-    and basel_to_doc s = function
-        | PiL _ as template -> PP.parens (template_to_doc s template)
-        | template -> template_to_doc s template
 
     and binding_to_doc s (name, kind) =
         PPrint.(Name.to_doc name ^/^ colon ^/^ kind_to_doc s kind)

@@ -32,12 +32,7 @@ module type TYPE = sig
         | Uv of uv
         | Prim of Prim.t
 
-    and template =
-        | TupleL of int
-        | PiL of template
-        | WithL of {base : template; label : Name.t; field : template}
-        | ProxyL of t
-        | Hole
+    and template = TupleL of int
 
     and 'a field = {label : string; typ : 'a}
 

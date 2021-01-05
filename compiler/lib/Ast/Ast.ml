@@ -90,7 +90,8 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                     prefix 4 0 (to_doc (dot_prec + 1) focusee) (dot ^^ string (Int.to_string i))
                     |> prec_parens (prec > dot_prec) 
                 | Select (selectee, label) ->
-                    prefix 4 0 (to_doc (dot_prec + 1) selectee) (dot ^^ Name.to_doc label)
+                    prefix 4 0 (to_doc (dot_prec + 1) selectee)
+                        (dot ^^ string (Option.get (Name.basename label)))
                     |> prec_parens (prec > dot_prec) 
 
                 | Tuple exprs ->

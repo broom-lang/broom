@@ -31,11 +31,7 @@ let rec cause_to_doc s pos err =
         (match template with
         | TupleL min_length ->
             string "is not a tuple of at least" ^/^ string (Int.to_string min_length)
-                ^/^ string "values"
-        | PiL _ -> string "is uncallable"
-        | WithL {base = _; label; field = _} -> string "lacks the field" ^/^ Name.to_doc label
-        | ProxyL _ -> string "is not a type"
-        | Hole -> Asserts.unreachable (Some pos) ~msg: "unusable as Hole")
+                ^/^ string "values")
 
     | TupleWidth (typ, typ_width, expr, expr_width) ->
         Ast.Term.Expr.to_doc {v = expr; pos} ^/^ string "has" ^/^ string (Int.to_string expr_width)

@@ -172,15 +172,13 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
         | Row decls -> elab_row env typ.pos decls
 
         | Path expr ->
-            let pos = typ.pos in
-            let {TS.term; eff} = C.typeof env {typ with v = expr} in
+            let carrie =
+                let kind = T.Uv (Env.uv env T.aType) in
+                T.Uv (Env.uv env kind) in
+            let {TS.term = _; eff} = C.check env (T.Proxy carrie) {typ with v = expr} in
             let _ = M.solving_unify typ.pos env eff EmptyRow in
-            (* FIXME: does not accept e.g. `row`: *)
-            (match M.focalize typ.pos env term.typ (ProxyL (Prim Int)) with
-            | (_, Proxy typ) ->
-                let (_, typ) = reabstract env typ in
-                {typ; kind = kindof_F pos env typ}
-            | _ -> unreachable (Some pos))
+            let (_, carrie) = reabstract env carrie in
+            {typ = carrie; kind = kindof_F typ.pos env carrie}
 
         (*| AType.Singleton expr ->
             (match C.typeof env expr with

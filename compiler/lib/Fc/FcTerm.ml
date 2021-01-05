@@ -181,7 +181,8 @@ end = struct
             infix 4 1 (string "with") (base_to_doc s base)
                 (infix 4 1 equals (Name.to_doc label) (to_doc s field))
         | Select {selectee; label} ->
-            prefix 4 0 (selectee_to_doc s selectee) (dot ^^ Name.to_doc label)
+            prefix 4 0 (selectee_to_doc s selectee)
+                (dot ^^ string (Option.get (Name.basename label)))
         | Proxy typ -> brackets (Type.to_doc s typ)
         | Use var -> var_to_doc var
         | Const c -> Const.to_doc c

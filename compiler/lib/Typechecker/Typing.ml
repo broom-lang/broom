@@ -110,26 +110,20 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
 
     | AExpr.Fn (plicity, clauses) -> elaborate_fn env expr.pos plicity clauses
 
-    | AExpr.App (callee, Explicit, arg) ->
-        let {TS.term = callee; eff = callee_eff} = typeof env callee in
-        (match M.focalize callee.pos env callee.typ (PiL Hole) with
-        | (coerce, Pi {universals; domain; eff = app_eff; codomain}) ->
-            let (uvs, domain, app_eff, codomain) =
-                Env.instantiate_arrow env universals domain app_eff codomain in
-            ignore (M.solving_unify expr.pos env callee_eff app_eff);
-            (* TODO: Effect opening à la Koka: *)
-            let {TS.term = arg; eff = arg_eff} = check env domain arg in
-            ignore (M.solving_unify expr.pos env arg_eff app_eff);
-            (match codomain with
-            | Exists _ -> todo (Some expr.pos) ~msg: "existential codomain in App"
-            | _ ->
-                let callee = match coerce with
-                    | Some coerce -> Coercer.apply coerce callee
-                    | None -> callee in
-                { term = FExpr.at expr.pos codomain
-                    (FExpr.app callee (Vector.map (fun uv -> T.Uv uv) uvs) arg)
-                ; eff = callee_eff })
-        | _ -> bug (Some callee.pos) ~msg: "callee focalization returned non-function")
+    | AExpr.App (callee, Explicit, arg) -> (* OPTIMIZE: eta-expands universal callees: *)
+        let {TS.term = arg; eff} = typeof env arg in
+        let codomain =
+            let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
+            T.Uv (Env.uv env kind) in
+        let callee_typ = T.Pi {universals = Vector.empty
+            ; domain = arg.typ; eff; codomain} in
+        let {TS.term = callee; eff = callee_eff} = check env callee_typ callee in
+        ignore (M.solving_unify expr.pos env callee_eff eff);
+        (match codomain with
+        | Exists _ -> todo (Some expr.pos) ~msg: "existential codomain in App"
+        | _ ->
+            { term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg)
+            ; eff = callee_eff })
 
     | AExpr.App (_, Implicit, _) -> todo (Some expr.pos)
 

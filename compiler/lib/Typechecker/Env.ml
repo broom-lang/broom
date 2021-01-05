@@ -214,14 +214,8 @@ let rec expose' env depth substitution : T.t -> T.t = function
         | Unassigned _ -> typ)
     | (Ov _ | Prim _) as typ -> typ
 
-and expose_template' env depth substitution = function
+and expose_template' _ _ _ = function
     | T.TupleL _ as template -> template
-    | PiL codomain -> T.PiL (expose_template' env depth substitution codomain)
-    | WithL {base; label; field} ->
-        WithL { base = expose_template' env depth substitution base
-              ; label; field = expose_template' env depth substitution field }
-    | ProxyL path -> ProxyL (expose' env depth substitution path)
-    | Hole -> Hole
 
 let expose env = expose' env 0
 let expose_template env = expose_template' env 0
@@ -294,14 +288,8 @@ let rec close_coercion' env depth substitution : T.coercion -> T.coercion = func
         set_coercion env r (close_coercion' env depth substitution !r);
         co
 
-and close_template' env depth substitution = function
+and close_template' _ _ _ = function
     | T.TupleL _ as template -> template
-    | T.PiL codomain -> T.PiL (close_template' env depth substitution codomain)
-    | WithL {base; label; field} ->
-        WithL { base = close_template' env depth substitution base
-              ; label; field = close_template' env depth substitution field }
-    | ProxyL path -> ProxyL (close' env depth substitution path)
-    | Hole -> Hole
 
 let close env = close' env 0
 let close_template env = close_template' env 0
