@@ -158,74 +158,26 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
     let empty = ResidualMonoid.empty in
     let combine = ResidualMonoid.combine in
 
-    let articulate pos env uv_typ template = match uv_typ with
-        | T.Uv uv ->
-            (match Env.get_uv env uv with
-            | Unassigned (_, _, level) -> (* FIXME: use uv kind *)
-                let (uv, typ) = match template with
-                    | T.Uv uv' ->
-                        (match Env.get_uv env uv' with
-                        | Unassigned (_, _, level') -> (* FIXME: use uv kind *)
-                            if level' <= level
-                            then (uv, template)
-                            else (uv', uv_typ)
-                        | Assigned _ -> unreachable (Some pos) ~msg: "Assigned as template of `articulate`")
-
-                    | Ov ((_, level') as ov) ->
-                        if level' <= level
-                        then ()
-                        else Env.reportError env pos (Escape ov);
-                        (uv, Ov ov)
-
-                    | PromotedArray typs -> (match Vector1.of_vector typs with
-                        | Some typs1 ->
-                            let kind = K.kindof_F pos env (Vector1.get typs1 0) in
-                            (uv, PromotedArray (Vector.map (fun _ -> T.Uv (sibling env kind uv)) typs))
-                        | None -> (uv, PromotedArray Vector.empty))
-                    | PromotedTuple typs ->
-                        (uv, PromotedTuple (Vector.map (fun typ ->
-                            T.Uv (sibling env (K.kindof_F pos env typ) uv)
-                        ) typs))
-                    | Tuple typs ->
-                        (uv, Tuple (Vector.map (fun typ ->
-                            T.Uv (sibling env (K.kindof_F pos env typ) uv)
-                        ) typs))
-                    | Pi _ ->
-                        let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-                        let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-                        (uv, Pi { universals = Vector.empty
-                                ; domain = T.Uv (sibling env dkind uv)
-                                ; eff = Uv (sibling env T.aRow uv)
-                                ; codomain = Uv (sibling env cdkind uv) })
-                    | Impli _ ->
-                        let dkind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-                        let cdkind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-                        (uv, Impli { universals = Vector.empty
-                                ; domain = T.Uv (sibling env dkind uv)
-                                ; codomain = Uv (sibling env cdkind uv) })
-                    | Record _ -> (uv, Record (Uv (sibling env T.aRow uv)))
-                    | With {base = _; label; field = _} ->
-                        (uv, With { base = Uv (sibling env T.aRow uv)
-                            ; label; field = Uv (sibling env T.aType uv) })
-                    | EmptyRow -> (uv, EmptyRow)
-                    | Proxy _ ->
-                        let kind : T.kind = Uv (sibling env T.aKind uv) in
-                        (uv, Proxy (Uv (sibling env kind uv)))
-                    | App (callee, arg) ->
-                        ( uv, T.App (Uv (sibling env (K.kindof_F pos env callee) uv)
-                            , Uv (sibling env (K.kindof_F pos env arg) uv)) )
-                    | Prim pt -> (uv, Prim pt)
-
-                    | Exists _ -> unreachable (Some pos) ~msg: "`Exists` as template of `articulate`"
-                    | Fn _ -> unreachable (Some pos) ~msg: "`Fn` as template of `articulate`"
-                    | Bv _ -> unreachable (Some pos) ~msg: "`Bv` as template of `articulate`" in
-                Env.set_uv env pos uv (Assigned typ);
-                typ
-            | Assigned _ -> unreachable (Some pos) ~msg: "`articulate` on assigned uv")
-        | _ -> unreachable (Some pos) ~msg: "`articulate` on non-uv" in
-
     let subtype_whnf : bool -> T.t -> T.t -> Coercer.t option matching
     = fun occ typ super -> match (typ, super) with
+        (* TODO: uv impredicativity clashes *)
+        (* FIXME: prevent nontermination from impredicative instantiation: *)
+        | (Uv uv, Uv uv') when uv = uv' -> {coercion = None; residual = None}
+        | (Uv uv, _) ->
+            (match Env.get_uv env uv with
+            | Unassigned _ ->
+                if occ then occurs_check pos env uv super else ();
+                Env.set_uv env pos uv (Assigned super);
+                {coercion = None; residual = empty}
+            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `typ` in `subtype_whnf`")
+        | (_, Uv uv) ->
+            (match Env.get_uv env uv with
+            | Unassigned _ ->
+                if occ then occurs_check pos env uv typ else ();
+                Env.set_uv env pos uv (Assigned typ);
+                {coercion = None; residual = empty}
+            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `super` in `subtype_whnf`")
+
         | (Exists (existentials, body), _) ->
             let (env, skolems, typ) = Env.push_abs_skolems env existentials body in
             let {coercion = coerce; residual} = subtype pos occ env typ super in
@@ -282,21 +234,6 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
                     Coercer.apply coerce_codomain (E.at pos super (E.app expr uvs arg)))
                 | None -> (fun expr -> E.at pos super (E.app expr uvs arg))))
             ; residual = combine residual residual' }
-
-        (* TODO: uv impredicativity clashes *)
-        | (Uv uv, Uv uv') when uv = uv' -> {coercion = None; residual = None}
-        | (Uv uv, _) ->
-            (match Env.get_uv env uv with
-            | Unassigned _ ->
-                if occ then occurs_check pos env uv super else ();
-                subtype pos false env (articulate pos env typ super) super
-            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `typ` in `subtype_whnf`")
-        | (_, Uv uv) ->
-            (match Env.get_uv env uv with
-            | Unassigned _ ->
-                if occ then occurs_check pos env uv typ else ();
-                subtype pos false env typ (articulate pos env super typ)
-            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `super` in `subtype_whnf`")
 
         | (PromotedArray _, _) -> (match super with
             | PromotedArray _ ->
