@@ -14,3 +14,7 @@ let apply f (expr : Expr.t) = match expr.term with
         let body = f (Expr.at pos typ (Expr.use var)) in
         Expr.at pos typ (Expr.let' [|Def (pos, var, expr)|] body)
 
+let apply_opt f expr = match f with
+    | Some f -> apply f expr
+    | None -> expr
+

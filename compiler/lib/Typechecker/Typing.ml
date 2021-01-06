@@ -22,8 +22,6 @@ type env = Env.t
 type 'a with_pos = 'a Util.with_pos
 type 'a typing = 'a TS.typing
 
-let (!) = TxRef.(!)
-
 (* # Synthesis *)
 
 let const_typ c = T.Prim (match c with
@@ -79,194 +77,13 @@ let branchop_typ : Branchop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t Vector.
         ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
         , T.EmptyRow, Vector.of_list [T.Tuple Vector.empty; Tuple Vector.empty] )
 
-let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
-= fun env expr -> match expr.v with
-    | AExpr.Tuple exprs when Vector.length exprs = 1 -> typeof env (Vector.get exprs 0)
-
-    | AExpr.Tuple exprs ->
-        let exprs' = CCVector.create () in
-        let typs = CCVector.create () in
-        let eff : T.t = Uv (Env.uv env T.aRow) in
-        exprs |> Vector.iter (fun expr ->
-            let {TS.term = expr; eff = eff'} = typeof env expr in
-            CCVector.push exprs' expr;
-            CCVector.push typs expr.typ;
-            ignore (M.solving_unify expr.pos env eff' eff)
-        ); 
-        { term = FExpr.at expr.pos (T.Tuple (Vector.build typs))
-            (FExpr.values (CCVector.to_array exprs'))
-        ; eff }
-
-    | AExpr.Focus (tup, index) ->
-        let {TS.term = tup; eff} = typeof env tup in
-        (match M.focalize tup.pos env tup.typ (TupleL (index + 1)) with
-        | (coerce, Tuple typs) when index < Vector.length typs ->
-            let tup = match coerce with
-                | Some coerce -> Coercer.apply coerce tup
-                | None -> tup in
-            { term = FExpr.at expr.pos (Vector.get typs index) (FExpr.focus tup index)
-            ; eff }
-        | _ -> bug (Some tup.pos) ~msg: "focusee focalization returned non-tuple")
-
-    | AExpr.Fn (plicity, clauses) -> elaborate_fn env expr.pos plicity clauses
-
-    | AExpr.App (callee, Explicit, arg) -> (* OPTIMIZE: eta-expands universal callees: *)
-        let {TS.term = arg; eff} = typeof env arg in
-        let codomain =
-            let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-            T.Uv (Env.uv env kind) in
-        let callee_typ = T.Pi {universals = Vector.empty
-            ; domain = arg.typ; eff; codomain} in
-        let {TS.term = callee; eff = callee_eff} = check env callee_typ callee in
-        ignore (M.solving_unify expr.pos env callee_eff eff);
-        (match codomain with
-        | Exists _ -> todo (Some expr.pos) ~msg: "existential codomain in App"
-        | _ ->
-            { term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg)
-            ; eff = callee_eff })
-
-    | AExpr.App (_, Implicit, _) -> todo (Some expr.pos)
-
-    | AExpr.PrimApp (_, Some _, _) -> todo (Some expr.pos)
-    | AExpr.PrimApp (op, None, arg) ->
-        let (universals, domain, app_eff, codomain) = primop_typ op in
-        let (uvs, domain, app_eff, codomain) =
-            Env.instantiate_primop env universals domain app_eff codomain in
-        let domain = (* HACK *)
-            if Vector.length domain = 1
-            then Vector.get domain 0
-            else Tuple domain in
-        (* TODO: Effect opening à la Koka: *)
-        let {TS.term = arg; eff = arg_eff} = check env domain arg in
-        ignore (M.solving_unify expr.pos env arg_eff app_eff);
-        { term = FExpr.at expr.pos codomain (FExpr.primapp op (Vector.map (fun uv -> T.Uv uv) uvs) arg)
-        ; eff = app_eff }
-
-    | AExpr.PrimBranch (_, Some _, _, _) -> todo (Some expr.pos)
-    | AExpr.PrimBranch (op, None, arg, clauses) ->
-        let (universals, domain, app_eff, codomain) = branchop_typ op in
-        let (uvs, domain, app_eff, codomain) =
-            Env.instantiate_branch env universals domain app_eff codomain in
-        (* TODO: Effect opening à la Koka: *)
-        let {TS.term = arg; eff = arg_eff} = check env (Tuple domain) arg in
-        ignore (M.solving_unify expr.pos env arg_eff app_eff);
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-        let typ = T.Uv (Env.uv env kind) in
-        assert (Vector.length clauses = Vector.length codomain);
-        let clauses = Stream.from (Source.zip (Vector.to_source codomain) (Vector.to_source clauses))
-            |> Stream.map (fun (codomain, {AExpr.params; body}) ->
-                let (pat, vars) = check_pat env codomain params in
-                let env = Vector.fold (Env.push_val Explicit) env vars in
-                let pat = match pat.pterm with
-                    | VarP var -> Some var
-                    | TupleP pats when Vector.length pats = 0 -> None
-                    | _ -> failwith "complex PrimBranch pattern" in
-                let {TS.term = prim_body; eff = body_eff} = check env typ body in
-                ignore (M.solving_unify body.pos env body_eff app_eff);
-                {FExpr.res = pat; prim_body})
-            |> Stream.into (Vector.sink ()) in
-        { term = FExpr.at expr.pos typ
-            (FExpr.primbranch op (Vector.map (fun uv -> T.Uv uv) uvs) arg clauses)
-        ; eff = app_eff }
-
-    | AExpr.Let (defs, body) ->
-        let (defs, env) = check_defs env (Vector1.to_vector defs) in
-        let {TS.term = body; eff} = typeof env body in
-        {term = FExpr.at expr.pos body.typ (FExpr.letrec (Vector.to_array defs) body); eff}
-
-    | AExpr.Record stmts ->
-        (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
-        let fields = CCVector.create () in
-        let eff = T.Uv (Env.uv env T.aRow) in
-        let row = Vector.fold (fun base -> function
-            | AStmt.Def (_, {v = Var label; _}, expr) ->
-                let {TS.term; eff = eff'} = typeof env expr in
-                CCVector.push fields (label, term);
-                ignore (M.solving_unify expr.pos env eff' eff);
-                T.With {base; label; field = term.typ}
-            | _ -> bug (Some expr.pos) ~msg: "bad record field reached typechecker"
-        ) T.EmptyRow stmts in
-        { term = FExpr.at expr.pos (T.Record row) (FExpr.record (CCVector.to_array fields))
-        ; eff = eff }
-
-    | AExpr.Select (selectee, label) -> (* TODO: lacks-constraint: *)
-        let field : T.t = Uv (Env.uv env T.aType) in
-        let typ : T.t = Record (With {base = Uv (Env.uv env T.aRow); label; field}) in
-        let {TS.term = selectee; eff} = check env typ selectee in
-        {TS.term = FExpr.at expr.pos field (FExpr.select selectee label); eff}
-
-    | AExpr.Ann (expr, typ) ->
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-        let typ = K.check env kind typ in
-        (* FIXME: Abstract type generation effect *)
-        check_abs env typ expr
-
-    | AExpr.Proxy typ ->
-        let {TS.typ; kind = _} = K.kindof env {v = typ; pos = expr.pos} in
-        {term = FExpr.at expr.pos (Proxy typ) (FExpr.proxy typ); eff = EmptyRow}
-
-    | AExpr.Var name ->
-        let ({FExpr.vtyp = typ; _} as var, global) = Env.find env expr.pos name in
-        if not global
-        then {term = FExpr.at expr.pos typ (FExpr.use var); eff = EmptyRow}
-        else
-            let namexpr = FExpr.at expr.pos (Prim String)
-                (FExpr.const (String (Name.to_string name))) in
-            { term = FExpr.at expr.pos typ (FExpr.primapp GlobalGet (Vector.singleton typ)
-                (FExpr.at expr.pos (Tuple (Vector.singleton (T.Prim String)))
-                    (FExpr.values [|namexpr|])))
-            ; eff = EmptyRow }
-
-    | AExpr.Wild _ -> todo (Some expr.pos) ~msg: "elaborate _ expression"
-
-    | AExpr.Const c ->
-        {term = FExpr.at expr.pos (const_typ c) (FExpr.const c); eff = EmptyRow}
-
-    | AppSequence _ ->
-        bug (Some expr.pos) ~msg: "typechecker encountered AppSequence expression"
-
-and elaborate_fn : Env.t -> Util.span -> Util.plicity -> AExpr.clause Vector.t -> FExpr.t typing
-= fun env pos plicity clauses -> match Vector.to_seq clauses () with
-    | Cons (clause, clauses') ->
-        let (env, universals) = Env.push_existential env in
-        let (domain, {TS.term = clause; eff}) = elaborate_clause env plicity clause in
-        let codomain = clause.FExpr.body.typ in
-        let clauses' = Seq.map (check_clause plicity env domain eff codomain) clauses' in
-        let clauses = Vector.of_seq (fun () -> Seq.Cons (clause, clauses')) in
-        let clauses = clauses |> Vector.map (fun ({FExpr.pat; body = _} as clause) ->
-            {ExpandPats.pat; emit = emit_clause_body clause}
-        ) in
-        let param = FExpr.fresh_var domain in
-        let matchee = FExpr.at pos param.vtyp (FExpr.use param) in
-        let body = ExpandPats.expand_clauses pos codomain matchee clauses in
-        let universals' = Vector.map fst (Vector.of_list !universals) in
-        let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
-            (i + 1, Name.Map.add name i substitution)
-        ) (0, Name.Map.empty) universals' in
-        let universals = Vector.map snd universals' in
-        let domain = Env.close env substitution domain in
-        let codomain = Env.close env substitution codomain in
-        { TS.term = FExpr.at pos
-            (match plicity with
-            | Explicit -> T.Pi {universals; domain; codomain; eff = Env.close env substitution eff}
-            | Implicit -> Impli {universals; domain; codomain})
-            (FExpr.fn universals' param body)
-        ; eff = EmptyRow }
-    | Nil -> todo (Some pos) ~msg: "clauseless fn"
-
-and elaborate_clause env plicity {params; body} =
-    let (pat, domain, env) = elaborate_param plicity env params in
-    let eff = match plicity with
-        | Explicit -> T.Uv (Env.uv env T.aRow)
-        | Implicit -> T.EmptyRow in
-    let {TS.term = body; eff = body_eff} = typeof env body in
-    ignore (M.solving_unify body.pos env eff body_eff);
-    (domain, {term = {FExpr.pat; body}; eff})
+let rec typeof env expr : FExpr.t typing =
+    check env (T.Uv (Env.uv env (T.App (Prim TypeIn, Uv (Env.uv env T.rep))))) expr
 
 and emit_clause_body {FExpr.pat; body} =
     let pos = pat.ppos in
     fun ctx tmp_vars -> match ctx with
-        | Inline ->
+        | ExpandPats.Inline ->
             let defs = Stream.from (Vector.to_source tmp_vars)
                 |> Stream.map (fun {ExpandPats.src_var; tmp_var} ->
                     FStmt.Def (pos, src_var, FExpr.at pos src_var.FExpr.vtyp (FExpr.use tmp_var)))
@@ -419,67 +236,196 @@ and implement : Env.t -> T.ov Vector.t * T.t -> AExpr.t with_pos -> FExpr.t typi
     end else check env typ expr
 
 and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
-= fun env typ expr -> match (typ, expr.v) with
-    | (Impli _, _) -> todo (Some expr.pos)
+= fun env typ expr -> match typ with
+    | Impli _ -> todo (Some expr.pos)
 
-    | (Pi _, AExpr.Fn (Explicit, clauses)) -> check_fn env typ expr.pos clauses
-    | (Pi _, AExpr.Fn (Implicit, _)) -> failwith "plicity mismatch"
+    | _ -> (match (typ, expr.v) with
+        | (_, Fn (Implicit, _)) -> todo (Some expr.pos)
 
-    | (T.Tuple typs, AExpr.Tuple exprs) ->
-        let exprs' = CCVector.create () in
-        let typs' = CCVector.create () in
-        let eff : T.t = Uv (Env.uv env T.aRow) in
-        let typ_width = Vector.length typs in
-        let expr_width = Vector.length exprs in
-        if expr_width = typ_width
-        then Vector.iter2 (fun typ expr ->
-            let {TS.term = expr; eff = eff'} = check env typ expr in
-            CCVector.push exprs' expr;
-            CCVector.push typs' expr.typ;
-            ignore (M.solving_unify expr.pos env eff' eff)
-        ) typs exprs
-        else Env.reportError env expr.pos (TupleWidth (typ, typ_width, expr.v, expr_width));
-        { term = FExpr.at expr.pos (Tuple (Vector.build typs'))
-            (FExpr.values (CCVector.to_array exprs'))
-        ; eff }
+        (* TODO: Effect opening à la Koka: *)
+        | (typ, Fn (Explicit, clauses)) ->
+            let check_clause plicity env domain eff codomain ({params; body} : AExpr.clause) =
+                let (pat, body_env) = check_param plicity env domain params in
+                let {TS.term = body; eff = body_eff} = check_abs body_env codomain body in
+                ignore (M.solving_unify body.pos env body_eff eff);
+                {FExpr.pat; body} in
 
-    | _ ->
-        let {TS.term = expr; eff} = typeof env expr in
-        let term = match M.solving_subtype expr.pos env expr.typ typ with
-            | Some coerce -> Coercer.apply coerce expr
-            | None -> expr in
-        {term; eff}
+            (match typ with (* FIXME: uv *)
+            | T.Pi {universals = _; domain; eff; codomain} -> (* FIXME: use `universals` *)
+                (match Vector1.of_vector clauses with
+                | Some clauses ->
+                    let clauses = clauses |> Vector1.map (fun clause ->
+                        let clause = check_clause Util.Explicit env domain eff codomain clause in
+                        {ExpandPats.pat = clause.FExpr.pat; emit = emit_clause_body clause}
+                    ) in
+                    let param = FExpr.fresh_var domain in
+                    let matchee = FExpr.at expr.pos param.vtyp (FExpr.use param) in
+                    let body = ExpandPats.expand_clauses expr.pos codomain matchee
+                        (Vector1.to_vector clauses) in
+                    { term = FExpr.at expr.pos typ (FExpr.fn (* FIXME: *) Vector.empty param body)
+                    ; eff = EmptyRow }
+                | None -> todo (Some expr.pos) ~msg: "check clauseless fn")
+            | _ -> todo (Some expr.pos) ~msg: "check fn type error")
 
-and check_fn : Env.t -> T.t -> Util.span -> AExpr.clause Vector.t -> FExpr.t typing
-= fun env typ pos clauses -> match typ with
-    | T.Pi {universals = _; domain; eff; codomain} -> (* FIXME: use `universals` *)
-        (match Vector1.of_vector clauses with
-        | Some clauses ->
-            let clauses = clauses |> Vector1.map (fun clause ->
-                let clause = check_clause Explicit env domain eff codomain clause in
-                {ExpandPats.pat = clause.FExpr.pat; emit = emit_clause_body clause}
-            ) in
-            let param = FExpr.fresh_var domain in
-            let matchee = FExpr.at pos param.vtyp (FExpr.use param) in
-            let body = ExpandPats.expand_clauses pos codomain matchee (Vector1.to_vector clauses) in
-            { term = FExpr.at pos typ (FExpr.fn (* FIXME: *) Vector.empty param body)
+        | (codomain, App (callee, Explicit, arg)) -> (* OPTIMIZE: eta-expands universal callees: *)
+            let {TS.term = arg; eff} = typeof env arg in
+            let callee_typ = T.Pi {universals = Vector.empty
+                ; domain = arg.typ; eff; codomain} in
+            let {TS.term = callee; eff = callee_eff} = check env callee_typ callee in
+            ignore (M.solving_unify expr.pos env callee_eff eff);
+            (match codomain with
+            | Exists _ -> todo (Some expr.pos) ~msg: "existential codomain in App"
+            | _ ->
+                { term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg)
+                ; eff = callee_eff })
+
+        | (_, App (_, Implicit, _)) -> todo (Some expr.pos)
+
+        | (_, PrimApp (_, Some _, _)) -> todo (Some expr.pos)
+
+        | (codomain, PrimApp (op, None, arg)) ->
+            let (universals, domain, app_eff, codomain') = primop_typ op in
+            let (uvs, domain, app_eff, codomain') =
+                Env.instantiate_primop env universals domain app_eff codomain' in
+            let domain = (* HACK *)
+                if Vector.length domain = 1
+                then Vector.get domain 0
+                else Tuple domain in
+            (* TODO: Effect opening à la Koka: *)
+            let {TS.term = arg; eff = arg_eff} = check env domain arg in
+            ignore (M.solving_unify expr.pos env arg_eff app_eff);
+            let universals = Vector.map (fun uv -> T.Uv uv) uvs in
+            { term = FExpr.at expr.pos codomain' (FExpr.primapp op universals arg)
+                |> Coercer.apply_opt (M.solving_subtype expr.pos env codomain' codomain)
+            ; eff = app_eff }
+
+        | (_, PrimBranch (_, Some _, _, _)) -> todo (Some expr.pos)
+
+        | (typ, PrimBranch (op, None, arg, clauses)) ->
+            let (universals, domain, app_eff, codomain) = branchop_typ op in
+            let (uvs, domain, app_eff, codomain) =
+                Env.instantiate_branch env universals domain app_eff codomain in
+            (* TODO: Effect opening à la Koka: *)
+            let {TS.term = arg; eff = arg_eff} = check env (Tuple domain) arg in
+            ignore (M.solving_unify expr.pos env arg_eff app_eff);
+            assert (Vector.length clauses = Vector.length codomain);
+            let clauses = Stream.from (Source.zip (Vector.to_source codomain) (Vector.to_source clauses))
+                |> Stream.map (fun (codomain, {AExpr.params; body}) ->
+                    let (pat, vars) = check_pat env codomain params in
+                    let env = Vector.fold (Env.push_val Explicit) env vars in
+                    let pat = match pat.pterm with
+                        | VarP var -> Some var
+                        | TupleP pats when Vector.length pats = 0 -> None
+                        | _ -> failwith "complex PrimBranch pattern" in
+                    let {TS.term = prim_body; eff = body_eff} = check env typ body in
+                    ignore (M.solving_unify body.pos env body_eff app_eff);
+                    {FExpr.res = pat; prim_body})
+                |> Stream.into (Vector.sink ()) in
+            let universals = Vector.map (fun uv -> T.Uv uv) uvs in
+            { term = FExpr.at expr.pos typ (FExpr.primbranch op universals arg clauses)
+            ; eff = app_eff }
+
+        | (typ, Let (defs, body)) ->
+            let (defs, env) = check_defs env (Vector1.to_vector defs) in
+            let {TS.term = body; eff} = check env typ body in
+            {term = FExpr.at expr.pos typ (FExpr.letrec (Vector.to_array defs) body); eff}
+
+        | (typ, Ann (expr, sub)) ->
+            let sub = K.check env (App (Prim TypeIn, Uv (Env.uv env T.rep))) sub in
+            let {TS.term; eff} = check_abs env sub expr in
+            { term = term |> Coercer.apply_opt (M.solving_subtype expr.pos env sub typ)
+            ; eff } (* FIXME: Abstract type generation effect *)
+
+        | (typ, Tuple exprs) -> (match typ with (* FIXME: uv *)
+            | T.Tuple typs -> 
+                let exprs' = CCVector.create () in
+                let typs' = CCVector.create () in
+                let eff : T.t = Uv (Env.uv env T.aRow) in
+                let typ_width = Vector.length typs in
+                let expr_width = Vector.length exprs in
+                if expr_width = typ_width then
+                    Vector.iter2 (fun typ expr ->
+                        let {TS.term = expr; eff = eff'} = check env typ expr in
+                        CCVector.push exprs' expr;
+                        CCVector.push typs' expr.typ;
+                        ignore (M.solving_unify expr.pos env eff' eff)
+                    ) typs exprs
+                else
+                    Env.reportError env expr.pos (TupleWidth (typ, typ_width, expr.v, expr_width));
+                    { term = FExpr.at expr.pos (Tuple (Vector.build typs'))
+                        (FExpr.values (CCVector.to_array exprs'))
+                    ; eff }
+            | _ -> todo (Some expr.pos) ~msg: "check tuple type error")
+
+        | (typ, Focus (tup, index)) ->
+            let {TS.term = tup; eff} = typeof env tup in
+            (match M.focalize tup.pos env tup.typ (TupleL (index + 1)) with
+            | (coerce_tup, Tuple typs) when index < Vector.length typs ->
+                let tup = Coercer.apply_opt coerce_tup tup in
+                let sub = Vector.get typs index in
+                { term = FExpr.at expr.pos sub (FExpr.focus tup index)
+                    |> Coercer.apply_opt (M.solving_subtype expr.pos env sub typ)
+                ; eff }
+            | _ -> bug (Some tup.pos) ~msg: "focusee focalization returned non-tuple")
+
+        | (typ, Record stmts) ->
+            (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
+            let fields = CCVector.create () in
+            let eff = T.Uv (Env.uv env T.aRow) in
+            let sub = T.Record (Vector.fold (fun base -> function
+                | AStmt.Def (_, {v = Var label; _}, expr) ->
+                    let {TS.term; eff = eff'} = typeof env expr in
+                    CCVector.push fields (label, term);
+                    ignore (M.solving_unify expr.pos env eff' eff);
+                    T.With {base; label; field = term.typ}
+                | _ -> bug (Some expr.pos) ~msg: "bad record field reached typechecker"
+            ) T.EmptyRow stmts) in
+            { term = FExpr.at expr.pos sub (FExpr.record (CCVector.to_array fields))
+                |> Coercer.apply_opt (M.solving_subtype expr.pos env sub typ)
+            ; eff }
+
+        | (field, Select (selectee, label)) -> (* TODO: lacks-constraint: *)
+            let base = T.Uv (Env.uv env T.aRow) in
+            let selectee_typ = T.Record (With {base; label; field}) in
+            let {TS.term = selectee; eff} = check env selectee_typ selectee in
+            {TS.term = FExpr.at expr.pos typ (FExpr.select selectee label); eff}
+
+        | (typ, Proxy carrie) -> (match typ with (* FIXME: uv *)
+            | T.Proxy carrie' ->
+                let {TS.typ = carrie; kind = _} = K.kindof env {v = carrie; pos = expr.pos} in
+                ignore (M.solving_unify expr.pos env carrie carrie');
+                {term = FExpr.at expr.pos typ (FExpr.proxy carrie'); eff = EmptyRow}
+            | _ -> todo (Some expr.pos) ~msg: "check proxy type error")
+
+        | (typ, Const c) ->
+            let sub = const_typ c in
+            { term = FExpr.at expr.pos sub (FExpr.const c)
+                |> Coercer.apply_opt (M.solving_subtype expr.pos env sub typ)
             ; eff = EmptyRow }
-        | None -> todo (Some pos) ~msg: "check clauseless fn")
-    | _ -> unreachable (Some pos) ~msg: "non-Pi `typ` in `check_fn`"
 
-and check_clause plicity env domain eff codomain {params; body} =
-    let (pat, body_env) = check_param plicity env domain params in
-    let {TS.term = body; eff = body_eff} = check_abs body_env codomain body in
-    ignore (M.solving_unify body.pos env body_eff eff);
-    {pat; body}
+        | (typ, Var name) ->
+            let ({FExpr.vtyp = sub; _} as var, global) = Env.find env expr.pos name in
+            let term =
+                if not global
+                then FExpr.use var
+                else
+                    let namexpr = FExpr.at expr.pos (Prim String)
+                        (FExpr.const (String (Name.to_string name))) in
+                    FExpr.primapp GlobalGet (Vector.singleton typ)
+                        (FExpr.at expr.pos (Tuple (Vector.singleton (T.Prim String)))
+                            (FExpr.values [|namexpr|])) in
+            { term = FExpr.at expr.pos sub term
+                |> Coercer.apply_opt (M.solving_subtype expr.pos env sub typ)
+            ; eff = EmptyRow }
+
+        | (_, Wild _) -> todo (Some expr.pos) ~msg: "elaborate _ expression"
+
+        | (_, AppSequence _) ->
+            bug (Some expr.pos) ~msg: "typechecker encountered AppSequence expression")
 
 (* # Patterns *)
 
 (* ## Synthesis *)
-
-and elaborate_param plicity env param =
-    let (param, (_, typ), vars) = elaborate_pat env param in
-    (param, typ, Vector.fold (Env.push_val plicity) env vars)
 
 and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector.t =
     let elaborate_pats env pats =
