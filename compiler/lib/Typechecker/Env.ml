@@ -177,6 +177,8 @@ let sibling (env : t) kind uv = match get_uv env uv with
 let set_expr (env : t) ref expr = TxRef.set env.tx_log ref expr
 let set_coercion (env : t) ref coercion = TxRef.set env.tx_log ref coercion
 
+let transaction (env : t) thunk = TxRef.transaction env.tx_log thunk
+
 let document (env : t) to_doc v = to_doc env.tx_log v
 
 let rec expose' env depth substitution : T.t -> T.t = function

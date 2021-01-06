@@ -86,9 +86,30 @@ let match_rows : Util.span -> Env.t -> T.t -> T.t -> Name.t CCVector.ro_vector
     , co, base, CCVector.freeze fields
     , base', CCVector.freeze fields', Option.map (fun co' -> T.Symm co') co')
 
+(* # Resolution *)
+
+let rec resolve pos env super =
+    let results = Env.implicits env
+        |> Stream.map (fun ({E.vtyp; name = _} as var) ->
+            try Env.transaction env (fun () ->
+                Some (var, subtype pos true env vtyp super)
+            ) with TypeError.TypeError _ -> None)
+        |> Stream.flat_map (fun ores -> ores |> Option.to_seq |> Source.seq |> Stream.from)
+        |> Stream.into (Vector.sink ()) in
+    match Vector.length results with
+    | 1 ->
+        let (var, {coercion; residual}) = Vector.get results 0 in
+        let expr = E.at pos var.vtyp (E.use var) in
+        ( (match coercion with
+          | Some coercion -> Coercer.apply coercion expr
+          | None -> expr)
+        , residual )
+    | 0 -> todo (Some pos)
+    | _ -> todo (Some pos)
+
 (* # Focalization *)
 
-let focalize : span -> Env.t -> T.t -> T.template -> Coercer.t option * T.t
+and focalize : span -> Env.t -> T.t -> T.template -> Coercer.t option * T.t
 = fun pos env typ template ->
     let articulate_template uv_typ template = match uv_typ with
         | T.Uv uv ->
@@ -132,7 +153,7 @@ let focalize : span -> Env.t -> T.t -> T.template -> Coercer.t option * T.t
 
 (* # Subtyping *)
 
-let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
+and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
 = fun pos occ env typ super ->
     let empty = ResidualMonoid.empty in
     let combine = ResidualMonoid.combine in
@@ -220,7 +241,21 @@ let rec subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matchi
                 subtype pos false env typ (articulate pos env super typ)
             | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `super` in `subtype_whnf`")
 
-        | (Impli _, _) | (_, Impli _) -> todo (Some pos)
+        | (Impli {universals; domain; codomain}, _) ->
+            let (uvs, domain, codomain) =
+                Env.instantiate_impli env universals domain codomain in
+            let {coercion = coerce_codomain; residual} =
+                subtype pos occ env codomain super in
+            let (arg, residual') = resolve pos env domain in
+            let uvs = Vector.map (fun uv -> T.Uv uv) uvs in
+            { coercion = Some (match coerce_codomain with
+                | Some coerce_codomain -> Coercer.coercer (fun expr ->
+                    Coercer.apply coerce_codomain (E.at pos super (E.app expr uvs arg)))
+                | None -> Coercer.coercer (fun expr ->
+                    E.at pos super (E.app expr uvs arg)))
+            ; residual = combine residual residual' }
+
+        | (_, Impli _) -> todo (Some pos)
 
         | (Exists (existentials, body), _) ->
             let (env, skolems, typ) = Env.push_abs_skolems env existentials body in

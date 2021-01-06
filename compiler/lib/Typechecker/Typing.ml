@@ -239,16 +239,18 @@ and elaborate_fn : Env.t -> Util.span -> Util.plicity -> AExpr.clause Vector.t -
         let param = FExpr.fresh_var domain in
         let matchee = FExpr.at pos param.vtyp (FExpr.use param) in
         let body = ExpandPats.expand_clauses pos codomain matchee clauses in
-        let universals = Vector.map fst (Vector.of_list !universals) in
+        let universals' = Vector.map fst (Vector.of_list !universals) in
         let (_, substitution) = Vector.fold (fun (i, substitution) (name, _) ->
             (i + 1, Name.Map.add name i substitution)
-        ) (0, Name.Map.empty) universals in
-        { TS.term = FExpr.at pos 
-            (Pi { universals = Vector.map snd universals
-                 ; domain = Env.close env substitution domain
-                 ; eff = Env.close env substitution eff
-                 ; codomain = Env.close env substitution codomain })
-            (FExpr.fn universals param body)
+        ) (0, Name.Map.empty) universals' in
+        let universals = Vector.map snd universals' in
+        let domain = Env.close env substitution domain in
+        let codomain = Env.close env substitution codomain in
+        { TS.term = FExpr.at pos
+            (match plicity with
+            | Explicit -> T.Pi {universals; domain; codomain; eff = Env.close env substitution eff}
+            | Implicit -> Impli {universals; domain; codomain})
+            (FExpr.fn universals' param body)
         ; eff = EmptyRow }
     | Nil -> todo (Some pos) ~msg: "clauseless fn"
 

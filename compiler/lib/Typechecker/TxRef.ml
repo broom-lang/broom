@@ -34,9 +34,12 @@ module Log = struct
             log.nesting <- log.nesting - 1
 
     let commit log memento =
-        CCVector.truncate log.refs memento;
-        CCVector.truncate log.vals memento;
-        log.nesting <- log.nesting - 1
+        let nesting' = log.nesting - 1 in
+        log.nesting <- nesting';
+        if nesting' = 0 then begin
+            CCVector.truncate log.refs memento;
+            CCVector.truncate log.vals memento;
+        end
 
     let transaction log body =
         let mem = memento log in

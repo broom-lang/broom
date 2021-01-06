@@ -255,17 +255,15 @@ and Typ : FcTypeSigs.TYPE
 
             let impli =
                 let adapt = PIso.iso (fun (universals, (domain, codomain)) ->
-                        ( Vector.of_list (Option.value ~default: [] universals)
-                        , domain, codomain ))
+                        (Vector.of_list universals, domain, codomain))
                     (fun (universals, domain, codomain) ->
-                        let universals = match Vector.length universals with
-                            | 0 -> Some (Vector.to_list universals)
-                            | _ -> None in
-                        (universals, (domain, codomain))) in
+                        (Vector.to_list universals, (domain, codomain))) in
                 let universals = text "forall" *> blank 1 *> separate1 (blank 1) nestable
                     <* blank 1 <* dot in
                 let monomorphic = infix 4 1 (text "=>") non_fn typ in
-                PIso.comp impli adapt <$> prefix 4 1 (opt universals) monomorphic in
+                PIso.comp impli adapt <$>
+                    (prefix 4 1 universals monomorphic
+                    <|> (pure [] <*> monomorphic)) in
 
             exists <|> pi <|> impli
             <|> (fn <$> (infix 4 1 dot (text "fn" *> blank 1 *> non_fn) typ))

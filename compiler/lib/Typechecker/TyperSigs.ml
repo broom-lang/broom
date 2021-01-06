@@ -80,6 +80,8 @@ module type ENV = sig
     val get_uv : t -> uv -> Fc.Uv.v
     val set_uv : t -> span -> uv -> Fc.Uv.v -> unit
 
+    val transaction : t -> (unit -> 'a) -> 'a
+
     val set_expr : t -> Fc.Term.Expr.t TxRef.rref -> Fc.Term.Expr.t -> unit
     val set_coercion : t -> T.coercion TxRef.rref -> T.coercion -> unit
 
