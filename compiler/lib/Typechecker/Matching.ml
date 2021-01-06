@@ -92,7 +92,7 @@ let rec resolve pos env super =
     let results = Env.implicits env
         |> Stream.map (fun ({E.vtyp; name = _} as var) ->
             try Env.transaction env (fun () ->
-                Some (var, subtype pos true env vtyp super)
+                Some (var, subtype pos env vtyp super)
             ) with TypeError.TypeError _ -> None)
         |> Stream.flat_map (fun ores -> ores |> Option.to_seq |> Source.seq |> Stream.from)
         |> Stream.into (Vector.sink ()) in
@@ -153,34 +153,34 @@ and focalize : span -> Env.t -> T.t -> T.template -> Coercer.t option * T.t
 
 (* # Subtyping *)
 
-and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
-= fun pos occ env typ super ->
+and subtype : span -> Env.t -> T.t -> T.t -> Coercer.t option matching
+= fun pos env typ super ->
     let empty = ResidualMonoid.empty in
     let combine = ResidualMonoid.combine in
 
-    let subtype_whnf : bool -> T.t -> T.t -> Coercer.t option matching
-    = fun occ typ super -> match (typ, super) with
+    let subtype_whnf : T.t -> T.t -> Coercer.t option matching
+    = fun typ super -> match (typ, super) with
         (* TODO: uv impredicativity clashes *)
         (* FIXME: prevent nontermination from impredicative instantiation: *)
         | (Uv uv, Uv uv') when uv = uv' -> {coercion = None; residual = None}
         | (Uv uv, _) ->
             (match Env.get_uv env uv with
             | Unassigned _ ->
-                if occ then occurs_check pos env uv super else ();
+                occurs_check pos env uv super;
                 Env.set_uv env pos uv (Assigned super);
                 {coercion = None; residual = empty}
             | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `typ` in `subtype_whnf`")
         | (_, Uv uv) ->
             (match Env.get_uv env uv with
             | Unassigned _ ->
-                if occ then occurs_check pos env uv typ else ();
+                occurs_check pos env uv typ;
                 Env.set_uv env pos uv (Assigned typ);
                 {coercion = None; residual = empty}
             | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `super` in `subtype_whnf`")
 
         | (Exists (existentials, body), _) ->
             let (env, skolems, typ) = Env.push_abs_skolems env existentials body in
-            let {coercion = coerce; residual} = subtype pos occ env typ super in
+            let {coercion = coerce; residual} = subtype pos env typ super in
             let skolems = Vector1.map fst skolems in
             { coercion = Some (Coercer.coercer (match coerce with
                 | Some coerce -> (fun expr ->
@@ -196,7 +196,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
 
         | (_, Exists (existentials', body')) ->
             let (uvs, super) = Env.instantiate_abs env existentials' body' in
-            let {coercion = coerce; residual} = subtype pos occ env typ super in
+            let {coercion = coerce; residual} = subtype pos env typ super in
             let existentials = Vector1.map (fun uv -> T.Uv uv) uvs |> Vector1.to_vector in
             { coercion = Some (Coercer.coercer (match coerce with
                 | Some coerce -> (fun expr ->
@@ -210,7 +210,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
             let param = E.fresh_var domain in
             let env = Env.push_val Implicit env param in
             let {coercion = coerce_codomain; residual} =
-                subtype pos occ env typ codomain in
+                subtype pos env typ codomain in
             let universals = Vector.map fst skolems in
             { coercion = Some (Coercer.coercer (match coerce_codomain with
                 | Some coerce_codomain -> (fun expr ->
@@ -226,7 +226,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
             let (uvs, domain, codomain) =
                 Env.instantiate_impli env universals domain codomain in
             let {coercion = coerce_codomain; residual} =
-                subtype pos occ env codomain super in
+                subtype pos env codomain super in
             let (arg, residual') = resolve pos env domain in
             let uvs = Vector.map (fun uv -> T.Uv uv) uvs in
             { coercion = Some (Coercer.coercer (match coerce_codomain with
@@ -261,7 +261,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
                     let coercions = CCVector.create () in
                     let (residual, noop) = Vector.fold2 (fun (residual, noop) typ super ->
                         let {coercion = coerce; residual = residual'} =
-                            subtype pos occ env typ super in
+                            subtype pos env typ super in
                         CCVector.push coercions (typ, Option.value ~default: Coercer.id coerce);
                         (combine residual residual', noop && Option.is_none coerce)
                     ) (empty, true) typs super_typs in
@@ -287,12 +287,12 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
                 let (uvs, domain, eff, codomain) =
                     Env.instantiate_arrow env universals domain eff codomain in
                 let {coercion = coerce_domain; residual = residual} =
-                    subtype pos occ env domain' domain in
+                    subtype pos env domain' domain in
                 (* TODO: row opening à la Koka: *)
                 let {coercion = _; residual = eff_residual} = unify pos env eff eff' in
                 let residual = combine residual eff_residual in
                 let {coercion = coerce_codomain; residual = codomain_residual} =
-                    subtype pos occ env codomain codomain' in
+                    subtype pos env codomain codomain' in
                 let residual = combine residual codomain_residual in
 
                 let universals = Vector.map (fun uv -> T.Uv uv) uvs in
@@ -327,14 +327,14 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
                     match_rows pos env row super_row in
 
                 let fields_len = CCVector.length labels in
-                let {coercion = _; residual} = subtype pos occ env base super_base in
+                let {coercion = _; residual} = subtype pos env base super_base in
                 let field_cos = CCVector.create_with ~capacity: fields_len None in
                 let (residual, noop_fieldcos) =
                     let rec loop residual noop_fieldcos i =
                         if i < fields_len
                         then begin
                             let {coercion = field_co; residual = residual'} =
-                                subtype pos occ env (CCVector.get fields i) (CCVector.get super_fields i) in
+                                subtype pos env (CCVector.get fields i) (CCVector.get super_fields i) in
                             CCVector.push field_cos field_co;
                             loop (combine residual residual') (noop_fieldcos && Option.is_none field_co)
                                 (i + 1)
@@ -408,13 +408,13 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
                     match_rows pos env typ super in
 
                 let fields_len = CCVector.length labels in
-                let {coercion = _; residual} = subtype pos occ env base super_base in
+                let {coercion = _; residual} = subtype pos env base super_base in
                 let residual =
                     let rec loop residual i =
                         if i < fields_len
                         then begin
                             let {coercion = _; residual = residual'} =
-                                subtype pos occ env (CCVector.get fields i) (CCVector.get super_fields i) in
+                                subtype pos env (CCVector.get fields i) (CCVector.get super_fields i) in
                             loop (combine residual residual') (i + 1)
                         end else residual in
                     loop residual 0 in
@@ -454,8 +454,8 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
                     let expr = E.at pos super (E.proxy carrie') in
                     {coercion = Some (Coercer.coercer (fun _ -> expr)); residual = empty}
                 | None -> (* TODO: Use unification (?) *)
-                    let {coercion = coerce; residual} = subtype pos occ env carrie carrie' in
-                    let {coercion = coerce'; residual = residual'} = subtype pos occ env carrie' carrie in
+                    let {coercion = coerce; residual} = subtype pos env carrie carrie' in
+                    let {coercion = coerce'; residual = residual'} = subtype pos env carrie' carrie in
                     let expr = E.at pos super (E.proxy carrie') in
                     { coercion = (match (coerce, coerce') with
                         | (None, None) -> None
@@ -499,7 +499,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
     let res =
         K.eval pos env typ >>= fun (typ', co) ->
         K.eval pos env super |> Option.map (fun (super', co') ->
-            let {coercion = coerce; residual} = subtype_whnf occ typ' super' in
+            let {coercion = coerce; residual} = subtype_whnf typ' super' in
             { coercion =
                 (match (co, coerce, co') with
                 | (Some co, Some coerce, Some co') -> Some (Coercer.coercer (fun v ->
@@ -525,7 +525,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
         { coercion = Some (Coercer.coercer (fun v ->
             Env.set_expr env patchable v;
             E.at pos super (E.patchable patchable)))
-        ; residual = Some (Sub (occ, typ, super, patchable)) }
+        ; residual = Some (Sub (typ, super, patchable)) }
 
 and occurs_check pos env uv typ =
     let rec check : T.t -> unit = function
@@ -910,8 +910,8 @@ and solve pos env residual =
         | Residuals (residual, residual') ->
             ResidualMonoid.combine (solve env residual) (solve env residual')
 
-        | Sub (occ, typ, super, patchable) ->
-            let {coercion = coerce; residual} = subtype pos occ env typ super in
+        | Sub (typ, super, patchable) ->
+            let {coercion = coerce; residual} = subtype pos env typ super in
             let coerce = Option.value ~default: Coercer.id coerce in
             Env.set_expr env patchable (Coercer.apply coerce !patchable);
             residual
@@ -929,7 +929,7 @@ and solve pos env residual =
 (* NOTE: `focalize` is also public *)
 
 let solving_subtype pos env typ super =
-    let {coercion = coerce; residual} = subtype pos true env typ super in
+    let {coercion = coerce; residual} = subtype pos env typ super in
     solve pos env residual;
     coerce
 

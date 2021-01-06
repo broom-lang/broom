@@ -48,7 +48,7 @@ let rec cause_to_doc s pos err =
             | Axioms (_, residual) | Skolems (_, residual) -> to_doc residual
             | Residuals (residual, residual') ->
                 to_doc residual ^/^ string "and" ^/^ to_doc residual'
-            | Sub (_, typ, super, _) -> cause_to_doc s pos (SubType (typ, super))
+            | Sub (typ, super, _) -> cause_to_doc s pos (SubType (typ, super))
             | Unify (typ, typ', _) -> cause_to_doc s pos (Unify (typ, typ'))
         in to_doc residual
 
