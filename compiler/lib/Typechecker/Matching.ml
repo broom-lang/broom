@@ -104,8 +104,8 @@ let rec resolve pos env super =
           | Some coercion -> Coercer.apply coercion expr
           | None -> expr)
         , residual )
-    | 0 -> todo (Some pos)
-    | _ -> todo (Some pos)
+    | 0 -> todo (Some pos) ~msg: "resolution did not find"
+    | _ -> todo (Some pos) ~msg: "ambiguous resolution"
 
 (* # Focalization *)
 
@@ -226,37 +226,6 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
 
     let subtype_whnf : bool -> T.t -> T.t -> Coercer.t option matching
     = fun occ typ super -> match (typ, super) with
-        (* TODO: uv impredicativity clashes *)
-        | (Uv uv, Uv uv') when uv = uv' -> {coercion = None; residual = None}
-        | (Uv uv, _) ->
-            (match Env.get_uv env uv with
-            | Unassigned _ ->
-                if occ then occurs_check pos env uv super else ();
-                subtype pos false env (articulate pos env typ super) super
-            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `typ` in `subtype_whnf`")
-        | (_, Uv uv) ->
-            (match Env.get_uv env uv with
-            | Unassigned _ ->
-                if occ then occurs_check pos env uv typ else ();
-                subtype pos false env typ (articulate pos env super typ)
-            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `super` in `subtype_whnf`")
-
-        | (Impli {universals; domain; codomain}, _) ->
-            let (uvs, domain, codomain) =
-                Env.instantiate_impli env universals domain codomain in
-            let {coercion = coerce_codomain; residual} =
-                subtype pos occ env codomain super in
-            let (arg, residual') = resolve pos env domain in
-            let uvs = Vector.map (fun uv -> T.Uv uv) uvs in
-            { coercion = Some (match coerce_codomain with
-                | Some coerce_codomain -> Coercer.coercer (fun expr ->
-                    Coercer.apply coerce_codomain (E.at pos super (E.app expr uvs arg)))
-                | None -> Coercer.coercer (fun expr ->
-                    E.at pos super (E.app expr uvs arg)))
-            ; residual = combine residual residual' }
-
-        | (_, Impli _) -> todo (Some pos)
-
         | (Exists (existentials, body), _) ->
             let (env, skolems, typ) = Env.push_abs_skolems env existentials body in
             let {coercion = coerce; residual} = subtype pos occ env typ super in
@@ -272,6 +241,7 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
                     E.at pos super (E.unpack skolems var expr use))))
             ; residual = ResidualMonoid.skolemized (Vector.map snd (Vector1.to_vector skolems))
                 residual }
+
         | (_, Exists (existentials', body')) ->
             let (uvs, super) = Env.instantiate_abs env existentials' body' in
             let {coercion = coerce; residual} = subtype pos occ env typ super in
@@ -281,6 +251,52 @@ and subtype : span -> bool -> Env.t -> T.t -> T.t -> Coercer.t option matching
                     E.at pos super (E.pack existentials (Coercer.apply coerce expr)))
                 | None -> (fun expr -> E.at pos super (E.pack existentials expr))))
             ; residual }
+
+        | (_, Impli {universals; domain; codomain}) ->
+            let (env, skolems, domain, codomain) =
+                Env.push_impli_skolems env universals domain codomain in
+            let param = E.fresh_var domain in
+            let env = Env.push_val Implicit env param in
+            let {coercion = coerce_codomain; residual} =
+                subtype pos occ env typ codomain in
+            let universals = Vector.map fst skolems in
+            { coercion = Some (Coercer.coercer (match coerce_codomain with
+                | Some coerce_codomain -> (fun expr ->
+                    let var = E.fresh_var codomain in
+                    let value = Coercer.apply coerce_codomain expr in
+                    let body = E.at pos codomain (E.use var) in
+                    E.at pos super (E.let' [|Def (pos, var, value)|]
+                        (E.at pos super (E.fn universals param body))))
+                | None -> (fun expr -> E.at pos super (E.fn universals param expr))))
+            ; residual }
+
+        | (Impli {universals; domain; codomain}, _) ->
+            let (uvs, domain, codomain) =
+                Env.instantiate_impli env universals domain codomain in
+            let {coercion = coerce_codomain; residual} =
+                subtype pos occ env codomain super in
+            let (arg, residual') = resolve pos env domain in
+            let uvs = Vector.map (fun uv -> T.Uv uv) uvs in
+            { coercion = Some (Coercer.coercer (match coerce_codomain with
+                | Some coerce_codomain -> (fun expr ->
+                    Coercer.apply coerce_codomain (E.at pos super (E.app expr uvs arg)))
+                | None -> (fun expr -> E.at pos super (E.app expr uvs arg))))
+            ; residual = combine residual residual' }
+
+        (* TODO: uv impredicativity clashes *)
+        | (Uv uv, Uv uv') when uv = uv' -> {coercion = None; residual = None}
+        | (Uv uv, _) ->
+            (match Env.get_uv env uv with
+            | Unassigned _ ->
+                if occ then occurs_check pos env uv super else ();
+                subtype pos false env (articulate pos env typ super) super
+            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `typ` in `subtype_whnf`")
+        | (_, Uv uv) ->
+            (match Env.get_uv env uv with
+            | Unassigned _ ->
+                if occ then occurs_check pos env uv typ else ();
+                subtype pos false env typ (articulate pos env super typ)
+            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned `super` in `subtype_whnf`")
 
         | (PromotedArray _, _) -> (match super with
             | PromotedArray _ ->

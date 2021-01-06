@@ -236,37 +236,62 @@ and implement : Env.t -> T.ov Vector.t * T.t -> AExpr.t with_pos -> FExpr.t typi
     end else check env typ expr
 
 and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
-= fun env typ expr -> match typ with
-    | Impli _ -> todo (Some expr.pos)
+= fun env typ expr ->
+    let check_clause plicity env domain eff codomain ({params; body} : AExpr.clause) =
+        let (pat, vars) = check_pat env domain params in
+        let body_env = Vector.fold (Env.push_val plicity) env vars in
+        let {TS.term = body; eff = body_eff} = check_abs body_env codomain body in
+        ignore (M.solving_unify body.pos env body_eff eff);
+        {FExpr.pat; body} in
+
+    match typ with
+    | Impli {universals; domain; codomain} -> (* OPTIMIZE: eta-expands: *)
+        let (env, universals, domain, codomain) =
+            Env.push_impli_skolems env universals domain codomain in
+        let param = FExpr.fresh_var domain in
+        let env = Env.push_val Implicit env param in
+        let {TS.term = body; eff = body_eff} = check env codomain expr in
+        ignore (M.solving_unify expr.pos env body_eff EmptyRow);
+        let universals = Vector.map fst universals in
+        { term = FExpr.at expr.pos typ (FExpr.fn universals param body)
+        ; eff = EmptyRow }
 
     | _ -> (match (typ, expr.v) with
-        | (_, Fn (Implicit, _)) -> todo (Some expr.pos)
+        | (typ, Fn (Implicit, clauses)) ->
+            let domain = T.Uv (Env.uv env (T.App (Prim TypeIn, Uv (Env.uv env T.rep)))) in
+            let eff = T.EmptyRow in
+            let codomain = T.Uv (Env.uv env (T.App (Prim TypeIn, Uv (Env.uv env T.rep)))) in
+            let param = FExpr.fresh_var domain in
+            let clauses = clauses |> Vector.map (fun clause ->
+                let clause = check_clause Implicit env domain eff codomain clause in
+                {ExpandPats.pat = clause.FExpr.pat; emit = emit_clause_body clause}
+            ) in
+            let matchee = FExpr.at expr.pos param.vtyp (FExpr.use param) in
+            let body = ExpandPats.expand_clauses expr.pos codomain matchee clauses in
+            let universals = Vector.empty in (* FIXME *)
+            let sub = T.Impli {universals; domain; codomain} in
+            { term = FExpr.at expr.pos sub (FExpr.fn universals param body)
+                |> Coercer.apply_opt (M.solving_subtype expr.pos env sub typ)
+            ; eff }
+
+        | (typ, Fn (Explicit, clauses)) -> (* FIXME: special handling when `typ` is `... -> ...` *)
+            let domain = T.Uv (Env.uv env (T.App (Prim TypeIn, Uv (Env.uv env T.rep)))) in
+            let eff = T.Uv (Env.uv env T.aRow) in
+            let codomain = T.Uv (Env.uv env (T.App (Prim TypeIn, Uv (Env.uv env T.rep)))) in
+            let param = FExpr.fresh_var domain in
+            let clauses = clauses |> Vector.map (fun clause ->
+                let clause = check_clause Explicit env domain eff codomain clause in
+                {ExpandPats.pat = clause.FExpr.pat; emit = emit_clause_body clause}
+            ) in
+            let matchee = FExpr.at expr.pos param.vtyp (FExpr.use param) in
+            let body = ExpandPats.expand_clauses expr.pos codomain matchee clauses in
+            let universals = Vector.empty in (* FIXME *)
+            let sub = T.Pi {universals; domain; eff; codomain} in
+            { term = FExpr.at expr.pos sub (FExpr.fn universals param body)
+                |> Coercer.apply_opt (M.solving_subtype expr.pos env sub typ)
+            ; eff }
 
         (* TODO: Effect opening à la Koka: *)
-        | (typ, Fn (Explicit, clauses)) ->
-            let check_clause plicity env domain eff codomain ({params; body} : AExpr.clause) =
-                let (pat, body_env) = check_param plicity env domain params in
-                let {TS.term = body; eff = body_eff} = check_abs body_env codomain body in
-                ignore (M.solving_unify body.pos env body_eff eff);
-                {FExpr.pat; body} in
-
-            (match typ with (* FIXME: uv *)
-            | T.Pi {universals = _; domain; eff; codomain} -> (* FIXME: use `universals` *)
-                (match Vector1.of_vector clauses with
-                | Some clauses ->
-                    let clauses = clauses |> Vector1.map (fun clause ->
-                        let clause = check_clause Util.Explicit env domain eff codomain clause in
-                        {ExpandPats.pat = clause.FExpr.pat; emit = emit_clause_body clause}
-                    ) in
-                    let param = FExpr.fresh_var domain in
-                    let matchee = FExpr.at expr.pos param.vtyp (FExpr.use param) in
-                    let body = ExpandPats.expand_clauses expr.pos codomain matchee
-                        (Vector1.to_vector clauses) in
-                    { term = FExpr.at expr.pos typ (FExpr.fn (* FIXME: *) Vector.empty param body)
-                    ; eff = EmptyRow }
-                | None -> todo (Some expr.pos) ~msg: "check clauseless fn")
-            | _ -> todo (Some expr.pos) ~msg: "check fn type error")
-
         | (codomain, App (callee, Explicit, arg)) -> (* OPTIMIZE: eta-expands universal callees: *)
             let {TS.term = arg; eff} = typeof env arg in
             let callee_typ = T.Pi {universals = Vector.empty
@@ -486,10 +511,6 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
     | AppSequence _ -> bug (Some pat.pos) ~msg: "typechecker encountered AppSequence pattern"
 
 (* ## Checking *)
-
-and check_param plicity env domain param =
-    let (param, vars) = check_pat env domain param in
-    (param, Vector.fold (Env.push_val plicity) env vars)
 
 (* TODO: use coercions (and subtyping ?): *)
 and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vector.t
