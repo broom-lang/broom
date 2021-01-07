@@ -304,9 +304,16 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
                 | Exists _ -> todo (Some expr.pos) ~msg: "existential codomain in App"
                 | _ ->
                     { term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg)
-                    ; eff = callee_eff })
+                    ; eff })
 
-            | (_, App (_, Implicit, _)) -> todo (Some expr.pos)
+            | (codomain, App (callee, Implicit, arg)) ->
+                let {TS.term = arg; eff} = typeof env arg in
+                let callee_typ = T.Impli {universals = Vector.empty
+                    ; domain = arg.typ; codomain} in
+                let {TS.term = callee; eff = callee_eff} = check_whnf env callee_typ callee in
+                ignore (M.solving_unify expr.pos env callee_eff eff);
+                { term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg)
+                ; eff }
 
             | (_, PrimApp (_, Some _, _)) -> todo (Some expr.pos)
 
