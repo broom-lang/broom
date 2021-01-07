@@ -6,7 +6,8 @@ type env = Env.env
 
 module rec Env : TyperSigs.ENV with type t = env = MakeEnv(T)(E)(M)
 and E : TyperSigs.KINDING with type env = Env.t = Kinding.Make(Env)(T)(M)
-and T : TyperSigs.TYPING with type env = Env.t = Typing.Make(Env)(E)(M)
+and T : TyperSigs.TYPING with type env = Env.t = Typing.Make(Env)(P)(E)(M)
+and P : TyperSigs.EXPAND_PATS with type env = Env.t = ExpandPats.Make(Env)(E)
 and M : TyperSigs.MATCHING with type env = Env.t = Matching.Make(Env)(E)
 
 type 'a typing = 'a TyperSigs.typing

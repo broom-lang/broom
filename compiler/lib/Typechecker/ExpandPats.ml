@@ -9,6 +9,13 @@ type expr = E.t
 type pat = E.pat
 type stmt = Fc.Term.Stmt.t
 
+module Make
+    (Env : TyperSigs.ENV)
+    (K : TyperSigs.KINDING with type env = Env.t)
+= struct
+
+type env = Env.t
+
 type ctx = Inline | Shared of var | Redirect of var
 type final_naming = {tmp_var : var; src_var : var}
 type final_emitter = ctx -> final_naming Vector.t -> E.t
@@ -86,7 +93,7 @@ let is_named (pat : pat) = match pat.pterm with
     | VarP _ -> true
     | _ -> false
 
-let matcher pos typ matchee clauses =
+let matcher pos env typ matchee clauses =
     let states = Automaton.create (Vector.length clauses) in
 
     let rec matcher' (matchees : var Vector.t) pats acceptors =
@@ -97,57 +104,60 @@ let matcher pos typ matchee clauses =
                 |> Stream.into Sink.len in
 
             if coli < Vector.length matchees then
-                (match (Vector.get matchees coli).vtyp with (* TODO: eval typ *)
-                | Prim Int ->
-                    let (pats, rows, default_rowis) = split_int pats coli in
-                    let matchee = Vector.get matchees coli in
-                    let clause (pat, rowis) =
-                        let pats = Matrix.select_rows rowis pats in
-                        let acceptors = Vector.select acceptors rowis in
-                        (pat, matcher' matchees pats acceptors) in
-                    let clauses = Stream.concat
-                            (Stream.from (Source.seq (IntMap.to_seq rows))
-                                |> Stream.map (fun (n, rowis) ->
-                                    ( {E.pterm = E.ConstP (Int n); ptyp = matchee.vtyp; ppos = pos}
-                                    , rowis )))
-                            (Stream.single ( {E.pterm = WildP (Name.of_string ""); ptyp = matchee.vtyp
-                                    ; ppos = pos}
-                                , default_rowis ))
-                        |> Stream.map clause
-                        |> Stream.into (Vector.sink ()) in
-                    let var = E.fresh_var typ in
-                    let node : State.node = Test {matchee; clauses} in
-                    Automaton.add states var.name {State.var; refcount = 1; frees = Some matchees; node};
-                    var
-
-                | Tuple typs ->
-                    let width = Vector.length typs in
-                    let pats = split_tuple pats coli width in
-                    let matchee = Vector.get matchees coli in
-                    let matchees'' = Vector.init width (fun i -> E.fresh_var (Vector.get typs i)) in
-                    let matchees' = Vector.concat [Vector.sub matchees 0 coli; matchees''
-                        ; Vector.sub matchees (coli + 1) (Vector.length matchees - (coli + 1))] in
-                    let body = matcher' matchees' pats acceptors in
-                    (match Vector1.of_vector matchees'' with
-                    | Some matchees'' ->
-                        let defs = Stream.from (Source.zip_with (fun (matchee' : var) index ->
-                                    let focusee = E.at pos matchee.vtyp (E.use matchee) in
-                                    S.Def ( pos, matchee'
-                                        , E.at pos matchee'.vtyp (E.focus focusee index )))
-                                (Vector1.to_source matchees'')
-                                (Source.count 0))
-                            |> Stream.into (Vector.sink ())
-                            |> Vector1.of_vector |> Option.get in
+                (match K.eval pos env (Vector.get matchees coli).vtyp with
+                | Some (typ, None) -> (match typ with
+                    | Prim Int ->
+                        let (pats, rows, default_rowis) = split_int pats coli in
+                        let matchee = Vector.get matchees coli in
+                        let clause (pat, rowis) =
+                            let pats = Matrix.select_rows rowis pats in
+                            let acceptors = Vector.select acceptors rowis in
+                            (pat, matcher' matchees pats acceptors) in
+                        let clauses = Stream.concat
+                                (Stream.from (Source.seq (IntMap.to_seq rows))
+                                    |> Stream.map (fun (n, rowis) ->
+                                        ( {E.pterm = E.ConstP (Int n); ptyp = matchee.vtyp; ppos = pos}
+                                        , rowis )))
+                                (Stream.single ( {E.pterm = WildP (Name.of_string ""); ptyp = matchee.vtyp
+                                        ; ppos = pos}
+                                    , default_rowis ))
+                            |> Stream.map clause
+                            |> Stream.into (Vector.sink ()) in
                         let var = E.fresh_var typ in
-                        let node : State.node = Destructure {defs; body} in
-                        Automaton.add states var.name {var; refcount = 1; frees = Some matchees; node};
+                        let node : State.node = Test {matchee; clauses} in
+                        Automaton.add states var.name {State.var; refcount = 1; frees = Some matchees; node};
                         var
-                    | None -> body)
 
-                | Fn _ | Prim (Cell | SingleRep | Boxed | TypeIn | RowOf)
-                | EmptyRow | PromotedTuple _ | PromotedArray _ -> unreachable (Some pos)
+                    | Tuple typs ->
+                        let width = Vector.length typs in
+                        let pats = split_tuple pats coli width in
+                        let matchee = Vector.get matchees coli in
+                        let matchees'' = Vector.init width (fun i -> E.fresh_var (Vector.get typs i)) in
+                        let matchees' = Vector.concat [Vector.sub matchees 0 coli; matchees''
+                            ; Vector.sub matchees (coli + 1) (Vector.length matchees - (coli + 1))] in
+                        let body = matcher' matchees' pats acceptors in
+                        (match Vector1.of_vector matchees'' with
+                        | Some matchees'' ->
+                            let defs = Stream.from (Source.zip_with (fun (matchee' : var) index ->
+                                        let focusee = E.at pos matchee.vtyp (E.use matchee) in
+                                        S.Def ( pos, matchee'
+                                            , E.at pos matchee'.vtyp (E.focus focusee index )))
+                                    (Vector1.to_source matchees'')
+                                    (Source.count 0))
+                                |> Stream.into (Vector.sink ())
+                                |> Vector1.of_vector |> Option.get in
+                            let var = E.fresh_var typ in
+                            let node : State.node = Destructure {defs; body} in
+                            Automaton.add states var.name {var; refcount = 1; frees = Some matchees; node};
+                            var
+                        | None -> body)
 
-                | _ -> todo (Some pos) ~msg: "pattern expansion")
+                    | Fn _ | Prim (Cell | SingleRep | Boxed | TypeIn | RowOf)
+                    | EmptyRow | PromotedTuple _ | PromotedArray _ -> unreachable (Some pos)
+
+                    | typ -> todo (Some pos)
+                        ~msg: (Util.doc_to_string (Env.document env T.to_doc typ) ^ " pattern expansion"))
+                | _ -> todo (Some pos))
             else begin
                 let tmp_vars = Stream.from (Source.zip (Vector.to_source matchees) row)
                     |> Stream.filter (fun (_, pat) -> is_named pat)
@@ -224,10 +234,12 @@ let emit pos codomain states start =
         |> Stream.map (fun def -> S.Def def)
         |> Stream.into Sink.array) body}
 
-let expand_clauses : Util.span -> T.t -> expr -> clause' Vector.t -> expr
-= fun pos codomain matchee clauses ->
+let expand_clauses : Util.span -> Env.t -> T.t -> expr -> clause' Vector.t -> expr
+= fun pos env codomain matchee clauses ->
     let var = E.fresh_var matchee.typ in
-    let (states, start) = matcher pos codomain var clauses in
+    let (states, start) = matcher pos env codomain var clauses in
     let body = emit pos codomain states start.name in
     E.at pos codomain (E.let' [|Def (pos, var, matchee)|] body)
+
+end
 
