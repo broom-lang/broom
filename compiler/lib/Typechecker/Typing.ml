@@ -146,6 +146,19 @@ and emit_clause_body {FExpr.pat; body} =
             end
 
 and check_defs env defs =
+    let analyze_def env (_, pat, expr) =
+        let (pat, semiabs, defs) = elaborate_pat env pat in
+        (pat, semiabs, defs, expr) in
+
+    let elaborate_def env (pat, (((vars : FExpr.var Vector.t), semiabs, _), (pos, _, expr)))
+            : FStmt.def Stream.t =
+        let {TS.term = expr; eff} =
+            if Vector.length vars > 0
+            then Env.find_rhs env pos (Vector.get vars 0).name
+            else implement env semiabs expr in
+        ignore (M.solving_unify expr.pos env eff EmptyRow);
+        expand_def env vars pos pat expr in
+
     let pats = CCVector.create () in
     let bindings = CCVector.create () in
     let _ = Vector.fold (fun env def ->
@@ -166,18 +179,6 @@ and check_defs env defs =
         |> Stream.flat_map (elaborate_def env)
         |> Stream.into (Vector.sink ())
     , env )
-
-and analyze_def env (_, pat, expr) =
-    let (pat, semiabs, defs) = elaborate_pat env pat in
-    (pat, semiabs, defs, expr)
-
-and elaborate_def env (pat, ((vars, semiabs, _), (pos, _, expr))) : FStmt.def Stream.t =
-    let {TS.term = expr; eff} =
-        if Vector.length vars > 0
-        then Env.find_rhs env pos (Vector.get vars 0).name
-        else implement env semiabs expr in
-    ignore (M.solving_unify expr.pos env eff EmptyRow);
-    expand_def env vars pos pat expr
 
 and expand_def env vars pos (pat : FExpr.pat) expr : FStmt.def Stream.t =
     if Vector.length vars = 1 then begin
