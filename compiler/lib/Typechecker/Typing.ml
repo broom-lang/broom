@@ -315,12 +315,20 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
                 { term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg)
                 ; eff }
 
-            | (_, PrimApp (_, Some _, _)) -> todo (Some expr.pos)
-
-            | (codomain, PrimApp (op, None, arg)) ->
+            | (codomain, PrimApp (op, iarg, arg)) ->
                 let (universals, domain, app_eff, codomain') = primop_typ op in
                 let (uvs, domain, app_eff, codomain') =
                     Env.instantiate_primop env universals domain app_eff codomain' in
+                let universals = Vector.map (fun uv -> T.Uv uv) uvs in
+                (match iarg with
+                | Some iarg ->
+                    let idomain = (* HACK *)
+                        if Vector.length universals = 1
+                        then Vector.get universals 0
+                        else Tuple universals in
+                    let {TS.term = _; eff = iarg_eff} = check_whnf env idomain iarg in
+                    ignore (M.solving_unify expr.pos env iarg_eff app_eff)
+                | None -> ());
                 let domain = (* HACK *)
                     if Vector.length domain = 1
                     then Vector.get domain 0
@@ -328,17 +336,24 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
                 (* TODO: Effect opening à la Koka: *)
                 let {TS.term = arg; eff = arg_eff} = check env domain arg in
                 ignore (M.solving_unify expr.pos env arg_eff app_eff);
-                let universals = Vector.map (fun uv -> T.Uv uv) uvs in
                 { term = FExpr.at expr.pos codomain' (FExpr.primapp op universals arg)
                     |> Coercer.apply_opt (M.solving_subtype expr.pos env codomain' codomain)
                 ; eff = app_eff }
 
-            | (_, PrimBranch (_, Some _, _, _)) -> todo (Some expr.pos)
-
-            | (typ, PrimBranch (op, None, arg, clauses)) ->
+            | (typ, PrimBranch (op, iarg, arg, clauses)) ->
                 let (universals, domain, app_eff, codomain) = branchop_typ op in
                 let (uvs, domain, app_eff, codomain) =
                     Env.instantiate_branch env universals domain app_eff codomain in
+                let universals = Vector.map (fun uv -> T.Uv uv) uvs in
+                (match iarg with
+                | Some iarg ->
+                    let idomain = (* HACK *)
+                        if Vector.length universals = 1
+                        then Vector.get universals 0
+                        else Tuple universals in
+                    let {TS.term = _; eff = iarg_eff} = check_whnf env idomain iarg in
+                    ignore (M.solving_unify expr.pos env iarg_eff app_eff)
+                | None -> ());
                 (* TODO: Effect opening à la Koka: *)
                 let {TS.term = arg; eff = arg_eff} = check_whnf env (Tuple domain) arg in
                 ignore (M.solving_unify expr.pos env arg_eff app_eff);
@@ -355,7 +370,6 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
                         ignore (M.solving_unify body.pos env body_eff app_eff);
                         {FExpr.res = pat; prim_body})
                     |> Stream.into (Vector.sink ()) in
-                let universals = Vector.map (fun uv -> T.Uv uv) uvs in
                 { term = FExpr.at expr.pos typ (FExpr.primbranch op universals arg clauses)
                 ; eff = app_eff }
 
