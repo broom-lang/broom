@@ -363,16 +363,7 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
                 { term = term |> Coercer.apply_opt (M.solving_subtype expr.pos env sub typ)
                 ; eff } (* FIXME: Abstract type generation effect *)
 
-            | (typ, Tuple exprs) ->
-                let typs = match typ with (* HACK *)
-                    | Tuple typs -> typs
-                    | Uv uv -> (* `uv` is Unassigned because `typ` was `K.eval`uated. *)
-                        let typs = exprs |> Vector.map (fun _ ->
-                            let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-                            T.Uv (Env.uv env kind)) in
-                        Env.set_uv env expr.pos uv (Assigned (Tuple typs));
-                        typs
-                    | _ -> todo (Some expr.pos) in
+            | (Tuple typs, Tuple exprs) ->
                 let exprs' = CCVector.create () in
                 let typs' = CCVector.create () in
                 let eff : T.t = Uv (Env.uv env T.aRow) in
@@ -391,7 +382,19 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
                         (FExpr.values (CCVector.to_array exprs'))
                     ; eff }
 
+            | (typ, Tuple exprs) ->
+                let eff = T.Uv (Env.uv env T.aRow) in
+                let exprs = exprs |> Vector.map (fun expr ->
+                    let {TS.term; eff = eff'} = typeof env expr in
+                    ignore (M.solving_unify expr.pos env eff' eff);
+                    term) in
+                let sub = T.Tuple (Vector.map (fun {FExpr.typ; _} -> typ) exprs) in
+                { term = FExpr.at expr.pos sub (FExpr.values (Vector.to_array exprs))
+                    |> Coercer.apply_opt (M.solving_subtype expr.pos env sub typ)
+                ; eff }
+
             | (typ, Focus (tup, index)) ->
+                (* TODO: get rid of focalization somehow (T.rep as a list instead of an array?) *)
                 let {TS.term = tup; eff} = typeof env tup in
                 (match M.focalize tup.pos env tup.typ (TupleL (index + 1)) with
                 | (coerce_tup, Tuple typs) when index < Vector.length typs ->
