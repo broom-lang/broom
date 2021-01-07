@@ -489,62 +489,10 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
 (* ## Synthesis *)
 
 and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector.t =
-    let elaborate_pats env pats =
-        let step (env, pats, typs, defs) pat =
-            let (pat, (_, typ), defs') = elaborate_pat env pat in
-            let env = Vector.fold (Env.push_val Explicit) env defs' in
-            (env, pat :: pats, typ :: typs, Vector.append defs defs') in
-        let (_, pats, typs, defs) = Vector.fold step (env, [], [], Vector.empty) pats in
-        (Vector.of_list (List.rev pats), Vector.of_list (List.rev typs), defs) in
-
-    match pat.v with
-    | AExpr.Tuple pats when Vector.length pats = 1 -> elaborate_pat env (Vector.get pats 0)
-
-    | AExpr.Tuple pats ->
-        let (pats, typs, defs) = elaborate_pats env pats in
-        let ptyp : T.t = Tuple typs in
-        ({ppos = pat.pos; pterm = FExpr.TupleP pats; ptyp}, (Vector.empty, ptyp), defs)
-
-    | AExpr.Ann (pat, typ) ->
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-        let typ = K.check env kind typ in
-        let (_, typ) as semiabs = Env.reabstract env typ in
-        let (pat, defs) = check_pat env typ pat in
-        (pat, semiabs, defs)
-
-    | AExpr.Var name ->
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-        let ptyp = T.Uv (Env.uv env kind) in
-        let var = FExpr.var name ptyp in
-        ({ppos = pat.pos; pterm = VarP var; ptyp}, (Vector.empty, ptyp), Vector.singleton var)
-
-    | AExpr.Wild name ->
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-        let ptyp = T.Uv (Env.uv env kind) in
-        ({ppos = pat.pos; pterm = WildP name; ptyp}, (Vector.empty, ptyp), Vector.empty)
-
-    | AExpr.Proxy carrie ->
-        let {TS.typ = carrie; kind = _} = K.kindof env {pat with v = carrie} in
-        let ptyp : T.t = Proxy carrie in
-        ({ppos = pat.pos; pterm = ProxyP carrie; ptyp}, (Vector.empty, ptyp), Vector.empty)
-
-    | AExpr.Const c ->
-        let ptyp = const_typ c in
-        ({ppos = pat.pos; pterm = ConstP c; ptyp}, (Vector.empty, ptyp), Vector.empty)
-
-    | AExpr.Focus _ | Let _ | App _ | PrimApp _ | PrimBranch _ | Select _ | Record _ ->
-        todo (Some pat.pos) ~msg: "in elaborate_pat"
-
-    | AExpr.Fn _ ->
-        Env.reportError env pat.pos (NonPattern pat.v);
-        (* TODO: Treat as `_` instead: *)
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-        let ptyp = T.Uv (Env.uv env kind) in
-        let var = FExpr.fresh_var ptyp in
-        ( {ppos = pat.pos; pterm = VarP var; ptyp}, (Vector.empty, ptyp)
-        , Vector.singleton var )
-
-    | AppSequence _ -> bug (Some pat.pos) ~msg: "typechecker encountered AppSequence pattern"
+    let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
+    let typ = T.Uv (Env.uv env kind) in
+    let (pat, vars) = check_pat env typ pat in
+    (pat, (Vector.empty, typ), vars)
 
 (* ## Checking *)
 
