@@ -476,10 +476,9 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
                     |> Coercer.apply_opt (M.solving_subtype expr.pos env sub typ)
                 ; eff = EmptyRow }
 
-            | (_, Wild _) -> todo (Some expr.pos) ~msg: "elaborate _ expression"
-
+            | (_, Wild _) -> bug (Some expr.pos) ~msg: "_-expression reached typechecker"
             | (_, AppSequence _) ->
-                bug (Some expr.pos) ~msg: "typechecker encountered AppSequence expression") in
+                bug (Some expr.pos) ~msg: "AppSequence expression reached typechecker") in
 
     match K.eval expr.pos env typ with
     | Some (typ, None) -> check_whnf env typ expr
