@@ -428,7 +428,8 @@ let find_rhs (env : t) pos name =
         | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
         | [] ->
             reportError env pos (Unbound name);
-            todo (Some pos) ~msg: "find_rhs unbound lie" in
+            let typ = T.Uv (uv env (Uv (uv env T.aKind))) in
+            {term = E.at pos typ (E.use (E.fresh_var typ)); eff = EmptyRow} in
     find env.scopes
 
 let find_rhst (env : t) pos name =
@@ -457,7 +458,8 @@ let find_rhst (env : t) pos name =
         | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
         | [] ->
             reportError env pos (Unbound name);
-            todo (Some pos) ~msg: "find_rhst unbound lie" in
+            let kind = T.Uv (uv env T.aKind) in
+            {typ = T.Uv (uv env kind); kind} in
     find env.scopes
 
 let scope_vars = function
