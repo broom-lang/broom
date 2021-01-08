@@ -1,6 +1,7 @@
+open Asserts
+
 module PP = PPrint
 
-(* FIXME: Printing syntax differs from parsed syntax: *)
 
 type 'a with_pos = 'a Util.with_pos
 
@@ -32,6 +33,111 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
         and clause = {params : pat with_pos; body : t with_pos}
 
         and pat = t
+
+        (*
+        (* FIXME: Printing syntax differs from parsed syntax, so use Grammar: *)
+
+        let tuple = PIso.prism (fun exprs -> Tuple exprs) (function
+            | Tuple exprs -> Some exprs
+            | _ -> None)
+
+        let focus = PIso.prism (fun (tup, i) -> Focus (tup, i)) (function
+            | Focus (tup, i) -> Some (tup, i)
+            | _ -> None)
+
+        let ann = PIso.prism (fun (expr, typ) -> Ann (expr, typ)) (function
+            | Ann (expr, typ) -> Some (expr, typ)
+            | _ -> None)
+
+        let fn = PIso.prism (fun (param, body) -> Fn (param, body)) (function
+            | Fn (param, body) -> Some (param, body)
+            | _ -> None)
+
+        let app = PIso.prism (fun (callee, plicity, arg) -> App (callee, plicity, arg)) (function
+            | App (callee, plicity, arg) -> Some (callee, plicity, arg)
+            | _ -> None)
+
+        let app_seq = PIso.prism (fun exprs -> AppSequence exprs) (function
+            | AppSequence exprs -> Some exprs
+            | _ -> None)
+
+        let primapp = PIso.prism (fun (op, iarg, arg) -> PrimApp (op, iarg, arg)) (function
+            | PrimApp (op, iarg, arg) -> Some (op, iarg, arg)
+            | _ -> None)
+
+        let primbranch = PIso.prism (fun (op, iarg, arg, clauses) -> PrimBranch (op, iarg, arg, clauses))
+            (function
+            | PrimBranch (op, iarg, arg, clauses) -> Some (op, iarg, arg, clauses)
+            | _ -> None)
+
+        let let' = PIso.prism (fun (defs, body) -> Let (defs, body)) (function
+            | Let (defs, body) -> Some (defs, body)
+            | _ -> None)
+
+        let record = PIso.prism (fun stmts -> Record stmts) (function
+            | Record stmts -> Some stmts
+            | _ -> None)
+
+        let select = PIso.prism (fun (r, label) -> Select (r, label)) (function
+            | Select (r, label) -> Some (r, label)
+            | _ -> None)
+
+        let proxy = PIso.prism (fun typ -> Proxy typ) (function
+            | Proxy typ -> Some typ
+            | _ -> None)
+
+        let var = PIso.prism (fun var -> Var var) (function
+            | Var var -> Some var
+            | _ -> None)
+
+        let wild = PIso.prism (fun name -> Wild name) (function
+            | Wild name -> Some name
+            | _ -> None)
+
+        let const = PIso.prism (fun c -> Const c) (function
+            | Const c -> Some c
+            | _ -> None)
+
+        let positioned = PIso.iso (fun _ -> Asserts.todo None)
+            (fun {Util.v; pos = _} -> v)
+
+        let grammar =
+            let open Grammar in let open Grammar.Infix in
+
+            fix (fun expr ->
+                let atom = positioned <$> (var <$> Name.grammar
+                    <|> (wild <$> (token '_' *> Name.grammar))
+                    <|> (const <$> Const.grammar)) in
+
+                let tuple = surround_separate 4 0 (parens (pure Vector.empty))
+                    lparen (comma *> break 1) rparen expr
+                    |> map tuple in
+
+                let surrounded = positioned <$> tuple in
+
+                let nestable = surrounded <|> atom in
+
+                let access =
+                    let adapt = PIso.iso (function
+                            | (focusee, Some is) -> (focusee, is)
+                            | (focusee, None) -> (focusee, []))
+                        (function
+                        | (focusee, []) -> (focusee, None)
+                        | (focusee, is) -> (focusee, Some is)) in
+                    let f = PIso.comp (PIso.fold_left (PIso.comp positioned focus)) adapt in
+                    f <$> (nestable <*> opt (break 1 *> (many1 (dot *> break 1 *> int)))) in
+
+                let app =
+                    let adapt = PIso.iso (fun _ -> todo None) (function
+                        | (callee, Util.Explicit, arg) -> (match callee.Util.v with
+                            | App (callee, Implicit, iarg) -> ((callee, [arg]), Some [iarg])
+                            | _ -> ((callee, [arg]), None))
+                        | (callee, Implicit, iarg) -> ((callee, [iarg]), Some [])) in
+                    PIso.comp positioned (PIso.comp app adapt)
+                        <$> (access <*> many (break 1 *> access)
+                            <*> opt (break 1 *> token '@' *> many (break 1 *> access))) in
+
+                app)*)
 
         let colon_prec = 1
         let app_prec = 9

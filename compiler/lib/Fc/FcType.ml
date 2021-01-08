@@ -140,6 +140,11 @@ and Typ : FcTypeSigs.TYPE
             | Record typ -> Some typ
             | _ -> None) in
 
+        let with' = PIso.prism (fun (base, (label, field)) -> With {base; label; field})
+            (fun typ -> match non_uv_head s typ with
+            | With {base; label; field} -> Some (base, (label, field))
+            | _ -> None) in
+
         let empty_row = PIso.prism (fun () -> EmptyRow) (fun typ ->
             match non_uv_head s typ with
             | EmptyRow -> Some ()
@@ -207,22 +212,12 @@ and Typ : FcTypeSigs.TYPE
 
             let nestable = atom <|> surrounded in
 
-            let app = app <$> (nestable <* break 1 <*> nestable)
-                <|> nestable in
+            let app =
+                PIso.fold_left app <$> (nestable <*> many (break 1 *> nestable)) in
 
-            let non_fn = 
-                let f = PIso.iso (fun (base, fields) ->
-                    List.fold_left (fun base (label, field) -> With {base; label; field})
-                        base (Option.value ~default: [] fields))
-                    (fun typ ->
-                        let rec loop fields typ =
-                            match non_uv_head s typ with
-                            | With {base; label; field} ->
-                                loop ((label, field) :: fields) base
-                            | base -> (match fields with
-                                | _ :: _ -> (base, Some fields)
-                                | [] -> (base, None)) in
-                        loop [] typ) in
+            let non_fn =
+                let adapt = PIso.map_snd PIso.opt_non_empty_list in
+                let f = PIso.comp (PIso.fold_left with') adapt in
                 let label =
                     PIso.string <$> (many1 (sat (Fun.negate (String.contains " \t\r\n"))))
                     |> map Name.basename_iso in

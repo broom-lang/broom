@@ -203,10 +203,13 @@ implicit_clause : "|" binapp tail(",", binapp, "=>") expr {
         {params = parenthesized (Vector.of_list ($2 :: $3)) $loc($3); body = $4}
     }
 
-args :
-    | select+ "@" select+ { Both (Vector.of_list $1, Vector.of_list $3) }
-    | select+ { Right (Vector.of_list $1) }
-    | select+ "@" { Ior.Left (Vector.of_list $1) }
+args : select+ iargs? { match $2 with
+        | None -> Ior.Right (Vector.of_list $1)
+        | Some [] -> Left (Vector.of_list $1)
+        | Some iargs -> Both (Vector.of_list $1, Vector.of_list iargs)
+    }
+
+iargs : "@" select* { $2 }
 
 (* # Types *)
 
