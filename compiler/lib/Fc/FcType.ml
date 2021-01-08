@@ -281,6 +281,10 @@ and Typ : FcTypeSigs.TYPE
     and binding_to_doc s (name, kind) =
         PPrint.(Name.to_doc name ^/^ colon ^/^ kind_to_doc s kind)
 
+    and bv_to_doc {depth; sibli; kind = _} =
+        PPrint.(caret ^^ string (Int.to_string depth)
+            ^^ slash ^^ string (Int.to_string sibli))
+
     and universal_to_doc s universals body =
         PPrint.(prefix 4 1 (group (string "forall" ^/^ (kinds_to_doc s) (Vector.to_list universals)))
             (dot ^^ blank 1 ^^ body))

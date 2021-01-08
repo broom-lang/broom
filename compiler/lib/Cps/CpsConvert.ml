@@ -35,6 +35,7 @@ let log = TxRef.log () (* HACK *)
 
 let convert_typ pos state_typ =
     let rec convert : Fc.Type.t -> Type.t = function
+        | Exists (existentials, body) -> Exists (existentials, convert body)
         | Tuple typs -> Tuple (Vector.map convert typs)
         | PromotedTuple typs -> PromotedTuple (Vector.map convert typs)
         | PromotedArray typs -> PromotedArray (Vector.map convert typs)
@@ -49,12 +50,14 @@ let convert_typ pos state_typ =
             With {base = convert base; label; field = convert field}
         | EmptyRow -> EmptyRow
         | Proxy typ -> Proxy (convert typ)
+        | Fn (param, body) -> Fn (param, convert body)
         | App (callee, arg) -> App (convert callee, convert arg)
         | Prim p -> Prim p
+        | Bv bv -> Bv bv
+        | Ov _ -> todo (Some pos)
         | Uv r -> (match Fc.Uv.get log r with
             | Assigned typ -> convert typ
-            | Unassigned _ -> todo (Some pos) ~msg: "unassigned uv in CPS conversion")
-        | _ -> todo (Some pos) in
+            | Unassigned _ -> todo (Some pos) ~msg: "unassigned uv in CPS conversion") in
     convert
 
 let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =

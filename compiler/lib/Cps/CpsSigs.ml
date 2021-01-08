@@ -5,6 +5,7 @@ module type TYPE = sig
     type param = Fc.Type.binding
 
     type t =
+        | Exists of kind Vector1.t * t
         | Tuple of t Vector.t
         | PromotedTuple of t Vector.t
         | PromotedArray of t Vector.t
@@ -13,8 +14,10 @@ module type TYPE = sig
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
         | Proxy of t
-        | App of t * t
         | Prim of Prim.t
+        | Fn of kind * t
+        | App of t * t
+        | Bv of Fc.Type.bv
 
     val to_doc : t -> PPrint.document
     val param_to_doc : param -> PPrint.document

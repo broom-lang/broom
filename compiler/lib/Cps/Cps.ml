@@ -9,6 +9,7 @@ module Type = struct
     type param = Fc.Type.binding
 
     type t =
+        | Exists of kind Vector1.t * t
         | Tuple of t Vector.t
         | PromotedTuple of t Vector.t
         | PromotedArray of t Vector.t
@@ -17,8 +18,10 @@ module Type = struct
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
         | Proxy of t
-        | App of t * t
         | Prim of Prim.t
+        | Fn of kind * t
+        | App of t * t
+        | Bv of Fc.Type.bv
 
     let log = TxRef.log () (* HACK *)
     let kind_to_doc = Fc.Type.kind_to_doc log
@@ -27,6 +30,14 @@ module Type = struct
     let rec to_doc typ =
         let open PPrint in
         match typ with
+        | Exists (existentials, body) ->
+            prefix 4 1
+                (string "exists" ^^ blank 1
+                ^^ surround_separate_map 4 0 empty
+                        langle (comma ^^ break 1) (rangle ^^ break 1)
+                        kind_to_doc (Vector1.to_list existentials))
+                (to_doc body)
+
         | Tuple typs -> surround_separate_map 4 0 (parens colon)
             (lparen ^^ colon) (comma ^^ break 1) rparen
             to_doc (Vector.to_list typs)
@@ -40,7 +51,7 @@ module Type = struct
             to_doc (Vector.to_list typs)
 
         | Pi {universals; domain} ->
-            prefix 4 1 (string "fn")
+            prefix 4 1 (string "pi")
                 (surround_separate_map 4 0 empty
                     langle (comma ^^ break 1) (rangle ^^ break 1)
                     kind_to_doc (Vector.to_list universals)
@@ -58,8 +69,14 @@ module Type = struct
 
         | Proxy carrie -> brackets (prefix 4 1 equals (to_doc carrie))
 
-        | App (callee, arg) -> parens (to_doc callee) ^^ blank 1 ^^ parens (to_doc arg)
         | Prim p -> string "__" ^^ Prim.to_doc p
+
+        | Fn (param, body) ->
+            infix 4 1 dot (string "fn" ^^ blank 1 ^^ kind_to_doc param) (to_doc body)
+
+        | App (callee, arg) -> parens (to_doc callee) ^^ blank 1 ^^ parens (to_doc arg)
+
+        | Bv bv -> Fc.Type.bv_to_doc bv
 end
 
 module ContId = struct

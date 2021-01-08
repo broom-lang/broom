@@ -59,6 +59,7 @@ module type TYPE = sig
 
     val kind_to_doc : subst -> kind -> PPrint.document
     val binding_to_doc : subst -> binding -> PPrint.document
+    val bv_to_doc : bv -> PPrint.document
     val universal_to_doc : subst -> kind Vector.t -> PPrint.document -> PPrint.document
     val to_doc : subst -> t -> PPrint.document
     val coercion_to_doc : subst -> coercion -> PPrint.document

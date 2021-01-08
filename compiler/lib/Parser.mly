@@ -94,7 +94,7 @@ binapp2 :
     }
     | binapp3 { $1 }
 
-binapp3 :
+binapp3 : (* TODO: Python-style chaining? *)
     | binapp4 COMPARISON binapp4 { (* NOTE: nonassociative *)
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Explicit, {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
