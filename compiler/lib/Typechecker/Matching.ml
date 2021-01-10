@@ -43,7 +43,7 @@ fun co base label field ->
     T.Trans (co, WithCo {base; label; field = Refl field})
 
 (* Massage `typ` into a `With`, returning `(coercion, base, field_t)`: *)
-let pull_row pos env label' typ : T.coercion option * T.t * T.t =
+let pull_row pos env label' typ : T.t T.coercion option * T.t * T.t =
     let rec pull typ = match K.eval pos env typ with
         | Some (With {base; label; field}, co) when label = label' -> (co, base, field)
         | Some (With {base; label; field}, co) ->
@@ -63,8 +63,8 @@ let pull_row pos env label' typ : T.coercion option * T.t * T.t =
     pull typ
 
 let match_rows : Util.span -> Env.t -> T.t -> T.t -> Name.t CCVector.ro_vector
-    * T.coercion option * T.t * T.t CCVector.ro_vector
-    * T.t * T.t CCVector.ro_vector * T.coercion option
+    * T.t T.coercion option * T.t * T.t CCVector.ro_vector
+    * T.t * T.t CCVector.ro_vector * T.t T.coercion option
 = fun pos env row row' ->
     let labels = CCVector.create () in
     let fields = CCVector.create () in
@@ -557,7 +557,7 @@ and occurs_check pos env uv typ =
 
 (* # Unification *)
 
-and unify pos env typ typ' : T.coercion option matching =
+and unify pos env typ typ' : T.t T.coercion option matching =
     let (>>=) = Option.bind in
     let res =
         K.eval pos env typ >>= fun (typ, co) ->
@@ -581,7 +581,7 @@ and unify pos env typ typ' : T.coercion option matching =
         { coercion = Some (T.Patchable patchable)
         ; residual = Some (Unify (typ, typ', patchable)) }
 
-and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
+and unify_whnf : span -> Env.t -> T.t -> T.t -> T.t T.coercion option matching
 = fun pos env typ typ' ->
     let open ResidualMonoid in
     match (typ, typ') with
@@ -614,7 +614,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.coercion option matching
             let subst = Vector1.foldi (fun subst i ((name, _), _) ->
                 Name.Map.add name i subst
             ) Name.Map.empty skolems in
-            let body_co : T.coercion = match body_co with
+            let body_co : T.t T.coercion = match body_co with
                 | Some body_co -> Env.close_coercion env subst body_co
                 | None -> Refl body' in
             {coercion = Some (ExistsCo (existentials', body_co)); residual}

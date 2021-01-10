@@ -303,6 +303,8 @@ let to_js program =
 
             | Const c -> emit_const c
 
+            | Cast {castee; coercion = _} -> emit_use castee
+
             | Pack {existentials = _; impl} -> emit_use impl
             | Unpack packed -> emit_use packed
 

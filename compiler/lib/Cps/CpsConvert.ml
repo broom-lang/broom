@@ -15,19 +15,28 @@ module Env : sig
 
     val add_typ : t -> Name.t -> Type.t -> t
     val find_typ : t -> Name.t -> Type.t
+
+    val add_co : t -> Name.t -> Type.t Fc.Type.coercion -> t
+    val find_co : t -> Name.t -> Type.t Fc.Type.coercion
 end = struct
     module Vals = Name.HashMap
     module Typs = Name.HashMap
+    module Coercions = Name.HashMap
 
-    type t = {vals : Expr.Id.t Vals.t; typs : Type.t Typs.t}
+    type t = {vals : Expr.Id.t Vals.t; typs : Type.t Typs.t
+        ; cos : Type.t Fc.Type.coercion Coercions.t}
 
-    let empty = {vals = Vals.empty; typs = Typs.empty}
+    let empty = {vals = Vals.empty; typs = Typs.empty
+        ; cos = Coercions.empty}
 
     let add env k v = {env with vals = Vals.add k v env.vals}
     let find env k = Vals.get_exn k env.vals
 
     let add_typ env k t = {env with typs = Typs.add k t env.typs}
     let find_typ env k = Typs.get_exn k env.typs
+
+    let add_co env k co = {env with cos = Coercions.add k co env.cos}
+    let find_co env k = Coercions.get_exn k env.cos
 end
 
 type meta_cont =
@@ -66,11 +75,36 @@ let convert_typ state_typ env pos =
             | Unassigned _ -> todo (Some pos) ~msg: "unassigned uv in CPS conversion") in
     convert
 
+let convert_co state_typ env pos =
+    let rec convert : Fc.Type.t Fc.Type.coercion -> Type.t Fc.Type.coercion = function
+        | PiCo {universals; domain; codomain} ->
+            PiCo {universals; domain = convert domain; codomain = convert codomain}
+        | TupleCo cos -> TupleCo (Vector.map convert cos)
+        | RecordCo row_co -> RecordCo (convert row_co)
+        | WithCo {base; label; field} ->
+            WithCo {base = convert base; label; field = convert field}
+        | ProxyCo co -> ProxyCo (convert co)
+        | PromotedTupleCo cos -> PromotedTupleCo (Vector.map convert cos)
+        | PromotedArrayCo cos -> PromotedArrayCo (Vector.map convert cos)
+        | ExistsCo (existentials, co) -> ExistsCo (existentials, convert co)
+        | Inst (co, targs) ->
+            Inst (convert co, Vector1.map (convert_typ state_typ env pos) targs)
+        | Symm co -> Symm (convert co)
+        | Trans (co, co') -> Trans (convert co, convert co')
+        | Refl typ -> Refl (convert_typ state_typ env pos typ)
+        | Comp (co, co') -> Comp (convert co, Vector1.map convert co')
+        | AUse name -> Env.find_co env name
+        | Axiom (universals, l, r) -> Axiom (universals, convert_typ state_typ env pos l
+            , convert_typ state_typ env pos r)
+        | Patchable r -> convert (TxRef.(!) r) in
+    convert
+
 let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
     let builder = Builder.create type_fns in
     let env = Env.empty in
     let state_typ = convert_typ ((* HACK *) Prim Int) env main_body.pos state_typ in
     let convert_typ = convert_typ state_typ in
+    let convert_co = convert_co state_typ in
     let (main_span, main_body) =
         let pos =
             ( (if Vector.length defs > 0
@@ -212,6 +246,22 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
             ) env typedefs in
             convert parent state k env body
 
+        | Axiom {axioms; body} ->
+            let env = Vector1.fold (fun env (name, universals, l, r) ->
+                Env.add_co env name (Axiom (universals, convert_typ env expr.pos l
+                    , convert_typ env expr.pos r))
+            ) env axioms in
+            convert parent state k env body
+
+        | Cast {castee; coercion} ->
+            let k = FnK {pos = castee.pos; domain = convert_typ env castee.pos castee.typ
+                ; f = fun ~parent: _ ~state ~value: castee ->
+                    Builder.express builder {pos = expr.pos; cont = parent
+                        ; typ = convert_typ env expr.pos expr.typ
+                        ; term = Cast {castee; coercion = convert_co env expr.pos coercion}}
+                    |> continue k parent state} in
+            convert parent state k env castee
+
         | Pack {existentials; impl} ->
             let k = FnK {pos = impl.pos; domain = convert_typ env impl.pos impl.typ
                 ; f = fun ~parent: _ ~state ~value ->
@@ -345,8 +395,6 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
         | Patchable r -> TxRef.(convert parent state k env !r)
 
         | Letrec _ -> bug (Some expr.pos) ~msg: "encountered `letrec` in CPS conversion"
-
-        | _ -> todo (Some expr.pos)
 
     and convert_pattern pat : Pattern.t = match pat.pterm with
         | ConstP c -> Const c

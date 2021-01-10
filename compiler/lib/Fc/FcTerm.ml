@@ -44,7 +44,7 @@ end = struct
 
         | Axiom of { axioms : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t
             ; mutable body : t }
-        | Cast of {mutable castee : t; coercion : Type.coercion}
+        | Cast of {mutable castee : t; coercion : Type.t Type.coercion}
 
         | Pack of {existentials : Type.t Vector1.t; mutable impl : t}
         | Unpack of { existentials : Type.binding Vector1.t; var : var; mutable value : t

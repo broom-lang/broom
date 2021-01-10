@@ -36,22 +36,24 @@ module type TYPE = sig
 
     and 'a field = {label : string; typ : 'a}
 
-    and coercion =
-        | ExistsCo of kind Vector1.t * coercion
-        | Refl of typ
-        | Symm of coercion
-        | Trans of coercion * coercion
-        | Comp of coercion * coercion Vector1.t
-        | Inst of coercion * typ Vector1.t
+    and 'typ coercion =
+        | ExistsCo of kind Vector1.t * 'typ coercion
+        | Refl of 'typ
+        | Symm of 'typ coercion
+        | Trans of 'typ coercion * 'typ coercion
+        | Comp of 'typ coercion * 'typ coercion Vector1.t
+        | Inst of 'typ coercion * 'typ Vector1.t
         | AUse of Name.t
-        | PiCo of {universals : kind Vector.t; domain : coercion; codomain : coercion}
-        | PromotedArrayCo of coercion Vector.t
-        | PromotedTupleCo of coercion Vector.t
-        | TupleCo of coercion Vector.t
-        | RecordCo of coercion
-        | WithCo of {base : coercion; label : Name.t; field : coercion}
-        | ProxyCo of coercion
-        | Patchable of coercion TxRef.rref
+        | Axiom of kind Vector.t * 'typ * 'typ
+        | PiCo of {universals : kind Vector.t
+            ; domain : 'typ coercion; codomain : 'typ coercion}
+        | PromotedArrayCo of 'typ coercion Vector.t
+        | PromotedTupleCo of 'typ coercion Vector.t
+        | TupleCo of 'typ coercion Vector.t
+        | RecordCo of 'typ coercion
+        | WithCo of {base : 'typ coercion; label : Name.t; field : 'typ coercion}
+        | ProxyCo of 'typ coercion
+        | Patchable of 'typ coercion TxRef.rref
 
     and typ = t
 
@@ -62,7 +64,9 @@ module type TYPE = sig
     val bv_to_doc : bv -> PPrint.document
     val universal_to_doc : subst -> kind Vector.t -> PPrint.document -> PPrint.document
     val to_doc : subst -> t -> PPrint.document
-    val coercion_to_doc : subst -> coercion -> PPrint.document
+    val coercion_to_doc' : (subst -> 'typ -> PPrint.document) -> subst -> 'typ coercion
+        -> PPrint.document
+    val coercion_to_doc : subst -> typ coercion -> PPrint.document
     val template_to_doc : subst -> template -> PPrint.document
 end
 

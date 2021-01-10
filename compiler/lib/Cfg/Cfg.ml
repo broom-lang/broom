@@ -11,7 +11,7 @@ module Expr = struct
 
     let is_pure : t -> bool = function
         | Tuple _ | Focus _ | Record _ | With _ | Where _ | Select _
-        | Proxy _ | Label _ | Param _ | Pack _ | Unpack _ | Const _ -> true
+        | Proxy _ | Label _ | Param _ | Cast _ | Pack _ | Unpack _ | Const _ -> true
         | PrimApp {op; _} -> Primop.is_pure op
 
     let iter_uses = Cps.Expr.iter_uses'

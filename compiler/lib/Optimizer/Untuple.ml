@@ -130,7 +130,7 @@ let untuple_args program =
                     with term = PrimApp {op; universals; args = optimize_args args}}
             | Tuple _ | Focus _
             | Record _ | With _ | Where _ | Select _ | Proxy _
-            | Label _ | Param _ | Pack _ | Unpack _ | Const _ ->
+            | Label _ | Param _ | Cast _ | Pack _ | Unpack _ | Const _ ->
                 Expr.iter_labels optimize_label expr;
                 Builder.express builder (Expr.map_uses optimize_use expr) in
 

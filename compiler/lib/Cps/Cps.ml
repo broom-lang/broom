@@ -99,6 +99,8 @@ module Type = struct
         | Existing {value; index} ->
             infix 4 1 (string "existing") (Name.to_doc value) (string (Int.to_string index))
             |> parens
+
+    let coercion_to_doc = Fc.Type.coercion_to_doc' (Fun.const to_doc) log
 end
 
 module Expr = struct
@@ -118,6 +120,7 @@ module Expr = struct
         | Proxy of Type.t
         | Label of cont_id
         | Param of {label : cont_id; index : int}
+        | Cast of {castee : Id.t; coercion : Type.t Fc.Type.coercion}
         | Pack of {existentials : Type.t Vector1.t; impl : Id.t}
         | Unpack of Id.t
         | Const of Const.t
@@ -172,13 +175,15 @@ module Expr = struct
         | Param {label; index} ->
             infix 4 1 (string "param") (ContId.to_doc label) (string (Int.to_string index))
 
+        | Cast {castee; coercion} -> 
+            infix 4 1 (string "|>") (Id.to_doc castee) (Type.coercion_to_doc coercion)
+
         | Pack {existentials; impl} ->
             prefix 4 1
                 (string "pack" ^/^ surround_separate_map 4 0 empty
                     langle (comma ^^ break 1) (rangle ^^ blank 1)
                     Type.to_doc (Vector1.to_list existentials))
                 (Id.to_doc impl)
-
         | Unpack packed -> string "unpack" ^/^ Id.to_doc packed
 
         | Const c -> Const.to_doc c
@@ -193,7 +198,7 @@ module Expr = struct
     let iter_labels' f = function
         | Label label | Param {label; index = _} -> f label
         | Tuple _ | Focus _ | PrimApp _ | Record _ | With _ | Where _ | Select _ | Proxy _
-        | Pack _ | Unpack _ | Const _ -> ()
+        | Cast _ | Pack _ | Unpack _ | Const _ -> ()
 
     let iter_labels f expr = iter_labels' f expr.term
 
@@ -203,6 +208,7 @@ module Expr = struct
         | Where {base; fields} -> f base; Vector.iter (fun (_, use) -> f use) fields
         | With {base; label = _; field} -> f base; f field
         | Focus {focusee = use; index = _} | Select {selectee = use; field = _} -> f use
+        | Cast {castee; coercion = _} -> f castee
         | Pack {existentials = _; impl} -> f impl
         | Unpack packed -> f packed
         | Proxy _ | Label _ | Param _ | Const _ -> ()
@@ -249,6 +255,10 @@ module Expr = struct
         | Select {selectee; field} ->
             let selectee' = f selectee in
             if selectee' == selectee then term else Select {selectee = selectee'; field}
+
+        | Cast {castee; coercion} ->
+            let castee' = f castee in
+            if castee' == castee then term else Cast {castee = castee'; coercion}
 
         | Pack {existentials; impl} ->
             let impl' = f impl in
@@ -481,6 +491,7 @@ module Program = struct
                     | Tuple children -> Vector.fold visit_use counts children
                     | Focus {focusee = child; index = _}
                     | Select {selectee = child; field = _}
+                    | Cast {castee = child; coercion = _}
                     | Pack {existentials = _; impl = child}
                     | Unpack child -> visit_use counts child
                     | Record fields -> Vector.fold (fun counts (_, child) ->

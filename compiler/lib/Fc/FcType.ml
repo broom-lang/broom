@@ -70,22 +70,24 @@ and Typ : FcTypeSigs.TYPE
 
     and 'a field = {label : string; typ : 'a}
 
-    and coercion =
-        | ExistsCo of kind Vector1.t * coercion
-        | Refl of typ
-        | Symm of coercion
-        | Trans of coercion * coercion
-        | Comp of coercion * coercion Vector1.t
-        | Inst of coercion * typ Vector1.t
+    and 'typ coercion =
+        | ExistsCo of kind Vector1.t * 'typ coercion
+        | Refl of 'typ
+        | Symm of 'typ coercion
+        | Trans of 'typ coercion * 'typ coercion
+        | Comp of 'typ coercion * 'typ coercion Vector1.t
+        | Inst of 'typ coercion * 'typ Vector1.t
         | AUse of Name.t
-        | PiCo of {universals : kind Vector.t; domain : coercion; codomain : coercion}
-        | PromotedArrayCo of coercion Vector.t
-        | PromotedTupleCo of coercion Vector.t
-        | TupleCo of coercion Vector.t
-        | RecordCo of coercion
-        | WithCo of {base : coercion; label : Name.t; field : coercion}
-        | ProxyCo of coercion
-        | Patchable of coercion TxRef.rref
+        | Axiom of kind Vector.t * 'typ * 'typ
+        | PiCo of {universals : kind Vector.t
+            ; domain : 'typ coercion; codomain : 'typ coercion}
+        | PromotedArrayCo of 'typ coercion Vector.t
+        | PromotedTupleCo of 'typ coercion Vector.t
+        | TupleCo of 'typ coercion Vector.t
+        | RecordCo of 'typ coercion
+        | WithCo of {base : 'typ coercion; label : Name.t; field : 'typ coercion}
+        | ProxyCo of 'typ coercion
+        | Patchable of 'typ coercion TxRef.rref
 
     and typ = t
 
@@ -289,74 +291,92 @@ and Typ : FcTypeSigs.TYPE
         PPrint.(prefix 4 1 (group (string "forall" ^/^ (kinds_to_doc s) (Vector.to_list universals)))
             (dot ^^ blank 1 ^^ body))
 
-    let rec coercion_to_doc s co =
+    let rec coercion_to_doc' typ_to_doc s co =
         let open PPrint in
         match co with
         | ExistsCo (existentials, body) ->
             infix 4 1 dot
                 (string "exists" ^^ blank 1
                     ^^ separate_map (blank 1) (kind_to_doc s) (Vector1.to_list existentials))
-                (coercion_to_doc s body)
-        | Refl typ -> to_doc s typ
-        | Symm co -> string "symm" ^^ blank 1 ^^ coercion_to_doc s co
+                (coercion_to_doc' typ_to_doc s body)
+        | Refl typ -> typ_to_doc s typ
+        | Symm co -> string "symm" ^^ blank 1 ^^ coercion_to_doc' typ_to_doc s co
         | Trans (co, co') ->
             infix 4 1 (bquotes (string "o"))
-                (coercion_to_doc s co) (andco_to_doc s co')
+                (coercion_to_doc' typ_to_doc s co) (andco_to_doc' typ_to_doc s co')
         | Comp (ctor_co, arg_cos) ->
-            prefix 4 1 (ctorco_to_doc s ctor_co)
-                (separate_map (break 1) (argco_to_doc s) (Vector1.to_list arg_cos))
+            prefix 4 1 (ctorco_to_doc' typ_to_doc s ctor_co)
+                (separate_map (break 1) (argco_to_doc' typ_to_doc s)
+                (Vector1.to_list arg_cos))
         | Inst (co, args) ->
-            Vector1.fold (fun doc arg -> infix 4 1 at doc (to_doc s arg))
-                (instantiee_to_doc s co) args
+            Vector1.fold (fun doc arg -> infix 4 1 at doc (typ_to_doc s arg))
+                (instantiee_to_doc' typ_to_doc s co) args
         | AUse name -> Name.to_doc name
-        | PiCo {universals; domain; codomain} ->
-            let body_doc = infix 4 1 (string "->")
-                (coercion_to_doc s domain) (coercion_to_doc s codomain) in
+        | Axiom (universals, l, r) ->
+            let body_doc = infix 4 1 (string "~") (typ_to_doc s l) (typ_to_doc s r) in
             (match Vector.length universals with
             | 0 -> body_doc
             | _ -> infix 4 1 dot
                 (string "forall" ^^ blank 1
                     ^^ separate_map (blank 1) (kind_to_doc s) (Vector.to_list universals))
                 body_doc)
+
+        | PiCo {universals; domain; codomain} ->
+            let body_doc = infix 4 1 (string "->")
+                (coercion_to_doc' typ_to_doc s domain)
+                (coercion_to_doc' typ_to_doc s codomain) in
+            (match Vector.length universals with
+            | 0 -> body_doc
+            | _ -> infix 4 1 dot
+                (string "forall" ^^ blank 1
+                    ^^ separate_map (blank 1) (kind_to_doc s) (Vector.to_list universals))
+                body_doc)
+
         | PromotedArrayCo coercions ->
             surround_separate_map 4 0 (brackets empty)
                 lbracket (comma ^^ break 1) rbracket
-                (coercion_to_doc s) (Vector.to_list coercions)
+                (coercion_to_doc' typ_to_doc s) (Vector.to_list coercions)
         | PromotedTupleCo coercions ->
             surround_separate_map 4 0 (parens empty)
                 lparen (comma ^^ break 1) rparen
-                (coercion_to_doc s) (Vector.to_list coercions)
+                (coercion_to_doc' typ_to_doc s) (Vector.to_list coercions)
         | TupleCo coercions ->
             colon
-                ^/^ separate_map (comma ^^ break 1) (coercion_to_doc s)
+                ^/^ separate_map (comma ^^ break 1) (coercion_to_doc' typ_to_doc s)
                     (Vector.to_list coercions)
             |> parens
-        | RecordCo row_co -> braces (coercion_to_doc s row_co)
+        | RecordCo row_co -> braces (coercion_to_doc' typ_to_doc s row_co)
         | WithCo {base; label; field} ->
-            infix 4 1 (string "with") (base_co_to_doc s base)
-                (infix 4 1 colon (Name.to_doc label) (coercion_to_doc s field))
-        | ProxyCo co -> brackets (equals ^^ break 1 ^^ coercion_to_doc s co)
-        | Patchable ref -> coercion_to_doc s !ref
+            infix 4 1 (string "with") (base_co_to_doc' typ_to_doc s base)
+                (infix 4 1 colon (Name.to_doc label)
+                (coercion_to_doc' typ_to_doc s field))
+        | ProxyCo co ->
+            brackets (equals ^^ break 1 ^^ coercion_to_doc' typ_to_doc s co)
+        | Patchable ref -> coercion_to_doc' typ_to_doc s !ref
 
-    and andco_to_doc s = function
-        | Trans _ as co -> PP.parens (coercion_to_doc s co)
-        | co -> coercion_to_doc s co
+    and andco_to_doc' typ_to_doc s = function
+        | Trans _ as co -> PP.parens (coercion_to_doc' typ_to_doc s co)
+        | co -> coercion_to_doc' typ_to_doc s co
 
-    and ctorco_to_doc s = function
-        | (Symm _ | Trans _ | Inst _) as co -> PP.parens (coercion_to_doc s co)
-        | co -> coercion_to_doc s co
+    and ctorco_to_doc' typ_to_doc s = function
+        | (Symm _ | Trans _ | Inst _) as co -> PP.parens (coercion_to_doc' typ_to_doc s co)
+        | co -> coercion_to_doc' typ_to_doc s co
 
-    and argco_to_doc s = function
-        | (Trans _ | Inst _ | Comp _) as co -> PP.parens (coercion_to_doc s co)
-        | co -> coercion_to_doc s co
+    and argco_to_doc' typ_to_doc s = function
+        | (Trans _ | Inst _ | Comp _) as co ->
+            PP.parens (coercion_to_doc' typ_to_doc s co)
+        | co -> coercion_to_doc' typ_to_doc s co
 
-    and instantiee_to_doc s = function
-        | (Symm _ | Trans _) as co -> PP.parens (coercion_to_doc s co)
-        | co -> coercion_to_doc s co
+    and instantiee_to_doc' typ_to_doc s = function
+        | (Symm _ | Trans _) as co -> PP.parens (coercion_to_doc' typ_to_doc s co)
+        | co -> coercion_to_doc' typ_to_doc s co
 
-    and base_co_to_doc s = function
-        | (Trans _ | Comp _ | Inst _) as co -> PP.parens (coercion_to_doc s co)
-        | co -> coercion_to_doc s co
+    and base_co_to_doc' typ_to_doc s = function
+        | (Trans _ | Comp _ | Inst _) as co ->
+            PP.parens (coercion_to_doc' typ_to_doc s co)
+        | co -> coercion_to_doc' typ_to_doc s co
+
+    let coercion_to_doc = coercion_to_doc' to_doc
 end
 
 (* HACK: OCaml these constants are 'unsafe' for OCaml recursive modules,

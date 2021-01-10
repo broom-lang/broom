@@ -27,6 +27,7 @@ module type TYPE = sig
 
     val to_doc : t -> PPrint.document
     val param_to_doc : param -> PPrint.document
+    val coercion_to_doc : t Fc.Type.coercion -> PPrint.document
 end
 
 module type EXPR = sig
@@ -46,6 +47,7 @@ module type EXPR = sig
         | Proxy of Type.t
         | Label of cont_id
         | Param of {label : cont_id; index : int}
+        | Cast of {castee : Id.t; coercion : Type.t Fc.Type.coercion}
         | Pack of {existentials : Type.t Vector1.t; impl : Id.t}
         | Unpack of Id.t
         | Const of Const.t

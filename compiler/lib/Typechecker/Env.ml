@@ -258,7 +258,7 @@ let rec close' env depth substitution : T.t -> T.t = function
         | Unassigned _ -> typ)
     | (Bv _ | Prim _) as typ -> typ
 
-let rec close_coercion' env depth substitution : T.coercion -> T.coercion = function
+let rec close_coercion' env depth substitution : T.t T.coercion -> T.t T.coercion = function
     | ExistsCo (params, body) ->
         let depth = depth + 1 in
         ExistsCo (params, close_coercion' env depth substitution body)
@@ -286,6 +286,10 @@ let rec close_coercion' env depth substitution : T.coercion -> T.coercion = func
     | Inst (co, typs) -> Inst (close_coercion' env depth substitution co
         , Vector1.map (close' env depth substitution) typs)
     | AUse _ as co -> co
+    | Axiom (universals, l, r) ->
+        let depth = depth + 1 in
+        Axiom (universals, close' env depth substitution l
+            , close' env depth substitution r)
     | Patchable r as co ->
         set_coercion env r (close_coercion' env depth substitution !r);
         co

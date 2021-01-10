@@ -14,7 +14,7 @@ module type KINDING = sig
     val kindof_F : span -> env -> Fc.Type.t -> Fc.Type.kind
     val kindof : env -> Ast.Type.t with_pos -> typ kinding
     val check : env -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
-    val eval : Util.span -> env -> typ -> (typ * Fc.Type.coercion option) option
+    val eval : Util.span -> env -> typ -> (typ * typ Fc.Type.coercion option) option
 end
 
 module type TYPING = sig
@@ -37,7 +37,7 @@ module type MATCHING = sig
 
     val focalize : span -> env -> typ -> Fc.Type.template -> Coercer.t option * typ
     val solving_subtype : span -> env -> typ -> typ -> Coercer.t option
-    val solving_unify : span -> env -> typ -> typ -> Fc.Type.coercion option
+    val solving_unify : span -> env -> typ -> typ -> typ Fc.Type.coercion option
 end
 
 module type ENV = sig
@@ -83,7 +83,7 @@ module type ENV = sig
     val transaction : t -> (unit -> 'a) -> 'a
 
     val set_expr : t -> Fc.Term.Expr.t TxRef.rref -> Fc.Term.Expr.t -> unit
-    val set_coercion : t -> T.coercion TxRef.rref -> T.coercion -> unit
+    val set_coercion : t -> typ T.coercion TxRef.rref -> typ T.coercion -> unit
 
     val document : t -> (Fc.Uv.subst -> 'a -> PPrint.document) -> 'a -> PPrint.document
 
@@ -92,7 +92,7 @@ module type ENV = sig
 
     val close : t -> int Name.Map.t -> T.t -> T.t
     val close_template : t -> int Name.Map.t -> T.template -> T.template
-    val close_coercion : t -> int Name.Map.t -> T.coercion -> T.coercion
+    val close_coercion : t -> int Name.Map.t -> typ T.coercion -> typ T.coercion
 
     val reabstract : t -> T.t -> T.ov Vector.t * T.t
     val push_abs_skolems : t -> T.kind Vector1.t -> T.t -> t * T.ov Vector1.t * T.t
