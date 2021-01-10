@@ -303,6 +303,9 @@ let to_js program =
 
             | Const c -> emit_const c
 
+            | Pack {existentials = _; impl} -> emit_use impl
+            | Unpack packed -> emit_use packed
+
             | Param _ -> bug (Some pos) ~msg: "Param in Cfg"
             | Tuple _ -> bug (Some pos) ~msg: "Tuple in Cfg"
             | Focus _ -> bug (Some pos) ~msg: "Focus in Cfg" in

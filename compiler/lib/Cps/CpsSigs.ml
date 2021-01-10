@@ -1,6 +1,9 @@
 type span = Util.span
 
 module type TYPE = sig
+    type expr_id
+    type cont_id
+
     type kind = Fc.Type.kind
     type param = Fc.Type.binding
 
@@ -18,6 +21,9 @@ module type TYPE = sig
         | Fn of kind * t
         | App of t * t
         | Bv of Fc.Type.bv
+        | TParam of {label : cont_id; index : int}
+        | Abstract of kind
+        | Existing of {value : expr_id; index : int}
 
     val to_doc : t -> PPrint.document
     val param_to_doc : param -> PPrint.document
@@ -40,6 +46,8 @@ module type EXPR = sig
         | Proxy of Type.t
         | Label of cont_id
         | Param of {label : cont_id; index : int}
+        | Pack of {existentials : Type.t Vector1.t; impl : Id.t}
+        | Unpack of Id.t
         | Const of Const.t
 
     type t =

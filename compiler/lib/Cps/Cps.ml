@@ -4,7 +4,16 @@ module S = CpsSigs
 
 type span = Util.span
 
+module ContId = struct
+    include Id.Make ()
+
+    let to_doc id = PPrint.(percent ^^ to_doc id)
+end
+
 module Type = struct
+    type expr_id = Name.t
+    type cont_id = ContId.t
+
     type kind = Fc.Type.kind
     type param = Fc.Type.binding
 
@@ -22,6 +31,9 @@ module Type = struct
         | Fn of kind * t
         | App of t * t
         | Bv of Fc.Type.bv
+        | TParam of {label : cont_id; index : int}
+        | Abstract of kind
+        | Existing of {value : expr_id; index : int}
 
     let log = TxRef.log () (* HACK *)
     let kind_to_doc = Fc.Type.kind_to_doc log
@@ -77,12 +89,16 @@ module Type = struct
         | App (callee, arg) -> parens (to_doc callee) ^^ blank 1 ^^ parens (to_doc arg)
 
         | Bv bv -> Fc.Type.bv_to_doc bv
-end
 
-module ContId = struct
-    include Id.Make ()
+        | TParam {label; index} -> 
+            infix 4 1 (string "param") (ContId.to_doc label) (string (Int.to_string index))
+            |> parens
 
-    let to_doc id = PPrint.(percent ^^ to_doc id)
+        | Abstract kind -> string "abstract" ^/^ kind_to_doc kind
+
+        | Existing {value; index} ->
+            infix 4 1 (string "existing") (Name.to_doc value) (string (Int.to_string index))
+            |> parens
 end
 
 module Expr = struct
@@ -102,6 +118,8 @@ module Expr = struct
         | Proxy of Type.t
         | Label of cont_id
         | Param of {label : cont_id; index : int}
+        | Pack of {existentials : Type.t Vector1.t; impl : Id.t}
+        | Unpack of Id.t
         | Const of Const.t
 
     type t =
@@ -153,6 +171,16 @@ module Expr = struct
         | Label label -> string "fn" ^^ blank 1 ^^ ContId.to_doc label
         | Param {label; index} ->
             infix 4 1 (string "param") (ContId.to_doc label) (string (Int.to_string index))
+
+        | Pack {existentials; impl} ->
+            prefix 4 1
+                (string "pack" ^/^ surround_separate_map 4 0 empty
+                    langle (comma ^^ break 1) (rangle ^^ blank 1)
+                    Type.to_doc (Vector1.to_list existentials))
+                (Id.to_doc impl)
+
+        | Unpack packed -> string "unpack" ^/^ Id.to_doc packed
+
         | Const c -> Const.to_doc c
 
     let to_doc expr = term_to_doc expr.term
@@ -165,7 +193,7 @@ module Expr = struct
     let iter_labels' f = function
         | Label label | Param {label; index = _} -> f label
         | Tuple _ | Focus _ | PrimApp _ | Record _ | With _ | Where _ | Select _ | Proxy _
-        | Const _ -> ()
+        | Pack _ | Unpack _ | Const _ -> ()
 
     let iter_labels f expr = iter_labels' f expr.term
 
@@ -175,6 +203,8 @@ module Expr = struct
         | Where {base; fields} -> f base; Vector.iter (fun (_, use) -> f use) fields
         | With {base; label = _; field} -> f base; f field
         | Focus {focusee = use; index = _} | Select {selectee = use; field = _} -> f use
+        | Pack {existentials = _; impl} -> f impl
+        | Unpack packed -> f packed
         | Proxy _ | Label _ | Param _ | Const _ -> ()
 
     let iter_uses f expr = iter_uses' f expr.term
@@ -219,6 +249,14 @@ module Expr = struct
         | Select {selectee; field} ->
             let selectee' = f selectee in
             if selectee' == selectee then term else Select {selectee = selectee'; field}
+
+        | Pack {existentials; impl} ->
+            let impl' = f impl in
+            if impl' == impl then term else Pack {existentials; impl = impl'}
+
+        | Unpack packed ->
+            let packed' = f packed in
+            if packed' == packed then term else Unpack packed'
 
         | Proxy _ | Label _ | Param _ | Const _ -> term
 
@@ -442,7 +480,9 @@ module Program = struct
                     | PrimApp {op = _; universals = _; args = children}
                     | Tuple children -> Vector.fold visit_use counts children
                     | Focus {focusee = child; index = _}
-                    | Select {selectee = child; field = _} -> visit_use counts child
+                    | Select {selectee = child; field = _}
+                    | Pack {existentials = _; impl = child}
+                    | Unpack child -> visit_use counts child
                     | Record fields -> Vector.fold (fun counts (_, child) ->
                             visit_use counts child
                         ) counts fields

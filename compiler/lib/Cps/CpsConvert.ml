@@ -9,20 +9,25 @@ module Env : sig
     type t
 
     val empty : t
+
     val add : t -> Name.t -> Expr.Id.t -> t
     val find : t -> Name.t -> Expr.Id.t
+
+    val add_typ : t -> Name.t -> Type.t -> t
+    val find_typ : t -> Name.t -> Type.t
 end = struct
-    module Map = CCHashTrie.Make (struct
-        type t = Name.t
-        let equal = Name.equal
-        let hash = Name.hash
-    end)
+    module Vals = Name.HashMap
+    module Typs = Name.HashMap
 
-    type t = Expr.Id.t Map.t
+    type t = {vals : Expr.Id.t Vals.t; typs : Type.t Typs.t}
 
-    let empty = Map.empty
-    let add env k v = Map.add k v env
-    let find = Fun.flip Map.get_exn
+    let empty = {vals = Vals.empty; typs = Typs.empty}
+
+    let add env k v = {env with vals = Vals.add k v env.vals}
+    let find env k = Vals.get_exn k env.vals
+
+    let add_typ env k t = {env with typs = Typs.add k t env.typs}
+    let find_typ env k = Typs.get_exn k env.typs
 end
 
 type meta_cont =
@@ -33,13 +38,14 @@ type meta_cont =
 
 let log = TxRef.log () (* HACK *)
 
-let convert_typ pos state_typ =
+let convert_typ state_typ env pos =
     let rec convert : Fc.Type.t -> Type.t = function
         | Exists (existentials, body) -> Exists (existentials, convert body)
         | Tuple typs -> Tuple (Vector.map convert typs)
         | PromotedTuple typs -> PromotedTuple (Vector.map convert typs)
         | PromotedArray typs -> PromotedArray (Vector.map convert typs)
         | Pi {universals; domain; eff = _; codomain} | Impli {universals; domain; codomain} ->
+            (* FIXME: bv indices in codomain go off by one: *)
             let domain = convert domain in
             Pi {universals; domain = Vector.of_list [ state_typ
                 ; Type.Pi {universals = Vector.empty
@@ -54,7 +60,7 @@ let convert_typ pos state_typ =
         | App (callee, arg) -> App (convert callee, convert arg)
         | Prim p -> Prim p
         | Bv bv -> Bv bv
-        | Ov _ -> todo (Some pos)
+        | Ov ((name, _), _) -> Env.find_typ env name
         | Uv r -> (match Fc.Uv.get log r with
             | Assigned typ -> convert typ
             | Unassigned _ -> todo (Some pos) ~msg: "unassigned uv in CPS conversion") in
@@ -62,8 +68,9 @@ let convert_typ pos state_typ =
 
 let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
     let builder = Builder.create type_fns in
-    let state_typ = convert_typ main_body.pos ((* HACK *) Prim Int) state_typ in
-    let convert_typ = convert_typ main_body.pos state_typ in
+    let env = Env.empty in
+    let state_typ = convert_typ ((* HACK *) Prim Int) env main_body.pos state_typ in
+    let convert_typ = convert_typ state_typ in
     let (main_span, main_body) =
         let pos =
             ( (if Vector.length defs > 0
@@ -79,30 +86,35 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
             let rec convert_values parent state i values' =
                 if i < Array.length values then begin
                     let value = Array.get values i in
-                    let k = FnK {pos = value.pos; domain = convert_typ value.typ
+                    let k = FnK {pos = value.pos
+                        ; domain = convert_typ env value.pos value.typ
                         ; f = fun ~parent ~state ~value ->
                             convert_values parent state (i + 1) (value :: values') } in
                     convert parent state k env value
                 end else
                     Builder.express builder { pos = expr.pos; cont = parent
-                        ; typ = convert_typ expr.typ
+                        ; typ = convert_typ env expr.pos expr.typ
                         ; term = Tuple (Vector.of_list (List.rev values')) } (* OPTIMIZE *)
                     |> continue k parent state in
             convert_values parent state 0 []
 
         | Focus {focusee; index} ->
-            let k = FnK {pos = focusee.pos; domain = convert_typ focusee.typ
+            let k = FnK {pos = focusee.pos; domain = convert_typ env focusee.pos focusee.typ
                     ; f = fun ~parent ~state ~value: focusee ->
                         Builder.express builder { pos = expr.pos; cont = parent
-                            ; typ = convert_typ expr.typ; term = Focus {focusee; index} }
+                            ; typ = convert_typ env expr.pos expr.typ
+                            ; term = Focus {focusee; index} }
                         |> continue k parent state } in
             convert parent state k env focusee
 
         | Fn {universals; param = {name = param_id; _} as param; body} ->
             let label = Cont.Id.fresh () in
-            let domain = convert_typ param.vtyp in
+            let env = Vector.foldi (fun env index (name, _) ->
+                Env.add_typ env name (TParam {label; index})
+            ) env universals in
+            let domain = convert_typ env expr.pos param.vtyp in
             let ret_typ : Type.t = Pi {universals = Vector.empty
-                ; domain = Vector.of_list [state_typ; convert_typ body.typ]} in
+                ; domain = Vector.of_list [state_typ; convert_typ env body.pos body.typ]} in
             let domain' = Vector.of_list [state_typ; ret_typ; domain] in
             let f : Cont.t = 
                 let parent = Some label in
@@ -124,36 +136,37 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
             |> continue k parent state
 
         | App {callee; universals; arg} ->
-            let k = FnK {pos = callee.pos; domain = convert_typ callee.typ
+            let k = FnK {pos = callee.pos; domain = convert_typ env callee.pos callee.typ
                     ; f = fun ~parent ~state ~value: callee ->
-                        let k = FnK {pos = arg.pos; domain = convert_typ arg.typ
+                        let k = FnK {pos = arg.pos; domain = convert_typ env arg.pos arg.typ
                             ; f = fun ~parent ~state ~value: arg ->
                                 let ret = cont_value parent k in
                                 { pos = expr.pos; term = Jump { callee
-                                    ; universals = Vector.map convert_typ universals
+                                    ; universals = Vector.map (convert_typ env expr.pos)
+                                        universals
                                     ; args = Vector.of_list [state; ret; arg] } } } in
                         convert parent state k env arg } in
             convert parent state k env callee
 
         | PrimApp {op; universals; arg} ->
             if Primop.is_pure op then begin
-                let k = FnK {pos = arg.pos; domain = convert_typ arg.typ
+                let k = FnK {pos = arg.pos; domain = convert_typ env arg.pos arg.typ
                     ; f = fun ~parent ~state ~value: arg ->
                         Builder.express builder {pos = expr.pos; cont = parent
-                            ; typ = convert_typ expr.typ
+                            ; typ = convert_typ env expr.pos expr.typ
                             ; term = PrimApp {op
-                                ; universals = Vector.map convert_typ universals
+                                ; universals = Vector.map (convert_typ env expr.pos) universals
                                 ; args = Vector.singleton arg}}
                         |> continue k parent state } in
                 convert parent state k env arg
             end else begin
-                let codomain = convert_typ expr.typ in
-                let k = FnK {pos = arg.pos; domain = convert_typ arg.typ
+                let codomain = convert_typ env expr.pos expr.typ in
+                let k = FnK {pos = arg.pos; domain = convert_typ env arg.pos arg.typ
                     ; f = fun ~parent ~state ~value: arg ->
                         let app = Builder.express builder {pos = expr.pos; cont = parent
                             ; typ = Tuple (Vector.of_list [state_typ; codomain])
                             ; term = PrimApp {op
-                                ; universals = Vector.map convert_typ universals
+                                ; universals = Vector.map (convert_typ env expr.pos) universals
                                 ; args = Vector.of_list [state; arg]}} in
                         let state = Builder.express builder {pos = expr.pos; cont = parent
                             ; typ = state_typ
@@ -166,7 +179,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
             end
 
         | PrimBranch {op; universals; arg; clauses} ->
-            let k = FnK { pos = expr.pos; domain = convert_typ arg.typ
+            let k = FnK { pos = expr.pos; domain = convert_typ env arg.pos arg.typ
                 ; f = fun ~parent: _ ~state ~value: arg ->
                     let join = trivialize_cont k in
                     let clauses = clauses |> Vector.map (fun {FExpr.res; prim_body = body} ->
@@ -177,7 +190,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                                 ; term = Param {label = branch; index = 0}} in
                             let (params, env) = match res with
                                 | Some res ->
-                                    let codomain = convert_typ res.vtyp in
+                                    let codomain = convert_typ env expr.pos res.vtyp in
                                     let v = Builder.express builder {pos = body.pos; cont = parent; typ = codomain
                                         ; term = Param {label = branch; index = 1}} in
                                     (Vector.of_list [state_typ; codomain], Env.add env res.name v)
@@ -188,22 +201,52 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                         Builder.add_cont builder branch cont;
                         {Transfer.pat = Wild; dest = branch}) in
                     {pos = expr.pos; term = PrimApp {op
-                        ; universals = Vector.map convert_typ universals
+                        ; universals = Vector.map (convert_typ env expr.pos) universals
                         ; state; args = Vector.singleton arg 
                         ; clauses}} } in
             convert parent state k env arg
+
+        | LetType {typedefs; body} ->
+            let env = Vector1.fold (fun env (name, kind) ->
+                Env.add_typ env name (Abstract kind)
+            ) env typedefs in
+            convert parent state k env body
+
+        | Pack {existentials; impl} ->
+            let k = FnK {pos = impl.pos; domain = convert_typ env impl.pos impl.typ
+                ; f = fun ~parent: _ ~state ~value ->
+                    Builder.express builder {pos = expr.pos; cont = parent
+                        ; typ = convert_typ env expr.pos expr.typ
+                        ; term = Pack {impl = value
+                            ; existentials = Vector1.map (convert_typ env expr.pos) existentials}}
+                    |> continue k parent state} in
+            convert parent state k env impl
+
+        | Unpack {existentials; var; value; body} ->
+            let env = Vector1.foldi (fun env index (name, _) ->
+                Env.add_typ env name (Existing {value = var.name; index})
+            ) env existentials in
+            let k = FnK { pos = expr.pos; domain = convert_typ env value.pos value.typ
+                ; f = fun ~parent: _ ~state ~value: packed ->
+                    let env =
+                        Builder.express builder {pos = value.pos; cont = parent
+                            ; typ = convert_typ env expr.pos var.vtyp
+                            ; term = Unpack packed}
+                    |> Env.add env var.name in
+                    convert parent state k env body } in
+            convert parent state k env value
 
         | Let {defs; body} ->
             let rec convert_defs state i env =
                 if i < Array1.length defs then match Array1.get defs i with
                     | Def (_, {name; _}, value) ->
-                        let k = FnK {pos = value.pos; domain = convert_typ value.typ
+                        let k = FnK {pos = value.pos; domain = convert_typ env value.pos value.typ
                             ; f = fun ~parent: _ ~state ~value ->
                                 let env = Env.add env name value in
                                 convert_defs state (i + 1) env } in
                         convert parent state k env value
                     | Expr expr ->
-                        let k = FnK {pos = expr.pos; domain = convert_typ expr.typ
+                        let k = FnK {pos = expr.pos; domain = convert_typ env expr.pos expr.typ
                             ; f = fun ~parent: _ ~state ~value: _ ->
                                 convert_defs state (i + 1) env} in
                         convert parent state k env expr
@@ -213,7 +256,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
         | Use {name; _} -> continue k parent state (Env.find env name)
 
         | Match {matchee; clauses} ->
-            let k = FnK { pos = expr.pos; domain = convert_typ matchee.typ
+            let k = FnK { pos = expr.pos; domain = convert_typ env matchee.pos matchee.typ
                 ; f = fun ~parent: _ ~state ~value: matchee ->
                     let join = trivialize_cont k in
                     let clauses = clauses |> Vector.map (fun {FExpr.pat; body} ->
@@ -236,41 +279,43 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
             let rec convert_fields state i fields' =
                 if i < Array.length fields then begin
                     let (label, field) = Array.get fields i in
-                    let k = FnK {pos = field.pos; domain = convert_typ field.typ
+                    let k = FnK {pos = field.pos; domain = convert_typ env field.pos field.typ
                         ; f = fun ~parent: _ ~state ~value: field' ->
                             convert_fields state (i + 1) ((label, field') :: fields') } in
                     convert parent state k env field
                 end else
                     Builder.express builder {pos = expr.pos; cont = parent
-                        ; typ = convert_typ expr.typ
+                        ; typ = convert_typ env expr.pos expr.typ
                         ; term = Record (Vector.of_list (List.rev fields')) } (* OPTIMIZE *)
                     |> continue k parent state in
             convert_fields state 0 []
 
         | With {base; label; field} ->
-            let k = FnK {pos = expr.pos; domain = convert_typ base.typ
+            let k = FnK {pos = expr.pos; domain = convert_typ env base.pos base.typ
                 ; f = fun ~parent ~state ~value: base ->
-                    let k = FnK {pos = expr.pos; domain = convert_typ field.typ
+                    let k = FnK {pos = expr.pos; domain = convert_typ env field.pos field.typ
                         ; f = fun ~parent ~state ~value: field ->
                             Builder.express builder {pos = expr.pos; cont = parent
-                                ; typ = convert_typ expr.typ; term = With {base; label; field}}
+                                ; typ = convert_typ env expr.pos expr.typ
+                                ; term = With {base; label; field}}
                             |> continue k parent state } in
                     convert parent state k env field} in
             convert parent state k env base
 
         | Where {base; fields} ->
-            let k = FnK {pos = expr.pos; domain = convert_typ base.typ
+            let k = FnK {pos = expr.pos; domain = convert_typ env base.pos base.typ
                 ; f = fun ~parent ~state ~value: base ->
                     let rec convert_fields state i fields' =
                         if i < Array1.length fields then begin
                             let (label, field) = Array1.get fields i in
-                            let k = FnK {pos = field.pos; domain = convert_typ field.typ
+                            let k = FnK {pos = field.pos
+                                ; domain = convert_typ env field.pos field.typ
                                 ; f = fun ~parent: _ ~state ~value: field' ->
                                     convert_fields state (i + 1) ((label, field') :: fields') } in
                             convert parent state k env field
                         end else
                             Builder.express builder {pos = expr.pos; cont = parent
-                                ; typ = convert_typ expr.typ
+                                ; typ = convert_typ env expr.pos expr.typ
                                 ; term = Where {base
                                     ; fields = Vector.of_list (List.rev fields')}} (* OPTIMIZE *)
                             |> continue k parent state in
@@ -278,21 +323,22 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
             convert parent state k env base
 
         | Select {selectee; label} ->
-                let k = FnK {pos = expr.pos; domain = convert_typ selectee.typ
+                let k = FnK {pos = expr.pos; domain = convert_typ env selectee.pos selectee.typ
                     ; f = fun ~parent ~state ~value: selectee ->
                         Builder.express builder {pos = expr.pos; cont = parent
-                            ; typ = convert_typ expr.typ
+                            ; typ = convert_typ env expr.pos expr.typ
                             ; term = Select {selectee; field = label}}
                         |> continue k parent state} in
             convert parent state k env selectee
 
         | Proxy typ ->
-            Builder.express builder {pos = expr.pos; cont = parent; typ = convert_typ expr.typ
-                ; term = Proxy (convert_typ typ)}
+            Builder.express builder {pos = expr.pos; cont = parent
+                ; typ = convert_typ env expr.pos expr.typ
+                ; term = Proxy (convert_typ env expr.pos typ)}
             |> continue k parent state
 
         | Const c ->
-            let typ = convert_typ expr.typ in
+            let typ = convert_typ env expr.pos expr.typ in
             Builder.express builder {pos = expr.pos; cont = parent; typ; term = Const c}
             |> continue k parent state
 
@@ -340,23 +386,22 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
             Builder.express builder {pos; cont = parent; typ; term = Label label}
         | FnK _ -> unreachable None in
 
-    let convert_export pos name params (body : FExpr.t) =
+    let convert_export env pos name params (body : FExpr.t) =
         let id = Cont.Id.fresh () in
         let parent = Some id in
-        let codomain = convert_typ body.typ in
+        let codomain = convert_typ env body.pos body.typ in
         let state =
             Builder.express builder {pos; cont = parent; typ = state_typ
                 ; term = Const (Int 0)} in (* FIXME *)
-        let k = FnK {pos = body.pos; domain = convert_typ body.typ
+        let k = FnK {pos = body.pos; domain = codomain
             ; f = fun ~parent: _ ~state: _ ~value ->
                 {pos; term = Return (Vector.singleton codomain, Vector.singleton value)} } in
-        let env = Env.empty in
         let cont : Cont.t =
             { pos; name; universals = Vector.empty; params
             ; body = convert parent state k env body } in
         Builder.add_cont builder id cont;
         id in
 
-    let main_id = convert_export main_span None Vector.empty main_body in
+    let main_id = convert_export env main_span None Vector.empty main_body in
     Builder.build builder main_id
 

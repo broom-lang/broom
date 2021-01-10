@@ -1,8 +1,10 @@
 module S = CpsSigs
 
-module Type : S.TYPE
-
 module ContId : Id.S
+
+module Type : S.TYPE
+    with type expr_id = Name.t
+    with type cont_id = ContId.t
 
 module Expr : S.EXPR
     with type cont_id = ContId.t
