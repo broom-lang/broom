@@ -26,7 +26,7 @@ let build path debug check_only filename outfile =
         let input = Sedlexing.Utf8.from_channel input in
 
         match (
-            let* defs = Parse.parse_defs input |> Result.map_error parse_err in
+            let* defs = Parse.parse_defs filename input |> Result.map_error parse_err in
             if debug then begin
                 print_newline ();
                 debug_heading "Parsed AST";
@@ -140,10 +140,10 @@ let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
 
     Ok (eenv, tenv, venv)
 
-let rep debug ((_, tenv, _) as envs) input =
+let rep debug ((_, tenv, _) as envs) filename input =
     let (let*) = Result.bind in
     match (
-        let* stmts = Parse.parse_stmts input |> Result.map_error parse_err in
+        let* stmts = Parse.parse_stmts filename input |> Result.map_error parse_err in
         if debug then begin
             debug_heading "\nParsed AST";
             let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc
@@ -177,7 +177,7 @@ let repl path debug =
         | None -> ()
         | Some input ->
             let _ = LNoise.history_add input in
-            let envs = rep debug envs (Sedlexing.Utf8.from_string input) in
+            let envs = rep debug envs "REPL input" (Sedlexing.Utf8.from_string input) in
             loop envs in
     print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
     loop (Expander.Bindings.empty path, Typer.Env.interactive (), Fc.Eval.Namespace.create ())
@@ -185,7 +185,7 @@ let repl path debug =
 let lep path debug filename =
     let input = open_in filename in
     Fun.protect (fun () ->
-        rep debug (eval_envs path) (Sedlexing.Utf8.from_channel input)
+        rep debug (eval_envs path) filename (Sedlexing.Utf8.from_channel input)
     ) ~finally: (fun () -> close_in input)
 
 (* # CLI Args & Flags *)
@@ -230,7 +230,7 @@ let eval_t =
         let doc = "the statements to evaluate" in
         C.Arg.(value & pos 0 string "" & info [] ~docv ~doc) in
     ( C.Term.(const ignore $ (const rep $ debug
-        $ (const eval_envs $ path) $ (const Sedlexing.Utf8.from_string $ expr)))
+        $ (const eval_envs $ path) $ const "CLI arg" $ (const Sedlexing.Utf8.from_string $ expr)))
     , C.Term.info "eval" ~doc )
 
 let script_t =

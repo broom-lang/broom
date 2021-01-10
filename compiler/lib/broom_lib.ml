@@ -23,16 +23,16 @@ end
 module SedlexMenhir = SedlexMenhir
 
 module Parse = struct
-    let parse_defs input =
+    let parse_defs filename input =
         try
-            SedlexMenhir.create_lexbuf input
+            SedlexMenhir.create_lexbuf filename input
             |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.defs
             |> fun defs -> Ok defs
         with SedlexMenhir.ParseError err -> Error err
 
-    let parse_stmts input =
+    let parse_stmts filename input =
         try
-            SedlexMenhir.create_lexbuf input
+            SedlexMenhir.create_lexbuf filename input
             |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.stmts
             |> fun stmts -> Ok stmts
         with SedlexMenhir.ParseError err -> Error err

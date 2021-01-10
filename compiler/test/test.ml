@@ -3,7 +3,7 @@ open Broom_lib
 let (^^) = PPrint.(^^)
 
 let try_parse s =
-    match Parse.parse_stmts s with
+    match Parse.parse_stmts __FILE__ s with
     | Ok stmts -> stmts
     | Error err -> failwith (SedlexMenhir.string_of_ParseError err)
 

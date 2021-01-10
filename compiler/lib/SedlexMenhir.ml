@@ -10,7 +10,7 @@ type lexbuf = {
 }
 
 (** Initialize with the null position. *)
-let create_lexbuf ?(file="") stream =
+let create_lexbuf file stream =
   let pos = {Lexing.
     pos_fname = file;
     pos_lnum = 1; (* Start lines at 1, not 0 *)

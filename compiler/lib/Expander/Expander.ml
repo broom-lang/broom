@@ -314,11 +314,12 @@ and expand_include env (arg : expr with_pos) = match arg.v with
             if Sys.file_exists filename
             then Some filename
             else None) in
-        let input = open_in (Option.get filename) in
+        let filename = Option.get filename in
+        let input = open_in filename in
         Fun.protect (fun () ->
             input
             |> Sedlexing.Utf8.from_channel
-            |> SedlexMenhir.create_lexbuf
+            |> SedlexMenhir.create_lexbuf filename
             |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.modul
         ) ~finally: (fun () -> close_in input)
     | _ -> failwith "non-string-literal `include` arg"

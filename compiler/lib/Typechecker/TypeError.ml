@@ -61,7 +61,7 @@ let rec cause_to_doc s pos err =
     | Occurs (uv, typ) -> Fc.Type.to_doc s (Uv uv) ^/^ string "occurs in" ^/^ Fc.Type.to_doc s typ
 
 let to_doc (({pos_fname; _}, _) as span : Util.span) s err =
-    PPrint.(prefix 4 1 (string "Type error in" ^/^ string pos_fname ^/^ string "at"
-        ^/^ string (Util.span_to_string span) ^/^ colon)
-        (cause_to_doc s span err))
+    PPrint.(prefix 4 1 (group @@ string "Type error in" ^/^ string pos_fname ^/^ string "at"
+        ^/^ string (Util.span_to_string span) ^^ colon)
+        (group @@ cause_to_doc s span err))
 
