@@ -88,6 +88,13 @@ module Typ = struct
             | Flex {binder; _} -> binder
             | Rigid {binder; _} -> binder
 
+        (* NOTE: Assumes Shallow MLF / HML: *)
+        let is_locked bound = match binder bound with
+            | Type binder -> (match !binder with
+                | Bot _ | Flex _ -> false
+                | Rigid _ -> true)
+            | Scope _ -> false
+
         module Hashtbl = TxRef.Hashtbl.Make (struct type t = bound end)
     end
 

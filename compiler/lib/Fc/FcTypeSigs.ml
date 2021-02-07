@@ -75,6 +75,7 @@ module type TYPE = sig
         type t = bound
 
         val binder : t -> binder
+        val is_locked : t -> bool
     end
 
     module Binder : sig

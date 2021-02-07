@@ -114,19 +114,23 @@ let rec resolve pos env super =
 *)
 
 let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
-= fun span env t t' ->
-    let unify_whnf t t' = match (t, t') with
-        | (T.Uv {quant = _; bound}, t') | (t', T.Uv {quant = _; bound}) ->
-            (match t' with (* OPTIMIZE: path compression, ranking (but mind bindees!) *)
-            | T.Uv {quant = _; bound = bound'} -> (match (!bound, !bound') with
-                | (Bot {level = _; binder; kind = _}, Bot {level = _; binder = binder'; kind = _}) ->
-                    (*unify span env kind kind';*)
+= fun span env t t' -> match (t, t') with
+    | (T.Uv {quant = _; bound}, t') | (t', T.Uv {quant = _; bound}) ->
+        if not (Bound.is_locked !bound)
+        then (match t' with (* OPTIMIZE: path compression, ranking (but mind bindees!) *)
+            | T.Uv {quant = _; bound = bound'} ->
+                if not (Bound.is_locked !bound')
+                then (match (!bound, !bound') with
+                    | (Bot {level = _; binder; kind = _}, Bot {level = _; binder = binder'; kind = _}) ->
+                        (*unify span env kind kind';*)
 
-                    if Binder.level binder < Binder.level binder'
-                    then bound' := Rigid {level = -1; binder; typ = t}
-                    else bound := Rigid {level = -1; binder = binder'; typ = t'}
+                        if Binder.level binder < Binder.level binder'
+                        then bound' := Rigid {level = -1; binder; typ = t}
+                        else bound := Rigid {level = -1; binder = binder'; typ = t'}
 
-                | _ -> todo (Some span) ~msg: "bounds")
+                    | _ -> todo (Some span) ~msg: "bounds")
+                else todo (Some span) ~msg: "bv-uv"
+
             | t' -> (match !bound with
                 | Bot {level = _; binder; kind = _} ->
                     (*unify span env kind (K.kindof span env t);*)
@@ -134,26 +138,33 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
                     check_uv_assignee span env t level Int.max_int t';
                     bound := Rigid {level = -1; binder; typ = t'}
                 | _ -> todo (Some span) ~msg: "bounds'"))
-
-        | (Pi {domain; eff; codomain}, t') -> (match t' with
-            | Pi {domain = domain'; eff = eff'; codomain = codomain'} ->
-                unify span env domain domain';
-                unify span env eff eff';
-                unify span env codomain codomain'
+        else (match t' with
+            | T.Uv {quant = _; bound = bound'} ->
+                if not (Bound.is_locked !bound)
+                then todo (Some span) ~msg: "bv-uv'"
+                else if TxRef.equal bound' bound
+                    then ()
+                    else Env.reportError env span (Unify (t, t'))
 
             | _ -> Env.reportError env span (Unify (t, t')))
 
-        | (EmptyRow, t') -> (match t' with
-            | EmptyRow -> ()
-            | _ -> Env.reportError env span (Unify (t, t')))
+    | (Pi {domain; eff; codomain}, t') -> (match t' with
+        | Pi {domain = domain'; eff = eff'; codomain = codomain'} ->
+            unify span env domain domain';
+            unify span env eff eff';
+            unify span env codomain codomain'
 
-        | (Prim pt, t') -> (match t' with
-            | T.Prim pt' when Prim.eq pt pt'-> ()
-            | _ -> Env.reportError env span (Unify (t, t')))
+        | _ -> Env.reportError env span (Unify (t, t')))
 
-        | _ -> todo (Some span) ~msg: "type ctor" in
+    | (EmptyRow, t') -> (match t' with
+        | EmptyRow -> ()
+        | _ -> Env.reportError env span (Unify (t, t')))
 
-    unify_whnf (K.eval span env t) (K.eval span env t')
+    | (Prim pt, t') -> (match t' with
+        | T.Prim pt' when Prim.eq pt pt'-> ()
+        | _ -> Env.reportError env span (Unify (t, t')))
+
+    | _ -> todo (Some span) ~msg: "type ctor"
 
 and instance span env sub super = unify span env (Env.instantiate env sub) super
 
