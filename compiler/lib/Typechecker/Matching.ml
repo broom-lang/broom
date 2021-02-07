@@ -123,8 +123,8 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
                     (*unify span env kind kind';*)
 
                     if Binder.level binder < Binder.level binder'
-                    then bound' := Rigid {level = -1; binder; bound = t}
-                    else bound := Rigid {level = -1; binder = binder'; bound = t'}
+                    then bound' := Rigid {level = -1; binder; typ = t}
+                    else bound := Rigid {level = -1; binder = binder'; typ = t'}
 
                 | _ -> todo (Some span) ~msg: "bounds")
             | t' -> (match !bound with
@@ -132,7 +132,7 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
                     (*unify span env kind (K.kindof span env t);*)
                     let level = Binder.level binder in
                     check_uv_assignee span env t level Int.max_int t';
-                    bound := Rigid {level = -1; binder; bound = t'}
+                    bound := Rigid {level = -1; binder; typ = t'}
                 | _ -> todo (Some span) ~msg: "bounds'"))
 
         | (Pi {domain; eff; codomain}, t') -> (match t' with
@@ -938,10 +938,10 @@ and check_uv_assignee pos env uv level max_uv_level typ =
             else if level' <= level
             then ()
             else if level' <= max_uv_level
-            then bound := (match !bound with (* hoist *)
+            then bound := (match !bound with (* hoist *) (* FIXME: Change `binder` too: *)
                 | Bot {level = _; binder; kind} -> Bot {level; binder; kind}
-                | Flex {level = _; binder; bound} -> Flex {level; binder; bound}
-                | Rigid {level = _; binder; bound} -> Rigid {level; binder; bound})
+                | Flex {level = _; binder; typ} -> Flex {level; binder; typ}
+                | Rigid {level = _; binder; typ} -> Rigid {level; binder; typ})
             else Env.reportError env pos (IncompleteImpl (uv, t))
 
         | Prim _ -> ()

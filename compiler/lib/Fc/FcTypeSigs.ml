@@ -24,8 +24,8 @@ module type TYPE = sig
 
     and bound =
         | Bot of {level : int; binder : binder; kind : kind}
-        | Flex of {level : int; binder : binder; bound : t}
-        | Rigid of {level : int; binder : binder; bound : t}
+        | Flex of {level : int; binder : binder; typ : t}
+        | Rigid of {level : int; binder : binder; typ : t}
 
     and binder =
         | Scope of scope

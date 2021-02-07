@@ -33,8 +33,8 @@ module Typ = struct
 
     and bound =
         | Bot of {level :int; binder : binder; kind : kind}
-        | Flex of {level :int; binder : binder; bound : t}
-        | Rigid of {level :int; binder : binder; bound : t}
+        | Flex of {level :int; binder : binder; typ : t}
+        | Rigid of {level :int; binder : binder; typ : t}
 
     and binder =
         | Scope of scope
@@ -113,12 +113,9 @@ module Typ = struct
     (* --- *)
 
     let fix binder f =
-        let level = -1 in
-        let bound = ref (Bot {level; binder; (*tmp_*)kind = EmptyRow}) in
-        let root = Uv {quant = ForAll; bound} in
-        let t = f bound in
-        bound := Rigid {level; binder; bound = t};
-        root
+        let bound = ref (Bot {level = -1; binder; (*tmp_*)kind = EmptyRow}) in
+        bound := Rigid {level = -1; binder; typ = f bound};
+        Uv {quant = ForAll; bound}
 
     (* --- *)
 
@@ -126,7 +123,7 @@ module Typ = struct
     let rec force = fun t -> match t with
         | Uv {quant = _; bound} -> (match !bound with
             | Flex _ | Bot _ -> t
-            | Rigid {level = _; binder = _; bound} -> force bound)
+            | Rigid {level = _; binder = _; typ} -> force typ)
         | Ov _ | Fn _ | App _ | Pi _ | Impli _
         | Record _ | With _ | EmptyRow | Proxy _ | Prim _
         | Tuple _ | PromotedTuple _ | PromotedArray _ -> t
@@ -150,11 +147,11 @@ module Typ = struct
         fun f t -> match force t with
         | Uv {quant; bound} -> (match !bound with
             | Bot _ -> t
-            | Flex {level; binder; bound} ->
-                let bound' = f bound in
-                if bound' == bound
+            | Flex {level; binder; typ} ->
+                let typ' = f typ in
+                if typ' == typ
                 then t
-                else Uv {quant; bound = ref (Flex {level; binder; bound = bound'})}
+                else Uv {quant; bound = ref (Flex {level; binder; typ = typ'})}
             | Rigid _ -> unreachable None)
 
         | Fn {param; body} ->
@@ -722,11 +719,11 @@ module Typ = struct
                         | Uv {quant; bound} when locally_bound bound ->
                             let bound' = match !bound with
                                 | Bot _ as bound -> bound
-                                | Flex {level; binder; bound = bound_t} as bound ->
-                                    let bound_t' = clone_term bound_t in
-                                    if bound_t' == bound_t
+                                | Flex {level; binder; typ} as bound ->
+                                    let typ' = clone_term typ in
+                                    if typ' == typ
                                     then bound
-                                    else Flex {level; binder; bound = bound_t'}
+                                    else Flex {level; binder; typ = typ'}
                                 | Rigid _ -> unreachable None in
                             let bound' = ref bound' in
                             Bound.Hashtbl.add bound_copies bound bound';
@@ -746,14 +743,14 @@ module Typ = struct
                             bound := Bot {level; binder = Type binder; kind}
                         | None -> ())
 
-                    | Flex {level; binder; bound = bound_t} ->
-                        iter rebind bound_t;
+                    | Flex {level; binder; typ} ->
+                        iter rebind typ;
 
                         if t == root
-                        then bound := Flex {level; binder = Scope scope; bound = bound_t}
+                        then bound := Flex {level; binder = Scope scope; typ}
                         else (match new_binder binder with
                             | Some binder ->
-                                bound := Flex {level; binder = Type binder; bound = bound_t}
+                                bound := Flex {level; binder = Type binder; typ}
                             | None -> ())
                         
                     | Rigid _ -> unreachable None)
