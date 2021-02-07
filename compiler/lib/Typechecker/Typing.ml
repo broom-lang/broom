@@ -59,7 +59,7 @@ let primop_typ : Env.t -> Primop.t -> T.t = fun env ->
         Pi { domain = Tuple Vector.empty
             ; eff = EmptyRow
             ; codomain = T.fix (Scope (Env.t_scope env)) (fun t ->
-                let bound = T.Bot {level = -1; binder = T.Type t; kind = T.aType} in
+                let bound = T.Bot {binder = T.Type t; kind = T.aType} in
                 Uv {quant = Exists; bound = ref bound}) }
 
     (*| TypeOf -> (* FIXME: Enforce argument purity *)
@@ -551,7 +551,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
 
     | Const c -> {term = FExpr.at expr.pos (const_typ c) (FExpr.const c); eff = EmptyRow}
 
-    | _ -> todo (Some expr.pos)
+    | _ -> todo (Some expr.pos) ~msg: "typeof"
 
 and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
 = fun env super expr ->

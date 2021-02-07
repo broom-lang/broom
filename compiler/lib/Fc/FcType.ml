@@ -32,7 +32,7 @@ module Typ = struct
     and kind = t
 
     and bound =
-        | Bot of {level :int; binder : binder; kind : kind}
+        | Bot of {binder : binder; kind : kind}
         | Flex of {level :int; binder : binder; typ : t}
         | Rigid of {level :int; binder : binder; typ : t}
 
@@ -88,6 +88,11 @@ module Typ = struct
             | Flex {binder; _} -> binder
             | Rigid {binder; _} -> binder
 
+        let with_level bound level = match bound with
+            | Bot {binder; kind} -> Bot {binder; kind}
+            | Flex {level = _; binder; typ} -> Flex {level; binder; typ}
+            | Rigid {level = _; binder; typ} -> Rigid {level; binder; typ}
+
         (* NOTE: Assumes Shallow MLF / HML: *)
         let is_locked bound = match binder bound with
             | Type binder -> (match !binder with
@@ -111,16 +116,15 @@ module Typ = struct
 
         let level = function
             | Type t -> (match !t with
-                | Bot {level; _} | Flex {level; _} | Rigid {level; _} ->
-                    assert (level > 0);
-                    level)
+                | Bot _ -> unreachable None
+                | Flex {level; _} | Rigid {level; _} -> assert (level > 0); level)
             | Scope scope -> Scope.level scope
     end
 
     (* --- *)
 
     let fix binder f =
-        let bound = ref (Bot {level = -1; binder; (*tmp_*)kind = EmptyRow}) in
+        let bound = ref (Bot {binder; (*tmp_*)kind = EmptyRow}) in
         bound := Rigid {level = -1; binder; typ = f bound};
         Uv {quant = ForAll; bound}
 
@@ -745,9 +749,9 @@ module Typ = struct
 
             let rec rebind t = match force t with
                 | Uv {quant = _; bound} -> (match !bound with
-                    | Bot {level; binder; kind} -> (match new_binder binder with
+                    | Bot {binder; kind} -> (match new_binder binder with
                         | Some binder ->
-                            bound := Bot {level; binder = Type binder; kind}
+                            bound := Bot {binder = Type binder; kind}
                         | None -> ())
 
                     | Flex {level; binder; typ} ->

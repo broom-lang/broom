@@ -116,7 +116,7 @@ let rec resolve pos env super =
 let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
 =
     let tighten_bound span env t bound t' = match !bound with
-        | T.Bot {level = _; binder; kind = _} ->
+        | T.Bot {binder; kind = _} ->
             (*unify span env kind (K.kindof span env t);*)
             check_uv_assignee span env t (Binder.level binder) Int.max_int t';
 
@@ -125,15 +125,23 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
         | _ -> todo (Some span) ~msg: "tighten_bound" in
 
     let join_bounds span env t bound t' bound' = match (!bound, !bound') with
-        | (T.Bot {level = _; binder; kind = _}, T.Bot {level = _; binder = binder'; kind = _}) ->
+        | (T.Bot {binder; kind = _}, T.Bot {binder = binder'; kind = _}) ->
             (*unify span env kind kind';*)
 
             if Binder.level binder < Binder.level binder'
             then bound' := Rigid {level = -1; binder; typ = t}
             else bound := Rigid {level = -1; binder = binder'; typ = t'}
 
-        | (Bot _, _) -> tighten_bound span env t bound t'
-        | (_, Bot _) -> tighten_bound span env t' bound' t
+        | (Bot _, bound'v) ->
+            let level = Binder.level (Bound.binder bound'v) + 1 in
+            bound' := Bound.with_level bound'v level;
+            Fun.protect (fun () -> tighten_bound span env t bound t')
+                ~finally: (fun () -> bound' := Bound.with_level !bound' (-1))
+        | (boundv, Bot _) ->
+            let level = Binder.level (Bound.binder boundv) + 1 in
+            bound := Bound.with_level boundv level;
+            Fun.protect (fun () -> tighten_bound span env t' bound' t)
+                ~finally: (fun () -> bound := Bound.with_level !bound (-1))
 
         | _ -> todo (Some span) ~msg: "join_bounds" in
 
@@ -143,10 +151,7 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
         then (match t' with (* OPTIMIZE: path compression, ranking (but mind bindees!) *)
             | T.Uv {quant = _; bound = bound'} when not (Bound.is_locked !bound') ->
                 join_bounds span env t bound t' bound'
-            | T.Uv {quant = _; bound = _} ->
-                todo (Some span) ~msg: "bv-uv"
-            | t' ->
-                tighten_bound span env t bound t')
+            | t' -> tighten_bound span env t bound t')
         else (match t' with
             | T.Uv {quant = _; bound = bound'} ->
                 if not (Bound.is_locked !bound)
@@ -959,7 +964,7 @@ and check_uv_assignee pos env uv level max_uv_level typ =
             then ()
             else if level' <= max_uv_level
             then bound := (match !bound with (* hoist *) (* FIXME: Change `binder` too: *)
-                | Bot {level = _; binder; kind} -> Bot {level; binder; kind}
+                | Bot {binder; kind} -> Bot {binder; kind}
                 | Flex {level = _; binder; typ} -> Flex {level; binder; typ}
                 | Rigid {level = _; binder; typ} -> Rigid {level; binder; typ})
             else Env.reportError env pos (IncompleteImpl (uv, t))

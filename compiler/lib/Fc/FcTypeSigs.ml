@@ -23,7 +23,7 @@ module type TYPE = sig
     and kind = t
 
     and bound =
-        | Bot of {level : int; binder : binder; kind : kind}
+        | Bot of {binder : binder; kind : kind}
         | Flex of {level : int; binder : binder; typ : t}
         | Rigid of {level : int; binder : binder; typ : t}
 
@@ -75,6 +75,7 @@ module type TYPE = sig
         type t = bound
 
         val binder : t -> binder
+        val with_level : t -> int -> t
         val is_locked : t -> bool
     end
 

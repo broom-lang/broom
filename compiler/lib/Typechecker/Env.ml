@@ -370,7 +370,7 @@ let implicits (env : t) = Stream.from (Source.list env.scopes)
     |> Stream.map snd
 
 let tv (env : t) kind =
-    let bound = T.Bot {level = -1; binder = Scope env.level; kind} in
+    let bound = T.Bot {binder = Scope env.level; kind} in
     T.Uv {quant = ForAll; bound = ref bound}
 
 let instantiate (env : t) t = T.instantiate env.level t
