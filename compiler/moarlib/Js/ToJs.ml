@@ -303,10 +303,10 @@ let to_js program =
 
             | Const c -> emit_const c
 
-            | Cast {castee; coercion = _} -> emit_use castee
+            (*| Cast {castee; coercion = _} -> emit_use castee
 
             | Pack {existentials = _; impl} -> emit_use impl
-            | Unpack packed -> emit_use packed
+            | Unpack packed -> emit_use packed*)
 
             | Param _ -> bug (Some pos) ~msg: "Param in Cfg"
             | Tuple _ -> bug (Some pos) ~msg: "Tuple in Cfg"

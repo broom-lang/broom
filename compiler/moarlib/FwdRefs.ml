@@ -224,13 +224,13 @@ let analyze expr =
                 (Sink.fold (fun shape shape' -> fst (join expr.pos shape shape')) Unknown)
                 (Sink.fold Support.union support))
 
-        | Unpack {existentials = _; var = {name; _}; value; body} ->
+        (*| Unpack {existentials = _; var = {name; _}; value; body} ->
             let (def_shape, def_support) = shapeof env Naming value in
             (* Need `let changed'` because `&&` is short-circuiting: *)
             let changed' = Shapes.refine expr.pos shapes name def_shape in
             changed := !changed && changed';
             let (shape, body_support) = shapeof env ctx body in
-            (shape, Support.union def_support body_support)
+            (shape, Support.union def_support body_support)*)
 
         | Match {matchee; clauses} ->
             let (_, support) = shapeof env Escaping matchee in
@@ -328,9 +328,9 @@ let analyze expr =
                 | None -> (Unknown, support))
             | _ -> (Unknown, support))
 
-        | LetType {typedefs = _; body = expr} | Axiom {axioms = _; body = expr}
+        (*| LetType {typedefs = _; body = expr} | Axiom {axioms = _; body = expr}
         | Cast {castee = expr; coercion = _} | Pack {existentials = _; impl = expr} ->
-            shapeof env ctx expr
+            shapeof env ctx expr*)
 
         | Proxy _ | Const _ -> (Scalar, Support.empty)
 
@@ -427,8 +427,8 @@ let emit shapes expr =
                     (E.at expr.pos expr.typ (E.use cell)))
             | Backward | WasForward _ -> expr)
 
-        | LetType _ | Axiom _ | Let _ | Match _
-        | Cast _ | Pack _ | Unpack _ | Fn _ | App _ | PrimApp _ | PrimBranch _
+        | (*LetType _ | Axiom _ |*) Let _ | Match _
+        | (*Cast _ | Pack _ | Unpack _ |*) Fn _ | App _ | PrimApp _ | PrimBranch _
         | Tuple _ | Focus _ | Record _ | Where _ | With _ | Select _ | Proxy _ | Const _
         | Patchable _ -> E.map_children emit expr in
     emit expr

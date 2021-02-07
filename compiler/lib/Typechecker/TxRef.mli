@@ -1,17 +1,16 @@
-type log
-type 'a rref
+module Subst : sig
+    type t
+end
 
-val log : unit -> log
-val transaction : log -> (unit -> 'a) -> 'a
+type 'a t
 
-val fresh_id : log -> int
+val equal : 'a t -> 'a t -> bool
 
-val ref : 'a -> 'a rref
-val (!) : 'a rref -> 'a
-val set : log -> 'a rref -> 'a -> unit
-val eq : 'a rref -> 'a rref -> bool
+val ref : 'a -> 'a t
+val (!) : 'a t -> 'a
+val (:=) : 'a t -> 'a -> unit
 
-module Store : UnionFind.STORE
-    with type 'a store = log
-    with type 'a rref = 'a rref
+module Hashtbl : sig
+    module Make (T : sig type t end) : CCHashtbl.S with type key = T.t t
+end
 

@@ -1,7 +1,10 @@
-open Streaming
+(*open Streaming*)
 open Asserts
 
-module OvHashSet = CCHashSet.Make (struct
+let (!) = TxRef.(!)
+let (:=) = TxRef.(:=)
+
+(*module OvHashSet = CCHashSet.Make (struct
     type t = Fc.Type.ov
     let hash = Hashtbl.hash (* HACK *)
     let equal = (=) (* HACK *)
@@ -13,7 +16,7 @@ module ResidualMonoid = struct
     let skolemized skolems m = match Vector1.of_vector skolems with
         | Some skolems -> Option.map (fun r -> Residual.Skolems (skolems, r)) m
         | None -> m
-end
+end*)
 
 module Make
     (Env : TyperSigs.ENV)
@@ -22,11 +25,13 @@ module Make
 = struct
 
 module T = Fc.Type
+module Binder = T.Binder
+module Bound = T.Bound
 module E = Fc.Term.Expr
-module Err = TypeError
+(*module Err = TypeError*)
 
 type env = Env.t
-type span = Util.span
+(*type span = Util.span
 
 type 'a matching = {coercion : 'a; residual : Residual.t option}
 
@@ -35,7 +40,7 @@ let (!) = TxRef.(!)
 let sibling = Env.sibling
 
 let trans_with =
-    let (let*) = Option.bind in
+    let (let* ) = Option.bind in
     let (let+) = Fun.flip Option.map in
 fun co base label field ->
     let* co = co in
@@ -106,7 +111,53 @@ let rec resolve pos env super =
         , residual )
     | 0 -> todo (Some pos) ~msg: "resolution did not find"
     | _ -> todo (Some pos) ~msg: "ambiguous resolution"
+*)
 
+let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
+= fun span env t t' ->
+    let unify_whnf t t' = match (t, t') with
+        | (T.Uv {quant = _; bound}, t') | (t', T.Uv {quant = _; bound}) ->
+            (match t' with (* OPTIMIZE: path compression, ranking (but mind bindees!) *)
+            | T.Uv {quant = _; bound = bound'} -> (match (!bound, !bound') with
+                | (Bot {level = _; binder; kind = _}, Bot {level = _; binder = binder'; kind = _}) ->
+                    (*unify span env kind kind';*)
+
+                    if Binder.level binder < Binder.level binder'
+                    then bound' := Rigid {level = -1; binder; bound = t}
+                    else bound := Rigid {level = -1; binder = binder'; bound = t'}
+
+                | _ -> todo (Some span) ~msg: "bounds")
+            | t' -> (match !bound with
+                | Bot {level = _; binder; kind = _} ->
+                    (*unify span env kind (K.kindof span env t);*)
+                    let level = Binder.level binder in
+                    check_uv_assignee span env t level Int.max_int t';
+                    bound := Rigid {level = -1; binder; bound = t'}
+                | _ -> todo (Some span) ~msg: "bounds'"))
+
+        | (Pi {domain; eff; codomain}, t') -> (match t' with
+            | Pi {domain = domain'; eff = eff'; codomain = codomain'} ->
+                unify span env domain domain';
+                unify span env eff eff';
+                unify span env codomain codomain'
+
+            | _ -> Env.reportError env span (Unify (t, t')))
+
+        | (EmptyRow, t') -> (match t' with
+            | EmptyRow -> ()
+            | _ -> Env.reportError env span (Unify (t, t')))
+
+        | (Prim pt, t') -> (match t' with
+            | T.Prim pt' when Prim.eq pt pt'-> ()
+            | _ -> Env.reportError env span (Unify (t, t')))
+
+        | _ -> todo (Some span) ~msg: "type ctor" in
+
+    unify_whnf (K.eval span env t) (K.eval span env t')
+
+and instance span env sub super = unify span env (Env.instantiate env sub) super
+
+(*
 (* # Focalization *)
 
 and focalize : span -> Env.t -> T.t -> T.template -> Coercer.t option * T.t
@@ -856,22 +907,21 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.t T.coercion option matching
 
     | (Fn _, _) -> unreachable (Some pos) ~msg: "Fn in unify_whnf"
     | (Bv _, _) -> unreachable (Some pos) ~msg: "Bv in unify_whnf"
-
+*)
 (* Occurs check, ov escape check, HKT capturability check and uv level updates.
    Complected for speed. *)
 and check_uv_assignee pos env uv level max_uv_level typ =
     let rec check : T.t -> unit = function
-        | Exists (_, body) -> check body
         | PromotedArray typs -> Vector.iter check typs
         | PromotedTuple typs -> Vector.iter check typs
         | Tuple typs -> Vector.iter check typs
-        | Pi {universals = _; domain; eff; codomain} -> check domain; check eff; check codomain
-        | Impli {universals = _; domain; codomain} -> check domain; check codomain
+        | Pi {domain; eff; codomain} -> check domain; check eff; check codomain
+        (*| Impli {universals = _; domain; codomain} -> check domain; check codomain
         | Record row -> check row
-        | With {base; label = _; field} -> check base; check field
+        | With {base; label = _; field} -> check base; check field*)
         | EmptyRow -> ()
         | Proxy carrie -> check carrie
-        | Fn (_, body) -> check body
+        (*| Fn (_, body) -> check body
         | App (callee, arg) -> check callee; check arg
         | Ov ((_, level') as ov) ->
             (match Env.get_implementation env ov with
@@ -879,21 +929,25 @@ and check_uv_assignee pos env uv level max_uv_level typ =
             | None ->
                 if level' <= level
                 then ()
-                else Env.reportError env pos (Escape ov))
-        | Uv uv' ->
-            (match Env.get_uv env uv' with
-            | Unassigned (name, kind, level') ->
-                if uv = uv'
-                then Env.reportError env pos (Occurs (uv, typ))
-                else if level' <= level
-                then ()
-                else if level' <= max_uv_level
-                then Env.set_uv env pos uv' (Unassigned (name, kind, level)) (* hoist *)
-                else Env.reportError env pos (IncompleteImpl (uv, uv'))
-            | Assigned typ -> check typ)
-        | Bv _ | Prim _ -> () in
-    check typ
+             else Env.reportError env pos (Escape ov))*)
 
+        | Uv {quant = _; bound} as t ->
+            let level' = Binder.level (Bound.binder !bound) in
+            if t == uv
+            then Env.reportError env pos (Occurs (uv, typ))
+            else if level' <= level
+            then ()
+            else if level' <= max_uv_level
+            then bound := (match !bound with (* hoist *)
+                | Bot {level = _; binder; kind} -> Bot {level; binder; kind}
+                | Flex {level = _; binder; bound} -> Flex {level; binder; bound}
+                | Rigid {level = _; binder; bound} -> Rigid {level; binder; bound})
+            else Env.reportError env pos (IncompleteImpl (uv, t))
+
+        | Prim _ -> ()
+        | _ -> todo (Some pos) ~msg: "check_uv_assignee" in
+    check (K.eval pos env typ)
+(*
 (* # Constraint Solving *)
 
 and solve pos env residual =
@@ -924,19 +978,19 @@ and solve pos env residual =
     (match Option.bind residual (solve env) with
     | None -> ()
     | Some residual -> Env.reportError env pos (Unsolvable residual))
-
+*)
 (* Public API *)
 (* NOTE: `focalize` is also public *)
 
-let solving_subtype pos env typ super =
-    let {coercion = coerce; residual} = subtype pos env typ super in
+let solving_subtype pos _ _ _ = todo (Some pos)
+    (*let {coercion = coerce; residual} = subtype pos env typ super in
     solve pos env residual;
-    coerce
+    coerce*)
 
-let solving_unify pos env typ super =
-    let {coercion; residual} = unify pos env typ super in
+let solving_unify pos _ _ _ = todo (Some pos)
+    (*let {coercion; residual} = unify pos env typ super in
     solve pos env residual;
-    coercion
+    coercion*)
 
 end
 

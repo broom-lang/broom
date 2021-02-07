@@ -203,12 +203,12 @@ let run (ns : Namespace.t) program =
                     end else match_failure expr.pos in
                 eval env (eval_clause 0) matchee)
 
-        | Unpack {existentials = _; var = {name; _}; value = vexpr; body} ->
+        (*| Unpack {existentials = _; var = {name; _}; value = vexpr; body} ->
             let k v = 
                 let env = Env.push env in
                 Env.add expr.pos env name v;
                 eval env k body in
-            eval env k vexpr
+            eval env k vexpr*)
 
         | Let {defs; body} ->
             let env = Env.push env in
@@ -225,8 +225,8 @@ let run (ns : Namespace.t) program =
                 else eval env k body in
             define 0
 
-        | LetType {body = expr; _} | Axiom {body = expr; _}
-        | Cast {castee = expr; _} | Pack {impl = expr; _} -> eval env k expr
+        (*| LetType {body = expr; _} | Axiom {body = expr; _}*)
+        | Cast {castee = expr; _} (*| Pack {impl = expr; _}*) -> eval env k expr
 
         | Use {name; _} -> k (Env.find expr.pos env name)
 

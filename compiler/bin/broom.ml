@@ -123,25 +123,26 @@ let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
         Typer.check_interactive_stmts tenv stmts |> Result.map_error type_err in
     if debug then begin
         debug_heading "FC from Typechecker";
-        pprint (Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
+        pprint (Fc.Program.to_doc program ^^ twice hardline)
     end;
 
+(*
     let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
     if debug then begin
         debug_heading "Nonrecursive FC";
         pprint (Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
     end;
+*)
 
     let (venv, v) = Fc.Eval.run venv program in
     let doc = infix 4 1 bang
-        (infix 4 1 colon (Fc.Eval.Value.to_doc v)
-            (Env.document tenv Fc.Type.to_doc program.main.typ))
-        (Env.document tenv Fc.Type.to_doc eff) in
+        (infix 4 1 colon (Fc.Eval.Value.to_doc v) (Fc.Type.to_doc program.main.typ))
+        (Fc.Type.to_doc eff) in
     pprint doc;
 
     Ok (eenv, tenv, venv)
 
-let rep debug ((_, tenv, _) as envs) filename input =
+let rep debug ((_, _, _) as envs) filename input =
     let (let*) = Result.bind in
     match (
         let* stmts = Parse.parse_stmts filename input |> Result.map_error parse_err in
@@ -165,11 +166,11 @@ let rep debug ((_, tenv, _) as envs) filename input =
             prerr_endline (SedlexMenhir.string_of_ParseError err);
         | Type (pos, err) ->
             flush stdout;
-            pprint_err PPrint.(hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ hardline);
+            pprint_err PPrint.(hardline ^^ Typer.TypeError.to_doc pos err ^^ hardline);
             flush stderr;
-        | FwdRefs errors ->
+        (*| FwdRefs errors ->
             errors |> CCVector.iter (fun err -> pprint_err (FwdRefs.error_to_doc err));
-            flush stderr);
+            flush stderr*));
         envs
 
 (*let repl path debug =

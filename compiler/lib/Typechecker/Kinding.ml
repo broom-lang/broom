@@ -10,32 +10,32 @@ module Make (Env : TS.ENV)
 
 module AType = Ast.Type
 module T = Fc.Type
-module AExpr = Ast.Term.Expr
+(*module AExpr = Ast.Term.Expr
 module AStmt = Ast.Term.Stmt
 module FExpr = Fc.Term.Expr
-module Err = TypeError
+module Err = TypeError*)
 
 type env = Env.t
 type 'a with_pos = 'a Util.with_pos
-type 'a kinding = 'a TS.kinding
+(*type 'a kinding = 'a TS.kinding
 
 let reabstract = Env.reabstract
+let ref = TxRef.ref
 let (!) = TxRef.(!)
 
 let kindof_prim : Prim.t -> T.kind = function
     | Int | Bool | String -> T.aType
-    | Array | Cell -> Pi {universals = Vector.empty; domain = T.aType; eff = EmptyRow
-        ; codomain = T.aType}
+    (*| Array | Cell -> Pi {binder = ref T.Binder.of_inert
+        ; domain = T.aType; eff = EmptyRow; codomain = T.aType}
     | SingleRep -> T.aType
-    | Boxed -> Prim SingleRep
-    | TypeIn -> Pi {universals = Vector.empty; domain = T.rep; eff = EmptyRow
-        ; codomain = T.aType}
-    | RowOf -> Pi {universals = Vector.empty; domain = T.aKind; eff = EmptyRow
-        ; codomain = T.aKind}
+    | Boxed -> Prim SingleRep*)
+    | TypeIn -> Pi {domain = T.rep; eff = EmptyRow; codomain = T.aType}
+    (*| RowOf -> Pi {binder = ref T.Binder.of_inert
+        ; domain = T.aKind; eff = EmptyRow; codomain = T.aKind}*)
+    | _ -> todo None ~msg: "kindof_prim"
 
-let rec kindof_F pos env : T.t -> T.kind = function
-    | Exists (_, body) -> kindof_F pos env body
-    | PromotedArray typs ->
+let kindof_F pos _ : T.t -> T.kind = function
+    (*| PromotedArray typs ->
         let el_kind = if Vector.length typs > 0
             then kindof_F pos env (Vector.get typs 0)
             else Uv (Env.uv env T.aKind) in
@@ -60,8 +60,9 @@ let rec kindof_F pos env : T.t -> T.kind = function
     | Bv {kind; _} -> kind
     | Uv uv -> (match Env.get_uv env uv with
         | Unassigned (_, kind, _) -> kind
-        | Assigned typ -> kindof_F pos env typ)
+        | Assigned typ -> kindof_F pos env typ)*)
     | Prim pt -> kindof_prim pt
+    | _ -> todo (Some pos) ~msg: "kindof_F"
 
 and check_F pos env kind typ =
     let kind' = kindof_F pos env typ in
@@ -70,15 +71,6 @@ and check_F pos env kind typ =
 let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
     let rec elab env (typ : AType.t with_pos) : T.t kinding =
         match typ.v with
-        | Tuple typs ->
-            let kinds = CCVector.create () in
-            let typs = Vector.map (fun typ ->
-                let {TS.typ; kind} = elab env typ in
-                CCVector.push kinds kind;
-                typ
-            ) typs in
-            {typ = Tuple typs; kind = App (Prim TypeIn, PromotedArray (Vector.build kinds))}
-
         | Pi {domain; eff; codomain} ->
             let env0 = env in
             let (env, universals) = Env.push_existential env0 in
@@ -185,6 +177,15 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
             | {term = _; typ; eff = Pure} -> (Hole, typ)
             | _ -> Env.reportError env typ.pos (ImpureType expr.v))*)
 
+        | Tuple typs ->
+            let kinds = CCVector.create () in
+            let typs = Vector.map (fun typ ->
+                let {TS.typ; kind} = elab env typ in
+                CCVector.push kinds kind;
+                typ
+            ) typs in
+            {typ = Tuple typs; kind = App (Prim TypeIn, PromotedArray (Vector.build kinds))}
+
         | Prim pt -> {typ = Prim pt; kind = kindof_prim pt}
 
     and elab_domain env (domain : AExpr.t with_pos) =
@@ -239,7 +240,7 @@ and check env kind ({v = _; pos} as typ) =
     typ
 
 and eval pos env typ =
-    let (let*) = Option.bind in
+    let (let* ) = Option.bind in
     let (let+) = Fun.flip Option.map in
 
     let rec eval = function
@@ -286,5 +287,23 @@ and eval pos env typ =
             unreachable (Some pos) ~msg: "uncallable type in `eval.apply`"
         | Bv _ -> unreachable (Some pos) ~msg: "`Bv` in `eval.apply`"
     in eval typ
+*)
+
+let eval _ _ t = T.force t
+
+let kindof _ (typ : AType.t with_pos) = todo (Some typ.pos)
+
+let check _ _ (typ : AType.t with_pos) = todo (Some typ.pos)
+
+let check_nonquantifying env _ (typ : AType.t with_pos) = match typ.v with
+    | Path expr ->
+        let carrie = Env.tv env (Env.tv env T.aType) in
+        let {TS.term = _; eff} = C.check env (T.Proxy carrie) {typ with v = expr} in
+        let _ = M.solving_unify typ.pos env eff EmptyRow in
+        (*let (_, carrie) = reabstract env carrie in*)
+        carrie
+
+    | _ -> todo (Some typ.pos) ~msg: "check_nonquantifying"
+
 end
 

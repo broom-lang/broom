@@ -12,7 +12,7 @@ module type S = sig
     val grammar : t Grammar.t
 
     module HashMap : CCHashTrie.S with type key = t
-    module Hashtbl : Hashtbl.S with type key = t
+    module Hashtbl : CCHashtbl.S with type key = t
     module HashSet : CCHashSet.S with type elt = t
 end
 
@@ -40,7 +40,7 @@ module Make () = struct
     let to_doc id = PPrint.string (to_string id)
 
     module HashMap = CCHashTrie.Make (Key)
-    module Hashtbl = Hashtbl.Make (Key)
+    module Hashtbl = CCHashtbl.Make (Key)
     module HashSet = CCHashSet.Make (Key)
 end
 

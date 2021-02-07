@@ -32,6 +32,17 @@ let fold2 f acc xs ys =
     then foldi (fun acc i x -> f acc x (get ys i)) acc xs
     else raise (Invalid_argument "Vector.fold_left2: inequal lengths")
 
+let rev xs =
+    let xs' = CCVector.create () in
+    let rec loop i =
+        if i > 0
+        then begin
+            let i = i - 1 in
+            CCVector.push xs' (get xs i);
+            loop i
+        end else xs' |> CCVector.to_array |> of_array_unsafe in
+    loop (length xs)
+
 let to_seq xs =
     let len = length xs in
     Seq.unfold (fun i ->

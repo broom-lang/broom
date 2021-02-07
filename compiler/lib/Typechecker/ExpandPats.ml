@@ -93,7 +93,7 @@ let is_named (pat : pat) = match pat.pterm with
     | VarP _ -> true
     | _ -> false
 
-let matcher pos env typ matchee clauses =
+let matcher pos _ typ matchee clauses =
     let states = Automaton.create (Vector.length clauses) in
 
     let rec matcher' (matchees : var Vector.t) pats acceptors =
@@ -104,7 +104,7 @@ let matcher pos env typ matchee clauses =
                 |> Stream.into Sink.len in
 
             if coli < Vector.length matchees then
-                (match K.eval pos env (Vector.get matchees coli).vtyp with
+                (match (*K.eval pos env*) Some ((Vector.get matchees coli).vtyp, None) with
                 | Some (typ, None) -> (match typ with
                     | Prim Int ->
                         let (pats, rows, default_rowis) = split_int pats coli in
@@ -156,7 +156,7 @@ let matcher pos env typ matchee clauses =
                     | EmptyRow | PromotedTuple _ | PromotedArray _ -> unreachable (Some pos)
 
                     | typ -> todo (Some pos)
-                        ~msg: (Util.doc_to_string (Env.document env T.to_doc typ) ^ " pattern expansion"))
+                        ~msg: (Util.doc_to_string (T.to_doc typ) ^ " pattern expansion"))
                 | _ -> todo (Some pos))
             else begin
                 let tmp_vars = Stream.from (Source.zip (Vector.to_source matchees) row)

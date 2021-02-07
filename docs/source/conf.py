@@ -18,7 +18,7 @@
 # -- Project information -----------------------------------------------------
 
 project = 'Broom'
-copyright = '2020, Pauli Jaakkola'
+copyright = '2020-2021, Pauli Jaakkola'
 author = 'Pauli Jaakkola'
 
 # The full version, including alpha/beta/rc tags

@@ -1,11 +1,11 @@
-module H = Hashtbl
+module H = CCHashtbl
 
 module Key = struct
     type t = int
 
     let compare = Int.compare
     let equal = Int.equal
-    let hash = H.hash
+    let hash = Stdlib.Hashtbl.hash
 end
 
 module Hashtbl = H.Make(Key)
@@ -28,7 +28,7 @@ let of_string =
     let module Cache = H.Make(struct
         type t = string
         let equal = String.equal
-        let hash = H.hash
+        let hash = Stdlib.Hashtbl.hash
     end) in
     let cache = Cache.create 0 in
     fun s ->

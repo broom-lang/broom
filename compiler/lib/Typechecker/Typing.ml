@@ -1,7 +1,22 @@
 open Streaming
 open Asserts
 
+type 'a with_pos = 'a Util.with_pos
+
+let ref = TxRef.ref
+let (:=) = TxRef.(:=)
+let (!) = TxRef.(!)
+
+module AExpr = Ast.Term.Expr
+module AStmt = Ast.Term.Stmt
+
+module FExpr = Fc.Term.Expr
+module FStmt = Fc.Term.Stmt
+
+module T = Fc.Type
+
 module TS = TyperSigs
+type 'a typing = 'a TS.typing
 
 module Make
     (Env : TS.ENV)
@@ -10,18 +25,11 @@ module Make
     (M : TS.MATCHING with type env = Env.t)
 : TS.TYPING with type env = Env.t
 = struct
-
-module AExpr = Ast.Term.Expr
-module FExpr = Fc.Term.Expr
+(*
 type var = FExpr.var
-module AStmt = Ast.Term.Stmt
-module FStmt = Fc.Term.Stmt
-module T = Fc.Type
-module Err = TypeError
+module Err = TypeError*)
 
 type env = Env.t
-type 'a with_pos = 'a Util.with_pos
-type 'a typing = 'a TS.typing
 
 (* # Synthesis *)
 
@@ -29,10 +37,10 @@ let const_typ c = T.Prim (match c with
     | Const.Int _ -> Prim.Int
     | String _ -> String)
 
-let primop_typ : Primop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t =
+let primop_typ : Env.t -> Primop.t -> T.t = fun env ->
     let open Primop in
     function
-    | CellNew -> (* forall a . () -> __cell a *)
+    (*| CellNew -> (* forall a . () -> __cell a *)
         ( Vector.singleton T.aType, Vector.empty
         , T.EmptyRow
         , T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}) )
@@ -46,12 +54,18 @@ let primop_typ : Primop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t =
         , Vector.singleton (T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}))
         , T.EmptyRow, T.Bv {depth = 0; sibli = 0; kind = T.aType} )
     | Int -> (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim Int))
-    | String -> (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim String))
+    | String -> (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim String))*)
     | Type ->
-        ( Vector.empty, Vector.empty, T.EmptyRow
-        , T.Proxy (T.Exists (Vector1.singleton T.aType
-            , Proxy (Bv {depth = 0; sibli = 0; kind = T.aType}))) )
-    | TypeOf -> (* FIXME: Enforce argument purity *)
+        (match Env.tv env (Tuple Vector.empty) with
+        | Uv {quant = _; bound = cd_bound} as codomain -> (match !cd_bound with
+            | Bot {level; binder; kind = _} ->
+                let bound = T.Bot {level = -1; binder = T.Type cd_bound; kind = T.aType} in
+                cd_bound := T.Rigid {level; binder
+                    ; bound = Uv {quant = Exists; bound = ref bound}};
+                Pi {domain = Tuple Vector.empty; eff = EmptyRow; codomain}
+            | _ -> unreachable None)
+        | _ -> unreachable None)
+    (*| TypeOf -> (* FIXME: Enforce argument purity *)
         ( Vector.singleton T.aType
         , Vector.singleton (T.Bv {depth = 0; sibli = 0; kind = T.aType})
         , EmptyRow, Proxy (Bv {depth = 0; sibli = 0; kind = T.aType}) )
@@ -66,8 +80,9 @@ let primop_typ : Primop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t =
     | GlobalGet ->
         ( Vector.singleton T.aType
         , Vector.singleton (T.Prim String)
-        , EmptyRow, Bv {depth = 0; sibli = 0; kind = T.aType} )
-
+        , EmptyRow, Bv {depth = 0; sibli = 0; kind = T.aType} )*)
+    | _ -> todo None ~msg: "primop_typ"
+(*
 let branchop_typ : Branchop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t Vector.t =
     let open Branchop in
     function
@@ -78,7 +93,7 @@ let branchop_typ : Branchop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t Vector.
         ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
         , T.EmptyRow, Vector.of_list [T.Tuple Vector.empty; Tuple Vector.empty] )
 
-let rec typeof env expr : FExpr.t typing =
+let typeof _ (expr : AExpr.t with_pos) : FExpr.t typing = todo (Some expr.pos)
     check env (T.Uv (Env.uv env (T.App (Prim TypeIn, Uv (Env.uv env T.rep))))) expr
 
 and emit_clause_body {FExpr.pat; body} =
@@ -237,8 +252,9 @@ and implement : Env.t -> T.ov Vector.t * T.t -> AExpr.t with_pos -> FExpr.t typi
         {term = FExpr.at expr.pos typ (FExpr.axiom axioms term); eff}
     end else check env typ expr
 
-and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
+let check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
 = fun env typ expr ->
+
     let check_clause plicity env domain eff codomain ({params; body} : AExpr.clause) =
         let (pat, vars) = check_pat env domain params in
         let body_env = Vector.fold (Env.push_val plicity) env vars in
@@ -483,9 +499,141 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
 
     match K.eval expr.pos env typ with
     | Some (typ, None) -> check_whnf env typ expr
+    | _ -> todo (Some expr.pos)*)
+
+let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
+= fun env expr -> match expr.v with
+    | Fn (Explicit, clauses) ->
+        let (env, _) = Env.push_level env in
+        let domain = Env.tv env (T.App (T.Prim TypeIn, Env.tv env T.rep)) in
+        let eff = Env.tv env T.aRow in
+        let codomain = Env.tv env (T.App (T.Prim TypeIn, Env.tv env T.rep)) in
+        let param = FExpr.fresh_var domain in
+        let clauses = clauses |> Vector.map (fun clause ->
+            let clause = check_clause Util.Explicit env domain eff codomain clause in
+            {ExpandPats.pat = clause.FExpr.pat; emit = emit_clause_body env clause}
+        ) in
+        let matchee = FExpr.at expr.pos param.vtyp (FExpr.use param) in
+        let body = ExpandPats.expand_clauses expr.pos env codomain matchee clauses in
+        let typ = T.Pi {domain; eff; codomain} in
+        {term = FExpr.at expr.pos typ (FExpr.fn Vector.empty param body); eff}
+
+    | App (callee, Explicit, arg) ->
+        let domain = Env.tv env (T.App (T.Prim TypeIn, Env.tv env T.rep)) in
+        let codomain = Env.tv env (T.App (T.Prim TypeIn, Env.tv env T.rep)) in
+        let ft = T.Pi {domain; eff = EmptyRow; codomain} in
+        let {TS.term = callee; eff = _} = check env ft callee in
+        let {TS.term = arg; eff = _} = check env domain arg in
+
+        { term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg)
+        ; eff = EmptyRow }
+
+    | PrimApp (op, _, arg) ->
+        let domain = Env.tv env (T.App (T.Prim TypeIn, Env.tv env T.rep)) in
+        let codomain = Env.tv env (T.App (T.Prim TypeIn, Env.tv env T.rep)) in
+        let ft = T.Pi {domain; eff = EmptyRow; codomain} in
+        let op_t = primop_typ env op in
+        M.instance expr.pos env op_t ft;
+        let {TS.term = arg; eff = _} = check env domain arg in
+
+        { term = FExpr.at expr.pos codomain (FExpr.primapp op Vector.empty arg)
+        ; eff = EmptyRow }
+
+    | Var name ->
+        let ({FExpr.vtyp = typ; _} as var, _) = Env.find env expr.pos name in
+        let term =
+            (*if not global
+            then*) FExpr.use var
+            (*else
+                let namexpr = FExpr.at expr.pos (Prim String)
+                    (FExpr.const (String (Name.to_string name))) in
+                FExpr.primapp GlobalGet (Vector.singleton typ)
+                    (FExpr.at expr.pos (Env.tuple env (Vector.singleton (T.Prim String)))
+                        (FExpr.values [|namexpr|]))*) in
+        {term = FExpr.at expr.pos typ term; eff = EmptyRow}
+
+    | Const c -> {term = FExpr.at expr.pos (const_typ c) (FExpr.const c); eff = EmptyRow}
+
     | _ -> todo (Some expr.pos)
 
-(* # Patterns *)
+and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
+= fun env super expr ->
+    let {TS.term = expr; eff} = typeof env expr in
+    M.instance expr.pos env expr.typ super;
+    {term = FExpr.at expr.pos super (FExpr.cast expr (Refl super)); eff}
+
+and check_clause plicity env domain _ codomain ({params; body} : AExpr.clause) =
+    let (pat, vars) = check_pat env domain params in
+    let body_env = Vector.fold (Env.push_val plicity) env vars in
+    let {TS.term = body; eff = _} = check body_env codomain body in
+    (*ignore (M.solving_unify body.pos env body_eff eff);*)
+    {FExpr.pat; body}
+
+and emit_clause_body _ {FExpr.pat; body} =
+    let pos = pat.ppos in
+    fun ctx tmp_vars -> match ctx with
+        | ExpandPats.Inline ->
+            let defs = Stream.from (Vector.to_source tmp_vars)
+                |> Stream.map (fun {ExpandPats.src_var; tmp_var} ->
+                    FStmt.Def (pos, src_var, FExpr.at pos src_var.FExpr.vtyp (FExpr.use tmp_var)))
+                |> Stream.into Sink.array in
+            {body with term = FExpr.let' defs body}
+
+        | Shared var ->
+            let codomain = body.typ in
+            if Vector.length tmp_vars = 1 then begin
+                let {ExpandPats.tmp_var; src_var = _} = Vector.get tmp_vars 0 in
+                let domain = tmp_var.vtyp in
+                let ftyp = T.Pi {domain
+                    ; eff = EmptyRow (* NOTE: effect does not matter any more... *)
+                    ; codomain } in
+                FExpr.at pos ftyp (FExpr.fn Vector.empty var body)
+            end else begin
+                let pos = body.pos in
+                let domain : T.t = Tuple (Vector.map (fun (vars : ExpandPats.final_naming) ->
+                    vars.src_var.vtyp
+                ) tmp_vars) in
+                let ftyp = T.Pi {domain
+                    ; eff = EmptyRow (* NOTE: effect does not matter any more... *)
+                    ; codomain } in
+                let param = FExpr.fresh_var domain in
+                let body = FExpr.at pos codomain (FExpr.let' (Stream.from (Vector.to_source tmp_vars)
+                        |> Stream.indexed
+                        |> Stream.map (fun (i, {ExpandPats.tmp_var = _; src_var}) ->
+                            FStmt.Def (pos, src_var,
+                                FExpr.at pos src_var.vtyp (FExpr.focus (FExpr.at pos domain (FExpr.use param)) i)))
+                        |> Stream.into Sink.array)
+                    body) in
+                FExpr.at pos ftyp (FExpr.fn Vector.empty param body)
+            end
+
+        | Redirect dest ->
+            let codomain = body.typ in
+            if Vector.length tmp_vars = 1
+            then begin
+                let {ExpandPats.tmp_var; src_var = _} = Vector.get tmp_vars 0 in
+                let domain = tmp_var.vtyp in
+                let ftyp = T.Pi {domain
+                    ; eff = EmptyRow (* NOTE: effect does not matter any more... *)
+                    ; codomain } in
+                FExpr.at pos codomain (FExpr.app (FExpr.at pos ftyp (FExpr.use dest)) Vector.empty
+                    (FExpr.at pos domain (FExpr.use tmp_var)))
+            end else begin
+                let domain : T.t = Tuple (Vector.map (fun (vars : ExpandPats.final_naming) ->
+                    vars.tmp_var.vtyp
+                ) tmp_vars) in
+                let ftyp = T.Pi {domain
+                    ; eff = EmptyRow (* NOTE: effect does not matter any more... *)
+                    ; codomain } in
+                let args = Stream.from (Vector.to_source tmp_vars)
+                    |> Stream.map (fun {ExpandPats.tmp_var; _} ->
+                        FExpr.at pos tmp_var.vtyp (FExpr.use tmp_var))
+                    |> Stream.into (Sink.buffer (Vector.length tmp_vars)) in
+                FExpr.at pos codomain (FExpr.app (FExpr.at pos ftyp (FExpr.use dest)) Vector.empty
+                    (FExpr.at pos domain (FExpr.values args)))
+            end
+
+(*(* # Patterns *)
 
 (* ## Synthesis *)
 
@@ -493,36 +641,35 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
     let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
     let typ = T.Uv (Env.uv env kind) in
     let (pat, vars) = check_pat env typ pat in
-    (pat, (Vector.empty, typ), vars)
+    (pat, (Vector.empty, typ), vars)*)
 
 (* ## Checking *)
 
 (* TODO: use coercions (and subtyping ?): *)
 and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vector.t
 = fun env ptyp pat ->
-    let check_pats env domain pats =
+    (*let check_pats env domain pats =
         let step (env, pats, defs) domain pat =
             let (pat, defs') = check_pat env domain pat in
             (Vector.fold (Env.push_val Explicit) env defs, pat :: pats, Vector.append defs defs') in
         if Vector.length domain = Vector.length pats then begin
             let (_, pats, defs) = Vector.fold2 step (env, [], Vector.empty) domain pats in
             (Vector.of_list (List.rev pats), defs)
-        end else failwith "tuple type and pattern widths don't match" in
+        end else failwith "tuple type and pattern widths don't match" in*)
 
     match pat.v with
     | AExpr.Tuple pats when Vector.length pats = 1 -> check_pat env ptyp (Vector.get pats 0)
-
+(*
     | AExpr.Tuple pats ->
         let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
         let typs = Vector.map (fun _ -> T.Uv (Env.uv env kind)) pats in
         let _ = M.solving_unify pat.pos env ptyp (Tuple typs) in
         let (pats, defs) = check_pats env typs pats in
         ({ppos = pat.pos; pterm = FExpr.TupleP pats; ptyp}, defs)
-
+*)
     | AExpr.Ann (pat', typ') ->
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-        let typ' = K.check env kind typ' in
-        let (_, typ') = Env.reabstract env typ' in
+        let kind = T.App (T.Prim TypeIn, Env.tv env T.rep) in
+        let typ' = K.check_nonquantifying env kind typ' in
         let _ = M.solving_unify pat.pos env ptyp typ' in
         check_pat env typ' pat'
 
@@ -538,9 +685,9 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
         ({ppos = pat.pos; pterm = ProxyP carrie; ptyp}, Vector.empty)
 
     | AExpr.Const c ->
-        let _ = M.solving_unify pat.pos env ptyp (const_typ c) in
+        M.unify pat.pos env ptyp (const_typ c);
         ({ppos = pat.pos; pterm = ConstP c; ptyp}, Vector.empty)
-
+(*
     | AExpr.Focus _ | Let _ | App _ | PrimApp _ | PrimBranch _ | Select _ | Record _ ->
         todo (Some pat.pos) ~msg: "in check_pat"
 
@@ -549,10 +696,12 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
         ({ppos = pat.pos; pterm = WildP (Name.of_string ""); ptyp}, Vector.empty)
 
     | AppSequence _ -> bug (Some pat.pos) ~msg: "typechecker encountered AppSequence pattern"
+*)
+    | _ -> todo (Some pat.pos)
 
 (* # Statement Typing *)
 
-let check_stmt : Env.t -> AStmt.t -> FStmt.t Vector.t typing * T.t * Env.t
+(*let check_stmt : Env.t -> AStmt.t -> FStmt.t Vector.t typing * T.t * Env.t
 = fun env -> function
     | AStmt.Def (pos, pat, expr) ->
         let {term = expr; eff} : FExpr.t typing = typeof env expr in
@@ -565,10 +714,10 @@ let check_stmt : Env.t -> AStmt.t -> FStmt.t Vector.t typing * T.t * Env.t
     | AStmt.Expr expr ->
         let typing = typeof env expr in
         ({typing with term = Vector.singleton (FStmt.Expr typing.term)}, typing.term.typ, env)
-
+*)
 let check_interactive_stmt env = function
-    | AStmt.Def (pos, pat, expr) ->
-        let {TS.term = expr; eff} = typeof env expr in
+    | AStmt.Def (pos, _, _) ->
+        (*let {TS.term = expr; eff} = typeof env expr in
         let (pat, vars) = check_pat env expr.typ pat in
         let stmts = expand_def env vars pos pat expr
             |> Stream.flat_map (fun (((pos, var, _) as def) : FExpr.def) ->
@@ -582,7 +731,8 @@ let check_interactive_stmt env = function
                             (FExpr.at pos (Tuple Vector.empty)
                             (FExpr.values [|namexpr; FExpr.at pos typ (FExpr.use var)|]))))))
             |> Stream.into Sink.array in
-        (stmts, eff, Vector.fold (Env.push_val Explicit) env vars)
+        (stmts, eff, Vector.fold (Env.push_val Explicit) env vars)*)
+        todo (Some pos)
     | Expr expr ->
         let {TS.term = expr; eff} = typeof env expr in
         ([|FStmt.Expr expr|], eff, env)
@@ -593,10 +743,10 @@ let check_interactive_stmts env stmts =
         let (_, stop) = AStmt.pos (Vector1.get stmts (Vector1.length stmts - 1)) in
         (start, stop) in
     let stmts' = CCVector.create () in
-    let eff = T.Uv (Env.uv env T.aRow) in
+    (*let eff = T.Uv (Env.uv env T.aRow) in*)
     let env = Vector1.fold (fun env stmt ->
-        let (stmts'', stmt_eff, env) = check_interactive_stmt env stmt in
-        ignore (M.solving_unify pos env stmt_eff eff);
+        let (stmts'', _, env) = check_interactive_stmt env stmt in
+        (*ignore (M.solving_unify pos env stmt_eff eff);*)
         Array.iter (CCVector.push stmts') stmts'';
         env
     ) env stmts in
@@ -609,9 +759,9 @@ let check_interactive_stmts env stmts =
                 | _ -> (stmts, FExpr.at pos (Tuple Vector.empty) (FExpr.values [||]))
             else (stmts, FExpr.at pos (Tuple Vector.empty) (FExpr.values [||])) in
         FExpr.at pos body.typ (FExpr.let' stmts body) in
-    ( { TS.term = { Fc.Program.type_fns = Env.type_fns env (* FIXME: gets all typedefs ever seen *)
+    ( { TS.term = { Fc.Program.type_fns = Vector.empty (*Env.type_fns env (* FIXME: gets all typedefs ever seen *)*)
                    ; defs = Vector.empty; main }
-      ; eff }
+    ; eff = EmptyRow } (* FIXME: `; eff }` *)
     , env )
 
 end

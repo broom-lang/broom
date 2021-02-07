@@ -5,7 +5,9 @@ module type TYPE = sig
     type cont_id
 
     type kind = Fc.Type.kind
-    type param = Fc.Type.binding
+    type param = Name.t * kind
+
+    type bv = {depth : int; sibli : int; kind : kind}
 
     type t =
         | Exists of kind Vector1.t * t
@@ -20,14 +22,14 @@ module type TYPE = sig
         | Prim of Prim.t
         | Fn of kind * t
         | App of t * t
-        | Bv of Fc.Type.bv
+        | Bv of bv
         | TParam of {label : cont_id; index : int}
         | Abstract of kind
         | Existing of {value : expr_id; index : int}
 
     val to_doc : t -> PPrint.document
     val param_to_doc : param -> PPrint.document
-    val coercion_to_doc : t Fc.Type.coercion -> PPrint.document
+    (*val coercion_to_doc : t Fc.Type.coercion -> PPrint.document*)
 end
 
 module type EXPR = sig
@@ -47,9 +49,9 @@ module type EXPR = sig
         | Proxy of Type.t
         | Label of cont_id
         | Param of {label : cont_id; index : int}
-        | Cast of {castee : Id.t; coercion : Type.t Fc.Type.coercion}
+        (*| Cast of {castee : Id.t; coercion : Type.t Fc.Type.coercion}
         | Pack of {existentials : Type.t Vector1.t; impl : Id.t}
-        | Unpack of Id.t
+        | Unpack of Id.t*)
         | Const of Const.t
 
     type t =

@@ -11,4 +11,5 @@ In-progress Design Documents
    layout
    data_inlining
    register_allocation
+   mlf_inference
 

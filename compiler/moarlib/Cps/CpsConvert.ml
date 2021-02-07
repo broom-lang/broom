@@ -16,18 +16,18 @@ module Env : sig
     val add_typ : t -> Name.t -> Type.t -> t
     val find_typ : t -> Name.t -> Type.t
 
-    val add_co : t -> Name.t -> Type.t Fc.Type.coercion -> t
-    val find_co : t -> Name.t -> Type.t Fc.Type.coercion
+    (*val add_co : t -> Name.t -> Type.t Fc.Type.coercion -> t
+    val find_co : t -> Name.t -> Type.t Fc.Type.coercion*)
 end = struct
     module Vals = Name.HashMap
     module Typs = Name.HashMap
     module Coercions = Name.HashMap
 
     type t = {vals : Expr.Id.t Vals.t; typs : Type.t Typs.t
-        ; cos : Type.t Fc.Type.coercion Coercions.t}
+        (*; cos : Type.t Fc.Type.coercion Coercions.t*)}
 
     let empty = {vals = Vals.empty; typs = Typs.empty
-        ; cos = Coercions.empty}
+        (*; cos = Coercions.empty*)}
 
     let add env k v = {env with vals = Vals.add k v env.vals}
     let find env k = Vals.get_exn k env.vals
@@ -35,8 +35,8 @@ end = struct
     let add_typ env k t = {env with typs = Typs.add k t env.typs}
     let find_typ env k = Typs.get_exn k env.typs
 
-    let add_co env k co = {env with cos = Coercions.add k co env.cos}
-    let find_co env k = Coercions.get_exn k env.cos
+    (*let add_co env k co = {env with cos = Coercions.add k co env.cos}
+    let find_co env k = Coercions.get_exn k env.cos*)
 end
 
 type meta_cont =
@@ -44,8 +44,6 @@ type meta_cont =
         ; f : parent: Cont.Id.t option -> state: Expr.Id.t -> value: Expr.Id.t -> Transfer.t }
     | ExprK of {pos : Util.span; id : Expr.Id.t}
     | DirectK of {pos : Util.span; typ : Type.t; label : Cont.Id.t}
-
-let log = TxRef.log () (* HACK *)
 
 let convert_typ state_typ env pos =
     let rec convert : Fc.Type.t -> Type.t = function

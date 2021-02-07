@@ -5,10 +5,9 @@ module T = Fc.Type
 module E = Fc.Term.Expr
 module TS = TyperSigs
 
-type 'a with_pos = 'a Util.with_pos
-type uv = Fc.Uv.t
 type var = Util.plicity * E.var
 
+(*
 type vals_binding =
     | White of (T.ov Vector.t * T.t) * Ast.Term.Expr.t with_pos
     | Grey
@@ -18,20 +17,21 @@ type row_binding =
     | WhiteT of (T.ov Vector.t * T.t) * Ast.Type.t with_pos
     | GreyT
     | BlackT of T.t TS.kinding
+*)
 
 type scope =
-    | Hoisting of T.ov list TxRef.rref * T.level
-    | Rigid of T.ov Vector.t
+    (*| Hoisting of T.ov list TxRef.t * T.level
+    | Rigid of T.ov Vector.t*)
     | Vals of var Name.Map.t
-    | Rec of (var * vals_binding TxRef.rref) Name.Map.t * E.var list TxRef.rref
+(*    | Rec of (var * vals_binding TxRef.rref) Name.Map.t * E.var list TxRef.rref
     | Row of (var * row_binding TxRef.rref) Name.Map.t * E.var list TxRef.rref
-    | Axiom of (Name.t * T.ov * uv) Name.Map.t
+    | Axiom of (Name.t * T.ov * uv) Name.Map.t*)
 
 type env =
     { errorHandler : Util.span -> TypeError.t -> unit
-    ; tx_log : Fc.Uv.subst
+    (*; tx_log : Fc.Uv.subst*)
     ; scopes : scope list
-    ; level : Fc.Type.level }
+    ; level : T.scope }
 
 module Make
     (C : TS.TYPING with type env = env)
@@ -41,37 +41,34 @@ module Make
 = struct
 
 module T = T
-module Uv = Fc.Uv
 
 module Bindings = Map.Make(Name)
 
 let ref = TxRef.ref
-let (!) = TxRef.(!)
-
-type uv = Fc.Uv.t
+(*let (!) = TxRef.(!)*)
 
 type t = env
 
 let raiseError pos error = raise (TypeError.TypeError (pos, error))
 
-let initial_level = 1
+let initial_level = T.Global
 
 let program () =
     { errorHandler = raiseError
-    ; tx_log = Fc.Uv.new_subst ()
-    ; scopes = [Hoisting (ref [], initial_level)]
+    (*; tx_log = Fc.Uv.new_subst ()*)
+    ; scopes = [(*Hoisting (ref [], initial_level)*)]
     ; level = initial_level }
 
 let interactive () =
     { errorHandler = raiseError
-    ; tx_log = Fc.Uv.new_subst ()
-    ; scopes = [Hoisting (ref [], initial_level)]
+    (*; tx_log = Fc.Uv.new_subst ()*)
+    ; scopes = [(*Hoisting (ref [], initial_level)*)]
     ; level = initial_level }
 
 let eval () =
     { errorHandler = raiseError
-    ; tx_log = Fc.Uv.new_subst ()
-    ; scopes = [Hoisting (ref [], initial_level)]
+    (*; tx_log = Fc.Uv.new_subst ()*)
+    ; scopes = [(*Hoisting (ref [], initial_level)*)]
     ; level = initial_level }
 
 let reportError (env : t) pos error = env.errorHandler pos error
@@ -86,6 +83,12 @@ let push_val plicity (env : t) (var : E.var) =
     | scopes ->
         {env with scopes = Vals (Name.Map.singleton var.name (plicity, var)) :: scopes}
 
+let push_level env =
+    let parent = env.level in
+    let level = T.Local {level = T.Scope.level parent + 1; parent} in
+    ({env with level}, level)
+
+(*
 let push_rec env stmts =
     let bindings = CCVector.fold (fun bindings (defs, semiabs, expr) ->
         Vector.fold (fun bindings (var : E.var) ->
@@ -177,140 +180,18 @@ let sibling (env : t) kind uv = match get_uv env uv with
 let set_expr (env : t) ref expr = TxRef.set env.tx_log ref expr
 let set_coercion (env : t) ref coercion = TxRef.set env.tx_log ref coercion
 
-let transaction (env : t) thunk = TxRef.transaction env.tx_log thunk
+let transaction (env : t) thunk = TxRef.transaction env.tx_log thunk*)
 
-let document (env : t) to_doc v = to_doc env.tx_log v
-
-let rec expose' env depth substitution : T.t -> T.t = function
-    | Exists (params, body) ->
-        let depth = depth + 1 in
-        Exists (params, expose' env depth substitution body)
-    | PromotedArray typs -> PromotedArray (Vector.map (expose' env depth substitution) typs)
-    | PromotedTuple typs -> PromotedTuple (Vector.map (expose' env depth substitution) typs)
-    | Tuple typs -> Tuple (Vector.map (expose' env depth substitution) typs)
-    | Pi {universals; domain; eff; codomain} ->
-        let depth = depth + 1 in
-        Pi { universals
-            ; domain = expose' env depth substitution domain
-            ; eff = expose' env depth substitution eff
-            ; codomain = expose' env depth substitution codomain }
-    | Impli {universals; domain; codomain} ->
-        let depth = depth + 1 in
-        Impli { universals
-                ; domain = expose' env depth substitution domain
-                ; codomain = expose' env depth substitution codomain }
-    | Record row -> Record (expose' env depth substitution row)
-    | With {base; label; field} ->
-        With {base = expose' env depth substitution base; label; field = expose' env depth substitution field}
-    | EmptyRow -> EmptyRow
-    | Proxy typ -> Proxy (expose' env depth substitution typ)
-    | Fn (params, body) -> Fn (params, expose' env (depth + 1) substitution body)
-    | App (callee, arg) -> App (expose' env depth substitution arg, expose' env depth substitution callee)
-    | Bv {depth = depth'; sibli; kind = _} as typ ->
-        if depth' = depth
-        then Vector.get substitution sibli
-        else typ
-    | Uv uv as typ ->
-        (match get_uv env uv with
-        | Assigned typ -> expose' env depth substitution typ
-        | Unassigned _ -> typ)
-    | (Ov _ | Prim _) as typ -> typ
-
-and expose_template' _ _ _ = function
-    | T.TupleL _ as template -> template
-
-let expose env = expose' env 0
-let expose_template env = expose_template' env 0
-
-(* --- *)
-
-let rec close' env depth substitution : T.t -> T.t = function
-    | Exists (params, body) ->
-        let depth = depth + 1 in
-        Exists (params, close' env depth substitution body)
-    | PromotedArray typs -> PromotedArray (Vector.map (close' env depth substitution) typs)
-    | PromotedTuple typs -> PromotedTuple (Vector.map (close' env depth substitution) typs)
-    | Tuple typs -> Tuple (Vector.map (close' env depth substitution) typs)
-    | Pi {universals; domain; eff; codomain} ->
-        let depth = depth + 1 in
-        Pi { universals
-           ; domain = close' env depth substitution domain
-           ; eff = close' env depth substitution eff
-           ; codomain = close' env depth substitution codomain }
-    | Impli {universals; domain; codomain} ->
-        let depth = depth + 1 in
-        Impli { universals
-               ; domain = close' env depth substitution domain
-               ; codomain = close' env depth substitution codomain }
-    | Record row -> Record (close' env depth substitution row)
-    | With {base; label; field} ->
-        With {base = close' env depth substitution base; label; field = close' env depth substitution field}
-    | EmptyRow -> EmptyRow
-    | Proxy typ -> Proxy (close' env depth substitution typ)
-    | Fn (params, body) -> Fn (params, close' env (depth + 1) substitution body)
-    | App (callee, arg) -> App (close' env depth substitution callee, close' env depth substitution arg)
-    | Ov ((name, kind), _) as path ->
-        Name.Map.find_opt name substitution
-            |> Option.fold ~some: (fun sibli -> Bv {depth; sibli; kind}) ~none: path
-    | Uv uv as typ ->
-        (match get_uv env uv with
-        | Assigned typ -> close' env depth substitution typ
-        | Unassigned _ -> typ)
-    | (Bv _ | Prim _) as typ -> typ
-
-let rec close_coercion' env depth substitution : T.t T.coercion -> T.t T.coercion = function
-    | ExistsCo (params, body) ->
-        let depth = depth + 1 in
-        ExistsCo (params, close_coercion' env depth substitution body)
-    | PiCo {universals; domain; codomain} ->
-        let depth = depth + 1 in
-        PiCo { universals
-           ; domain = close_coercion' env depth substitution domain
-           ; codomain = close_coercion' env depth substitution codomain }
-    | PromotedArrayCo typs ->
-        PromotedArrayCo (Vector.map (close_coercion' env depth substitution) typs)
-    | PromotedTupleCo typs ->
-        PromotedTupleCo (Vector.map (close_coercion' env depth substitution) typs)
-    | TupleCo cos -> TupleCo (Vector.map (close_coercion' env depth substitution) cos)
-    | RecordCo row -> RecordCo (close_coercion' env depth substitution row)
-    | WithCo {base; label; field} ->
-        WithCo {base = close_coercion' env depth substitution base
-            ; label; field = close_coercion' env depth substitution field}
-    | ProxyCo co -> ProxyCo (close_coercion' env depth substitution co)
-    | Refl typ -> Refl (close' env depth substitution typ)
-    | Symm co -> Symm (close_coercion' env depth substitution co)
-    | Trans (co, co') -> Trans (close_coercion' env depth substitution co
-        , close_coercion' env depth substitution co')
-    | Comp (co, cos) -> Comp (close_coercion' env depth substitution co
-        , Vector1.map (close_coercion' env depth substitution) cos)
-    | Inst (co, typs) -> Inst (close_coercion' env depth substitution co
-        , Vector1.map (close' env depth substitution) typs)
-    | AUse _ as co -> co
-    | Axiom (universals, l, r) ->
-        let depth = depth + 1 in
-        Axiom (universals, close' env depth substitution l
-            , close' env depth substitution r)
-    | Patchable r as co ->
-        set_coercion env r (close_coercion' env depth substitution !r);
-        co
-
-and close_template' _ _ _ = function
-    | T.TupleL _ as template -> template
-
-let close env = close' env 0
-let close_template env = close_template' env 0
-let close_coercion env = close_coercion' env 0
-
-(* --- *)
-
+(*
 let reabstract env : T.t -> T.ov Vector.t * T.t = function
     | Exists (params, body) ->
         let params = Vector1.to_vector params in
         let params = Vector.map (fun kind -> generate env (Name.fresh (), kind)) params in
         let substitution = Vector.map (fun ov -> T.Ov ov) params in
         (params, expose env substitution body)
-    | typ -> (Vector.empty, typ)
+    | typ -> (Vector.empty, typ)*)
 
+(*
 let push_abs_skolems env existentials body =
     let (env, skolems) = push_skolems env (Vector1.to_vector existentials) in
     let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
@@ -365,16 +246,16 @@ let instantiate_branch env universals domain app_eff codomain =
     ( uvs
     , Vector.map (expose env substitution) domain
     , expose env substitution app_eff
-    , Vector.map (expose env substitution) codomain )
+    , Vector.map (expose env substitution) codomain )*)
 
 let find (env : t) pos name =
     let rec find scopes = match scopes with
         | Vals bindings :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some (_, var) -> (match scopes' with
-                | [Hoisting _] -> (var, true)
+                | [(*Hoisting _*)] -> (var, true)
                 | _ -> (var, false))
             | None -> find scopes')
-        | Rec (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
+        (*| Rec (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some ((_, var), binding) ->
                 (match !binding with
                 | White (semiabs, expr) ->
@@ -402,10 +283,11 @@ let find (env : t) pos name =
                 | BlackT _ -> ());
                 (var, false)
             | None -> find scopes')
-        | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
+        | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes*)
         | [] ->
             reportError env pos (Unbound name);
-            (E.fresh_var (T.Uv (uv env (Uv (uv env T.aKind)))), false) in
+            todo (Some pos)
+            (*(E.fresh_var (T.Uv (uv env (Uv (uv env T.aKind)))), false)*) in
     find env.scopes
 
 let find_rhs (env : t) pos name =
@@ -413,7 +295,7 @@ let find_rhs (env : t) pos name =
         | Vals bindings :: scopes -> (match Name.Map.find_opt name bindings with
             | Some _ -> bug (Some pos) ~msg: "`Env.find_rhs` found `Vals` scope"
             | None -> find scopes)
-        | Rec (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
+        (*| Rec (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some ((_, var), binding) ->
                 (match !binding with
                 | White (semiabs, expr) ->
@@ -429,11 +311,12 @@ let find_rhs (env : t) pos name =
         | Row (bindings, _) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some _ -> bug (Some pos) ~msg: "`Env.find_rhs` found `Row` scope."
             | None -> find scopes')
-        | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
+        | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes*)
         | [] ->
             reportError env pos (Unbound name);
-            let typ = T.Uv (uv env (Uv (uv env T.aKind))) in
-            {term = E.at pos typ (E.use (E.fresh_var typ)); eff = EmptyRow} in
+            todo (Some pos)
+            (*let typ = T.Uv (uv env (Uv (uv env T.aKind))) in
+            {term = E.at pos typ (E.use (E.fresh_var typ)); eff = EmptyRow}*) in
     find env.scopes
 
 let find_rhst (env : t) pos name =
@@ -441,7 +324,7 @@ let find_rhst (env : t) pos name =
         | Vals bindings :: scopes -> (match Name.Map.find_opt name bindings with
             | Some _ -> bug (Some pos) ~msg: "`Env.find_rhs` found `Vals` scope"
             | None -> find scopes)
-        | Rec (bindings, _) :: scopes' -> (match Name.Map.find_opt name bindings with
+        (*| Rec (bindings, _) :: scopes' -> (match Name.Map.find_opt name bindings with
             | Some _ -> bug (Some pos) ~msg: "`Env.find_rhst` found `Rec` scope."
             | None -> find scopes')
         | Row (bindings, fields) :: scopes' -> (match Name.Map.find_opt name bindings with
@@ -459,29 +342,36 @@ let find_rhst (env : t) pos name =
                 | GreyT -> bug (Some pos) ~msg: "`Env.find_rhst` found `GreyT` binding"
                 | BlackT kinding -> kinding)
             | None -> find scopes')
-        | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes
+        | (Hoisting _ | Rigid _ | Axiom _) :: scopes -> find scopes*)
         | [] ->
             reportError env pos (Unbound name);
-            let kind = T.Uv (uv env T.aKind) in
-            {typ = T.Uv (uv env kind); kind} in
+            todo (Some pos)
+            (*let kind = T.Uv (uv env T.aKind) in
+            {typ = T.Uv (uv env kind); kind}*) in
     find env.scopes
 
 let scope_vars = function
     | Vals bindings ->
         Stream.from (Source.seq (Name.Map.to_seq bindings))
         |> Stream.map snd
-    | Rec (bindings, _) ->
+    (*| Rec (bindings, _) ->
         Stream.from (Source.seq (Name.Map.to_seq bindings))
         |> Stream.map (fun (_, (var, _)) -> var)
     | Row (bindings, _) ->
         Stream.from (Source.seq (Name.Map.to_seq bindings))
         |> Stream.map (fun (_, (var, _)) -> var)
-    | Hoisting _ | Rigid _ | Axiom _ -> Stream.empty
+    | Hoisting _ | Rigid _ | Axiom _ -> Stream.empty*)
 
 let implicits (env : t) = Stream.from (Source.list env.scopes)
     |> Stream.flat_map scope_vars
     |> Stream.filter (function (Util.Explicit, _) -> false | (Implicit, _) -> true)
     |> Stream.map snd
+
+let tv (env : t) kind =
+    let bound = T.Bot {level = -1; binder = Scope env.level; kind} in
+    T.Uv {quant = ForAll; bound = ref bound}
+
+let instantiate (env : t) t = T.instantiate env.level t
 
 end
 

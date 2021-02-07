@@ -84,7 +84,7 @@ module type PROGRAM = sig
     val exports : t -> Cont.Id.t Streaming.Source.t
 
     module Builder : sig
-        val create : Fc.Type.binding Vector.t -> Cont.Id.t -> builder
+        val create : Cps.Type.param Vector.t -> Cont.Id.t -> builder
         val add_cont : builder -> Cps.Cont.Id.t -> Cps.Cont.t -> unit
         val cont_mem : builder -> Cps.Cont.Id.t -> bool
         val define : builder -> Cont.Id.t -> Stmt.t -> unit

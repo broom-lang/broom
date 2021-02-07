@@ -1,94 +1,35 @@
-module Log = struct
-    type t =
-        { mutable nesting : int
-        ; refs : Obj.t ref CCVector.vector
-        ; vals : Obj.t CCVector.vector
-        ; mutable id_counter : int }
+module Id = Id.Make ()
 
-    let log () =
-        { nesting = 0
-        ; refs = CCVector.create ()
-        ; vals = CCVector.create () 
-        ; id_counter = 0 }
+module Subst = struct
+    type t = Obj.t Id.HashMap.t
 
-    let record : t -> 'a ref -> unit = fun log ref ->
-        let ref = Obj.magic ref in
-        CCVector.push log.refs ref;
-        CCVector.push log.vals !ref
-
-    let memento log = CCVector.length log.refs
-
-    let abort =
-        let rec loop refs vals memento i =
-            if i >= memento
-            then begin
-                let ref = CCVector.get refs i in
-                let v = CCVector.get vals i in
-                ref := v;
-                loop refs vals memento (i - 1)
-            end in
-        fun ({nesting = _; refs; vals; id_counter = _} as log) memento ->
-            loop refs vals memento (CCVector.length refs - 1);
-            CCVector.truncate refs memento;
-            CCVector.truncate vals memento;
-            log.nesting <- log.nesting - 1
-
-    let commit log memento =
-        let nesting' = log.nesting - 1 in
-        log.nesting <- nesting';
-        if nesting' = 0 then begin
-            CCVector.truncate log.refs memento;
-            CCVector.truncate log.vals memento;
-        end
-
-    let transaction log body =
-        let mem = memento log in
-        try
-            log.nesting <- log.nesting + 1;
-            let res = body () in
-            commit log mem;
-            res
-        with
-        | exn ->
-            abort log mem;
-            raise exn
+    let current = ref Id.HashMap.empty
 end
 
-type log = Log.t
+type 'a t = Id.t
 
-type 'a rref = 'a ref
+let equal r r' = Id.equal (Obj.magic r) (Obj.magic r')
 
-let log = Log.log
-let transaction = Log.transaction
+let hash r = Id.hash (Obj.magic r)
 
-let fresh_id (log : log) =
-    let id = log.id_counter in
-    log.id_counter <- id + 1;
-    id
+let ref v =
+    let id = Id.fresh () in
+    Subst.current := Id.HashMap.add id (Obj.repr v) !Subst.current;
+    Obj.magic id
 
-let ref = ref
+let (!) (id : Id.t) = Obj.obj (Id.HashMap.get_exn (Obj.magic id) !Subst.current)
 
-let (!) = (!)
+let (:=) (id : Id.t) v =
+    Subst.current := Id.HashMap.add (Obj.magic id) (Obj.repr v) Stdlib.(!Subst.current)
 
-let set (log : Log.t) ref v =
-    if log.nesting > 0
-    then Log.record log ref;
-    ref := v
+type 'a txref = 'a t
 
-let eq : 'a rref -> 'a rref -> bool = (==)
+module Hashtbl = struct
+    module Make (T : sig type t end) = CCHashtbl.Make (struct
+        type t = T.t txref
 
-(* OPTIMIZE: Allocating tuples just to satisfy UnionFind.STORE: *)
-module Store = struct
-    type 'a store = log
-
-    type 'a rrref = 'a rref
-    type 'a rref = 'a rrref
-
-    let new_store = log
-
-    let make log v = (log, ref v)
-    let get log ref = (log, !ref)
-    let set log ref v = set log ref v; log
-    let eq log ref ref' = (log, eq ref ref')
+        let equal = equal
+        let hash = hash
+    end)
 end
 
