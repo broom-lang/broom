@@ -66,6 +66,8 @@ module type TYPE = sig
     val coercion_to_doc : coercion -> PPrint.document
     (*val template_to_doc : template -> PPrint.document*)
 
+    val fix : binder -> (bound txref -> t) -> t
+
     val force : t -> t
     val instantiate : scope -> t -> t
 

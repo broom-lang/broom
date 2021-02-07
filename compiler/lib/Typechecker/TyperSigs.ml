@@ -58,6 +58,8 @@ module type ENV = sig
     val find_rhst : t -> Util.span -> Name.t -> Fc.Type.t kinding
     val implicits : t -> Fc.Term.Expr.var Streaming.Stream.t
 
+    val t_scope : t -> T.scope
+
     val push_val : Util.plicity -> t -> Fc.Term.Expr.var -> t
     val push_level : t -> t * T.scope
     (*val push_rec : t

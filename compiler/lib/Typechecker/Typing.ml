@@ -56,15 +56,12 @@ let primop_typ : Env.t -> Primop.t -> T.t = fun env ->
     | Int -> (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim Int))
     | String -> (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim String))*)
     | Type ->
-        (match Env.tv env (Tuple Vector.empty) with
-        | Uv {quant = _; bound = cd_bound} as codomain -> (match !cd_bound with
-            | Bot {level; binder; kind = _} ->
-                let bound = T.Bot {level = -1; binder = T.Type cd_bound; kind = T.aType} in
-                cd_bound := T.Rigid {level; binder
-                    ; bound = Uv {quant = Exists; bound = ref bound}};
-                Pi {domain = Tuple Vector.empty; eff = EmptyRow; codomain}
-            | _ -> unreachable None)
-        | _ -> unreachable None)
+        Pi { domain = Tuple Vector.empty
+            ; eff = EmptyRow
+            ; codomain = T.fix (Scope (Env.t_scope env)) (fun t ->
+                let bound = T.Bot {level = -1; binder = T.Type t; kind = T.aType} in
+                Uv {quant = Exists; bound = ref bound}) }
+
     (*| TypeOf -> (* FIXME: Enforce argument purity *)
         ( Vector.singleton T.aType
         , Vector.singleton (T.Bv {depth = 0; sibli = 0; kind = T.aType})

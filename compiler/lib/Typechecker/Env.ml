@@ -248,6 +248,8 @@ let instantiate_branch env universals domain app_eff codomain =
     , expose env substitution app_eff
     , Vector.map (expose env substitution) codomain )*)
 
+let t_scope (env : t) = env.level
+
 let find (env : t) pos name =
     let rec find scopes = match scopes with
         | Vals bindings :: scopes' -> (match Name.Map.find_opt name bindings with

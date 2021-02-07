@@ -112,6 +112,16 @@ module Typ = struct
 
     (* --- *)
 
+    let fix binder f =
+        let level = -1 in
+        let bound = ref (Bot {level; binder; (*tmp_*)kind = EmptyRow}) in
+        let root = Uv {quant = ForAll; bound} in
+        let t = f bound in
+        bound := Rigid {level; binder; bound = t};
+        root
+
+    (* --- *)
+
     (* OPTIMIZE: Path compression, ranking: *)
     let rec force = fun t -> match t with
         | Uv {quant = _; bound} -> (match !bound with
