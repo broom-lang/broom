@@ -143,7 +143,11 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
             Fun.protect (fun () -> monomorphise_bound span env t' bound' t)
                 ~finally: (fun () -> bound := Bound.with_level !bound (-1))
 
-        | _ -> todo (Some span) ~msg: "join_bounds" in
+        | (Flex _, Rigid _) | (Rigid _, Flex _) -> todo (Some span) ~msg: "flex-rigid"
+
+        | (Flex _, Flex _) -> todo (Some span) ~msg: "flex-flex"
+
+        | (Rigid _, Rigid _) -> todo (Some span) ~msg: "(poly-)rigid-rigid" in
 
     let unify_whnf span env t t' = match (t, t') with
         | (T.Uv {quant = _; bound}, t') | (t', T.Uv {quant = _; bound}) ->
