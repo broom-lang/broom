@@ -152,6 +152,8 @@ module Typ = struct
                 Rigid {level = -1; bindees = TxRef.Set.empty; binder; typ}
             | _ -> unreachable None)
 
+        let set_level bref level = bref := with_level !bref level
+
         module Hashtbl = TxRef.Hashtbl.Make (struct type t = bound end)
     end
 

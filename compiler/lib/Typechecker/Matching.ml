@@ -122,7 +122,7 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
 
             Bound.graft_mono bound t'
 
-        | _ -> todo (Some span) ~msg: "tighten_bound" in
+        | _ -> todo (Some span) ~msg: "monomorphise_bound" in
 
     let join_bounds span env t bound t' bound' = match (!bound, !bound') with
         | (T.Bot {binder; kind = _}, T.Bot {binder = binder'; kind = _}) ->
@@ -132,16 +132,12 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
             then Bound.graft_mono bound' t
             else Bound.graft_mono bound t'
 
-        | (Bot _, bound'v) ->
-            let level = Binder.level (Bound.binder bound'v) + 1 in
-            bound' := Bound.with_level bound'v level;
-            Fun.protect (fun () -> monomorphise_bound span env t bound t')
-                ~finally: (fun () -> bound' := Bound.with_level !bound' (-1))
-        | (boundv, Bot _) ->
-            let level = Binder.level (Bound.binder boundv) + 1 in
-            bound := Bound.with_level boundv level;
-            Fun.protect (fun () -> monomorphise_bound span env t' bound' t)
-                ~finally: (fun () -> bound := Bound.with_level !bound (-1))
+        | (Bot _, _) ->
+            Env.in_bound env bound' (fun env ->
+                monomorphise_bound span env t bound t')
+        | (_, Bot _) ->
+            Env.in_bound env bound (fun env ->
+                monomorphise_bound span env t' bound' t)
 
         | (Flex _, Rigid _) | (Rigid _, Flex _) -> todo (Some span) ~msg: "flex-rigid"
 
@@ -154,7 +150,10 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
             if not (Bound.is_locked !bound)
             then (match t' with (* OPTIMIZE: path compression, ranking (but mind bindees!) *)
                 | T.Uv {quant = _; bound = bound'} when not (Bound.is_locked !bound') ->
-                    join_bounds span env t bound t' bound'
+                    if TxRef.equal bound bound'
+                    then ()
+                    else join_bounds span env t bound t' bound'
+
                 | t' -> monomorphise_bound span env t bound t')
             else (match t' with
                 | T.Uv {quant = _; bound = bound'} ->

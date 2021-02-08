@@ -31,7 +31,7 @@ type env =
     { errorHandler : Util.span -> TypeError.t -> unit
     (*; tx_log : Fc.Uv.subst*)
     ; scopes : scope list
-    ; level : T.scope }
+    ; t_binders : T.binder list }
 
 module Make
     (C : TS.TYPING with type env = env)
@@ -50,25 +50,25 @@ type t = env
 
 let raiseError pos error = raise (TypeError.TypeError (pos, error))
 
-let initial_level = T.Global TxRef.(ref Set.empty)
+let global_binder = T.Scope (Global TxRef.(ref Set.empty))
 
 let program () =
     { errorHandler = raiseError
     (*; tx_log = Fc.Uv.new_subst ()*)
     ; scopes = [(*Hoisting (ref [], initial_level)*)]
-    ; level = initial_level }
+    ; t_binders = [global_binder] }
 
 let interactive () =
     { errorHandler = raiseError
     (*; tx_log = Fc.Uv.new_subst ()*)
     ; scopes = [(*Hoisting (ref [], initial_level)*)]
-    ; level = initial_level }
+    ; t_binders = [global_binder] }
 
 let eval () =
     { errorHandler = raiseError
     (*; tx_log = Fc.Uv.new_subst ()*)
     ; scopes = [(*Hoisting (ref [], initial_level)*)]
-    ; level = initial_level }
+    ; t_binders = [global_binder] }
 
 let reportError (env : t) pos error = env.errorHandler pos error
 
@@ -83,10 +83,22 @@ let push_val plicity (env : t) (var : E.var) =
         {env with scopes = Vals (Name.Map.singleton var.name (plicity, var)) :: scopes}
 
 let push_level env =
-    let parent = env.level in
-    let bindees = TxRef.(ref Set.empty) in
-    let level = T.Local {level = T.Scope.level parent + 1; bindees; parent} in
-    ({env with level}, level)
+    match env.t_binders with
+    | [Scope parent] ->
+        let bindees = TxRef.(ref Set.empty) in
+        let scope = T.Local {level = T.Scope.level parent + 1; bindees; parent} in
+        ({env with t_binders = [Scope scope]}, scope)
+    | _ -> unreachable None
+
+let in_bound (env : t) bref f =
+    let level = match env.t_binders with
+        | binder :: _ -> T.Binder.level binder + 1
+        | _ -> unreachable None in
+    let binder = T.Type bref in
+    T.Bound.set_level bref level;
+    let env = {env with t_binders = binder :: env.t_binders} in
+    Fun.protect (fun () -> f env)
+        ~finally: (fun () -> T.Bound.set_level bref (-1))
 
 (*
 let push_rec env stmts =
@@ -248,7 +260,9 @@ let instantiate_branch env universals domain app_eff codomain =
     , expose env substitution app_eff
     , Vector.map (expose env substitution) codomain )*)
 
-let t_scope (env : t) = env.level
+let t_scope (env : t) = match env.t_binders with
+    | [Scope scope] -> scope
+    | _ -> unreachable None
 
 let find (env : t) pos name =
     let rec find scopes = match scopes with
@@ -369,9 +383,9 @@ let implicits (env : t) = Stream.from (Source.list env.scopes)
     |> Stream.filter (function (Util.Explicit, _) -> false | (Implicit, _) -> true)
     |> Stream.map snd
 
-let tv (env : t) kind = T.fresh (Scope env.level) kind
+let tv env kind = T.fresh (Scope (t_scope env)) kind
 
-let instantiate (env : t) t = T.instantiate env.level t
+let instantiate env t = T.instantiate (t_scope env) t
 
 end
 

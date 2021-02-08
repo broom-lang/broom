@@ -62,6 +62,7 @@ module type ENV = sig
 
     val push_val : Util.plicity -> t -> Fc.Term.Expr.var -> t
     val push_level : t -> t * T.scope
+    val in_bound : t -> T.bound TxRef.t -> (t -> 'a) -> 'a
     (*val push_rec : t
         -> ( Fc.Term.Expr.var Vector.t
            * ((*T.ov Vector.t * *) T.t) * Ast.Term.Expr.t with_pos ) CCVector.ro_vector

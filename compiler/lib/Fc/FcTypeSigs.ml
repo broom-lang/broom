@@ -80,11 +80,11 @@ module type TYPE = sig
         val fresh : binder -> kind -> t txref
 
         val binder : t -> binder
-        val with_level : t -> int -> t
         val is_locked : t -> bool
 
         val rebind : t txref -> binder -> unit
         val graft_mono : t txref -> typ -> unit
+        val set_level : t txref -> int -> unit
     end
 
     module Binder : sig
