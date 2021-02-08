@@ -10,7 +10,21 @@ val ref : 'a -> 'a t
 val (!) : 'a t -> 'a
 val (:=) : 'a t -> 'a -> unit
 
+type 'a txref = 'a t
+
+module type T = sig type t end
+
 module Hashtbl : sig
-    module Make (T : sig type t end) : CCHashtbl.S with type key = T.t t
+    module Make (T : T) : CCHashtbl.S with type key = T.t t
+end
+
+module Set : sig
+    type 'a t
+
+    val empty : 'a t
+    val add : 'a txref -> 'a t -> 'a t
+    val remove : 'a txref -> 'a t -> 'a t
+    val is_empty : 'a t -> bool
+    val mem : 'a txref -> 'a t -> bool
 end
 

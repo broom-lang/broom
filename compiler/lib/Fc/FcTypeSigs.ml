@@ -22,18 +22,18 @@ module type TYPE = sig
 
     and kind = t
 
-    and bound =
+    and bound = private
         | Bot of {binder : binder; kind : kind}
-        | Flex of {level : int; binder : binder; typ : t}
-        | Rigid of {level : int; binder : binder; typ : t}
+        | Flex of {level : int; bindees : bound TxRef.Set.t; binder : binder; typ : t}
+        | Rigid of {level : int; bindees : bound TxRef.Set.t; binder : binder; typ : t}
 
     and binder =
         | Scope of scope
         | Type of bound txref
 
     and scope =
-        | Local of {level : int; parent : scope}
-        | Global
+        | Local of {level : int; bindees : bound TxRef.Set.t txref; parent : scope}
+        | Global of bound TxRef.Set.t txref
 
     and coercion = Refl of t
 
@@ -66,17 +66,25 @@ module type TYPE = sig
     val coercion_to_doc : coercion -> PPrint.document
     (*val template_to_doc : template -> PPrint.document*)
 
+    val fresh : binder -> kind -> t
     val fix : binder -> (bound txref -> t) -> t
 
     val force : t -> t
     val instantiate : scope -> t -> t
 
+    type typ = t
+
     module Bound : sig
         type t = bound
+
+        val fresh : binder -> kind -> t txref
 
         val binder : t -> binder
         val with_level : t -> int -> t
         val is_locked : t -> bool
+
+        val rebind : t txref -> binder -> unit
+        val graft_mono : t txref -> typ -> unit
     end
 
     module Binder : sig

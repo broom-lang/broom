@@ -249,7 +249,7 @@ end = struct
 
     let at pos typ term = {term; pos; typ; parent = None}
 
-    let values vals = Tuple vals
+    let tuple vals = Tuple vals
 
     let focus focusee index = Focus {focusee; index}
     let fn universals param body = Fn {universals; param; body}
@@ -309,7 +309,7 @@ end = struct
                 let noop = Stream.from (Source.zip_with (==)
                         (Source.array vals') (Source.array vals))
                     |> Stream.into (Sink.all ~where: Fun.id) in
-                if noop then term else values vals'
+                if noop then term else tuple vals'
 
             | Focus {focusee; index} ->
                 let focusee' = f focusee in

@@ -44,14 +44,13 @@ module T = T
 
 module Bindings = Map.Make(Name)
 
-let ref = TxRef.ref
 (*let (!) = TxRef.(!)*)
 
 type t = env
 
 let raiseError pos error = raise (TypeError.TypeError (pos, error))
 
-let initial_level = T.Global
+let initial_level = T.Global TxRef.(ref Set.empty)
 
 let program () =
     { errorHandler = raiseError
@@ -85,7 +84,8 @@ let push_val plicity (env : t) (var : E.var) =
 
 let push_level env =
     let parent = env.level in
-    let level = T.Local {level = T.Scope.level parent + 1; parent} in
+    let bindees = TxRef.(ref Set.empty) in
+    let level = T.Local {level = T.Scope.level parent + 1; bindees; parent} in
     ({env with level}, level)
 
 (*
@@ -369,9 +369,7 @@ let implicits (env : t) = Stream.from (Source.list env.scopes)
     |> Stream.filter (function (Util.Explicit, _) -> false | (Implicit, _) -> true)
     |> Stream.map snd
 
-let tv (env : t) kind =
-    let bound = T.Bot {binder = Scope env.level; kind} in
-    T.Uv {quant = ForAll; bound = ref bound}
+let tv (env : t) kind = T.fresh (Scope env.level) kind
 
 let instantiate (env : t) t = T.instantiate env.level t
 

@@ -11,6 +11,7 @@ end
 module Hashtbl = H.Make(Key)
 module HashMap = CCHashTrie.Make(Key)
 module HashSet = CCHashSet.Make(Key)
+module Set = Set.Make(Key)
 module Map = Map.Make(Key)
 
 include Key

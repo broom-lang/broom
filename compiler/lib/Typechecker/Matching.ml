@@ -118,9 +118,9 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
     let tighten_bound span env t bound t' = match !bound with
         | T.Bot {binder; kind = _} ->
             (*unify span env kind (K.kindof span env t);*)
-            check_uv_assignee span env t (Binder.level binder) Int.max_int t';
+            check_uv_assignee span env t binder Int.max_int t';
 
-            bound := Rigid {level = -1; binder; typ = t'}
+            Bound.graft_mono bound t'
 
         | _ -> todo (Some span) ~msg: "tighten_bound" in
 
@@ -129,8 +129,8 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
             (*unify span env kind kind';*)
 
             if Binder.level binder < Binder.level binder'
-            then bound' := Rigid {level = -1; binder; typ = t}
-            else bound := Rigid {level = -1; binder = binder'; typ = t'}
+            then Bound.graft_mono bound' t
+            else Bound.graft_mono bound t'
 
         | (Bot _, bound'v) ->
             let level = Binder.level (Bound.binder bound'v) + 1 in
@@ -935,7 +935,7 @@ and unify_whnf : span -> Env.t -> T.t -> T.t -> T.t T.coercion option matching
 *)
 (* Occurs check, ov escape check, HKT capturability check and uv level updates.
    Complected for speed. *)
-and check_uv_assignee pos env uv level max_uv_level typ =
+and check_uv_assignee pos env uv uv_binder max_uv_level typ =
     let rec check : T.t -> unit = function
         | PromotedArray typs -> Vector.iter check typs
         | PromotedTuple typs -> Vector.iter check typs
@@ -960,13 +960,10 @@ and check_uv_assignee pos env uv level max_uv_level typ =
             let level' = Binder.level (Bound.binder !bound) in
             if t == uv
             then Env.reportError env pos (Occurs (uv, typ))
-            else if level' <= level
+            else if level' <= Binder.level uv_binder
             then ()
             else if level' <= max_uv_level
-            then bound := (match !bound with (* hoist *) (* FIXME: Change `binder` too: *)
-                | Bot {binder; kind} -> Bot {binder; kind}
-                | Flex {level = _; binder; typ} -> Flex {level; binder; typ}
-                | Rigid {level = _; binder; typ} -> Rigid {level; binder; typ})
+            then Bound.rebind bound uv_binder
             else Env.reportError env pos (IncompleteImpl (uv, t))
 
         | Prim _ -> ()

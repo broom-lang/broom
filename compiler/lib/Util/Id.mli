@@ -13,6 +13,7 @@ module type S = sig
 
     module HashMap : CCHashTrie.S with type key = t
     module Hashtbl : CCHashtbl.S with type key = t
+    module Set : Set.S with type elt = t
     module HashSet : CCHashSet.S with type elt = t
 end
 

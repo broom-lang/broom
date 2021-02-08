@@ -33,16 +33,16 @@ module Typ = struct
 
     and bound =
         | Bot of {binder : binder; kind : kind}
-        | Flex of {level :int; binder : binder; typ : t}
-        | Rigid of {level :int; binder : binder; typ : t}
+        | Flex of {level :int; bindees : bound TxRef.Set.t; binder : binder; typ : t}
+        | Rigid of {level :int; bindees : bound TxRef.Set.t; binder : binder; typ : t}
 
     and binder =
         | Scope of scope
         | Type of bound txref
 
     and scope =
-        | Local of {level : int; parent : scope}
-        | Global
+        | Local of {level : int; bindees : bound TxRef.Set.t txref; parent : scope}
+        | Global of bound TxRef.Set.t txref
 
     and coercion = Refl of t
 
@@ -80,35 +80,18 @@ module Typ = struct
 
     (* --- *)
 
-    module Bound = struct
-        type t = bound
-
-        let binder = function
-            | Bot {binder; _} -> binder
-            | Flex {binder; _} -> binder
-            | Rigid {binder; _} -> binder
-
-        let with_level bound level = match bound with
-            | Bot {binder; kind} -> Bot {binder; kind}
-            | Flex {level = _; binder; typ} -> Flex {level; binder; typ}
-            | Rigid {level = _; binder; typ} -> Rigid {level; binder; typ}
-
-        (* NOTE: Assumes Shallow MLF / HML: *)
-        let is_locked bound = match binder bound with
-            | Type binder -> (match !binder with
-                | Bot _ | Flex _ -> false
-                | Rigid _ -> true)
-            | Scope _ -> false
-
-        module Hashtbl = TxRef.Hashtbl.Make (struct type t = bound end)
-    end
-
     module Scope = struct
         type t = scope
 
         let level = function
             | Local {level; _} -> level
-            | Global -> 0
+            | Global _ -> 0
+
+        let add_bindee bindee (Local {bindees; _} | Global bindees) =
+            bindees := TxRef.Set.add bindee !bindees
+
+        let remove_bindee bindee (Local {bindees; _} | Global bindees) =
+            bindees := TxRef.Set.remove bindee !bindees
     end
 
     module Binder = struct
@@ -119,22 +102,100 @@ module Typ = struct
                 | Bot _ -> unreachable None
                 | Flex {level; _} | Rigid {level; _} -> assert (level > 0); level)
             | Scope scope -> Scope.level scope
+
+        let add_bindee bindee bref = match bref with
+            | Type t -> t := (match !t with
+                | Bot _ -> unreachable None
+                | Flex {level; bindees; binder; typ} ->
+                    Flex {level; bindees = TxRef.Set.add bindee bindees; binder; typ}
+                | Rigid {level; bindees; binder; typ} ->
+                    Rigid {level; bindees = TxRef.Set.add bindee bindees; binder; typ})
+            | Scope scope -> Scope.add_bindee bindee scope
+
+        let remove_bindee bindee bref = match bref with
+            | Type t -> t := (match !t with
+                | Bot _ -> unreachable None
+                | Flex {level; bindees; binder; typ} ->
+                    Flex {level; bindees = TxRef.Set.remove bindee bindees; binder; typ}
+                | Rigid {level; bindees; binder; typ} ->
+                    Rigid {level; bindees = TxRef.Set.remove bindee bindees; binder; typ})
+            | Scope scope -> Scope.remove_bindee bindee scope
+
+    end
+
+    module Bound = struct
+        type t = bound
+
+        let fresh binder kind =
+            let bref = ref (Bot {binder; kind}) in
+            Binder.add_bindee bref binder;
+            bref
+
+        let binder = function
+            | Bot {binder; _} -> binder
+            | Flex {binder; _} -> binder
+            | Rigid {binder; _} -> binder
+
+        let level = function
+            | Bot _ -> -1
+            | Flex {level; _} | Rigid {level; _} -> level
+
+        let bindees = function
+            | Bot _ -> TxRef.Set.empty
+            | Flex {bindees; _} | Rigid {bindees; _} -> bindees
+
+        let with_level bound level = match bound with
+            | Bot {binder; kind} -> Bot {binder; kind}
+            | Flex {level = _; bindees; binder; typ} -> Flex {level; bindees; binder; typ}
+            | Rigid {level = _; bindees; binder; typ} -> Rigid {level; bindees; binder; typ}
+
+        let with_binder bound binder = match bound with
+            | Bot {binder = _; kind} -> Bot {binder; kind}
+            | Flex {level; bindees; binder = _; typ} -> Flex {level; bindees; binder; typ}
+            | Rigid {level; bindees; binder = _; typ} -> Rigid {level; bindees; binder; typ}
+
+        (* NOTE: Assumes Shallow MLF / HML: *)
+        let is_locked bound = match binder bound with
+            | Type binder -> (match !binder with
+                | Bot _ | Flex _ -> false
+                | Rigid _ -> true)
+            | Scope _ -> false
+
+        let bind (bref : t txref) (binder : Binder.t) =
+            Binder.add_bindee bref binder;
+            bref := with_binder !bref binder
+
+        let rebind (bref : t txref) (binder' : Binder.t) =
+            Binder.remove_bindee bref (binder !bref);
+            bind bref binder'
+
+        let graft_mono (bref : t txref) (typ : typ) = bref := (match !bref with
+            | Bot {binder; kind = _} ->
+                Rigid {level = -1; bindees = TxRef.Set.empty; binder; typ}
+            | _ -> unreachable None)
+
+        module Hashtbl = TxRef.Hashtbl.Make (struct type t = bound end)
     end
 
     (* --- *)
 
     let fix binder f =
-        let bound = ref (Bot {binder; (*tmp_*)kind = EmptyRow}) in
-        bound := Rigid {level = -1; binder; typ = f bound};
+        let bound = ref (Rigid {level = -1; bindees = TxRef.Set.empty
+            ; binder; (*tmp_*)typ = EmptyRow}) in
+        bound := Rigid {level = Bound.level !bound; bindees = Bound.bindees !bound
+            ; binder; typ = f bound};
         Uv {quant = ForAll; bound}
 
     (* --- *)
 
+    let fresh binder kind = Uv {quant = ForAll; bound = Bound.fresh binder kind}
+
     (* OPTIMIZE: Path compression, ranking: *)
     let rec force = fun t -> match t with
         | Uv {quant = _; bound} -> (match !bound with
-            | Flex _ | Bot _ -> t
-            | Rigid {level = _; binder = _; typ} -> force typ)
+            | Rigid {level = _; bindees; binder = _; typ} when TxRef.Set.is_empty bindees ->
+                force typ
+            | _ -> t)
         | Ov _ | Fn _ | App _ | Pi _ | Impli _
         | Record _ | With _ | EmptyRow | Proxy _ | Prim _
         | Tuple _ | PromotedTuple _ | PromotedArray _ -> t
@@ -158,11 +219,11 @@ module Typ = struct
         fun f t -> match force t with
         | Uv {quant; bound} -> (match !bound with
             | Bot _ -> t
-            | Flex {level; binder; typ} ->
+            | Flex {level; bindees; binder; typ} ->
                 let typ' = f typ in
                 if typ' == typ
                 then t
-                else Uv {quant; bound = ref (Flex {level; binder; typ = typ'})}
+                else Uv {quant; bound = ref (Flex {level; bindees; binder; typ = typ'})}
             | Rigid _ -> unreachable None)
 
         | Fn {param; body} ->
@@ -730,11 +791,11 @@ module Typ = struct
                         | Uv {quant; bound} when locally_bound bound ->
                             let bound' = match !bound with
                                 | Bot _ as bound -> bound
-                                | Flex {level; binder; typ} as bound ->
+                                | Flex {level; bindees; binder; typ} as bound ->
                                     let typ' = clone_term typ in
                                     if typ' == typ
                                     then bound
-                                    else Flex {level; binder; typ = typ'}
+                                    else Flex {level; bindees; binder; typ = typ'}
                                 | Rigid _ -> unreachable None in
                             let bound' = ref bound' in
                             Bound.Hashtbl.add bound_copies bound bound';
@@ -754,14 +815,14 @@ module Typ = struct
                             bound := Bot {binder = Type binder; kind}
                         | None -> ())
 
-                    | Flex {level; binder; typ} ->
+                    | Flex {level; bindees; binder; typ} ->
                         iter rebind typ;
 
                         if t == root
-                        then bound := Flex {level; binder = Scope scope; typ}
+                        then bound := Flex {level; bindees; binder = Scope scope; typ}
                         else (match new_binder binder with
                             | Some binder ->
-                                bound := Flex {level; binder = Type binder; typ}
+                                bound := Flex {level; bindees; binder = Type binder; typ}
                             | None -> ())
                         
                     | Rigid _ -> unreachable None)

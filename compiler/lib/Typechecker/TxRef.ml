@@ -24,12 +24,24 @@ let (:=) (id : Id.t) v =
 
 type 'a txref = 'a t
 
+module type T = sig type t end
+
 module Hashtbl = struct
-    module Make (T : sig type t end) = CCHashtbl.Make (struct
+    module Make (T : T) = CCHashtbl.Make (struct
         type t = T.t txref
 
         let equal = equal
         let hash = hash
     end)
+end
+
+module Set = struct
+    type 'a t = Id.Set.t
+
+    let empty = Id.Set.empty
+    let add v set = Id.Set.add (Obj.magic v) set
+    let remove v set = Id.Set.remove (Obj.magic v) set
+    let is_empty = Id.Set.is_empty
+    let mem v set = Id.Set.mem (Obj.magic v) set
 end
 
