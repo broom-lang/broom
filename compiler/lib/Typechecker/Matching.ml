@@ -178,6 +178,10 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
             | EmptyRow -> ()
             | _ -> Env.reportError env span (Unify (t, t')))
 
+        | (Tuple typs, t') -> (match t' with
+            | Tuple typs' -> Vector.iter2 (unify span env) typs typs'
+            | _ -> Env.reportError env span (Unify (t, t')))
+
         | (Prim pt, t') -> (match t' with
             | T.Prim pt' when Prim.eq pt pt'-> ()
             | _ -> Env.reportError env span (Unify (t, t')))
