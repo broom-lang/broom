@@ -115,7 +115,7 @@ let rec resolve pos env super =
 
 let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
 =
-    let tighten_bound span env t bound t' = match !bound with
+    let monomorphise_bound span env t bound t' = match !bound with
         | T.Bot {binder; kind = _} ->
             (*unify span env kind (K.kindof span env t);*)
             check_uv_assignee span env t binder Int.max_int t';
@@ -135,50 +135,53 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
         | (Bot _, bound'v) ->
             let level = Binder.level (Bound.binder bound'v) + 1 in
             bound' := Bound.with_level bound'v level;
-            Fun.protect (fun () -> tighten_bound span env t bound t')
+            Fun.protect (fun () -> monomorphise_bound span env t bound t')
                 ~finally: (fun () -> bound' := Bound.with_level !bound' (-1))
         | (boundv, Bot _) ->
             let level = Binder.level (Bound.binder boundv) + 1 in
             bound := Bound.with_level boundv level;
-            Fun.protect (fun () -> tighten_bound span env t' bound' t)
+            Fun.protect (fun () -> monomorphise_bound span env t' bound' t)
                 ~finally: (fun () -> bound := Bound.with_level !bound (-1))
 
         | _ -> todo (Some span) ~msg: "join_bounds" in
 
-    fun span env t t' -> match (t, t') with
-    | (T.Uv {quant = _; bound}, t') | (t', T.Uv {quant = _; bound}) ->
-        if not (Bound.is_locked !bound)
-        then (match t' with (* OPTIMIZE: path compression, ranking (but mind bindees!) *)
-            | T.Uv {quant = _; bound = bound'} when not (Bound.is_locked !bound') ->
-                join_bounds span env t bound t' bound'
-            | t' -> tighten_bound span env t bound t')
-        else (match t' with
-            | T.Uv {quant = _; bound = bound'} ->
-                if not (Bound.is_locked !bound)
-                then todo (Some span) ~msg: "bv-uv'"
-                else if TxRef.equal bound' bound
-                    then ()
-                    else Env.reportError env span (Unify (t, t'))
+    let unify_whnf span env t t' = match (t, t') with
+        | (T.Uv {quant = _; bound}, t') | (t', T.Uv {quant = _; bound}) ->
+            if not (Bound.is_locked !bound)
+            then (match t' with (* OPTIMIZE: path compression, ranking (but mind bindees!) *)
+                | T.Uv {quant = _; bound = bound'} when not (Bound.is_locked !bound') ->
+                    join_bounds span env t bound t' bound'
+                | t' -> monomorphise_bound span env t bound t')
+            else (match t' with
+                | T.Uv {quant = _; bound = bound'} ->
+                    if not (Bound.is_locked !bound)
+                    then todo (Some span) ~msg: "bv-uv'"
+                    else if TxRef.equal bound' bound
+                        then ()
+                        else Env.reportError env span (Unify (t, t'))
+
+                | _ -> Env.reportError env span (Unify (t, t')))
+
+        | (Pi {domain; eff; codomain}, t') -> (match t' with
+            | Pi {domain = domain'; eff = eff'; codomain = codomain'} ->
+                unify span env domain domain';
+                unify span env eff eff';
+                unify span env codomain codomain'
 
             | _ -> Env.reportError env span (Unify (t, t')))
 
-    | (Pi {domain; eff; codomain}, t') -> (match t' with
-        | Pi {domain = domain'; eff = eff'; codomain = codomain'} ->
-            unify span env domain domain';
-            unify span env eff eff';
-            unify span env codomain codomain'
+        | (EmptyRow, t') -> (match t' with
+            | EmptyRow -> ()
+            | _ -> Env.reportError env span (Unify (t, t')))
 
-        | _ -> Env.reportError env span (Unify (t, t')))
+        | (Prim pt, t') -> (match t' with
+            | T.Prim pt' when Prim.eq pt pt'-> ()
+            | _ -> Env.reportError env span (Unify (t, t')))
 
-    | (EmptyRow, t') -> (match t' with
-        | EmptyRow -> ()
-        | _ -> Env.reportError env span (Unify (t, t')))
+        | _ -> todo (Some span) ~msg: "type ctor" in
 
-    | (Prim pt, t') -> (match t' with
-        | T.Prim pt' when Prim.eq pt pt'-> ()
-        | _ -> Env.reportError env span (Unify (t, t')))
-
-    | _ -> todo (Some span) ~msg: "type ctor"
+    fun span env t t' ->
+        unify_whnf span env (K.eval span env t) (K.eval span env t')
 
 and instance span env sub super = unify span env (Env.instantiate env sub) super
 
