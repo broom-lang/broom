@@ -306,8 +306,9 @@ module Typ = struct
             | STuple typs -> surround_separate_map 4 1 (parens empty)
                 lparen (comma ^^ break 1) rparen
                 (to_doc 0) (Vector.to_list typs)
+            | SProxy carrie -> brackets (prefix 4 1 equals (to_doc 0 carrie))
             | SPrim p -> Prim.to_doc p
-            | _ -> todo None in
+            | _ -> todo None ~msg: "syn_to_doc" in
 
         to_doc 0 syn
 
