@@ -58,8 +58,8 @@ let primop_typ : Env.t -> Primop.t -> T.t = fun env ->
     | Type ->
         Pi { domain = Tuple Vector.empty
             ; eff = EmptyRow
-            ; codomain = T.fix (Scope (Env.t_scope env)) (fun t ->
-                Uv {quant = Exists; bound = T.Bound.fresh (T.Type t) T.aType}) }
+            ; codomain = Proxy (T.fix (Scope (Env.t_scope env)) (fun t ->
+                Proxy (Uv {quant = Exists; bound = T.Bound.fresh (T.Type t) T.aType}))) }
 
     (*| TypeOf -> (* FIXME: Enforce argument purity *)
         ( Vector.singleton T.aType
