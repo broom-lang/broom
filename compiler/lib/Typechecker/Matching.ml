@@ -974,6 +974,12 @@ and check_uv_assignee pos env uv uv_binder max_uv_level typ =
              else Env.reportError env pos (Escape ov))*)
 
         | Uv {quant = _; bound} as t ->
+            (match !bound with
+            | Bot _ -> ()
+            | Flex {level = _; bindees = _; binder = _; typ}
+            | Rigid {level = _; bindees = _; binder = _; typ} ->
+                Env.in_bound env bound (fun _ -> check typ));
+
             let level' = Binder.level (Bound.binder !bound) in
             if t == uv
             then Env.reportError env pos (Occurs (uv, typ))
