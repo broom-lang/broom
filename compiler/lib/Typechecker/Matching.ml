@@ -123,14 +123,16 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
 
             Bound.graft_mono bound t'
 
-        | Flex {level = _; bindees = _; binder; typ}
-        | Rigid {level = _; bindees = _; binder; typ} ->
+        | Flex {level = _; bindees = _; binder; typ} ->
             check_uv_assignee span env t binder Int.max_int t';
 
             Env.in_bound env bound (fun env ->
                 unify span env typ t');
 
-            Bound.graft_mono bound t' in
+            Bound.graft_mono bound t'
+
+        | Rigid _ -> (* Must be polymorphic while t' must be a monotype: *)
+            Env.reportError env span (Unify (t, t')) in
 
     let join_bounds span env t bound t' bound' = match (!bound, !bound') with
         | (T.Bot {binder; kind = _}, T.Bot {binder = binder'; kind = _}) ->
