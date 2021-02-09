@@ -183,6 +183,11 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
             | Tuple typs' -> Vector.iter2 (unify span env) typs typs'
             | _ -> Env.reportError env span (Unify (t, t')))
 
+        (* TODO: Fancy HKT stuff: *)
+        | (Proxy carrie, t') -> (match t' with
+            | Proxy carrie' -> unify span env carrie carrie'
+            | _ -> Env.reportError env span (Unify (t, t')))
+
         | (Prim pt, t') -> (match t' with
             | T.Prim pt' when Prim.eq pt pt'-> ()
             | _ -> Env.reportError env span (Unify (t, t')))
