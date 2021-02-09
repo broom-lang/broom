@@ -49,11 +49,19 @@ module Typ = struct
     (* --- *)
 
     type typ = t
+
     module Hashtbl = CCHashtbl.Make (struct
         type t = typ
 
         let equal = (==)
         let hash = Hashtbl.hash
+    end)
+
+    module HashSet = CCHashSet.Make (struct
+        type t = typ
+
+        let equal = (==)
+        let hash = Stdlib.Hashtbl.hash
     end)
 
     (* --- *)
@@ -312,6 +320,12 @@ module Typ = struct
 
         to_doc 0 syn
 
+    let inlineable = function
+        | Uv {quant = _; bound} -> (match !bound with
+            | Bot _ | Flex _ -> false
+            | Rigid _ -> true)
+        | _ -> true
+
     let to_syn ctx t =
         let bindees = Bound.Hashtbl.create 0 in
         let add_bindee t = match force t with
@@ -323,50 +337,31 @@ module Typ = struct
                 | Scope _ -> ())
             | _ -> () in
 
-        let inlineabilities = Hashtbl.create 0 in
-        let add_inlineability t inlineable' =
-            Hashtbl.update inlineabilities ~k: t ~f: (fun _ -> function
-                | Some inlineable -> Some (inlineable && inlineable')
-                | None -> Some inlineable') in
+        let visited = HashSet.create 0 in
 
-        let rec analyze (parent : bound txref option) covariant t =
+        let rec analyze t =
             let t = force t in
-            if Hashtbl.mem inlineabilities t
-            then add_inlineability t false
-            else begin
-                let inlineable = match parent with
-                    | Some parent -> (match force t with
-                        | Uv {quant = _; bound} -> (match Bound.binder !bound with
-                            | Type binder ->
-                                TxRef.equal binder parent && (match !bound with
-                                | Bot _ | Flex _ -> covariant
-                                | Rigid _ -> not covariant)
-                            | Scope _ -> false)
-                        | _ -> true)
-                    | None -> false in
-                add_inlineability t inlineable;
+            if not (HashSet.mem visited t) then begin
+                HashSet.insert visited t;
 
-                let parent = match force t with
-                    | Uv {quant = _; bound} -> Some bound
-                    | _ -> None in
                 (match force t with
                 | Pi {domain; eff; codomain} ->
-                    analyze parent false domain;
-                    analyze parent false eff;
-                    analyze parent true codomain;
+                    analyze domain;
+                    analyze eff;
+                    analyze codomain;
                 | Impli {domain; codomain} ->
-                    analyze parent false domain;
-                    analyze parent true codomain;
+                    analyze domain;
+                    analyze codomain;
 
-                | Record _ | With _ | Tuple _ -> iter (analyze parent true) t
+                | Record _ | With _ | Tuple _ -> iter analyze t
 
                 | Fn _ | App _ | Proxy _ | PromotedTuple _ | PromotedArray _ ->
-                    iter (analyze parent false) t
+                    iter analyze t
                 | EmptyRow | Prim _ | Uv _ | Ov _ -> ());
 
                 add_bindee t;
             end in
-        analyze None false t;
+        analyze t;
 
         let vne = Hashtbl.create 0 in
         let fresh_qname t =
@@ -390,7 +385,7 @@ module Typ = struct
             CCVector.rev_in_place bindees;
             let bindees = CCVector.to_array bindees in
             let (existentials, universals) = Stream.from (Source.array bindees)
-                |> Stream.filter (Hashtbl.find inlineabilities)
+                |> Stream.filter (Fun.negate inlineable)
                 |> Stream.map (function
                     | Uv {quant; bound} as bindee ->
                         let sbindee = to_syn bindee in
@@ -443,7 +438,7 @@ module Typ = struct
 
         and child_to_syn (t : t) =
             let t = force t in
-            if Hashtbl.find inlineabilities t
+            if inlineable t
             then to_syn t
             else match Hashtbl.get vne t with
                 | Some syn -> syn
