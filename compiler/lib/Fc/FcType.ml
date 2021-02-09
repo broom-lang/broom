@@ -344,7 +344,7 @@ module Typ = struct
                 lbracket (comma ^^ break 1) rbracket
                 (to_doc 0) (Vector.to_list typs)
             | SProxy carrie -> brackets (prefix 4 1 equals (to_doc 0 carrie))
-            | SPrim p -> Prim.to_doc p
+            | SPrim p -> string "__" ^^ Prim.to_doc p
             | _ -> todo None ~msg: "syn_to_doc" in
 
         to_doc 0 syn

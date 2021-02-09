@@ -52,9 +52,11 @@ let primop_typ : Env.t -> Primop.t -> T.t = fun env ->
     | CellGet -> (* forall a . __cell a -> a *)
         ( Vector.singleton T.aType
         , Vector.singleton (T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}))
-        , T.EmptyRow, T.Bv {depth = 0; sibli = 0; kind = T.aType} )
-    | Int -> (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim Int))
-    | String -> (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim String))*)
+        , T.EmptyRow, T.Bv {depth = 0; sibli = 0; kind = T.aType} )*)
+    | Int ->
+        Pi {domain = Tuple Vector.empty; eff = EmptyRow; codomain = Proxy (Prim Int)}
+    | String -> 
+        Pi {domain = Tuple Vector.empty; eff = EmptyRow; codomain = Proxy (Prim String)}
     | Type ->
         Pi { domain = Tuple Vector.empty
             ; eff = EmptyRow
