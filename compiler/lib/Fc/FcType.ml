@@ -295,9 +295,9 @@ module Typ = struct
 
     and skind = syn
 
-    (*let flag_to_string = function
+    let flag_to_string = function
         | SFlex -> ">="
-        | SRigid -> "="*)
+        | SRigid -> "="
 
     let arrow_prec = 1
 
@@ -449,14 +449,20 @@ module Typ = struct
     let to_doc t =
         let ctx = Hashtbl.create 0 in
         let syn = to_syn ctx t in
-        (*PPrint.(match Hashtbl.to_list ctx with
+        PPrint.(match Hashtbl.to_list ctx with
             | (_ :: _) as ctx ->
                 infix 4 1 (string "in") (syn_to_doc syn)
                     (separate_map (comma ^^ blank 1) (fun (t, (name, syn)) ->
-                        infix 4 1 (string (flag_to_string (t |> binder |> Binder.flag)))
-                            (Name.to_doc name) (syn_to_doc syn)
+                        match t with
+                        | Uv {quant = _; bound} ->
+                            let flag = match !bound with
+                                | Bot _ | Flex _ -> SFlex
+                                | Rigid _ -> SRigid in
+                            infix 4 1 (string (flag_to_string flag))
+                                (Name.to_doc name) (syn_to_doc syn)
+                        | _ -> unreachable None ~msg: "Type.to_doc"
                     ) ctx)
-            | [] ->*) syn_to_doc syn(* )*)
+            | [] -> syn_to_doc syn)
 
     let kind_to_doc = to_doc
 
