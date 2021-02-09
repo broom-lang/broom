@@ -958,9 +958,9 @@ and check_uv_assignee pos env uv uv_binder max_uv_level typ =
         | PromotedTuple typs -> Vector.iter check typs
         | Tuple typs -> Vector.iter check typs
         | Pi {domain; eff; codomain} -> check domain; check eff; check codomain
-        (*| Impli {universals = _; domain; codomain} -> check domain; check codomain
+        | Impli {domain; codomain} -> check domain; check codomain
         | Record row -> check row
-        | With {base; label = _; field} -> check base; check field*)
+        | With {base; label = _; field} -> check base; check field
         | EmptyRow -> ()
         | Proxy carrie -> check carrie
         (*| Fn (_, body) -> check body

@@ -562,6 +562,13 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
                 (Sink.premap (fun (expr : FExpr.t) -> expr.typ) (Vector.sink ()))) in
         {term = FExpr.at expr.pos (Tuple typs) (FExpr.tuple exprs); eff}
 
+    | Select (selectee, label) -> (* TODO: lacks constraint *)
+        let base = Env.tv env T.aRow in
+        let field = Env.tv env (App (Prim TypeIn, Env.tv env T.rep)) in
+        let selectee_t = T.Record (With {base; label; field}) in
+        let {TS.term = selectee; eff} = check env selectee_t selectee in
+        {term = FExpr.at expr.pos field (FExpr.select selectee label); eff}
+
     | Const c -> {term = FExpr.at expr.pos (const_typ c) (FExpr.const c); eff = EmptyRow}
 
     | _ -> todo (Some expr.pos) ~msg: "typeof"

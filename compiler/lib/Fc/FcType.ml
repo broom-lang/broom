@@ -301,7 +301,8 @@ module Typ = struct
 
     let quant_prec = 0
     let arrow_prec = 1
-    let app_prec = 2
+    let with_prec = 2
+    let app_prec = 3
 
     let show_parens should_show doc = if should_show then PPrint.parens doc else doc
 
@@ -333,6 +334,13 @@ module Typ = struct
                 prefix 4 1 (to_doc app_prec callee) (to_doc (app_prec + 1) arg)
             | SVar name -> Name.to_doc name
             | SBot -> qmark ^^ underscore
+            | SRecord row -> braces (to_doc 0 row)
+            | SWith {base; label; field} ->
+                infix 4 1
+                    (string "with"
+                        ^^ blank 1 ^^ string (Option.get (Name.basename label))
+                        ^^ blank 1 ^^ equals)
+                    (to_doc with_prec base) (to_doc (with_prec + 1) field)
             | SEmptyRow -> parens bar
             | STuple typs -> surround_separate_map 4 1 (parens colon)
                 (lparen ^^ colon) (comma ^^ break 1) rparen
