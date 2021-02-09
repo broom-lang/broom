@@ -15,10 +15,11 @@ type t =
     | ImpureType of Ast.Term.Expr.t
     | Escape of Fc.Type.t
     | Occurs of Fc.Type.t * typ
+    | Causes of t * t list
 
 exception TypeError of Util.span * t
 
-let cause_to_doc pos err =
+let rec cause_to_doc pos err =
     let open PPrint in
     match err with
     | NonPattern expr -> string "invalid pattern" ^/^ Ast.Term.Expr.to_doc {v = expr; pos}
@@ -48,6 +49,9 @@ let cause_to_doc pos err =
     | ImpureType expr -> string "impure type expression" ^/^ Ast.Term.Expr.to_doc {v = expr; pos}
     | Escape t -> Fc.Type.to_doc t ^/^ string "would escape"
     | Occurs (uv, typ) -> Fc.Type.to_doc uv ^/^ string "occurs in" ^/^ Fc.Type.to_doc typ
+    | Causes (err, causes) ->
+        cause_to_doc pos err
+        ^/^ separate_map (twice hardline) (cause_to_doc pos) causes
 
 let to_doc (({pos_fname; _}, _) as span : Util.span) err =
     PPrint.(prefix 4 1 (group @@ string "Type error in" ^/^ string pos_fname ^/^ string "at"

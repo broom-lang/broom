@@ -48,7 +48,7 @@ module ExpandPats = ExpandPats
 
 type error =
     | Parse of SedlexMenhir.parse_error
-    | Type of (Util.span * Typer.TypeError.t)
+    | Type of (Util.span * Typer.TypeError.t) list
     (*| FwdRefs of FwdRefs.error CCVector.ro_vector*)
 
 let parse_err err = Parse err

@@ -49,6 +49,8 @@ module type ENV = sig
 
     type t
 
+    type error_handler = span -> TypeError.t -> unit
+
     val program : unit -> t
     val interactive : unit -> t
     val eval : unit -> t
@@ -124,8 +126,8 @@ module type ENV = sig
 
     val instantiate : t -> T.t -> T.t
 
-    val reportError : t -> span -> TypeError.t -> unit
-    val wrapErrorHandler : t -> ((span -> TypeError.t -> unit) -> (span -> TypeError.t -> unit)) -> t
+    val reportError : t -> error_handler
+    val with_error_handler : t -> error_handler -> t
 end
 
 module type EXPAND_PATS = sig

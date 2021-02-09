@@ -20,6 +20,11 @@ let check_program env defs main =
     with TypeError.TypeError (pos, err) -> Error (pos, err)
 *)
 let check_interactive_stmts env stmt =
-    try Ok (T.check_interactive_stmts env stmt)
-    with TypeError.TypeError (pos, err) -> Error (pos, err)
+    let open TxRef in
+    let errors = ref [] in
+    let env = Env.with_error_handler env (fun span err -> errors := (span, err) :: !errors) in
+    let res = T.check_interactive_stmts env stmt in
+    match !errors with
+    | [] -> Ok res
+    | errors -> Error (List.rev errors)
 

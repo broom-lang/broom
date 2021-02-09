@@ -48,6 +48,8 @@ module Bindings = Map.Make(Name)
 
 type t = env
 
+type error_handler = Util.span -> TypeError.t -> unit
+
 let raiseError pos error = raise (TypeError.TypeError (pos, error))
 
 let global_binder = T.Scope (Global TxRef.(ref Set.empty))
@@ -72,8 +74,7 @@ let eval () =
 
 let reportError (env : t) pos error = env.errorHandler pos error
 
-let wrapErrorHandler (env : t) middleware =
-    {env with errorHandler = middleware env.errorHandler}
+let with_error_handler (env : t) errorHandler = {env with errorHandler}
 
 let push_val plicity (env : t) (var : E.var) =
     match env.scopes with

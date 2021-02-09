@@ -164,9 +164,12 @@ let rep debug ((_, _, _) as envs) filename input =
         (match err with
         | Parse err ->
             prerr_endline (SedlexMenhir.string_of_ParseError err);
-        | Type (pos, err) ->
+        | Type errs ->
             flush stdout;
-            pprint_err PPrint.(hardline ^^ Typer.TypeError.to_doc pos err ^^ hardline);
+            pprint_err PPrint.(hardline
+                ^^ separate_map (twice hardline) (fun (pos, err) -> Typer.TypeError.to_doc pos err)
+                    errs
+                ^^ hardline);
             flush stderr;
         (*| FwdRefs errors ->
             errors |> CCVector.iter (fun err -> pprint_err (FwdRefs.error_to_doc err));

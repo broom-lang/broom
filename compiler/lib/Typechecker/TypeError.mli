@@ -15,6 +15,7 @@ type t =
     | ImpureType of Ast.Term.Expr.t
     | Escape of Fc.Type.t
     | Occurs of Fc.Type.t * typ
+    | Causes of t * t list
 
 exception TypeError of Util.span * t
 

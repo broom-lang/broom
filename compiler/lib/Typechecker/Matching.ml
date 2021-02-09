@@ -1,6 +1,7 @@
 (*open Streaming*)
 open Asserts
 
+let ref = TxRef.ref
 let (!) = TxRef.(!)
 let (:=) = TxRef.(:=)
 
@@ -1030,6 +1031,14 @@ let solving_unify pos _ _ _ = todo (Some pos)
     (*let {coercion; residual} = unify pos env typ super in
     solve pos env residual;
     coercion*)
+
+let unify span env t t' =
+    let causes = ref [] in
+    (let env = Env.with_error_handler env (fun _ err -> causes := err :: !causes) in
+    unify span env t t');
+    match !causes with
+    | [] -> ()
+    | causes -> Env.reportError env span (Causes (Unify (t, t'), List.rev causes))
 
 end
 
