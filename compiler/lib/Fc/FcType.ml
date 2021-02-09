@@ -295,24 +295,53 @@ module Typ = struct
 
     and skind = syn
 
-    (*let flag_to_string = function
+    let flag_to_string = function
         | SFlex -> ">="
-        | SRigid -> "="*)
+        | SRigid -> "="
 
+    let quant_prec = 0
     let arrow_prec = 1
+    let app_prec = 2
+
+    let show_parens should_show doc = if should_show then PPrint.parens doc else doc
 
     let syn_to_doc syn =
         let open PPrint in
 
-        let rec to_doc _ = function
+        let rec sbound_to_doc (name, flag, bound) =
+            PPrint.(parens (infix 4 1 (string (flag_to_string flag))
+                (Name.to_doc name) (to_doc 0 bound)))
+
+        and sbounds_to_doc bounds =
+            separate_map (break 1) sbound_to_doc (Vector1.to_list bounds)
+
+        and to_doc prec = function
+            | SExists (bounds, body) ->
+                prefix 4 1 
+                    (string "exists" ^^ blank 1 ^^ sbounds_to_doc bounds)
+                    (to_doc quant_prec body)
+                |> show_parens (prec > quant_prec)
+            | SForAll (bounds, body) ->
+                prefix 4 1 
+                    (string "forall" ^^ blank 1 ^^ sbounds_to_doc bounds)
+                    (to_doc quant_prec body)
+                |> show_parens (prec > quant_prec)
             | SPi {domain; eff = _; codomain} ->
                 infix 4 1 (string "->") (to_doc (arrow_prec + 1) domain)
                     (to_doc arrow_prec codomain)
+            | SApp {callee; arg} ->
+                prefix 4 1 (to_doc app_prec callee) (to_doc (app_prec + 1) arg)
             | SVar name -> Name.to_doc name
             | SBot -> qmark ^^ underscore
             | SEmptyRow -> parens bar
-            | STuple typs -> surround_separate_map 4 1 (parens empty)
+            | STuple typs -> surround_separate_map 4 1 (parens colon)
+                (lparen ^^ colon) (comma ^^ break 1) rparen
+                (to_doc 0) (Vector.to_list typs)
+            | SPromotedTuple typs -> surround_separate_map 4 1 (parens empty)
                 lparen (comma ^^ break 1) rparen
+                (to_doc 0) (Vector.to_list typs)
+            | SPromotedArray typs -> surround_separate_map 4 1 (brackets empty)
+                lbracket (comma ^^ break 1) rbracket
                 (to_doc 0) (Vector.to_list typs)
             | SProxy carrie -> brackets (prefix 4 1 equals (to_doc 0 carrie))
             | SPrim p -> Prim.to_doc p
@@ -446,10 +475,10 @@ module Typ = struct
 
         to_syn (force t)
 
-    let rec to_doc t =
+    let to_doc t =
         let ctx = Hashtbl.create 0 in
         let syn = to_syn ctx t in
-        PPrint.(match Hashtbl.to_list ctx with
+        (*PPrint.(match Hashtbl.to_list ctx with
             | (_ :: _) as ctx ->
                 infix 4 1 (string "in") (syn_to_doc syn)
                     (separate_map (comma ^^ blank 1) (fun (t, (name, syn)) ->
@@ -463,7 +492,7 @@ module Typ = struct
                                 infix 4 1 equals (Name.to_doc name) (syn_to_doc syn))
                         | _ -> unreachable None ~msg: "Type.to_doc"
                     ) ctx)
-            | [] -> syn_to_doc syn)
+            | [] ->*) syn_to_doc syn(* )*)
 
     let kind_to_doc = to_doc
 
