@@ -116,20 +116,16 @@ let rec resolve pos env super =
 
 let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
 =
+    let articulate span env t bound t' =
+        (*unify span env kind (K.kindof span env t);*)
+        check_uv_assignee span env t (Bound.binder !bound) Int.max_int t';
+        Bound.graft_mono bound t' in
+
     let subsume span env t bound t' = match !bound with
-        | T.Bot {binder; kind = _} ->
-            (*unify span env kind (K.kindof span env t);*)
-            check_uv_assignee span env t binder Int.max_int t';
+        | T.Bot _ -> articulate span env t bound t'
 
-            Bound.graft_mono bound t'
-
-        | Flex {level = _; bindees = _; binder; typ} ->
-            check_uv_assignee span env t binder Int.max_int t';
-
-            Env.in_bound env bound (fun env ->
-                unify span env typ t');
-
-            Bound.graft_mono bound t'
+        | Flex {level = _; bindees = _; binder = _; typ} ->
+            Env.in_bound env bound (fun env -> unify span env typ t');
 
         | Rigid _ -> (* Must be polymorphic while t' must be a monotype: *)
             Env.reportError env span (Unify (t, t')) in
@@ -142,12 +138,8 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
             then Bound.graft_mono bound' t
             else Bound.graft_mono bound t'
 
-        | (Bot _, _) ->
-            Env.in_bound env bound' (fun env ->
-                subsume span env t bound t')
-        | (_, Bot _) ->
-            Env.in_bound env bound (fun env ->
-                subsume span env t' bound' t)
+        | (Bot _, _) -> articulate span env t bound t'
+        | (_, Bot _) -> articulate span env t' bound' t
 
         | (Flex _, Rigid _) | (Rigid _, Flex _) -> todo (Some span) ~msg: "flex-rigid"
 
