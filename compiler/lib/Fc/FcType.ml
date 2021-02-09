@@ -412,7 +412,7 @@ module Typ = struct
                     | Flex _ -> (match Hashtbl.get vne t with
                         | Some syn -> syn
                         | None -> SVar (contextualize t))
-                    | Rigid _ -> unreachable None)
+                    | Rigid {level = _; bindees = _; binder = _; typ} -> to_syn typ)
                 | Ov _ -> SVar (contextualize t)
                 | Fn {param; body} ->
                     let pname = fresh_qname (force param) in

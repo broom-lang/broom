@@ -299,7 +299,7 @@ let check_nonquantifying env _ (typ : AType.t with_pos) = match typ.v with
     | Path expr ->
         let carrie = Env.tv env (Env.tv env T.aType) in
         let {TS.term = _; eff} = C.check env (T.Proxy carrie) {typ with v = expr} in
-        let _ = M.solving_unify typ.pos env eff EmptyRow in
+        M.unify typ.pos env eff EmptyRow;
         (*let (_, carrie) = reabstract env carrie in*)
         carrie
 

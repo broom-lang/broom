@@ -678,7 +678,7 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
     | AExpr.Ann (pat', typ') ->
         let kind = T.App (T.Prim TypeIn, Env.tv env T.rep) in
         let typ' = K.check_nonquantifying env kind typ' in
-        let _ = M.solving_unify pat.pos env ptyp typ' in
+        M.unify pat.pos env ptyp typ';
         check_pat env typ' pat'
 
     | AExpr.Var name ->
