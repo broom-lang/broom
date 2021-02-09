@@ -116,7 +116,7 @@ let rec resolve pos env super =
 
 let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
 =
-    let monomorphise_bound span env t bound t' = match !bound with
+    let subsume span env t bound t' = match !bound with
         | T.Bot {binder; kind = _} ->
             (*unify span env kind (K.kindof span env t);*)
             check_uv_assignee span env t binder Int.max_int t';
@@ -134,7 +134,7 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
         | Rigid _ -> (* Must be polymorphic while t' must be a monotype: *)
             Env.reportError env span (Unify (t, t')) in
 
-    let join_bounds span env t bound t' bound' = match (!bound, !bound') with
+    let unify_schemes span env t bound t' bound' = match (!bound, !bound') with
         | (T.Bot {binder; kind = _}, T.Bot {binder = binder'; kind = _}) ->
             (*unify span env kind kind';*)
 
@@ -144,10 +144,10 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
 
         | (Bot _, _) ->
             Env.in_bound env bound' (fun env ->
-                monomorphise_bound span env t bound t')
+                subsume span env t bound t')
         | (_, Bot _) ->
             Env.in_bound env bound (fun env ->
-                monomorphise_bound span env t' bound' t)
+                subsume span env t' bound' t)
 
         | (Flex _, Rigid _) | (Rigid _, Flex _) -> todo (Some span) ~msg: "flex-rigid"
 
@@ -162,9 +162,9 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
                 | T.Uv {quant = _; bound = bound'} when not (Bound.is_locked !bound') ->
                     if TxRef.equal bound bound'
                     then ()
-                    else join_bounds span env t bound t' bound'
+                    else unify_schemes span env t bound t' bound'
 
-                | t' -> monomorphise_bound span env t bound t')
+                | t' -> subsume span env t bound t')
             else (match t' with
                 | T.Uv {quant = _; bound = bound'} ->
                     if not (Bound.is_locked !bound)
