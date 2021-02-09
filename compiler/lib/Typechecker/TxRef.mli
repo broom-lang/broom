@@ -26,5 +26,7 @@ module Set : sig
     val remove : 'a txref -> 'a t -> 'a t
     val is_empty : 'a t -> bool
     val mem : 'a txref -> 'a t -> bool
+
+    val iter : ('a txref -> unit) -> 'a t -> unit
 end
 

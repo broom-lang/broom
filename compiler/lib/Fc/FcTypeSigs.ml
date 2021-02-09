@@ -79,6 +79,7 @@ module type TYPE = sig
 
         val fresh : binder -> kind -> t txref
 
+        val bindees : t -> bound TxRef.Set.t
         val binder : t -> binder
         val is_locked : t -> bool
 

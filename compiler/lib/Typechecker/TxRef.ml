@@ -43,5 +43,7 @@ module Set = struct
     let remove v set = Id.Set.remove (Obj.magic v) set
     let is_empty = Id.Set.is_empty
     let mem v set = Id.Set.mem (Obj.magic v) set
+
+    let iter = Id.Set.iter
 end
 

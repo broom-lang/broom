@@ -101,6 +101,19 @@ let in_bound (env : t) bref f =
     Fun.protect (fun () -> f env)
         ~finally: (fun () -> T.Bound.set_level bref (-1))
 
+let in_bounds (env : t) bref bref' f =
+    let level = match env.t_binders with
+        | binder :: _ -> T.Binder.level binder + 1
+        | _ -> unreachable None in
+    let binder = T.Type bref in
+    T.Bound.set_level bref level;
+    T.Bound.set_level bref' level;
+    let env = {env with t_binders = binder :: env.t_binders} in
+    Fun.protect (fun () -> f env)
+        ~finally: (fun () ->
+            T.Bound.set_level bref (-1);
+            T.Bound.set_level bref' (-1))
+
 (*
 let push_rec env stmts =
     let bindings = CCVector.fold (fun bindings (defs, semiabs, expr) ->

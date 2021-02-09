@@ -121,6 +121,18 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
         check_uv_assignee span env t (Bound.binder !bound) Int.max_int t';
         Bound.graft_mono bound t' in
 
+    let merge t bound binder t' bound' binder' =
+        if Binder.level binder < Binder.level binder'
+        then begin
+            Bound.bindees !bound' |> TxRef.Set.iter (fun bindee ->
+                Bound.rebind bindee (Type bound));
+            Bound.graft_mono bound' t
+        end else begin
+            Bound.bindees !bound |> TxRef.Set.iter (fun bindee ->
+                Bound.rebind bindee (Type bound'));
+            Bound.graft_mono bound t'
+        end in
+
     let subsume span env t bound t' = match !bound with
         | T.Bot _ -> articulate span env t bound t'
 
@@ -133,17 +145,16 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
     let unify_schemes span env t bound t' bound' = match (!bound, !bound') with
         | (T.Bot {binder; kind = _}, T.Bot {binder = binder'; kind = _}) ->
             (*unify span env kind kind';*)
-
-            if Binder.level binder < Binder.level binder'
-            then Bound.graft_mono bound' t
-            else Bound.graft_mono bound t'
+            merge t bound binder t' bound' binder'
 
         | (Bot _, _) -> articulate span env t bound t'
         | (_, Bot _) -> articulate span env t' bound' t
 
-        | (Flex _, Rigid _) | (Rigid _, Flex _) -> todo (Some span) ~msg: "flex-rigid"
+        | (Flex {binder; typ = t; _}, Flex {binder = binder'; typ = t'; _}) ->
+            Env.in_bounds env bound bound' (fun env -> unify span env t t');
+            merge t bound binder t' bound' binder'
 
-        | (Flex _, Flex _) -> todo (Some span) ~msg: "flex-flex"
+        | (Flex _, Rigid _) | (Rigid _, Flex _) -> todo (Some span) ~msg: "flex-rigid"
 
         | (Rigid _, Rigid _) -> todo (Some span) ~msg: "(poly-)rigid-rigid" in
 
