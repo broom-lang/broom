@@ -18,6 +18,10 @@ module Hashtbl : sig
     module Make (T : T) : CCHashtbl.S with type key = T.t t
 end
 
+module HashSet : sig
+    module Make (T : T) : CCHashSet.S with type elt = T.t t
+end
+
 module Set : sig
     type 'a t
 

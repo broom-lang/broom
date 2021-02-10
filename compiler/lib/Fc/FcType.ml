@@ -163,6 +163,7 @@ module Typ = struct
         let set_level bref level = bref := with_level !bref level
 
         module Hashtbl = TxRef.Hashtbl.Make (struct type t = bound end)
+        module HashSet = TxRef.HashSet.Make (struct type t = bound end)
     end
 
     (* --- *)
@@ -190,6 +191,10 @@ module Typ = struct
         | Tuple _ | PromotedTuple _ | PromotedArray _ -> t
 
     let iter f = function
+        | Uv {quant = _; name = _; bound} -> (match !bound with
+            | Bot _ -> ()
+            | Flex {level = _; bindees = _; binder = _; typ}
+            | Rigid {level = _; bindees = _; binder = _; typ} -> f typ)
         | Fn {param; body} -> f param; f body
         | App (callee, arg) -> f callee; f arg
         | Pi {domain; eff; codomain} -> f domain; f eff; f codomain
@@ -198,7 +203,7 @@ module Typ = struct
         | With {base; label = _; field} -> f base; f field
         | Tuple typs | PromotedTuple typs | PromotedArray typs -> Vector.iter f typs
         | Proxy typ -> f typ
-        | EmptyRow | Prim _ | Uv _ | Ov _ -> ()
+        | EmptyRow | Prim _ | Ov _ -> ()
 
     let map_children =
         let all_eq xs ys =
@@ -358,139 +363,104 @@ module Typ = struct
 
         to_doc 0 syn
 
-    let inlineable = function
-        | Uv {quant = _; name = _; bound} -> (match !bound with
-            | Bot _ | Flex _ -> false
-            | Rigid _ -> true)
-        | _ -> true
-
     let to_syn ctx t =
-        let bindees = Bound.Hashtbl.create 0 in
-        let add_bindee t = match force t with
-            | Uv {quant = _; name = _; bound} -> (match Bound.binder !bound with
-                | Type binder ->
-                    Bound.Hashtbl.update bindees ~k: binder ~f: (fun _ -> function
-                        | Some bs as v -> CCVector.push bs t; v
-                        | None -> Some (CCVector.of_list [t]))
-                | Scope _ -> ())
-            | _ -> () in
+        let existentials = Bound.Hashtbl.create 0 in
+        let universals = Bound.Hashtbl.create 0 in
 
         let visited = HashSet.create 0 in
+        let visited_bounds = Bound.HashSet.create 0 in
 
         let rec analyze t =
             let t = force t in
             if not (HashSet.mem visited t) then begin
                 HashSet.insert visited t;
+                (match t with
+                | Uv {quant = _; name = _; bound} ->
+                    Bound.HashSet.insert visited_bounds bound
+                | _ -> ());
 
-                (match force t with
-                | Pi {domain; eff; codomain} ->
-                    analyze domain;
-                    analyze eff;
-                    analyze codomain;
-                | Impli {domain; codomain} ->
-                    analyze domain;
-                    analyze codomain;
+                iter analyze t;
 
-                | Record _ | With _ | Tuple _ -> iter analyze t
-
-                | Fn _ | App _ | Proxy _ | PromotedTuple _ | PromotedArray _ ->
-                    iter analyze t
-                | EmptyRow | Prim _ | Uv _ | Ov _ -> ());
-
-                add_bindee t;
+                match t with
+                | Uv {quant; name = _; bound} -> (match Bound.binder !bound with
+                    | Type binder when Bound.HashSet.mem visited_bounds binder ->
+                        let bindees = match quant with
+                            | Exists -> existentials
+                            | ForAll -> universals in
+                        Bound.Hashtbl.update bindees ~k: binder ~f: (fun _ -> function
+                            | Some bs as v -> CCVector.push bs t; v
+                            | None -> Some (CCVector.of_list [t]))
+                    | Type _ | Scope _ -> Bound.HashSet.insert ctx bound)
+                | _ -> ()
             end in
         analyze t;
 
-        let vne = Hashtbl.create 0 in
-        let vne_add name t = Hashtbl.add vne t (SVar name) in
+        let rec to_syn t =
+            let t = force t in
 
-        let rec contextualize name t =
-            if Option.is_none (Hashtbl.get ctx t)
-            then Hashtbl.add ctx t (name, to_syn t)
+            let (existentials, universals) = match t with
+                | Uv {quant = _; name = _; bound} ->
+                    let existentials = match Bound.Hashtbl.get existentials bound with
+                        | Some existentials -> existentials
+                        | None -> CCVector.create () in
+                    let universals = match Bound.Hashtbl.get universals bound with
+                        | Some universals -> universals
+                        | None -> CCVector.create () in
+                    ( Vector.build existentials |> Vector.map bindee_to_syn
+                    , Vector.build universals |> Vector.map bindee_to_syn )
+                | _ -> (Vector.empty, Vector.empty) in
 
-        and to_syn t =
-            let bindees = match force t with
-                | Uv {quant = _; name = _; bound} -> (match Bound.Hashtbl.get bindees bound with
-                    | Some bindees -> bindees
-                    | None -> CCVector.create ())
-                | _ -> CCVector.create () in
-            CCVector.rev_in_place bindees;
-            let bindees = CCVector.to_array bindees in
-            let (existentials, universals) = Stream.from (Source.array bindees)
-                |> Stream.filter (Fun.negate inlineable)
-                |> Stream.map (function
-                    | Uv {quant; name; bound} as bindee ->
-                        let sbindee = to_syn bindee in
-                        let flag = match !bound with
-                            | Bot _ | Flex _ -> SFlex
-                            | Rigid _ -> SRigid in
-                        vne_add name bindee;
-                        (quant, (name, flag, sbindee))
-                    | _ -> unreachable None)
-                |> Stream.into (Sink.zip
-                    (Sink.prefilter (function (Exists, _) -> true | _ -> false)
-                        (Sink.premap snd (Vector.sink ())))
-                    (Sink.prefilter (function (ForAll, _) -> true | _ -> false)
-                        (Sink.premap snd (Vector.sink ())))) in
-
-            let body = match force t with
+            let body = match t with
                 | Uv {quant = _; name; bound} -> (match !bound with
-                    | Bot _ -> SBot
-                    | Flex _ -> (match Hashtbl.get vne t with
-                        | Some syn -> syn
-                        | None -> contextualize name t; SVar name)
+                    | Bot _ | Flex _ -> SVar name
                     | Rigid {level = _; bindees = _; binder = _; typ} -> to_syn typ)
-                | Ov {binder = _; name; kind = _} -> contextualize name t; SVar name
+                | Ov {binder = _; name; kind = _} -> SVar name
                 | Fn {param; body} ->
-                    let pname = Name.fresh () in
-                    vne_add pname (force param);
-                    SFn {param = (pname, child_to_syn param); body = child_to_syn body}
+                    SFn {param = (Name.fresh (), to_syn param); body = to_syn body}
                 | App (callee, arg) ->
-                    SApp {callee = child_to_syn callee; arg = child_to_syn arg}
+                    SApp {callee = to_syn callee; arg = to_syn arg}
                 | Pi {domain; eff; codomain} ->
-                    SPi {domain = child_to_syn domain; eff = child_to_syn eff
-                        ; codomain = child_to_syn codomain}
+                    SPi {domain = to_syn domain; eff = to_syn eff
+                        ; codomain = to_syn codomain}
                 | Impli {domain; codomain} ->
-                    SImpli {domain = child_to_syn domain; codomain = child_to_syn codomain}
-                | Record row -> SRecord (child_to_syn row)
+                    SImpli {domain = to_syn domain; codomain = to_syn codomain}
+                | Record row -> SRecord (to_syn row)
                 | With { base; label; field} ->
-                    SWith {base = child_to_syn base; label; field = child_to_syn field}
+                    SWith {base = to_syn base; label; field = to_syn field}
                 | EmptyRow -> SEmptyRow
-                | Tuple typs -> STuple (Vector.map child_to_syn typs)
-                | PromotedTuple typs -> SPromotedTuple (Vector.map child_to_syn typs)
-                | PromotedArray typs -> SPromotedArray (Vector.map child_to_syn typs)
-                | Proxy typ -> SProxy (child_to_syn typ)
+                | Tuple typs -> STuple (Vector.map to_syn typs)
+                | PromotedTuple typs -> SPromotedTuple (Vector.map to_syn typs)
+                | PromotedArray typs -> SPromotedArray (Vector.map to_syn typs)
+                | Proxy typ -> SProxy (to_syn typ)
                 | Prim p -> SPrim p in
 
-            let syn = match Vector1.of_vector (Vector.rev universals) with
+            let syn = match Vector1.of_vector universals with
                 | Some universals -> SForAll (universals, body)
                 | None -> body in
-            match Vector1.of_vector (Vector.rev existentials) with
+            match Vector1.of_vector existentials with
             | Some existentials -> SExists (existentials, body)
             | None -> syn
 
-        and child_to_syn (t : t) =
-            let t = force t in
-            if inlineable t
-            then to_syn t
-            else match Hashtbl.get vne t with
-                | Some syn -> syn
-                | None ->
-                    let name = Name.fresh () in
-                    contextualize name t;
-                    SVar name in
+        and bindee_to_syn = function
+            | Uv {quant = _; name; bound} -> (match !bound with
+                | Bot {binder = _; kind = _} -> (name, SFlex, SBot)
+                | Flex {level = _; bindees = _; binder = _; typ} ->
+                    (name, SFlex, to_syn typ)
+                | Rigid {level = _; bindees = _; binder = _; typ} ->
+                    (name, SRigid, to_syn typ))
+            | _ -> unreachable None in
 
         to_syn (force t)
 
     let to_doc t =
-        let ctx = Hashtbl.create 0 in
+        let ctx = Bound.HashSet.create 0 in
         let syn = to_syn ctx t in
         (*PPrint.(match Hashtbl.to_list ctx with
             | (_ :: _) as ctx ->
                 infix 4 1 (string "in") (syn_to_doc syn)
                     (separate_map (comma ^^ blank 1) (fun (t, (name, syn)) ->
                         match t with
-                        | Uv {quant = _; bound} -> (match !bound with
+                        | Uv {quant = _; name = _; bound} -> (match !bound with
                             | Bot {binder = _; kind} ->
                                 infix 4 1 colon (Name.to_doc name) (to_doc kind)
                             | Flex _ ->

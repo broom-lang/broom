@@ -35,6 +35,15 @@ module Hashtbl = struct
     end)
 end
 
+module HashSet = struct
+    module Make (T : T) = CCHashSet.Make (struct
+        type t = T.t txref
+
+        let equal = equal
+        let hash = hash
+    end)
+end
+
 module Set = struct
     type 'a t = Id.Set.t
 
