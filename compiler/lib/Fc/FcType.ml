@@ -326,12 +326,12 @@ module Typ = struct
             | SExists (bounds, body) ->
                 prefix 4 1 
                     (string "exists" ^^ blank 1 ^^ sbounds_to_doc bounds)
-                    (to_doc quant_prec body)
+                    (dot ^^ blank 1 ^^ to_doc quant_prec body)
                 |> show_parens (prec > quant_prec)
             | SForAll (bounds, body) ->
                 prefix 4 1 
                     (string "forall" ^^ blank 1 ^^ sbounds_to_doc bounds)
-                    (to_doc quant_prec body)
+                    (dot ^^ blank 1 ^^ to_doc quant_prec body)
                 |> show_parens (prec > quant_prec)
             | SPi {domain; eff = _; codomain} ->
                 infix 4 1 (string "->") (to_doc (arrow_prec + 1) domain)
@@ -567,30 +567,19 @@ module Typ = struct
 
             let root = clone_term t in
 
-            let rec rebind t = match force t with
+            let rec rebind t =
+                let t = force t in
+
+                iter rebind t;
+
+                match t with
                 | Uv {quant = _; name = _; bound} ->
-                    (match !bound with
-                    | Bot _ -> ()
-
-                    | Flex {level; bindees = _; binder = _; typ} ->
-                        iter rebind typ;
-
-                        if t == root then begin
-                            let bindees = Bound.bindees !bound in
-                            bound := Flex {level; bindees; binder = Scope scope; typ};
-                        end
-                        
-                    | Rigid {level; bindees = _; binder = _; typ} ->
-                        iter rebind typ;
-
-                        if t == root then begin
-                            let bindees = Bound.bindees !bound in
-                            bound := Rigid {level; bindees; binder = Scope scope; typ}
-                        end);
-                    (match new_binder (Bound.binder !bound) with
-                    | Some binder -> Bound.rebind bound (Type binder)
-                    | None -> ())
-                | t -> iter rebind t in
+                    if t == root
+                    then Bound.rebind bound (Scope scope)
+                    else (match new_binder (Bound.binder !bound) with
+                        | Some binder -> Bound.rebind bound (Type binder)
+                        | None -> ())
+                | _ -> () in
 
             if root != t then rebind root;
             root
