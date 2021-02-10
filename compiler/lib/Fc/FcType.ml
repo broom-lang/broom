@@ -14,8 +14,8 @@ module Typ = struct
     type quantifier = ForAll | Exists
 
     type t =
-        | Uv of {quant : quantifier; bound : bound txref}
-        | Ov of {binder : scope; kind : t}
+        | Uv of {quant : quantifier; name : Name.t; bound : bound txref}
+        | Ov of {binder : scope; name : Name.t; kind : t}
         | Pi of {domain : t; eff : t; codomain : t} (* -! -> *)
         | Impli of {domain : t; codomain : t} (* => *)
         | Fn of {param : kind; body : t} (* type lambda *)
@@ -172,15 +172,16 @@ module Typ = struct
             ; binder; (*tmp_*)typ = EmptyRow}) in
         bound := Rigid {level = Bound.level !bound; bindees = Bound.bindees !bound
             ; binder; typ = f bound};
-        Uv {quant = ForAll; bound}
+        Uv {quant = ForAll; name = Name.fresh (); bound}
 
     (* --- *)
 
-    let fresh binder kind = Uv {quant = ForAll; bound = Bound.fresh binder kind}
+    let fresh binder kind =
+        Uv {quant = ForAll; name = Name.fresh (); bound = Bound.fresh binder kind}
 
     (* OPTIMIZE: Path compression, ranking: *)
     let rec force = fun t -> match t with
-        | Uv {quant = _; bound} -> (match !bound with
+        | Uv {quant = _; name = _; bound} -> (match !bound with
             | Rigid {level = _; bindees; binder = _; typ} when TxRef.Set.is_empty bindees ->
                 force typ
             | _ -> t)
@@ -205,13 +206,13 @@ module Typ = struct
             |> Stream.into (Sink.all ~where: Fun.id) in
 
         fun f t -> match force t with
-        | Uv {quant; bound} -> (match !bound with
+        | Uv {quant; name; bound} -> (match !bound with
             | Bot _ -> t
             | Flex {level; bindees; binder; typ} ->
                 let typ' = f typ in
                 if typ' == typ
                 then t
-                else Uv {quant; bound = ref (Flex {level; bindees; binder; typ = typ'})}
+                else Uv {quant; name; bound = ref (Flex {level; bindees; binder; typ = typ'})}
             | Rigid _ -> unreachable None)
 
         | Fn {param; body} ->
@@ -358,7 +359,7 @@ module Typ = struct
         to_doc 0 syn
 
     let inlineable = function
-        | Uv {quant = _; bound} -> (match !bound with
+        | Uv {quant = _; name = _; bound} -> (match !bound with
             | Bot _ | Flex _ -> false
             | Rigid _ -> true)
         | _ -> true
@@ -366,7 +367,7 @@ module Typ = struct
     let to_syn ctx t =
         let bindees = Bound.Hashtbl.create 0 in
         let add_bindee t = match force t with
-            | Uv {quant = _; bound} -> (match Bound.binder !bound with
+            | Uv {quant = _; name = _; bound} -> (match Bound.binder !bound with
                 | Type binder ->
                     Bound.Hashtbl.update bindees ~k: binder ~f: (fun _ -> function
                         | Some bs as v -> CCVector.push bs t; v
@@ -401,21 +402,15 @@ module Typ = struct
         analyze t;
 
         let vne = Hashtbl.create 0 in
-        let fresh_qname t =
-            let name = Name.fresh () in
-            Hashtbl.add vne t (SVar name);
-            name in
+        let vne_add name t = Hashtbl.add vne t (SVar name) in
 
-        let rec contextualize t = match Hashtbl.get ctx t with
-            | Some (name, _) -> name
-            | None ->
-                let name = Name.fresh () in
-                Hashtbl.add ctx t (name, to_syn t);
-                name
+        let rec contextualize name t =
+            if Option.is_none (Hashtbl.get ctx t)
+            then Hashtbl.add ctx t (name, to_syn t)
 
         and to_syn t =
             let bindees = match force t with
-                | Uv {quant = _; bound} -> (match Bound.Hashtbl.get bindees bound with
+                | Uv {quant = _; name = _; bound} -> (match Bound.Hashtbl.get bindees bound with
                     | Some bindees -> bindees
                     | None -> CCVector.create ())
                 | _ -> CCVector.create () in
@@ -424,12 +419,12 @@ module Typ = struct
             let (existentials, universals) = Stream.from (Source.array bindees)
                 |> Stream.filter (Fun.negate inlineable)
                 |> Stream.map (function
-                    | Uv {quant; bound} as bindee ->
+                    | Uv {quant; name; bound} as bindee ->
                         let sbindee = to_syn bindee in
                         let flag = match !bound with
                             | Bot _ | Flex _ -> SFlex
                             | Rigid _ -> SRigid in
-                        let name = fresh_qname bindee in
+                        vne_add name bindee;
                         (quant, (name, flag, sbindee))
                     | _ -> unreachable None)
                 |> Stream.into (Sink.zip
@@ -439,15 +434,16 @@ module Typ = struct
                         (Sink.premap snd (Vector.sink ())))) in
 
             let body = match force t with
-                | Uv {quant = _; bound} -> (match !bound with
+                | Uv {quant = _; name; bound} -> (match !bound with
                     | Bot _ -> SBot
                     | Flex _ -> (match Hashtbl.get vne t with
                         | Some syn -> syn
-                        | None -> SVar (contextualize t))
+                        | None -> contextualize name t; SVar name)
                     | Rigid {level = _; bindees = _; binder = _; typ} -> to_syn typ)
-                | Ov _ -> SVar (contextualize t)
+                | Ov {binder = _; name; kind = _} -> contextualize name t; SVar name
                 | Fn {param; body} ->
-                    let pname = fresh_qname (force param) in
+                    let pname = Name.fresh () in
+                    vne_add pname (force param);
                     SFn {param = (pname, child_to_syn param); body = child_to_syn body}
                 | App (callee, arg) ->
                     SApp {callee = child_to_syn callee; arg = child_to_syn arg}
@@ -479,7 +475,10 @@ module Typ = struct
             then to_syn t
             else match Hashtbl.get vne t with
                 | Some syn -> syn
-                | None -> SVar (contextualize t) in
+                | None ->
+                    let name = Name.fresh () in
+                    contextualize name t;
+                    SVar name in
 
         to_syn (force t)
 
@@ -510,7 +509,7 @@ module Typ = struct
         | Refl t -> to_doc t
 
     let instantiate scope t = match force t with
-        | Uv {quant = _; bound = root_bound} ->
+        | Uv {quant = _; name = _; bound = root_bound} ->
             let rec locally_bound bound = match Bound.binder !bound with
                 | Type bound' ->
                     bound' == root_bound || locally_bound bound
@@ -529,7 +528,7 @@ module Typ = struct
                 | Some t' -> t'
                 | None ->
                     let t' = match t with
-                        | Uv {quant; bound} when locally_bound bound ->
+                        | Uv {quant; name; bound} when locally_bound bound ->
                             let bound' = match !bound with
                                 | Bot _ as bound -> bound
                                 | Flex {level; bindees; binder; typ} as bound ->
@@ -540,7 +539,7 @@ module Typ = struct
                                 | Rigid _ -> unreachable None in
                             let bound' = ref bound' in
                             Bound.Hashtbl.add bound_copies bound bound';
-                            Uv {quant; bound = bound'}
+                            Uv {quant; name; bound = bound'}
 
                         | Uv _ -> t
                         | t -> map_children clone_term t in
@@ -550,7 +549,7 @@ module Typ = struct
             let root = clone_term t in
 
             let rec rebind t = match force t with
-                | Uv {quant = _; bound} ->
+                | Uv {quant = _; name = _; bound} ->
                     (match !bound with
                     | Bot _ -> ()
 

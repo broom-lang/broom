@@ -5,8 +5,8 @@ module type TYPE = sig
     type quantifier = ForAll | Exists
 
     type t =
-        | Uv of {quant : quantifier; bound : bound txref}
-        | Ov of {binder : scope; kind : t}
+        | Uv of {quant : quantifier; name : Name.t; bound : bound txref}
+        | Ov of {binder : scope; name : Name.t; kind : t}
         | Pi of {domain : t; eff : t; codomain : t} (* -! -> *)
         | Impli of {domain : t; codomain : t} (* => *)
         | Fn of {param : kind; body : t} (* type lambda *)

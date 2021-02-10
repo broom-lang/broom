@@ -159,17 +159,18 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
         | (Rigid _, Rigid _) -> todo (Some span) ~msg: "(poly-)rigid-rigid" in
 
     let unify_whnf span env t t' = match (t, t') with
-        | (T.Uv {quant = _; bound}, t') | (t', T.Uv {quant = _; bound}) ->
+        | (T.Uv {quant = _; name = _; bound}, t')
+        | (t', T.Uv {quant = _; name = _; bound}) ->
             if not (Bound.is_locked !bound)
             then (match t' with (* OPTIMIZE: path compression, ranking (but mind bindees!) *)
-                | T.Uv {quant = _; bound = bound'} when not (Bound.is_locked !bound') ->
+                | T.Uv {quant = _; name = _; bound = bound'} when not (Bound.is_locked !bound') ->
                     if TxRef.equal bound bound'
                     then ()
                     else unify_schemes span env t bound t' bound'
 
                 | t' -> subsume span env t bound t')
             else (match t' with
-                | T.Uv {quant = _; bound = bound'} ->
+                | T.Uv {quant = _; name = _; bound = bound'} ->
                     if not (Bound.is_locked !bound)
                     then todo (Some span) ~msg: "bv-uv'"
                     else if TxRef.equal bound' bound
@@ -984,7 +985,7 @@ and check_uv_assignee pos env uv uv_binder max_uv_level typ =
                 then ()
              else Env.reportError env pos (Escape ov))*)
 
-        | Uv {quant = _; bound} as t ->
+        | Uv {quant = _; name = _; bound} as t ->
             (match !bound with
             | Bot _ -> ()
             | Flex {level = _; bindees = _; binder = _; typ}
