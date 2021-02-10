@@ -399,6 +399,7 @@ let implicits (env : t) = Stream.from (Source.list env.scopes)
 
 let tv env kind = T.fresh (Scope (t_scope env)) kind
 
+let forall_in_scope env scope t = T.forall_in_scope ~binder: (t_scope env) scope t
 let instantiate env t = T.instantiate (t_scope env) t
 
 end

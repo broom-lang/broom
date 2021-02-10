@@ -70,6 +70,7 @@ module type TYPE = sig
     val fix : binder -> (bound txref -> t) -> t
 
     val force : t -> t
+    val forall_in_scope : binder: scope -> scope -> t -> t
     val instantiate : scope -> t -> t
     val reabstract : scope -> t -> t
 

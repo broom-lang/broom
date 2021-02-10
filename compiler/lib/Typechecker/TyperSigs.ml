@@ -125,6 +125,7 @@ module type ENV = sig
 
     val tv : t -> T.kind -> T.t
 
+    val forall_in_scope : t -> T.scope -> T.t -> T.t
     val instantiate : t -> T.t -> T.t
 
     val reportError : t -> error_handler

@@ -478,6 +478,55 @@ module Typ = struct
     let coercion_to_doc = function
         | Refl t -> to_doc t
 
+    let forall_in_scope ~binder scope t =
+        let root_bound = ref
+            (Rigid { level = -1; bindees = TxRef.Set.empty
+                ; binder = Scope binder; (*tmp_*)typ = EmptyRow }) in
+        let root = Uv {quant = ForAll; name = Name.fresh (); bound = root_bound} in
+
+        let copies = Hashtbl.create 0 in
+
+        let bound_copies = Bound.Hashtbl.create 0 in
+        let new_binder = function
+            | Type binder -> Bound.Hashtbl.get bound_copies binder
+            | Scope scope' ->
+                if scope' == scope
+                then Some (Type root_bound)
+                else None in
+
+        let rec clone_term t =
+            let t = force t in
+            match Hashtbl.get copies t with
+            | Some t' -> t'
+            | None ->
+                let t' = map_children clone_term t in
+                let t' = match t' with
+                    | Uv {quant = _; name; bound} -> (match Bound.binder !bound with
+                        | Scope scope' when scope' == scope ->
+                            Uv {quant = ForAll; name; bound}
+                        | Scope _ | Type _ -> t')
+                    | _ -> t' in
+                Hashtbl.add copies t t';
+                t' in
+        let t = clone_term t in
+        root_bound := Rigid {level = -1; bindees = TxRef.Set.empty
+            ; binder = Scope binder; typ = t};
+
+        let rec rebind t =
+            let t = force t in
+
+            iter rebind t;
+
+            match force t with
+            | Uv {quant = _; name = _; bound} ->
+                (match new_binder (Bound.binder !bound) with
+                | Some binder -> Bound.rebind bound binder
+                | None -> ())
+            | _ -> () in
+        rebind t;
+
+        root
+
     let instantiate scope t = match force t with
         | Uv {quant = _; name = _; bound = root_bound} ->
             let rec locally_bound bound = match Bound.binder !bound with

@@ -514,7 +514,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         ) in
         let matchee = FExpr.at expr.pos param.vtyp (FExpr.use param) in
         let body = ExpandPats.expand_clauses expr.pos env codomain matchee clauses in
-        let typ = T.Pi {domain; eff; codomain} in
+        let typ = Env.forall_in_scope env scope (T.Pi {domain; eff; codomain}) in
         {term = FExpr.at expr.pos typ (FExpr.fn Vector.empty param body); eff}
 
     | App (callee, Explicit, arg) ->
