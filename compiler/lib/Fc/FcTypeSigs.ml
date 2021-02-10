@@ -71,6 +71,7 @@ module type TYPE = sig
 
     val force : t -> t
     val instantiate : scope -> t -> t
+    val reabstract : scope -> t -> t
 
     type typ = t
 

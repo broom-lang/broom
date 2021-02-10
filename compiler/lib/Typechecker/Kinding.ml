@@ -295,13 +295,12 @@ let kindof _ (typ : AType.t with_pos) = todo (Some typ.pos)
 
 let check _ _ (typ : AType.t with_pos) = todo (Some typ.pos)
 
-let check_nonquantifying env _ (typ : AType.t with_pos) = match typ.v with
+let check_nonquantifying env scope _ (typ : AType.t with_pos) = match typ.v with
     | Path expr ->
         let carrie = Env.tv env (Env.tv env T.aType) in
         let {TS.term = _; eff} = C.check env (T.Proxy carrie) {typ with v = expr} in
         M.unify typ.pos env eff EmptyRow;
-        (*let (_, carrie) = reabstract env carrie in*)
-        carrie
+        T.reabstract scope carrie
 
     | _ -> todo (Some typ.pos) ~msg: "check_nonquantifying"
 

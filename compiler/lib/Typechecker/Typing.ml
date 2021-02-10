@@ -503,13 +503,13 @@ let check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
 let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
 = fun env expr -> match expr.v with
     | Fn (Explicit, clauses) ->
-        let (env, _) = Env.push_level env in
+        let (env, scope) = Env.push_level env in
         let domain = Env.tv env (T.App (T.Prim TypeIn, Env.tv env T.rep)) in
         let eff = Env.tv env T.aRow in
         let codomain = Env.tv env (T.App (T.Prim TypeIn, Env.tv env T.rep)) in
         let param = FExpr.fresh_var domain in
         let clauses = clauses |> Vector.map (fun clause ->
-            let clause = check_clause Util.Explicit env domain eff codomain clause in
+            let clause = check_clause Util.Explicit env scope domain eff codomain clause in
             {ExpandPats.pat = clause.FExpr.pat; emit = emit_clause_body env clause}
         ) in
         let matchee = FExpr.at expr.pos param.vtyp (FExpr.use param) in
@@ -580,8 +580,8 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
     M.instance expr.pos env expr.typ super;
     {term = FExpr.at expr.pos super (FExpr.cast expr (Refl super)); eff}
 
-and check_clause plicity env domain _ codomain ({params; body} : AExpr.clause) =
-    let (pat, vars) = check_pat env domain params in
+and check_clause plicity env scope domain _ codomain ({params; body} : AExpr.clause) =
+    let (pat, vars) = check_pat env scope domain params in
     let body_env = Vector.fold (Env.push_val plicity) env vars in
     let {TS.term = body; eff = _} = check body_env codomain body in
     (*ignore (M.solving_unify body.pos env body_eff eff);*)
@@ -664,8 +664,8 @@ and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector
 (* ## Checking *)
 
 (* TODO: use coercions (and subtyping ?): *)
-and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vector.t
-= fun env ptyp pat ->
+and check_pat : Env.t -> T.scope -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vector.t
+= fun env scope ptyp pat ->
     (*let check_pats env domain pats =
         let step (env, pats, defs) domain pat =
             let (pat, defs') = check_pat env domain pat in
@@ -676,7 +676,8 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
         end else failwith "tuple type and pattern widths don't match" in*)
 
     match pat.v with
-    | AExpr.Tuple pats when Vector.length pats = 1 -> check_pat env ptyp (Vector.get pats 0)
+    | AExpr.Tuple pats when Vector.length pats = 1 ->
+        check_pat env scope ptyp (Vector.get pats 0)
 (*
     | AExpr.Tuple pats ->
         let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
@@ -687,9 +688,9 @@ and check_pat : Env.t -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vect
 *)
     | AExpr.Ann (pat', typ') ->
         let kind = T.App (T.Prim TypeIn, Env.tv env T.rep) in
-        let typ' = K.check_nonquantifying env kind typ' in
+        let typ' = K.check_nonquantifying env scope kind typ' in
         M.unify pat.pos env ptyp typ';
-        check_pat env typ' pat'
+        check_pat env scope typ' pat'
 
     | AExpr.Var name ->
         let var = FExpr.var name ptyp in

@@ -14,7 +14,7 @@ module type KINDING = sig
     (*val kindof_F : span -> env -> Fc.Type.t -> Fc.Type.kind*)
     val kindof : env -> Ast.Type.t with_pos -> typ kinding
     val check : env -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
-    val check_nonquantifying : env -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
+    val check_nonquantifying : env -> Fc.Type.scope -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
     (*val eval : Util.span -> env -> typ -> (typ * typ Fc.Type.coercion option) option*)
     val eval : Util.span -> env -> typ -> typ
 end
