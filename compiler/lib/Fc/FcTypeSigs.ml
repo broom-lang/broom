@@ -69,10 +69,12 @@ module type TYPE = sig
     val fresh : binder -> kind -> t
     val fix : binder -> (bound txref -> t) -> t
 
+    val iter : (t -> unit) -> t -> unit
+    val map_children : (t -> t) -> t -> t
+
     val force : t -> t
     val forall_in_scope : binder: scope -> scope -> t -> t
     val instantiate : scope -> t -> t
-    val reabstract : scope -> t -> t
 
     type typ = t
 
@@ -88,6 +90,8 @@ module type TYPE = sig
         val rebind : t txref -> binder -> unit
         val graft_mono : t txref -> typ -> unit
         val set_level : t txref -> int -> unit
+
+        module Hashtbl : CCHashtbl.S with type key = t txref
     end
 
     module Binder : sig
@@ -101,5 +105,7 @@ module type TYPE = sig
 
         val level : t -> int
     end
+
+    module Hashtbl : CCHashtbl.S with type key = t
 end
 

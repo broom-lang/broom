@@ -11,7 +11,7 @@ type 'a kinding = {typ : 'a; kind : Fc.Type.kind}
 module type KINDING = sig
     type env
 
-    (*val kindof_F : span -> env -> Fc.Type.t -> Fc.Type.kind*)
+    val kindof_F : span -> env -> Fc.Type.t -> Fc.Type.kind
     val kindof : env -> Ast.Type.t with_pos -> typ kinding
     val check : env -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
     val check_nonquantifying : env -> Fc.Type.scope -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
@@ -127,6 +127,7 @@ module type ENV = sig
 
     val forall_in_scope : t -> T.scope -> T.t -> T.t
     val instantiate : t -> T.t -> T.t
+    val reabstract : span -> t -> T.scope -> T.t -> T.t
 
     val reportError : t -> error_handler
     val with_error_handler : t -> error_handler -> t

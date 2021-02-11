@@ -44,7 +44,7 @@ module T = T
 
 module Bindings = Map.Make(Name)
 
-(*let (!) = TxRef.(!)*)
+let (!) = TxRef.(!)
 
 type t = env
 
@@ -401,6 +401,56 @@ let tv env kind = T.fresh (Scope (t_scope env)) kind
 
 let forall_in_scope env scope t = T.forall_in_scope ~binder: (t_scope env) scope t
 let instantiate env t = T.instantiate (t_scope env) t
+
+let reabstract span env scope t =
+    let open Fc.Type in
+
+    match force t with
+    | Uv {quant = _; name = _; bound = root_bound} ->
+        let copies = Hashtbl.create 0 in
+
+        let bound_copies = Bound.Hashtbl.create 0 in
+        let new_binder = function
+            | Type binder ->
+                if TxRef.equal binder root_bound
+                then Some (Scope scope)
+                else Bound.Hashtbl.get bound_copies binder
+                    |> Option.map (fun binder -> Type binder)
+            | Scope _ -> None in
+
+        let rec clone_term t =
+            let t = force t in
+            match T.Hashtbl.get copies t with
+            | Some t' -> t'
+            | None ->
+                let t' = match t with
+                    | Uv {quant = Exists; name = _; bound} -> (match Bound.binder !bound with
+                        | Type binder when TxRef.equal binder root_bound ->
+                            Ov {binder = scope; name = Name.fresh ()
+                                ; kind = K.kindof_F span env t}
+                        | _ -> T.map_children clone_term t)
+                    | t -> T.map_children clone_term t in
+                Hashtbl.add copies t t';
+                t' in
+
+        let root = clone_term t in
+
+        let rec rebind t =
+            let t = force t in
+
+            T.iter rebind t;
+
+            match force t with
+            | Uv {quant = _; name = _; bound} ->
+                (match new_binder (Bound.binder !bound) with
+                | Some binder -> Bound.rebind bound binder
+                | None -> ())
+            | _ -> () in
+
+        if root != t then rebind root;
+        root
+
+    | t -> t
 
 end
 

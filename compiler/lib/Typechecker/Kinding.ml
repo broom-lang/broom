@@ -21,7 +21,7 @@ type 'a with_pos = 'a Util.with_pos
 
 let reabstract = Env.reabstract
 let ref = TxRef.ref
-let (!) = TxRef.(!)
+let (!) = TxRef.(!)*)
 
 let kindof_prim : Prim.t -> T.kind = function
     | Int | Bool | String -> T.aType
@@ -63,7 +63,7 @@ let kindof_F pos _ : T.t -> T.kind = function
         | Assigned typ -> kindof_F pos env typ)*)
     | Prim pt -> kindof_prim pt
     | _ -> todo (Some pos) ~msg: "kindof_F"
-
+(*
 and check_F pos env kind typ =
     let kind' = kindof_F pos env typ in
     ignore (M.solving_unify pos env kind' kind)
@@ -300,7 +300,7 @@ let check_nonquantifying env scope _ (typ : AType.t with_pos) = match typ.v with
         let carrie = Env.tv env (Env.tv env T.aType) in
         let {TS.term = _; eff} = C.check env (T.Proxy carrie) {typ with v = expr} in
         M.unify typ.pos env eff EmptyRow;
-        T.reabstract scope carrie
+        Env.reabstract typ.pos env scope carrie
 
     | _ -> todo (Some typ.pos) ~msg: "check_nonquantifying"
 
