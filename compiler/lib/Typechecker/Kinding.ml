@@ -20,8 +20,8 @@ type 'a with_pos = 'a Util.with_pos
 (*type 'a kinding = 'a TS.kinding
 
 let reabstract = Env.reabstract
-let ref = TxRef.ref
-let (!) = TxRef.(!)*)
+let ref = TxRef.ref*)
+let (!) = TxRef.(!)
 
 let kindof_prim : Prim.t -> T.kind = function
     | Int | Bool | String -> T.aType
@@ -34,7 +34,7 @@ let kindof_prim : Prim.t -> T.kind = function
         ; domain = T.aKind; eff = EmptyRow; codomain = T.aKind}*)
     | _ -> todo None ~msg: "kindof_prim"
 
-let kindof_F pos _ : T.t -> T.kind = function
+let rec kindof_F pos env : T.t -> T.kind = function
     (*| PromotedArray typs ->
         let el_kind = if Vector.length typs > 0
             then kindof_F pos env (Vector.get typs 0)
@@ -55,12 +55,11 @@ let kindof_F pos _ : T.t -> T.kind = function
                 check_F pos env domain arg;
                 codomain
             end else todo (Some pos) ~msg: "universals in type application"
-        | _ -> unreachable (Some pos) ~msg: "invalid type application in `kindof_F`.")
-    | Ov ((_, kind), _) -> kind
-    | Bv {kind; _} -> kind
-    | Uv uv -> (match Env.get_uv env uv with
-        | Unassigned (_, kind, _) -> kind
-        | Assigned typ -> kindof_F pos env typ)*)
+        | _ -> unreachable (Some pos) ~msg: "invalid type application in `kindof_F`.")*)
+    | Uv {bound; _} -> (match !bound with
+        | Bot {kind; _} -> kind
+        | Flex {typ; _} | Rigid {typ; _} -> kindof_F pos env typ)
+    | Ov {kind; _} -> kind
     | Prim pt -> kindof_prim pt
     | _ -> todo (Some pos) ~msg: "kindof_F"
 (*

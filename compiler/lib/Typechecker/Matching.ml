@@ -976,31 +976,34 @@ and check_uv_assignee pos env uv uv_binder max_uv_level typ =
         | EmptyRow -> ()
         | Proxy carrie -> check carrie
         (*| Fn (_, body) -> check body
-        | App (callee, arg) -> check callee; check arg
-        | Ov ((_, level') as ov) ->
-            (match Env.get_implementation env ov with
+        | App (callee, arg) -> check callee; check arg*)
+        | Ov {binder; _} as t ->
+            (*(match Env.get_implementation env ov with
             | Some (_, _, uv') -> check (Uv uv')
-            | None ->
-                if level' <= level
+            | None ->*)
+                if T.Scope.level binder <= Binder.level uv_binder
                 then ()
-             else Env.reportError env pos (Escape ov))*)
+                else Env.reportError env pos (Escape t)
 
         | Uv {quant = _; name = _; bound} as t ->
             (match !bound with
             | Bot _ -> ()
             | Flex {level = _; bindees = _; binder = _; typ}
             | Rigid {level = _; bindees = _; binder = _; typ} ->
-                Env.in_bound env bound (fun _ -> check typ));
+                check typ);
 
-            (* FIXME: *)
-            let level' = Binder.level (Bound.binder !bound) in
             if t == uv
             then Env.reportError env pos (Occurs (uv, typ))
-            else if level' <= Binder.level uv_binder
-            then ()
-            else if level' <= max_uv_level
-            then Bound.rebind bound uv_binder
-            else Env.reportError env pos (IncompleteImpl (uv, t))
+            else begin
+                let level' = Binder.level (Bound.binder !bound) in
+                if level' < 0
+                then ()
+                else if level' <= Binder.level uv_binder
+                then ()
+                else if level' <= max_uv_level
+                then Bound.rebind bound uv_binder
+                else Env.reportError env pos (IncompleteImpl (uv, t))
+            end
 
         | Prim _ -> ()
         | _ -> todo (Some pos) ~msg: "check_uv_assignee" in

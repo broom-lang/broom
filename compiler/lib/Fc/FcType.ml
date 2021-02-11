@@ -86,7 +86,7 @@ module Typ = struct
         let level = function
             | Type t -> (match !t with
                 | Bot _ -> unreachable None
-                | Flex {level; _} | Rigid {level; _} -> assert (level > 0); level)
+                | Flex {level; _} | Rigid {level; _} -> level)
             | Scope scope -> Scope.level scope
 
         let add_bindee bindee bref = match bref with
