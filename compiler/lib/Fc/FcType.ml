@@ -354,17 +354,10 @@ module Typ = struct
 
     let show_parens should_show doc = if should_show then PPrint.parens doc else doc
 
-    let syn_to_doc syn =
+    let rec syn_to_doc syn =
         let open PPrint in
 
-        let rec sbound_to_doc (name, flag, bound) =
-            PPrint.(parens (infix 4 1 (string (flag_to_string flag))
-                (Name.to_doc name) (to_doc 0 bound)))
-
-        and sbounds_to_doc bounds =
-            separate_map (break 1) sbound_to_doc (Vector1.to_list bounds)
-
-        and to_doc prec = function
+        let rec to_doc prec = function
             | SExists (bounds, body) ->
                 prefix 4 1 
                     (string "exists" ^^ blank 1 ^^ sbounds_to_doc bounds)
@@ -405,6 +398,13 @@ module Typ = struct
 
         to_doc 0 syn
 
+    and sbound_to_doc (name, flag, bound) =
+        PPrint.(parens (infix 4 1 (string (flag_to_string flag))
+            (Name.to_doc name) (syn_to_doc bound)))
+
+    and sbounds_to_doc bounds =
+        PPrint.(separate_map (break 1) sbound_to_doc (Vector1.to_list bounds))
+
     let to_syn ctx t =
         let existentials = Bound.Hashtbl.create 0 in
         let universals = Bound.Hashtbl.create 0 in
@@ -432,12 +432,12 @@ module Typ = struct
                         Bound.Hashtbl.update bindees ~k: binder ~f: (fun _ -> function
                             | Some bs as v -> CCVector.push bs t; v
                             | None -> Some (CCVector.of_list [t]))
-                    | Type _ | Scope _ -> Bound.HashSet.insert ctx bound)
+                    | Type _ | Scope _ ->
+                        Bound.Hashtbl.add ctx bound (bindee_to_syn t)) (* HACK *)
                 | _ -> ()
-            end in
-        analyze t;
+            end
 
-        let rec to_syn t =
+        and to_syn t =
             let t = force t in
 
             let (existentials, universals) = match t with
@@ -492,26 +492,19 @@ module Typ = struct
                     (name, SRigid, to_syn typ))
             | _ -> unreachable None in
 
+        analyze t;
         to_syn (force t)
 
     let to_doc t =
-        let ctx = Bound.HashSet.create 0 in
+        let ctx = Bound.Hashtbl.create 0 in
         let syn = to_syn ctx t in
-        (*PPrint.(match Hashtbl.to_list ctx with
+        PPrint.(match Bound.Hashtbl.to_list ctx with
             | (_ :: _) as ctx ->
                 infix 4 1 (string "in") (syn_to_doc syn)
-                    (separate_map (comma ^^ blank 1) (fun (t, (name, syn)) ->
-                        match t with
-                        | Uv {quant = _; name = _; bound} -> (match !bound with
-                            | Bot {binder = _; kind} ->
-                                infix 4 1 colon (Name.to_doc name) (to_doc kind)
-                            | Flex _ ->
-                                infix 4 1 (string ">=") (Name.to_doc name) (syn_to_doc syn)
-                            | Rigid _ ->
-                                infix 4 1 equals (Name.to_doc name) (syn_to_doc syn))
-                        | _ -> unreachable None ~msg: "Type.to_doc"
-                    ) ctx)
-            | [] ->*) syn_to_doc syn(* )*)
+                    (separate_map (comma ^^ blank 1)
+                        (fun (_, sbound) -> sbound_to_doc sbound)
+                        ctx)
+            | [] -> syn_to_doc syn )
 
     let kind_to_doc = to_doc
 
