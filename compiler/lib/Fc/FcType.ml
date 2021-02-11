@@ -171,8 +171,9 @@ module Typ = struct
     let fix binder f =
         let bound = ref (Rigid {level = -1; bindees = TxRef.Set.empty
             ; binder; (*tmp_*)typ = EmptyRow}) in
+        let typ = f bound in
         bound := Rigid {level = Bound.level !bound; bindees = Bound.bindees !bound
-            ; binder; typ = f bound};
+            ; binder; typ};
         Uv {quant = ForAll; name = Name.fresh (); bound}
 
     (* --- *)
@@ -181,7 +182,7 @@ module Typ = struct
         Uv {quant = ForAll; name = Name.fresh (); bound = Bound.fresh binder kind}
 
     (* OPTIMIZE: Path compression, ranking: *)
-    let rec force = fun t -> match t with
+    let rec force t = match t with
         | Uv {quant = _; name = _; bound} -> (match !bound with
             | Rigid {level = _; bindees; binder = _; typ} when TxRef.Set.is_empty bindees ->
                 force typ
@@ -218,7 +219,11 @@ module Typ = struct
                 if typ' == typ
                 then t
                 else Uv {quant; name; bound = ref (Flex {level; bindees; binder; typ = typ'})}
-            | Rigid _ -> unreachable None)
+            | Rigid {level; bindees; binder; typ} ->
+                let typ' = f typ in
+                if typ' == typ
+                then t
+                else Uv {quant; name; bound = ref (Rigid {level; bindees; binder; typ = typ'})})
 
         | Fn {param; body} ->
             let body' = f body in
@@ -272,6 +277,43 @@ module Typ = struct
             if all_eq typs' typs then t else PromotedArray typs
 
         | EmptyRow | Prim _ | Ov _ -> t
+
+    let postwalk_rebinding f t =
+        let copies = Hashtbl.create 0 in
+        let bound_copies = Bound.Hashtbl.create 0 in
+
+        let rec clone_term t =
+            let t = force t in
+            match Hashtbl.get copies t with
+            | Some t' -> t'
+            | None ->
+                let t' = f (map_children clone_term t) in
+                (match (t, t') with
+                | (Uv {quant = _; name = _; bound}, Uv {quant = _; name = _; bound = bound'}) ->
+                    if not (TxRef.equal bound' bound)
+                    then Bound.Hashtbl.add bound_copies bound bound'
+                | _ -> ());
+                Hashtbl.add copies t t';
+                t' in
+        let t' = clone_term t in
+
+        if t' != t then begin
+            let rec rebind t =
+                let t = force t in
+
+                iter rebind t;
+
+                match t with
+                | Uv {quant = _; name = _; bound} -> (match Bound.binder !bound with
+                    | Type binder -> (match Bound.Hashtbl.get bound_copies binder with
+                        | Some binder' -> Bound.rebind bound (Type binder')
+                        | None -> ())
+                    | Scope _ -> ())
+                | _ -> () in
+            rebind t'
+        end;
+
+        t'
 
     (* --- *)
 
@@ -478,112 +520,45 @@ module Typ = struct
     let coercion_to_doc = function
         | Refl t -> to_doc t
 
-    let forall_in_scope ~binder scope t =
-        let root_bound = ref
-            (Rigid { level = -1; bindees = TxRef.Set.empty
-                ; binder = Scope binder; (*tmp_*)typ = EmptyRow }) in
-        let root = Uv {quant = ForAll; name = Name.fresh (); bound = root_bound} in
+    let forall_scope_ovs ~binder scope t =
+        let binder = Scope binder in
+        fix binder (fun root_bound ->
+            t |> postwalk_rebinding (fun t -> match t with
+                | Ov {binder; name = _; kind} when binder == scope ->
+                    Uv {quant = ForAll; name = Name.fresh ()
+                        ; bound = Bound.fresh (Type root_bound) kind}
+                | t -> t
+            )
+        )
 
-        let copies = Hashtbl.create 0 in
-
-        let bound_copies = Bound.Hashtbl.create 0 in
-        let new_binder = function
-            | Type binder -> Bound.Hashtbl.get bound_copies binder
-            | Scope scope' ->
-                if scope' == scope
-                then Some (Type root_bound)
-                else None in
-
-        let rec clone_term t =
-            let t = force t in
-            match Hashtbl.get copies t with
-            | Some t' -> t'
-            | None ->
-                let t' = map_children clone_term t in
-                let t' = match t' with
-                    | Uv {quant = _; name; bound} -> (match Bound.binder !bound with
-                        | Scope scope' when scope' == scope ->
-                            Uv {quant = ForAll; name; bound}
-                        | Scope _ | Type _ -> t')
-                    | _ -> t' in
-                Hashtbl.add copies t t';
-                t' in
-        let t = clone_term t in
-        root_bound := Rigid {level = -1; bindees = TxRef.Set.empty
-            ; binder = Scope binder; typ = t};
-
-        let rec rebind t =
-            let t = force t in
-
-            iter rebind t;
-
-            match force t with
-            | Uv {quant = _; name = _; bound} ->
-                (match new_binder (Bound.binder !bound) with
-                | Some binder -> Bound.rebind bound binder
-                | None -> ())
-            | _ -> () in
-        rebind t;
-
-        root
-
-    let instantiate scope t = match force t with
+    let instantiate scope t =
+        let t = force t in
+        match t with
         | Uv {quant = _; name = _; bound = root_bound} ->
-            let rec locally_bound bound = match Bound.binder !bound with
-                | Type bound' ->
-                    bound' == root_bound || locally_bound bound
+            let rec locally_bound = function
+                | Type binder ->
+                    binder == root_bound
+                    || locally_bound (Bound.binder !binder)
                 | Scope _ -> false in
 
-            let copies = Hashtbl.create 0 in
+            let t = t |> postwalk_rebinding (fun t -> match t with
+                | Uv {quant = ForAll; name = _; bound} -> (match !bound with
+                    | Bot {binder; kind} when locally_bound binder ->
+                        Uv {quant = ForAll; name = Name.fresh ()
+                            ; bound = Bound.fresh binder kind}
+                    | _ -> t)
+                | t -> t) in
 
-            let bound_copies = Bound.Hashtbl.create 0 in
-            let new_binder = function
-                | Type binder -> Bound.Hashtbl.get bound_copies binder
-                | Scope _ -> None in
+            (match t with
+            | Uv {quant = _; name = _; bound} -> (match !bound with
+                | Bot _ -> ()
+                | Flex {level; bindees; binder; typ}
+                | Rigid {level; bindees; binder; typ} ->
+                    bound := Flex {level; bindees; binder; typ};
+                    Bound.rebind bound (Scope scope))
+            | _ -> ());
 
-            let rec clone_term t =
-                let t = force t in
-                match Hashtbl.get copies t with
-                | Some t' -> t'
-                | None ->
-                    let t' = match t with
-                        | Uv {quant; name; bound} when locally_bound bound ->
-                            let bound' = match !bound with
-                                | Bot _ as bound -> bound
-                                | Flex {level; bindees; binder; typ} as bound ->
-                                    let typ' = clone_term typ in
-                                    if typ' == typ
-                                    then bound
-                                    else Flex {level; bindees; binder; typ = typ'}
-                                | Rigid _ -> unreachable None in
-                            let bound' = ref bound' in
-                            Bound.Hashtbl.add bound_copies bound bound';
-                            Uv {quant; name; bound = bound'}
-
-                        | Uv _ -> t
-                        | t -> map_children clone_term t in
-                    Hashtbl.add copies t t';
-                    t' in
-
-            let root = clone_term t in
-
-            let rec rebind t =
-                let t = force t in
-
-                iter rebind t;
-
-                match t with
-                | Uv {quant = _; name = _; bound} ->
-                    if t == root
-                    then Bound.rebind bound (Scope scope)
-                    else (match new_binder (Bound.binder !bound) with
-                        | Some binder -> Bound.rebind bound (Type binder)
-                        | None -> ())
-                | _ -> () in
-
-            if root != t then rebind root;
-            root
-
+            t
         | t -> t
 end
 

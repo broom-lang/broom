@@ -71,9 +71,10 @@ module type TYPE = sig
 
     val iter : (t -> unit) -> t -> unit
     val map_children : (t -> t) -> t -> t
+    val postwalk_rebinding : (t -> t) -> t -> t
 
     val force : t -> t
-    val forall_in_scope : binder: scope -> scope -> t -> t
+    val forall_scope_ovs : binder: scope -> scope -> t -> t
     val instantiate : scope -> t -> t
 
     type typ = t
