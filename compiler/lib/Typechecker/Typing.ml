@@ -14,6 +14,7 @@ module FExpr = Fc.Term.Expr
 module FStmt = Fc.Term.Stmt
 
 module T = Fc.Type
+module Uv = Fc.Uv
 
 module TS = TyperSigs
 type 'a typing = 'a TS.typing
@@ -61,8 +62,7 @@ let primop_typ : Env.t -> Primop.t -> T.t = fun env ->
         Pi { domain = Tuple Vector.empty
             ; eff = EmptyRow
             ; codomain = Proxy (T.fix (Scope (Env.t_scope env)) (fun t ->
-                Proxy (Uv {quant = Exists; name = Name.fresh ()
-                    ; bound = T.Bound.fresh (T.Type t) T.aType}))) }
+                Proxy (Uv (Uv.fresh Exists (Type t) T.aType)))) }
 
     (*| TypeOf -> (* FIXME: Enforce argument purity *)
         ( Vector.singleton T.aType

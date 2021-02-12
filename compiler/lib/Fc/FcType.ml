@@ -8,13 +8,151 @@ let ref = TxRef.ref
 let (!) = TxRef.(!)
 let (:=) = TxRef.(:=)
 
-module Typ = struct
-    module PP = PPrint
-
-    type quantifier = ForAll | Exists
+module rec Uv : (FcTypeSigs.UV
+    with type typ = Typ.t
+    with type kind = Typ.kind
+) = struct
+    type typ = Typ.t
+    type kind = Typ.kind
 
     type t =
-        | Uv of {quant : quantifier; name : Name.t; bound : bound txref}
+        { name : Name.t
+        ; quant : quantifier
+        ; binder : binder txref
+        ; bindees : t Vector.t txref
+        ; level : int txref
+        ; bound : bound txref }
+
+    and quantifier = ForAll | Exists
+
+    and bound =
+        | Bot of kind
+        | Flex of typ
+        | Rigid of typ
+
+    and binder =
+        | Scope of scope
+        | Type of t
+
+    and scope =
+        | Local of {level : int; bindees : t Vector.t txref; parent : scope}
+        | Global of t Vector.t txref
+
+    let hash uv = Name.hash uv.name
+    let equal = (==)
+
+    (* NOTE: Assumes Shallow MLF / HML: *)
+    let is_locked uv = match !(uv.binder) with
+        | Type binder -> (match !(binder.bound) with
+            | Bot _ | Flex _ -> false
+            | Rigid _ -> true)
+        | Scope _ -> false
+
+    let graft_mono uv typ = uv.bound := Rigid typ
+
+    module Scope = struct
+        type t = scope
+
+        let level = function
+            | Local {level; _} -> level
+            | Global _ -> 0
+
+        let add_bindee (Local {bindees; _} | Global bindees) bindee =
+            if not (Vector.exists ((==) bindee) !bindees)
+            then bindees := Vector.push !bindees bindee
+
+        let remove_bindee (Local {bindees; _} | Global bindees) bindee =
+            bindees := Vector.filter ((!=) bindee) !bindees
+    end
+
+    module Binder = struct
+        type t = binder
+
+        let level = function
+            | Type t -> !(t.level)
+            | Scope scope -> Scope.level scope
+
+        let add_bindee binder bindee = match binder with
+            | Type binder ->
+                let bindees = binder.bindees in
+                if not (Vector.exists ((==) bindee) !bindees)
+                then bindees := Vector.push !bindees bindee
+            | Scope scope -> Scope.add_bindee scope bindee
+
+        let remove_bindee binder bindee = match binder with
+            | Type binder ->
+                let bindees = binder.bindees in
+                bindees := Vector.filter ((!=) bindee) !bindees
+            | Scope scope -> Scope.remove_bindee scope bindee
+    end
+
+    let fresh quant binder kind =
+        let uv = {name = Name.fresh (); quant; binder = ref binder
+            ; bindees = ref Vector.empty; level = ref (-1)
+            ; bound = ref (Bot kind)} in
+        Binder.add_bindee binder uv;
+        uv
+
+    let bind uv binder =
+        Binder.add_bindee binder uv;
+        uv.binder := binder
+
+    let rebind uv binder' =
+        Binder.remove_bindee !(uv.binder) uv;
+        bind uv binder'
+
+    let map_bound f ({name = _; quant; binder; bindees = _; level; bound} as uv) =
+        match !bound with
+        | Bot _ -> uv
+        | Flex typ ->
+            let typ' = f typ in
+            if typ' == typ
+            then uv
+            else begin
+                let uv = {name = Name.fresh (); quant; binder
+                    ; bindees = ref Vector.empty; level = ref !level
+                    ; bound = ref (Flex (f typ))} in
+                Binder.add_bindee !binder uv;
+                uv
+            end
+
+        | Rigid typ ->
+            let typ' = f typ in
+            if typ' == typ
+            then uv
+            else begin
+                let uv = {name = Name.fresh (); quant; binder
+                    ; bindees = ref Vector.empty; level = ref !level
+                    ; bound = ref (Rigid (f typ))} in
+                Binder.add_bindee !binder uv;
+                uv
+            end
+
+    type uv = t
+    module Key = struct
+        type t = uv
+
+        let hash = hash
+        let equal = equal
+    end
+
+    module Hashtbl = CCHashtbl.Make (Key)
+    module HashSet = CCHashSet.Make (Key)
+end
+
+and Typ : (FcTypeSigs.TYPE
+    with type uv = Uv.t
+    with type bound = Uv.bound
+    with type binder = Uv.binder
+    with type scope = Uv.scope
+) = struct
+    type uv = Uv.t
+    type bound = Uv.bound
+    type binder = Uv.binder
+    type scope = Uv.scope
+
+    type t =
+        | Uv of uv
         | Ov of {binder : scope; name : Name.t; kind : t}
         | Pi of {domain : t; eff : t; codomain : t} (* -! -> *)
         | Impli of {domain : t; codomain : t} (* => *)
@@ -30,19 +168,6 @@ module Typ = struct
         | Prim of Prim.t
 
     and kind = t
-
-    and bound =
-        | Bot of {binder : binder; kind : kind}
-        | Flex of {level :int; bindees : bound TxRef.Set.t; binder : binder; typ : t}
-        | Rigid of {level :int; bindees : bound TxRef.Set.t; binder : binder; typ : t}
-
-    and binder =
-        | Scope of scope
-        | Type of bound txref
-
-    and scope =
-        | Local of {level : int; bindees : bound TxRef.Set.t txref; parent : scope}
-        | Global of bound TxRef.Set.t txref
 
     and coercion = Refl of t
 
@@ -66,125 +191,17 @@ module Typ = struct
 
     (* --- *)
 
-    module Scope = struct
-        type t = scope
-
-        let level = function
-            | Local {level; _} -> level
-            | Global _ -> 0
-
-        let add_bindee bindee (Local {bindees; _} | Global bindees) =
-            bindees := TxRef.Set.add bindee !bindees
-
-        let remove_bindee bindee (Local {bindees; _} | Global bindees) =
-            bindees := TxRef.Set.remove bindee !bindees
-    end
-
-    module Binder = struct
-        type t = binder
-
-        let level = function
-            | Type t -> (match !t with
-                | Bot _ -> unreachable None
-                | Flex {level; _} | Rigid {level; _} -> level)
-            | Scope scope -> Scope.level scope
-
-        let add_bindee bindee bref = match bref with
-            | Type t -> t := (match !t with
-                | Bot _ -> unreachable None
-                | Flex {level; bindees; binder; typ} ->
-                    Flex {level; bindees = TxRef.Set.add bindee bindees; binder; typ}
-                | Rigid {level; bindees; binder; typ} ->
-                    Rigid {level; bindees = TxRef.Set.add bindee bindees; binder; typ})
-            | Scope scope -> Scope.add_bindee bindee scope
-
-        let remove_bindee bindee bref = match bref with
-            | Type t -> t := (match !t with
-                | Bot _ -> unreachable None
-                | Flex {level; bindees; binder; typ} ->
-                    Flex {level; bindees = TxRef.Set.remove bindee bindees; binder; typ}
-                | Rigid {level; bindees; binder; typ} ->
-                    Rigid {level; bindees = TxRef.Set.remove bindee bindees; binder; typ})
-            | Scope scope -> Scope.remove_bindee bindee scope
-
-    end
-
-    module Bound = struct
-        type t = bound
-
-        let fresh binder kind =
-            let bref = ref (Bot {binder; kind}) in
-            Binder.add_bindee bref binder;
-            bref
-
-        let binder = function
-            | Bot {binder; _} -> binder
-            | Flex {binder; _} -> binder
-            | Rigid {binder; _} -> binder
-
-        let level = function
-            | Bot _ -> -1
-            | Flex {level; _} | Rigid {level; _} -> level
-
-        let bindees = function
-            | Bot _ -> TxRef.Set.empty
-            | Flex {bindees; _} | Rigid {bindees; _} -> bindees
-
-        let with_level bound level = match bound with
-            | Bot {binder; kind} -> Bot {binder; kind}
-            | Flex {level = _; bindees; binder; typ} -> Flex {level; bindees; binder; typ}
-            | Rigid {level = _; bindees; binder; typ} -> Rigid {level; bindees; binder; typ}
-
-        let with_binder bound binder = match bound with
-            | Bot {binder = _; kind} -> Bot {binder; kind}
-            | Flex {level; bindees; binder = _; typ} -> Flex {level; bindees; binder; typ}
-            | Rigid {level; bindees; binder = _; typ} -> Rigid {level; bindees; binder; typ}
-
-        (* NOTE: Assumes Shallow MLF / HML: *)
-        let is_locked bound = match binder bound with
-            | Type binder -> (match !binder with
-                | Bot _ | Flex _ -> false
-                | Rigid _ -> true)
-            | Scope _ -> false
-
-        let bind (bref : t txref) (binder : Binder.t) =
-            Binder.add_bindee bref binder;
-            bref := with_binder !bref binder
-
-        let rebind (bref : t txref) (binder' : Binder.t) =
-            Binder.remove_bindee bref (binder !bref);
-            bind bref binder'
-
-        let graft_mono (bref : t txref) (typ : typ) = bref := (match !bref with
-            | Bot {binder; kind = _} ->
-                Rigid {level = -1; bindees = TxRef.Set.empty; binder; typ}
-            | _ -> unreachable None)
-
-        let set_level bref level = bref := with_level !bref level
-
-        module Hashtbl = TxRef.Hashtbl.Make (struct type t = bound end)
-        module HashSet = TxRef.HashSet.Make (struct type t = bound end)
-    end
-
-    (* --- *)
-
     let fix binder f =
-        let bound = ref (Rigid {level = -1; bindees = TxRef.Set.empty
-            ; binder; (*tmp_*)typ = EmptyRow}) in
-        let typ = f bound in
-        bound := Rigid {level = Bound.level !bound; bindees = Bound.bindees !bound
-            ; binder; typ};
-        Uv {quant = ForAll; name = Name.fresh (); bound}
+        let root = Uv.fresh ForAll binder (*tmp:*)EmptyRow in
+        Uv.graft_mono root (f root);
+        Uv root
 
     (* --- *)
-
-    let fresh binder kind =
-        Uv {quant = ForAll; name = Name.fresh (); bound = Bound.fresh binder kind}
 
     (* OPTIMIZE: Path compression, ranking: *)
     let rec force t = match t with
-        | Uv {quant = _; name = _; bound} -> (match !bound with
-            | Rigid {level = _; bindees; binder = _; typ} when TxRef.Set.is_empty bindees ->
+        | Uv uv -> (match !(uv.bound) with
+            | Rigid typ when Vector.length !(uv.bindees) = 0 ->
                 force typ
             | _ -> t)
         | Ov _ | Fn _ | App _ | Pi _ | Impli _
@@ -192,10 +209,9 @@ module Typ = struct
         | Tuple _ | PromotedTuple _ | PromotedArray _ -> t
 
     let iter f = function
-        | Uv {quant = _; name = _; bound} -> (match !bound with
+        | Uv uv -> (match !(uv.bound) with
             | Bot _ -> ()
-            | Flex {level = _; bindees = _; binder = _; typ}
-            | Rigid {level = _; bindees = _; binder = _; typ} -> f typ)
+            | Flex typ | Rigid typ -> f typ)
         | Fn {param; body} -> f param; f body
         | App (callee, arg) -> f callee; f arg
         | Pi {domain; eff; codomain} -> f domain; f eff; f codomain
@@ -211,76 +227,69 @@ module Typ = struct
             Stream.from (Source.zip_with (==) (Vector.to_source xs) (Vector.to_source ys))
             |> Stream.into (Sink.all ~where: Fun.id) in
 
-        fun f t -> match force t with
-        | Uv {quant; name; bound} -> (match !bound with
-            | Bot _ -> t
-            | Flex {level; bindees; binder; typ} ->
-                let typ' = f typ in
-                if typ' == typ
+        fun f t ->
+            let t = force t in
+            match force t with
+            | Uv uv ->
+                let uv' = Uv.map_bound f uv in
+                if uv' == uv then t else Uv uv'
+
+            | Fn {param; body} ->
+                let body' = f body in
+                if body' == body then t else Fn {param; body = body'}
+
+            | App (callee, arg) ->
+                let callee' = f callee in
+                let arg' = f arg in
+                if callee' == callee && arg' == arg then t else App (callee', arg')
+
+            | Pi {domain; eff; codomain} ->
+                let domain' = f domain in
+                let eff' = f eff in
+                let codomain' = f codomain in
+                if domain' == domain && eff' == eff && codomain' == codomain
                 then t
-                else Uv {quant; name; bound = ref (Flex {level; bindees; binder; typ = typ'})}
-            | Rigid {level; bindees; binder; typ} ->
-                let typ' = f typ in
-                if typ' == typ
+                else Pi {domain = domain'; eff = eff'; codomain = codomain'}
+
+            | Impli {domain; codomain} ->
+                let domain' = f domain in
+                let codomain' = f codomain in
+                if domain' == domain && codomain' == codomain
                 then t
-                else Uv {quant; name; bound = ref (Rigid {level; bindees; binder; typ = typ'})})
+                else Impli {domain = domain'; codomain = codomain'}
 
-        | Fn {param; body} ->
-            let body' = f body in
-            if body' == body then t else Fn {param; body = body'}
+            | Record row ->
+                let row' = f row in
+                if row' == row then t else Record row'
 
-        | App (callee, arg) ->
-            let callee' = f callee in
-            let arg' = f arg in
-            if callee' == callee && arg' == arg then t else App (callee', arg')
+            | With {base; label; field} ->
+                let base' = f base in
+                let field' = f field in
+                if base' == base && field' == field
+                then t
+                else With {base = base'; label; field = field'}
 
-        | Pi {domain; eff; codomain} ->
-            let domain' = f domain in
-            let eff' = f eff in
-            let codomain' = f codomain in
-            if domain' == domain && eff' == eff && codomain' == codomain
-            then t
-            else Pi {domain = domain'; eff = eff'; codomain = codomain'}
+            | Proxy carrie ->
+                let carrie' = f carrie in
+                if carrie' == carrie then t else Proxy carrie'
 
-        | Impli {domain; codomain} ->
-            let domain' = f domain in
-            let codomain' = f codomain in
-            if domain' == domain && codomain' == codomain
-            then t
-            else Impli {domain = domain'; codomain = codomain'}
+            | Tuple typs ->
+                let typs' = Vector.map f typs in
+                if all_eq typs' typs then t else Tuple typs
 
-        | Record row ->
-            let row' = f row in
-            if row' == row then t else Record row'
+            | PromotedTuple typs ->
+                let typs' = Vector.map f typs in
+                if all_eq typs' typs then t else PromotedTuple typs
 
-        | With {base; label; field} ->
-            let base' = f base in
-            let field' = f field in
-            if base' == base && field' == field
-            then t
-            else With {base = base'; label; field = field'}
+            | PromotedArray typs ->
+                let typs' = Vector.map f typs in
+                if all_eq typs' typs then t else PromotedArray typs
 
-        | Proxy carrie ->
-            let carrie' = f carrie in
-            if carrie' == carrie then t else Proxy carrie'
-
-        | Tuple typs ->
-            let typs' = Vector.map f typs in
-            if all_eq typs' typs then t else Tuple typs
-
-        | PromotedTuple typs ->
-            let typs' = Vector.map f typs in
-            if all_eq typs' typs then t else PromotedTuple typs
-
-        | PromotedArray typs ->
-            let typs' = Vector.map f typs in
-            if all_eq typs' typs then t else PromotedArray typs
-
-        | EmptyRow | Prim _ | Ov _ -> t
+            | EmptyRow | Prim _ | Ov _ -> t
 
     let postwalk_rebinding f t =
         let copies = Hashtbl.create 0 in
-        let bound_copies = Bound.Hashtbl.create 0 in
+        let binder_copies = Uv.Hashtbl.create 0 in
 
         let rec clone_term t =
             let t = force t in
@@ -289,9 +298,9 @@ module Typ = struct
             | None ->
                 let t' = f (map_children clone_term t) in
                 (match (t, t') with
-                | (Uv {quant = _; name = _; bound}, Uv {quant = _; name = _; bound = bound'}) ->
-                    if not (TxRef.equal bound' bound)
-                    then Bound.Hashtbl.add bound_copies bound bound'
+                | (Uv uv, Uv uv') ->
+                    if not (Uv.equal uv' uv)
+                    then Uv.Hashtbl.add binder_copies uv uv'
                 | _ -> ());
                 Hashtbl.add copies t t';
                 t' in
@@ -304,9 +313,9 @@ module Typ = struct
                 iter rebind t;
 
                 match t with
-                | Uv {quant = _; name = _; bound} -> (match Bound.binder !bound with
-                    | Type binder -> (match Bound.Hashtbl.get bound_copies binder with
-                        | Some binder' -> Bound.rebind bound (Type binder')
+                | Uv uv -> (match !(uv.binder) with
+                    | Type binder -> (match Uv.Hashtbl.get binder_copies binder with
+                        | Some binder' -> Uv.rebind uv (Type binder')
                         | None -> ())
                     | Scope _ -> ())
                 | _ -> () in
@@ -317,7 +326,7 @@ module Typ = struct
 
     (* --- *)
 
-    type flag = SFlex | SRigid
+    type flag = SBot | SFlex | SRigid
 
     type syn =
         | SExists of squant_param Vector1.t * syn
@@ -325,7 +334,6 @@ module Typ = struct
         | SFn of {param : stypedef; body : syn} (* type lambda *)
         | SApp of {callee : syn; arg : syn}
         | SVar of Name.t
-        | SBot
         | SPi of {domain : syn; eff : syn; codomain : syn} (* -! -> *)
         | SImpli of {domain : syn; codomain : syn} (* => *)
         | SRecord of syn
@@ -344,6 +352,7 @@ module Typ = struct
     and skind = syn
 
     let flag_to_string = function
+        | SBot -> ":"
         | SFlex -> ">="
         | SRigid -> "="
 
@@ -374,7 +383,6 @@ module Typ = struct
             | SApp {callee; arg} ->
                 prefix 4 1 (to_doc app_prec callee) (to_doc (app_prec + 1) arg)
             | SVar name -> Name.to_doc name
-            | SBot -> qmark ^^ underscore
             | SRecord row -> braces (to_doc 0 row)
             | SWith {base; label; field} ->
                 infix 4 1
@@ -406,34 +414,34 @@ module Typ = struct
         PPrint.(separate_map (break 1) sbound_to_doc (Vector1.to_list bounds))
 
     let to_syn ctx t =
-        let existentials = Bound.Hashtbl.create 0 in
-        let universals = Bound.Hashtbl.create 0 in
+        let existentials = Uv.Hashtbl.create 0 in
+        let universals = Uv.Hashtbl.create 0 in
 
         let visited = HashSet.create 0 in
-        let visited_bounds = Bound.HashSet.create 0 in
+        let visited_bounds = Uv.HashSet.create 0 in
 
         let rec analyze t =
             let t = force t in
             if not (HashSet.mem visited t) then begin
                 HashSet.insert visited t;
                 (match t with
-                | Uv {quant = _; name = _; bound} ->
-                    Bound.HashSet.insert visited_bounds bound
+                | Uv uv -> Uv.HashSet.insert visited_bounds uv
                 | _ -> ());
 
                 iter analyze t;
 
                 match t with
-                | Uv {quant; name = _; bound} -> (match Bound.binder !bound with
-                    | Type binder when Bound.HashSet.mem visited_bounds binder ->
+                | Uv ({name = _; quant; binder; bindees = _; level = _; bound = _} as uv) ->
+                    (match !binder with
+                    | Type binder when Uv.HashSet.mem visited_bounds binder ->
                         let bindees = match quant with
                             | Exists -> existentials
                             | ForAll -> universals in
-                        Bound.Hashtbl.update bindees ~k: binder ~f: (fun _ -> function
+                        Uv.Hashtbl.update bindees ~k: binder ~f: (fun _ -> function
                             | Some bs as v -> CCVector.push bs t; v
                             | None -> Some (CCVector.of_list [t]))
                     | Type _ | Scope _ ->
-                        Bound.Hashtbl.add ctx bound (bindee_to_syn t)) (* HACK *)
+                        Uv.Hashtbl.add ctx uv (bindee_to_syn t)) (* HACK *)
                 | _ -> ()
             end
 
@@ -441,11 +449,11 @@ module Typ = struct
             let t = force t in
 
             let (existentials, universals) = match t with
-                | Uv {quant = _; name = _; bound} ->
-                    let existentials = match Bound.Hashtbl.get existentials bound with
+                | Uv uv ->
+                    let existentials = match Uv.Hashtbl.get existentials uv with
                         | Some existentials -> existentials
                         | None -> CCVector.create () in
-                    let universals = match Bound.Hashtbl.get universals bound with
+                    let universals = match Uv.Hashtbl.get universals uv with
                         | Some universals -> universals
                         | None -> CCVector.create () in
                     ( Vector.build existentials |> Vector.map bindee_to_syn
@@ -453,9 +461,9 @@ module Typ = struct
                 | _ -> (Vector.empty, Vector.empty) in
 
             let body = match t with
-                | Uv {quant = _; name; bound} -> (match !bound with
-                    | Bot _ | Flex _ -> SVar name
-                    | Rigid {level = _; bindees = _; binder = _; typ} -> to_syn typ)
+                | Uv uv -> (match !(uv.bound) with
+                    | Bot _ | Flex _ -> SVar uv.name
+                    | Rigid typ -> to_syn typ)
                 | Ov {binder = _; name; kind = _} -> SVar name
                 | Fn {param; body} ->
                     SFn {param = (Name.fresh (), to_syn param); body = to_syn body}
@@ -484,21 +492,19 @@ module Typ = struct
             | None -> syn
 
         and bindee_to_syn = function
-            | Uv {quant = _; name; bound} -> (match !bound with
-                | Bot {binder = _; kind = _} -> (name, SFlex, SBot)
-                | Flex {level = _; bindees = _; binder = _; typ} ->
-                    (name, SFlex, to_syn typ)
-                | Rigid {level = _; bindees = _; binder = _; typ} ->
-                    (name, SRigid, to_syn typ))
+            | Uv {name; quant = _; binder = _; bindees = _; level = _; bound} -> (match !bound with
+                | Bot kind -> (name, SBot, to_syn kind)
+                | Flex typ -> (name, SFlex, to_syn typ)
+                | Rigid typ -> (name, SRigid, to_syn typ))
             | _ -> unreachable None in
 
         analyze t;
         to_syn (force t)
 
     let to_doc t =
-        let ctx = Bound.Hashtbl.create 0 in
+        let ctx = Uv.Hashtbl.create 0 in
         let syn = to_syn ctx t in
-        PPrint.(match Bound.Hashtbl.to_list ctx with
+        PPrint.(match Uv.Hashtbl.to_list ctx with
             | (_ :: _) as ctx ->
                 infix 4 1 (string "in") (syn_to_doc syn)
                     (separate_map (comma ^^ blank 1)
@@ -514,12 +520,11 @@ module Typ = struct
         | Refl t -> to_doc t
 
     let forall_scope_ovs ~binder scope t =
-        let binder = Scope binder in
+        let binder = Uv.Scope binder in
         fix binder (fun root_bound ->
             t |> postwalk_rebinding (fun t -> match t with
                 | Ov {binder; name = _; kind} when binder == scope ->
-                    Uv {quant = ForAll; name = Name.fresh ()
-                        ; bound = Bound.fresh (Type root_bound) kind}
+                    Uv (Uv.fresh ForAll (Type root_bound) kind)
                 | t -> t
             )
         )
@@ -527,28 +532,28 @@ module Typ = struct
     let instantiate scope t =
         let t = force t in
         match t with
-        | Uv {quant = _; name = _; bound = root_bound} ->
+        | Uv root ->
             let rec locally_bound = function
-                | Type binder ->
-                    binder == root_bound
-                    || locally_bound (Bound.binder !binder)
+                | Uv.Type binder ->
+                    Uv.equal binder root
+                    || locally_bound !(binder.binder)
                 | Scope _ -> false in
 
             let t = t |> postwalk_rebinding (fun t -> match t with
-                | Uv {quant = ForAll; name = _; bound} -> (match !bound with
-                    | Bot {binder; kind} when locally_bound binder ->
-                        Uv {quant = ForAll; name = Name.fresh ()
-                            ; bound = Bound.fresh binder kind}
+                | Uv {name = _; quant = ForAll; binder; bindees = _; level = _; bound} ->
+                    (match !bound with
+                    | Bot kind when locally_bound !binder ->
+                        Uv (Uv.fresh ForAll !binder kind)
                     | _ -> t)
                 | t -> t) in
 
             (match t with
-            | Uv {quant = _; name = _; bound} -> (match !bound with
+            | Uv ({name = _; quant = _; binder = _; bindees = _; level = _; bound} as uv) ->
+                (match !bound with
                 | Bot _ -> ()
-                | Flex {level; bindees; binder; typ}
-                | Rigid {level; bindees; binder; typ} ->
-                    bound := Flex {level; bindees; binder; typ};
-                    Bound.rebind bound (Scope scope))
+                | Flex typ | Rigid typ ->
+                    bound := Flex typ;
+                    Uv.rebind uv (Scope scope))
             | _ -> ());
 
             t

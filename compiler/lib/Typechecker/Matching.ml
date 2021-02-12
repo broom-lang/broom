@@ -26,8 +26,8 @@ module Make
 = struct
 
 module T = Fc.Type
-module Binder = T.Binder
-module Bound = T.Bound
+module Uv = Fc.Uv
+module Binder = Uv.Binder
 module E = Fc.Term.Expr
 (*module Err = TypeError*)
 
@@ -116,64 +116,59 @@ let rec resolve pos env super =
 
 let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
 =
-    let articulate span env t bound t' =
+    let articulate span env t (uv : Uv.t) t' =
         (*unify span env kind (K.kindof span env t);*)
-        check_uv_assignee span env t (Bound.binder !bound) Int.max_int t';
-        Bound.graft_mono bound t' in
+        check_uv_assignee span env t !(uv.binder) Int.max_int t';
+        Uv.graft_mono uv t' in
 
-    let merge t bound binder t' bound' binder' =
+    let merge t (uv : Uv.t) binder t' (uv' : Uv.t) binder' =
         if Binder.level binder < Binder.level binder'
         then begin
-            Bound.bindees !bound' |> TxRef.Set.iter (fun bindee ->
-                Bound.rebind bindee (Type bound));
-            Bound.graft_mono bound' t
+            !(uv'.bindees) |> Vector.iter (fun bindee -> Uv.rebind bindee (Type uv));
+            Uv.graft_mono uv' t
         end else begin
-            Bound.bindees !bound |> TxRef.Set.iter (fun bindee ->
-                Bound.rebind bindee (Type bound'));
-            Bound.graft_mono bound t'
+            !(uv.bindees) |> Vector.iter (fun bindee -> Uv.rebind bindee (Type uv'));
+            Uv.graft_mono uv t'
         end in
 
-    let subsume span env t bound t' = match !bound with
-        | T.Bot _ -> articulate span env t bound t'
-
-        | Flex {level = _; bindees = _; binder = _; typ} ->
-            Env.in_bound env bound (fun env -> unify span env typ t');
-
+    let subsume span env t (uv : Uv.t) t' = match !(uv.bound) with
+        | Uv.Bot _ -> articulate span env t uv t'
+        | Flex typ -> Env.in_bound env uv (fun env -> unify span env typ t');
         | Rigid _ -> (* Must be polymorphic while t' must be a monotype: *)
             Env.reportError env span (Unify (t, t')) in
 
-    let unify_schemes span env t bound t' bound' = match (!bound, !bound') with
-        | (T.Bot {binder; kind = _}, T.Bot {binder = binder'; kind = _}) ->
+    let unify_schemes span env t (uv : Uv.t) t' (uv' : Uv.t) =
+        match (!(uv.bound), !(uv'.bound)) with
+        | (Uv.Bot _, Uv.Bot _) ->
             (*unify span env kind kind';*)
-            merge t bound binder t' bound' binder'
+            merge t uv !(uv.binder) t' uv' !(uv'.binder)
 
-        | (Bot _, _) -> articulate span env t bound t'
-        | (_, Bot _) -> articulate span env t' bound' t
+        | (Bot _, _) -> articulate span env t uv t'
+        | (_, Bot _) -> articulate span env t' uv' t
 
-        | (Flex {binder; typ = t; _}, Flex {binder = binder'; typ = t'; _}) ->
-            Env.in_bounds env bound bound' (fun env -> unify span env t t');
-            merge t bound binder t' bound' binder'
+        | (Flex t, Flex t') ->
+            Env.in_bounds env uv uv' (fun env -> unify span env t t');
+            merge t uv !(uv.binder) t' uv' !(uv'.binder)
 
         | (Flex _, Rigid _) | (Rigid _, Flex _) -> todo (Some span) ~msg: "flex-rigid"
 
         | (Rigid _, Rigid _) -> todo (Some span) ~msg: "(poly-)rigid-rigid" in
 
     let unify_whnf span env t t' = match (t, t') with
-        | (T.Uv {quant = _; name = _; bound}, t')
-        | (t', T.Uv {quant = _; name = _; bound}) ->
-            if not (Bound.is_locked !bound)
+        | (T.Uv uv, t') | (t', T.Uv uv) ->
+            if not (Uv.is_locked uv)
             then (match t' with (* OPTIMIZE: path compression, ranking (but mind bindees!) *)
-                | T.Uv {quant = _; name = _; bound = bound'} when not (Bound.is_locked !bound') ->
-                    if TxRef.equal bound bound'
+                | T.Uv uv' when not (Uv.is_locked uv') ->
+                    if Uv.equal uv uv'
                     then ()
-                    else unify_schemes span env t bound t' bound'
+                    else unify_schemes span env t uv t' uv'
 
-                | t' -> subsume span env t bound t')
+                | t' -> subsume span env t uv t')
             else (match t' with
-                | T.Uv {quant = _; name = _; bound = bound'} ->
-                    if not (Bound.is_locked !bound)
+                | T.Uv uv' ->
+                    if not (Uv.is_locked uv)
                     then todo (Some span) ~msg: "bv-uv'"
-                    else if TxRef.equal bound' bound
+                    else if Uv.equal uv uv'
                         then ()
                         else Env.reportError env span (Unify (t, t'))
 
@@ -981,27 +976,25 @@ and check_uv_assignee pos env uv uv_binder max_uv_level typ =
             (*(match Env.get_implementation env ov with
             | Some (_, _, uv') -> check (Uv uv')
             | None ->*)
-                if T.Scope.level binder <= Binder.level uv_binder
+                if Uv.Scope.level binder <= Binder.level uv_binder
                 then ()
                 else Env.reportError env pos (Escape t)
 
-        | Uv {quant = _; name = _; bound} as t ->
-            (match !bound with
+        | Uv uv' as t ->
+            (match !(uv'.bound) with
             | Bot _ -> ()
-            | Flex {level = _; bindees = _; binder = _; typ}
-            | Rigid {level = _; bindees = _; binder = _; typ} ->
-                check typ);
+            | Flex typ | Rigid typ -> check typ);
 
             if t == uv
             then Env.reportError env pos (Occurs (uv, typ))
             else begin
-                let level' = Binder.level (Bound.binder !bound) in
+                let level' = Binder.level !(uv'.binder) in
                 if level' < 0
                 then ()
                 else if level' <= Binder.level uv_binder
                 then ()
                 else if level' <= max_uv_level
-                then Bound.rebind bound uv_binder
+                then Uv.rebind uv' uv_binder
                 else Env.reportError env pos (IncompleteImpl (uv, t))
             end
 

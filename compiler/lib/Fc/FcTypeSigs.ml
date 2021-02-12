@@ -1,11 +1,68 @@
 type subst = TxRef.Subst.t
 type 'a txref = 'a TxRef.t
 
-module type TYPE = sig
-    type quantifier = ForAll | Exists
+module type UV = sig
+    type typ
+    type kind
 
     type t =
-        | Uv of {quant : quantifier; name : Name.t; bound : bound txref}
+        { name : Name.t
+        ; quant : quantifier
+        ; binder : binder txref
+        ; bindees : t Vector.t txref
+        ; level : int txref
+        ; bound : bound txref }
+
+    and quantifier = ForAll | Exists
+
+    and bound =
+        | Bot of kind
+        | Flex of typ
+        | Rigid of typ
+
+    and binder =
+        | Scope of scope
+        | Type of t
+
+    and scope =
+        | Local of {level : int; bindees : t Vector.t txref; parent : scope}
+        | Global of t Vector.t txref
+
+    and uv = t
+
+    val hash : t -> int
+    val equal : t -> t -> bool
+
+    module Binder : sig
+        type t = binder
+
+        val level : t -> int
+    end
+
+    module Scope : sig
+        type t = scope
+
+        val level : t -> int
+    end
+
+    val fresh : quantifier -> binder -> kind -> t
+    val is_locked : t -> bool
+    val rebind : t -> binder -> unit
+    val graft_mono : t -> typ -> unit
+    val map_bound : (typ -> typ) -> t -> t
+
+    module Hashtbl : CCHashtbl.S with type key = t
+    module HashSet : CCHashSet.S with type elt = t
+end
+
+module type TYPE = sig
+    type uv
+    type bound
+    type binder
+    type scope
+
+    type t =
+        | Uv of uv
         | Ov of {binder : scope; name : Name.t; kind : t}
         | Pi of {domain : t; eff : t; codomain : t} (* -! -> *)
         | Impli of {domain : t; codomain : t} (* => *)
@@ -21,19 +78,6 @@ module type TYPE = sig
         | Prim of Prim.t
 
     and kind = t
-
-    and bound = private
-        | Bot of {binder : binder; kind : kind}
-        | Flex of {level : int; bindees : bound TxRef.Set.t; binder : binder; typ : t}
-        | Rigid of {level : int; bindees : bound TxRef.Set.t; binder : binder; typ : t}
-
-    and binder =
-        | Scope of scope
-        | Type of bound txref
-
-    and scope =
-        | Local of {level : int; bindees : bound TxRef.Set.t txref; parent : scope}
-        | Global of bound TxRef.Set.t txref
 
     and coercion = Refl of t
 
@@ -66,8 +110,7 @@ module type TYPE = sig
     val coercion_to_doc : coercion -> PPrint.document
     (*val template_to_doc : template -> PPrint.document*)
 
-    val fresh : binder -> kind -> t
-    val fix : binder -> (bound txref -> t) -> t
+    val fix : binder -> (uv -> t) -> t
 
     val iter : (t -> unit) -> t -> unit
     val map_children : (t -> t) -> t -> t
@@ -78,34 +121,6 @@ module type TYPE = sig
     val instantiate : scope -> t -> t
 
     type typ = t
-
-    module Bound : sig
-        type t = bound
-
-        val fresh : binder -> kind -> t txref
-
-        val bindees : t -> bound TxRef.Set.t
-        val binder : t -> binder
-        val is_locked : t -> bool
-
-        val rebind : t txref -> binder -> unit
-        val graft_mono : t txref -> typ -> unit
-        val set_level : t txref -> int -> unit
-
-        module Hashtbl : CCHashtbl.S with type key = t txref
-    end
-
-    module Binder : sig
-        type t = binder
-
-        val level : t -> int
-    end
-
-    module Scope : sig
-        type t = scope
-
-        val level : t -> int
-    end
 
     module Hashtbl : CCHashtbl.S with type key = t
 end

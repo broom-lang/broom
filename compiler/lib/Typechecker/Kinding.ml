@@ -1,6 +1,7 @@
 open Asserts
 
 module TS = TyperSigs
+module Uv = Fc.Uv
 
 module Make (Env : TS.ENV)
     (C : TS.TYPING with type env = Env.t)
@@ -56,9 +57,9 @@ let rec kindof_F pos env : T.t -> T.kind = function
                 codomain
             end else todo (Some pos) ~msg: "universals in type application"
         | _ -> unreachable (Some pos) ~msg: "invalid type application in `kindof_F`.")*)
-    | Uv {bound; _} -> (match !bound with
-        | Bot {kind; _} -> kind
-        | Flex {typ; _} | Rigid {typ; _} -> kindof_F pos env typ)
+    | Uv {Uv.bound; _} -> (match !bound with
+        | Bot kind -> kind
+        | Flex typ | Rigid typ -> kindof_F pos env typ)
     | Ov {kind; _} -> kind
     | Prim pt -> kindof_prim pt
     | _ -> todo (Some pos) ~msg: "kindof_F"

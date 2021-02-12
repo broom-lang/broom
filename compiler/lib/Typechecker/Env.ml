@@ -2,6 +2,7 @@ open Streaming
 open Asserts
 
 module T = Fc.Type
+module Uv = Fc.Uv
 module E = Fc.Term.Expr
 module TS = TyperSigs
 
@@ -45,6 +46,7 @@ module T = T
 module Bindings = Map.Make(Name)
 
 let (!) = TxRef.(!)
+let (:=) = TxRef.(:=)
 
 type t = env
 
@@ -52,7 +54,7 @@ type error_handler = Util.span -> TypeError.t -> unit
 
 let raiseError pos error = raise (TypeError.TypeError (pos, error))
 
-let global_binder = T.Scope (Global TxRef.(ref Set.empty))
+let global_binder = Uv.Scope (Global TxRef.(ref Vector.empty))
 
 let program () =
     { errorHandler = raiseError
@@ -85,34 +87,34 @@ let push_val plicity (env : t) (var : E.var) =
 
 let push_level env =
     match env.t_binders with
-    | [Scope parent] ->
-        let bindees = TxRef.(ref Set.empty) in
-        let scope = T.Local {level = T.Scope.level parent + 1; bindees; parent} in
+    | [Uv.Scope parent] ->
+        let bindees = TxRef.(ref Vector.empty) in
+        let scope = Uv.Local {level = Uv.Scope.level parent + 1; bindees; parent} in
         ({env with t_binders = [Scope scope]}, scope)
     | _ -> unreachable None
 
-let in_bound (env : t) bref f =
+let in_bound (env : t) uv f =
     let level = match env.t_binders with
-        | binder :: _ -> T.Binder.level binder + 1
+        | binder :: _ -> Uv.Binder.level binder + 1
         | _ -> unreachable None in
-    let binder = T.Type bref in
-    T.Bound.set_level bref level;
+    let binder = Uv.Type uv in
+    uv.level := level;
     let env = {env with t_binders = binder :: env.t_binders} in
     Fun.protect (fun () -> f env)
-        ~finally: (fun () -> T.Bound.set_level bref (-1))
+        ~finally: (fun () -> uv.level := -1)
 
-let in_bounds (env : t) bref bref' f =
+let in_bounds (env : t) uv (uv' : Uv.t) f =
     let level = match env.t_binders with
-        | binder :: _ -> T.Binder.level binder + 1
+        | binder :: _ -> Uv.Binder.level binder + 1
         | _ -> unreachable None in
-    let binder = T.Type bref in
-    T.Bound.set_level bref level;
-    T.Bound.set_level bref' level;
+    let binder = Uv.Type uv in
+    uv.level := level;
+    uv'.level := level;
     let env = {env with t_binders = binder :: env.t_binders} in
     Fun.protect (fun () -> f env)
         ~finally: (fun () ->
-            T.Bound.set_level bref (-1);
-            T.Bound.set_level bref' (-1))
+            uv.level := -1;
+            uv.level := -1)
 
 (*
 let push_rec env stmts =
@@ -397,7 +399,7 @@ let implicits (env : t) = Stream.from (Source.list env.scopes)
     |> Stream.filter (function (Util.Explicit, _) -> false | (Implicit, _) -> true)
     |> Stream.map snd
 
-let tv env kind = T.fresh (Scope (t_scope env)) kind
+let tv env kind = T.Uv (Uv.fresh ForAll (Scope (t_scope env)) kind)
 
 let forall_scope_ovs env scope t = T.forall_scope_ovs ~binder: (t_scope env) scope t
 let instantiate env t = T.instantiate (t_scope env) t
@@ -405,11 +407,11 @@ let instantiate env t = T.instantiate (t_scope env) t
 let reabstract span env scope t =
     let t = T.force t in
     match t with
-    | Uv {quant = _; name = _; bound = root_bound} ->
+    | Uv root ->
         t |> T.postwalk_rebinding (fun t -> match t with
-            | Uv {quant = Exists; name = _; bound} ->
-                (match T.Bound.binder !bound with
-                | T.Type binder when TxRef.equal binder root_bound ->
+            | Uv {name = _; quant = Exists; binder; bindees = _; level = _; bound = _} ->
+                (match !binder with
+                | Uv.Type binder when Uv.equal binder root ->
                     Ov {binder = scope; name = Name.fresh ()
                         ; kind = K.kindof_F span env t}
                 | _ -> t)
