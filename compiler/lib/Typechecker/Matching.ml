@@ -1015,50 +1015,8 @@ and check_uv_assignee pos env uv uv_binder max_uv_level typ =
         | Prim _ -> ()
         | _ -> todo (Some pos) ~msg: "check_uv_assignee" in
     check (K.eval pos env typ)
-(*
-(* # Constraint Solving *)
 
-and solve pos env residual =
-    let open Residual in
-    let rec solve env = function
-        | Axioms (axiom_bindings, residual) ->
-            let env = Env.push_axioms env (Vector1.to_vector axiom_bindings) in
-            solve env residual
-
-        | Skolems (skolems, residual) ->
-            let (env, _) = Env.push_skolems env (Vector1.to_vector skolems) in
-            solve env residual
-
-        | Residuals (residual, residual') ->
-            ResidualMonoid.combine (solve env residual) (solve env residual')
-
-        | Sub (typ, super, patchable) ->
-            let {coercion = coerce; residual} = subtype pos env typ super in
-            let coerce = Option.value ~default: Coercer.id coerce in
-            Env.set_expr env patchable (Coercer.apply coerce !patchable);
-            residual
-
-        | Unify (typ, typ', patchable) ->
-            let {coercion; residual} = unify pos env typ typ' in
-            Option.iter (Env.set_coercion env patchable) coercion;
-            residual
-    in
-    (match Option.bind residual (solve env) with
-    | None -> ()
-    | Some residual -> Env.reportError env pos (Unsolvable residual))
-*)
 (* Public API *)
-(* NOTE: `focalize` is also public *)
-
-let solving_subtype pos _ _ _ = todo (Some pos)
-    (*let {coercion = coerce; residual} = subtype pos env typ super in
-    solve pos env residual;
-    coerce*)
-
-let solving_unify pos _ _ _ = todo (Some pos)
-    (*let {coercion; residual} = unify pos env typ super in
-    solve pos env residual;
-    coercion*)
 
 let unify span env t t' =
     let causes = ref [] in

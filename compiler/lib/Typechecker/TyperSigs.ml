@@ -17,7 +17,6 @@ module type KINDING = sig
     val check : env -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
     val kindof_nonquantifying : env -> Fc.Type.scope -> Ast.Type.t with_pos -> typ
     val check_nonquantifying : env -> Fc.Type.scope -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
-    (*val eval : Util.span -> env -> typ -> (typ * typ Fc.Type.coercion option) option*)
     val eval : Util.span -> env -> typ -> typ
 end
 
@@ -41,9 +40,6 @@ module type MATCHING = sig
 
     val unify : span -> env -> typ -> typ -> unit
     val instance : span -> env -> typ -> typ -> unit
-    (*val focalize : span -> env -> typ -> Fc.Type.template -> Coercer.t option * typ*)
-    val solving_subtype : span -> env -> typ -> typ -> Coercer.t option
-    val solving_unify : span -> env -> typ -> typ -> unit (*typ Fc.Type.coercion option*)
 end
 
 module type ENV = sig
