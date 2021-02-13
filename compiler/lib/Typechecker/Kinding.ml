@@ -1,7 +1,7 @@
 open Asserts
 
 module TS = TyperSigs
-module Uv = Fc.Uv
+module Uv = FcType.Uv
 
 module Make (Env : TS.ENV)
     (C : TS.TYPING with type env = Env.t)

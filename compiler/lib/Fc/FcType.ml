@@ -140,20 +140,32 @@ module rec Uv : (FcTypeSigs.UV
     module HashSet = CCHashSet.Make (Key)
 end
 
+and Ov : (FcTypeSigs.OV
+    with type kind = Typ.kind
+    with type scope = Uv.scope
+) = struct
+    type kind = Typ.kind
+    type scope = Uv.scope
+
+    type t = {name : Name.t; binder : scope; kind : kind}
+end
+
 and Typ : (FcTypeSigs.TYPE
     with type uv = Uv.t
     with type bound = Uv.bound
     with type binder = Uv.binder
     with type scope = Uv.scope
+    with type ov = Ov.t
 ) = struct
     type uv = Uv.t
     type bound = Uv.bound
     type binder = Uv.binder
     type scope = Uv.scope
+    type ov = Ov.t
 
     type t =
         | Uv of uv
-        | Ov of {binder : scope; name : Name.t; kind : t}
+        | Ov of ov
         | Pi of {domain : t; eff : t; codomain : t} (* -! -> *)
         | Impli of {domain : t; codomain : t} (* => *)
         | Fn of {param : kind; body : t} (* type lambda *)

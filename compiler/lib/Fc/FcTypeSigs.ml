@@ -55,15 +55,23 @@ module type UV = sig
     module HashSet : CCHashSet.S with type elt = t
 end
 
+module type OV = sig
+    type kind
+    type scope
+
+    type t = {name : Name.t; binder : scope; kind : kind}
+end
+
 module type TYPE = sig
     type uv
     type bound
     type binder
     type scope
+    type ov
 
     type t =
         | Uv of uv
-        | Ov of {binder : scope; name : Name.t; kind : t}
+        | Ov of ov
         | Pi of {domain : t; eff : t; codomain : t} (* -! -> *)
         | Impli of {domain : t; codomain : t} (* => *)
         | Fn of {param : kind; body : t} (* type lambda *)
