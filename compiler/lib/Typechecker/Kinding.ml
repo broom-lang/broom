@@ -300,7 +300,7 @@ let rec kindof_nonquantifying env scope (typ : AType.t with_pos) = match typ.v w
             | Some eff -> check_nonquantifying env scope T.aRow eff
             | None -> EmptyRow in
         let codomain_kind = T.App (Prim TypeIn, Env.tv env T.rep) in
-        let codomain = check_nonquantifying env scope codomain_kind codomain in
+        let codomain = check env codomain_kind codomain in
 
         (*let codomain =
             match (eff, codomain) with (* FIXME: eval `eff` *)
@@ -336,12 +336,12 @@ and check_nonquantifying env scope _ (typ : AType.t with_pos) =
     (*M.unify typ.pos env (kindof_F typ.pos env t) kind;*)
     t
 
-let kindof env t =
+and kindof env t =
     let (env, scope) = Env.push_level env in
     let t = kindof_nonquantifying env scope t in
     Env.exists_scope_ovs env scope t
 
-let check env kind t =
+and check env kind t =
     let (env, scope) = Env.push_level env in
     let t = check_nonquantifying env scope kind t in
     Env.exists_scope_ovs env scope t
