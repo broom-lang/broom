@@ -195,12 +195,12 @@ clauses :
     | explicit_clause+ { (Explicit, $1) }
     | implicit_clause+ { (Implicit, $1) }
 
-explicit_clause : "|" binapp tail(",", binapp, "->") expr {
-        {params = parenthesized (Vector.of_list ($2 :: $3)) $loc($3); body = $4}
+explicit_clause : "|" select+ "->" expr {
+        {params = parenthesized (Vector.of_list $2) $loc($3); body = $4}
     }
 
-implicit_clause : "|" binapp tail(",", binapp, "=>") expr {
-        {params = parenthesized (Vector.of_list ($2 :: $3)) $loc($3); body = $4}
+implicit_clause : "|" select+ "=>" expr {
+        {params = parenthesized (Vector.of_list $2) $loc($3); body = $4}
     }
 
 args : select+ iargs? { match $2 with

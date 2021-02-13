@@ -651,72 +651,60 @@ and emit_clause_body _ {FExpr.pat; body} =
                     (FExpr.at pos domain (FExpr.tuple args)))
             end
 
-(*(* # Patterns *)
-
-(* ## Synthesis *)
-
-and elaborate_pat env pat : FExpr.pat * (T.ov Vector.t * T.t) * FExpr.var Vector.t =
-    let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-    let typ = T.Uv (Env.uv env kind) in
-    let (pat, vars) = check_pat env typ pat in
-    (pat, (Vector.empty, typ), vars)*)
-
-(* ## Checking *)
+(* # Patterns *)
 
 (* TODO: use coercions (and subtyping ?): *)
 and check_pat : Env.t -> T.scope -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vector.t
 = fun env scope ptyp pat ->
-    (*let check_pats env domain pats =
+    let check_pats env scope domain pats =
         let step (env, pats, defs) domain pat =
-            let (pat, defs') = check_pat env domain pat in
+            let (pat, defs') = check_pat env scope domain pat in
             (Vector.fold (Env.push_val Explicit) env defs, pat :: pats, Vector.append defs defs') in
         if Vector.length domain = Vector.length pats then begin
             let (_, pats, defs) = Vector.fold2 step (env, [], Vector.empty) domain pats in
             (Vector.of_list (List.rev pats), defs)
-        end else failwith "tuple type and pattern widths don't match" in*)
+        end else failwith "tuple type and pattern widths don't match" in
 
     match pat.v with
     | AExpr.Tuple pats when Vector.length pats = 1 ->
         check_pat env scope ptyp (Vector.get pats 0)
-(*
-    | AExpr.Tuple pats ->
-        let kind = T.App (Prim TypeIn, Uv (Env.uv env T.rep)) in
-        let typs = Vector.map (fun _ -> T.Uv (Env.uv env kind)) pats in
-        let _ = M.solving_unify pat.pos env ptyp (Tuple typs) in
-        let (pats, defs) = check_pats env typs pats in
+
+    | Tuple pats ->
+        let kind = T.App (Prim TypeIn, Env.tv env T.rep) in
+        let typs = Vector.map (fun _ -> Env.tv env kind) pats in
+        M.unify pat.pos env ptyp (Tuple typs);
+        let (pats, defs) = check_pats env scope typs pats in
         ({ppos = pat.pos; pterm = FExpr.TupleP pats; ptyp}, defs)
-*)
-    | AExpr.Ann (pat', typ') ->
+
+    | Ann (pat', typ') ->
         let kind = T.App (T.Prim TypeIn, Env.tv env T.rep) in
         let typ' = K.check_nonquantifying env scope kind typ' in
         M.unify pat.pos env ptyp typ';
         check_pat env scope typ' pat'
 
-    | AExpr.Var name ->
+    | Var name ->
         let var = FExpr.var name ptyp in
         ({ppos = pat.pos; pterm = VarP var; ptyp}, Vector.singleton var)
 
-    | AExpr.Wild name -> ({ppos = pat.pos; pterm = WildP name; ptyp}, Vector.empty)
+    | Wild name -> ({ppos = pat.pos; pterm = WildP name; ptyp}, Vector.empty)
 
-    | AExpr.Proxy carrie ->
+    | Proxy carrie ->
         let {TS.typ = carrie; kind = _} = K.kindof env {pat with v = carrie} in
         let _ = M.solving_unify pat.pos env ptyp (Proxy carrie) in
         ({ppos = pat.pos; pterm = ProxyP carrie; ptyp}, Vector.empty)
 
-    | AExpr.Const c ->
+    | Const c ->
         M.unify pat.pos env ptyp (const_typ c);
         ({ppos = pat.pos; pterm = ConstP c; ptyp}, Vector.empty)
-(*
-    | AExpr.Focus _ | Let _ | App _ | PrimApp _ | PrimBranch _ | Select _ | Record _ ->
+
+    | Focus _ | Let _ | App _ | PrimApp _ | PrimBranch _ | Select _ | Record _ ->
         todo (Some pat.pos) ~msg: "in check_pat"
 
-    | AExpr.Fn _ ->
+    | Fn _ ->
         Env.reportError env pat.pos (NonPattern pat.v);
         ({ppos = pat.pos; pterm = WildP (Name.of_string ""); ptyp}, Vector.empty)
 
     | AppSequence _ -> bug (Some pat.pos) ~msg: "typechecker encountered AppSequence pattern"
-*)
-    | _ -> todo (Some pat.pos)
 
 (* # Statement Typing *)
 
