@@ -5,20 +5,6 @@ let ref = TxRef.ref
 let (!) = TxRef.(!)
 let (:=) = TxRef.(:=)
 
-(*module OvHashSet = CCHashSet.Make (struct
-    type t = Fc.Type.ov
-    let hash = Hashtbl.hash (* HACK *)
-    let equal = (=) (* HACK *)
-end)
-
-module ResidualMonoid = struct
-    include Monoid.OfSemigroup(Residual)
-
-    let skolemized skolems m = match Vector1.of_vector skolems with
-        | Some skolems -> Option.map (fun r -> Residual.Skolems (skolems, r)) m
-        | None -> m
-end*)
-
 module Make
     (Env : TyperSigs.ENV)
     (K : TyperSigs.KINDING with type env = Env.t)
@@ -150,9 +136,18 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
             Env.in_bounds env uv uv' (fun env -> unify span env t t');
             merge t uv !(uv.binder) t' uv' !(uv'.binder)
 
-        | (Flex _, Rigid _) | (Rigid _, Flex _) -> todo (Some span) ~msg: "flex-rigid"
+        | (Flex t, Rigid t') ->
+            Env.in_bounds env uv uv' (fun env -> unify span env t t');
+            !(uv.bindees) |> Vector.iter (fun bindee -> Uv.rebind bindee (Type uv'));
+            Uv.graft_mono uv t'
+        | (Rigid t, Flex t') ->
+            Env.in_bounds env uv uv' (fun env -> unify span env t t');
+            !(uv'.bindees) |> Vector.iter (fun bindee -> Uv.rebind bindee (Type uv));
+            Uv.graft_mono uv' t
 
-        | (Rigid _, Rigid _) -> todo (Some span) ~msg: "(poly-)rigid-rigid" in
+        | (Rigid t, Rigid t') ->
+            Env.in_bounds env uv uv' (fun env -> unify span env t t');
+            merge t uv !(uv.binder) t' uv' !(uv'.binder) in
 
     let unify_whnf span env t t' = match (t, t') with
         | (T.Uv uv, t') | (t', T.Uv uv) ->
