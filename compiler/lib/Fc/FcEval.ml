@@ -110,7 +110,7 @@ let run (ns : Namespace.t) program =
                 | _ -> bug (Some expr.pos) ~msg: "tuple-indexing non-tuple at runtime" in
             eval env k focusee
 
-        | Fn {universals = _; param = {name; _}; body} ->
+        | Fn {t_scope = _; param = {name; _}; body} ->
             k (Fn (fun k v ->
                 let env = Env.push env in
                 Env.add expr.pos env name v;

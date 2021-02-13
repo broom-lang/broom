@@ -44,6 +44,7 @@ module type UV = sig
         type t = scope
 
         val level : t -> int
+        val ovs : t -> ov Vector.t
         val fresh_ov : t -> kind -> ov
     end
 

@@ -1,29 +1,28 @@
 module type TYPE = FcTypeSigs.TYPE
 
 module type EXPR = sig
-    module Type : TYPE
-
+    type typ
     type def
     type stmt
 
-    and var = {name : Name.t; vtyp : Type.t}
+    and var = {name : Name.t; vtyp : typ}
 
-    and typedef = Name.t * Type.t
+    and typedef = Name.t * typ
 
     and t =
         { term : t'
         ; mutable parent : t option
-        ; typ : Type.t
+        ; typ : typ
         ; pos : Util.span }
 
     and t' = private
         | Tuple of t array
         | Focus of {mutable focusee : t; index : int}
 
-        | Fn of {universals : typedef Vector.t; param : var; mutable body : t}
-        | App of {mutable callee : t; universals : Type.t Vector.t; mutable arg : t}
-        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t}
-        | PrimBranch of {op : Branchop.t; universals : Type.t Vector.t; mutable arg : t
+        | Fn of {t_scope : FcType.Uv.Scope.t; param : var; mutable body : t}
+        | App of {mutable callee : t; universals : typ Vector.t; mutable arg : t}
+        | PrimApp of {op : Primop.t; universals : typ Vector.t; mutable arg : t}
+        | PrimBranch of {op : Branchop.t; universals : typ Vector.t; mutable arg : t
             ; clauses : prim_clause Vector.t}
 
         | Let of {defs : stmt Array1.t; mutable body : t}
@@ -31,11 +30,11 @@ module type EXPR = sig
         (*| LetType of {typedefs : typedef Vector1.t; mutable body : t}*)
         | Match of {mutable matchee : t; clauses : clause Vector.t}
 
-        (*| Axiom of { axioms : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t
+        (*| Axiom of { axioms : (Name.t * Type.kind Vector.t * typ * typ) Vector1.t
             ; mutable body : t }*)
-        | Cast of {mutable castee : t; coercion : Type.coercion}
+        | Cast of {mutable castee : t; coercion : FcType.Type.coercion}
 
-        (*| Pack of {existentials : Type.t Vector1.t; mutable impl : t}
+        (*| Pack of {existentials : typ Vector1.t; mutable impl : t}
         | Unpack of { existentials : typedef Vector1.t; var : var; mutable value : t
             ; mutable body : t }*)
 
@@ -44,7 +43,7 @@ module type EXPR = sig
         | With of {mutable base : t; label : Name.t; mutable field : t}
         | Select of {mutable selectee : t; label : Name.t}
 
-        | Proxy of Type.t
+        | Proxy of typ
         | Const of Const.t
 
         | Use of var
@@ -54,10 +53,10 @@ module type EXPR = sig
     and clause = {pat : pat; mutable body : t}
     and prim_clause = {res : var option; prim_body : t}
 
-    and pat = {pterm: pat'; ptyp : Type.t; ppos : Util.span}
+    and pat = {pterm: pat'; ptyp : typ; ppos : Util.span}
     and pat' =
         | TupleP of pat Vector.t
-        | ProxyP of Type.t
+        | ProxyP of typ
         | ConstP of Const.t
         | VarP of var
         | WildP of Name.t
@@ -66,28 +65,28 @@ module type EXPR = sig
     val to_doc : t -> PPrint.document
     val pat_to_doc : pat -> PPrint.document
 
-    val var : Name.t -> Type.t -> var
-    val fresh_var : Type.t -> var
+    val var : Name.t -> typ -> var
+    val fresh_var : typ -> var
 
-    val at : Util.span -> Type.t -> t' -> t
+    val at : Util.span -> typ -> t' -> t
 
     val tuple : t Array.t -> t'
     val focus : t -> int -> t'
-    val fn : typedef Vector.t -> var -> t -> t'
-    val app : t -> Type.t Vector.t -> t -> t'
-    val primapp : Primop.t -> Type.t Vector.t -> t -> t'
-    val primbranch : Branchop.t -> Type.t Vector.t -> t -> prim_clause Vector.t -> t'
+    val fn : FcType.Uv.Scope.t -> var -> t -> t'
+    val app : t -> typ Vector.t -> t -> t'
+    val primapp : Primop.t -> typ Vector.t -> t -> t'
+    val primbranch : Branchop.t -> typ Vector.t -> t -> prim_clause Vector.t -> t'
     val let' : stmt Array.t -> t -> t'
     val letrec : def Array.t -> t -> t'
-    (*val axiom : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector.t -> t -> t'*)
+    (*val axiom : (Name.t * Type.kind Vector.t * typ * typ) Vector.t -> t -> t'*)
     val match' : t -> clause Vector.t -> t'
-    val cast : t -> Type.coercion -> t'
-    (*val pack : Type.t Vector.t -> t -> t'
+    val cast : t -> FcType.Type.coercion -> t'
+    (*val pack : typ Vector.t -> t -> t'
     val unpack : typedef Vector1.t -> var -> t -> t -> t'*)
     val record : (Name.t * t) array -> t'
     val where : t -> (Name.t * t) array -> t'
     val select : t -> Name.t -> t'
-    val proxy : Type.t -> t'
+    val proxy : typ -> t'
     val const : Const.t -> t'
     val use : var -> t'
     val patchable : t TxRef.t -> t'
@@ -99,8 +98,6 @@ module type EXPR = sig
 end
 
 module type STMT = sig
-    module Type : TYPE
-
     type expr
     type var
 
@@ -117,15 +114,12 @@ module type STMT = sig
 end
 
 module type TERM = sig
-    module Type : TYPE
-
     module rec Expr : (EXPR
-        with module Type = Type
+        with type typ = FcType.Type.t
         with type def = Stmt.def
         with type stmt = Stmt.t)
 
     and Stmt : (STMT
-        with module Type = Type
         with type expr = Expr.t
         with type var = Expr.var)
 end

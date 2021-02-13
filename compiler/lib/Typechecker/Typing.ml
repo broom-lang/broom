@@ -515,7 +515,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         let matchee = FExpr.at expr.pos param.vtyp (FExpr.use param) in
         let body = ExpandPats.expand_clauses expr.pos env codomain matchee clauses in
         let typ = Env.forall_scope_ovs env scope (T.Pi {domain; eff; codomain}) in
-        {term = FExpr.at expr.pos typ (FExpr.fn Vector.empty param body); eff}
+        {term = FExpr.at expr.pos typ (FExpr.fn scope param body); eff}
 
     | App (callee, Explicit, arg) ->
         let domain = Env.tv env (T.App (T.Prim TypeIn, Env.tv env T.rep)) in
@@ -605,7 +605,7 @@ and emit_clause_body _ {FExpr.pat; body} =
                 let ftyp = T.Pi {domain
                     ; eff = EmptyRow (* NOTE: effect does not matter any more... *)
                     ; codomain } in
-                FExpr.at pos ftyp (FExpr.fn Vector.empty var body)
+                FExpr.at pos ftyp (FExpr.fn (todo (Some pos)) var body)
             end else begin
                 let pos = body.pos in
                 let domain : T.t = Tuple (Vector.map (fun (vars : ExpandPats.final_naming) ->
@@ -622,7 +622,7 @@ and emit_clause_body _ {FExpr.pat; body} =
                                 FExpr.at pos src_var.vtyp (FExpr.focus (FExpr.at pos domain (FExpr.use param)) i)))
                         |> Stream.into Sink.array)
                     body) in
-                FExpr.at pos ftyp (FExpr.fn Vector.empty param body)
+                FExpr.at pos ftyp (FExpr.fn (todo (Some pos)) param body)
             end
 
         | Redirect dest ->

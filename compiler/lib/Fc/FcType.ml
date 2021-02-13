@@ -60,7 +60,8 @@ module rec Uv : (FcTypeSigs.UV
             | Global _ -> 0
 
         let bindees (Local {bindees; _} | Global {bindees; _}) = bindees
-        let ovs (Local {ovs; _} | Global {ovs; _}) = ovs
+        let ovs_mut (Local {ovs; _} | Global {ovs; _}) = ovs
+        let ovs scope = !(ovs_mut scope)
 
         let add_bindee scope bindee =
             let bindees = bindees scope in
@@ -72,7 +73,7 @@ module rec Uv : (FcTypeSigs.UV
             bindees := Vector.filter ((!=) bindee) !bindees
 
         let fresh_ov scope kind =
-            let ovs = ovs scope in
+            let ovs = ovs_mut scope in
             let ov = {Ov.name = Name.fresh (); binder = scope; kind} in
             ovs := Vector.push !ovs ov;
             ov

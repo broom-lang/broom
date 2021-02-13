@@ -1,7 +1,7 @@
 module Type = FcType.Type
 module Uv = FcType.Uv
 
-module Term = FcTerm.Make(Type)
+module Term = FcTerm
 
 module Program = struct
     module Type = Type

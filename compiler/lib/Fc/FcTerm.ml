@@ -1,21 +1,18 @@
 open Streaming
 
-module Make (Type : FcSigs.TYPE) : FcSigs.TERM
-    with module Type = Type
-= struct 
-
-module Type = Type
+module Type = FcType.Type
+module Uv = FcType.Uv
+module Ov = FcType.Ov
 
 module rec Expr : sig
     include FcSigs.EXPR
-        with module Type = Type
+        with type typ = Type.t
         with type def = Stmt.def
         with type stmt = Stmt.t
 
     val def_to_doc : var -> PPrint.document
 end = struct
-    module Type = Type
-
+    type typ = Type.t
     type def = Stmt.def
     type stmt = Stmt.t
 
@@ -33,7 +30,7 @@ end = struct
         | Tuple of t array
         | Focus of {mutable focusee : t; index : int}
 
-        | Fn of {universals : typedef Vector.t; param : var; mutable body : t}
+        | Fn of {t_scope : FcType.Uv.Scope.t; param : var; mutable body : t}
         | App of {mutable callee : t; universals : Type.t Vector.t; mutable arg : t}
         | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t}
         | PrimBranch of {op : Branchop.t; universals : Type.t Vector.t; mutable arg : t
@@ -89,6 +86,9 @@ end = struct
     let rec to_doc (expr : t) =
         let open PPrint in
 
+        let ov_to_doc {Ov.name; binder = _; kind} =
+            infix 4 1 colon (Name.to_doc name) (Type.kind_to_doc kind) in
+
         let rec to_doc prec expr = match expr.term with
             | Tuple exprs ->
                 surround_separate_map 4 0 (parens empty)
@@ -96,11 +96,11 @@ end = struct
                     (to_doc 0) (Array.to_list exprs)
             | Focus {focusee; index} ->
                 prefix 4 1 (to_doc dot_prec focusee) (dot ^^ string (Int.to_string index))
-            | Fn {universals = _; param; body} ->
+            | Fn {t_scope; param; body} ->
                 string "fun"
-                (*^^ surround_separate_map 4 0 empty
-                        (blank 1 ^^ langle) (comma ^^ break 1) rangle
-                        (Type.binding_to_doc s) (Vector.to_list universals)*)
+                ^^ surround_separate_map 4 0 empty
+                    (blank 1 ^^ langle) (comma ^^ break 1) rangle
+                    ov_to_doc (Vector.to_list (Uv.Scope.ovs t_scope))
                 ^^ blank 1 ^^ parens (def_to_doc param) ^^ blank 1
                 ^^ surround 4 1 lbrace (to_doc 0 body) rbrace 
             | Let {defs; body} ->
@@ -252,7 +252,7 @@ end = struct
     let tuple vals = Tuple vals
 
     let focus focusee index = Focus {focusee; index}
-    let fn universals param body = Fn {universals; param; body}
+    let fn t_scope param body = Fn {t_scope; param; body}
     let app callee universals arg = App {callee; universals; arg}
     let primapp op universals arg = PrimApp {op; universals; arg}
     let primbranch op universals arg clauses = PrimBranch {op; universals; arg; clauses}
@@ -315,9 +315,9 @@ end = struct
                 let focusee' = f focusee in
                 if focusee' == focusee then term else focus focusee' index
 
-            | Fn {universals; param; body} ->
+            | Fn {t_scope; param; body} ->
                 let body' = f body in
-                if body' == body then term else fn universals param body'
+                if body' == body then term else fn t_scope param body'
 
             | App {callee; universals; arg} ->
                 let callee' = f callee in
@@ -450,12 +450,9 @@ end = struct
 end
 
 and Stmt : FcSigs.STMT
-    with module Type = Type
     with type expr = Expr.t
     with type var = Expr.var
 = struct
-    module Type = Type
-
     type expr = Expr.t
     type var = Expr.var
 
@@ -473,7 +470,5 @@ and Stmt : FcSigs.STMT
         | Expr expr -> Expr.to_doc expr
 
     let rhs (Def (_, _, expr) | Expr expr) = expr
-end
-
 end
 
