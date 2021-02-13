@@ -11,9 +11,11 @@ let (:=) = TxRef.(:=)
 module rec Uv : (FcTypeSigs.UV
     with type typ = Typ.t
     with type kind = Typ.kind
+    with type ov = Ov.t
 ) = struct
     type typ = Typ.t
     type kind = Typ.kind
+    type ov = Ov.t
 
     type t =
         { name : Name.t
@@ -35,7 +37,8 @@ module rec Uv : (FcTypeSigs.UV
         | Type of t
 
     and scope =
-        | Local of {level : int; bindees : t Vector.t txref; parent : scope}
+        | Local of {level : int; parent : scope
+            ; bindees : t Vector.t txref; ovs : ov Vector.t txref}
         | Global of t Vector.t txref
 
     let hash uv = Name.hash uv.name

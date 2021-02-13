@@ -4,6 +4,7 @@ type 'a txref = 'a TxRef.t
 module type UV = sig
     type typ
     type kind
+    type ov
 
     type t =
         { name : Name.t
@@ -25,7 +26,8 @@ module type UV = sig
         | Type of t
 
     and scope =
-        | Local of {level : int; bindees : t Vector.t txref; parent : scope}
+        | Local of {level : int; parent : scope
+            ; bindees : t Vector.t txref; ovs : ov Vector.t txref}
         | Global of t Vector.t txref
 
     and uv = t

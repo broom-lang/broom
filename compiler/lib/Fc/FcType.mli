@@ -7,7 +7,8 @@ module rec Typ : (FcTypeSigs.TYPE
 
 and Uv : (FcTypeSigs.UV
     with type typ = Typ.t
-    with type kind = Typ.kind)
+    with type kind = Typ.kind
+    with type ov = Ov.t)
 
 and Ov : FcTypeSigs.OV
     with type kind = Typ.kind

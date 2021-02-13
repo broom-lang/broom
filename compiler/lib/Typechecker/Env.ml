@@ -88,8 +88,8 @@ let push_val plicity (env : t) (var : E.var) =
 let push_level env =
     match env.t_binders with
     | [Uv.Scope parent] ->
-        let bindees = TxRef.(ref Vector.empty) in
-        let scope = Uv.Local {level = Uv.Scope.level parent + 1; bindees; parent} in
+        let scope = Uv.Local {level = Uv.Scope.level parent + 1; parent
+            ; bindees = TxRef.ref Vector.empty; ovs = TxRef.ref Vector.empty} in
         ({env with t_binders = [Scope scope]}, scope)
     | _ -> unreachable None
 
