@@ -54,7 +54,8 @@ type error_handler = Util.span -> TypeError.t -> unit
 
 let raiseError pos error = raise (TypeError.TypeError (pos, error))
 
-let global_binder = Uv.Scope (Global TxRef.(ref Vector.empty))
+let global_binder =
+    Uv.Scope (Global {bindees = TxRef.ref Vector.empty; ovs = TxRef.ref Vector.empty})
 
 let program () =
     { errorHandler = raiseError
@@ -412,8 +413,7 @@ let reabstract span env scope t =
             | Uv {name = _; quant = Exists; binder; bindees = _; level = _; bound = _} ->
                 (match !binder with
                 | Uv.Type binder when Uv.equal binder root ->
-                    Ov {binder = scope; name = Name.fresh ()
-                        ; kind = K.kindof_F span env t}
+                    Ov (Uv.Scope.fresh_ov scope (K.kindof_F span env t))
                 | _ -> t)
             | t -> t)
     | t -> t

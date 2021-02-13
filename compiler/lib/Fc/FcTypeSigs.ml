@@ -28,7 +28,7 @@ module type UV = sig
     and scope =
         | Local of {level : int; parent : scope
             ; bindees : t Vector.t txref; ovs : ov Vector.t txref}
-        | Global of t Vector.t txref
+        | Global of {bindees : t Vector.t txref; ovs : ov Vector.t txref}
 
     and uv = t
 
@@ -45,6 +45,7 @@ module type UV = sig
         type t = scope
 
         val level : t -> int
+        val fresh_ov : t -> kind -> ov
     end
 
     val fresh : quantifier -> binder -> kind -> t

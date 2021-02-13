@@ -39,7 +39,7 @@ module rec Uv : (FcTypeSigs.UV
     and scope =
         | Local of {level : int; parent : scope
             ; bindees : t Vector.t txref; ovs : ov Vector.t txref}
-        | Global of t Vector.t txref
+        | Global of {bindees : t Vector.t txref; ovs : ov Vector.t txref}
 
     let hash uv = Name.hash uv.name
     let equal = (==)
@@ -60,12 +60,23 @@ module rec Uv : (FcTypeSigs.UV
             | Local {level; _} -> level
             | Global _ -> 0
 
-        let add_bindee (Local {bindees; _} | Global bindees) bindee =
+        let bindees (Local {bindees; _} | Global {bindees; _}) = bindees
+        let ovs (Local {ovs; _} | Global {ovs; _}) = ovs
+
+        let add_bindee scope bindee =
+            let bindees = bindees scope in
             if not (Vector.exists ((==) bindee) !bindees)
             then bindees := Vector.push !bindees bindee
 
-        let remove_bindee (Local {bindees; _} | Global bindees) bindee =
+        let remove_bindee scope bindee =
+            let bindees = bindees scope in
             bindees := Vector.filter ((!=) bindee) !bindees
+
+        let fresh_ov scope kind =
+            let ovs = ovs scope in
+            let ov = {Ov.name = Name.fresh (); binder = scope; kind} in
+            ovs := Vector.push !ovs ov;
+            ov
     end
 
     module Binder = struct
