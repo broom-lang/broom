@@ -294,13 +294,13 @@ let eval _ _ t = T.force t
 let rec kindof_nonquantifying env scope (typ : AType.t with_pos) = match typ.v with
     | Pi {domain; eff; codomain} ->
         let env0 = env in
-        let (env, scope) = Env.push_level env0 in
-        let (domain, env) = elab_domain env scope domain in
+        let (env, scope') = Env.push_level env0 in
+        let (domain, env) = elab_domain env scope' domain in
         let eff : T.t = match eff with
             | Some eff -> check_nonquantifying env scope T.aRow eff
             | None -> EmptyRow in
         let codomain_kind = T.App (Prim TypeIn, Env.tv env T.rep) in
-        let codomain = check env codomain_kind codomain in
+        let codomain = check_nonquantifying env scope codomain_kind codomain in
 
         (*let codomain =
             match (eff, codomain) with (* FIXME: eval `eff` *)
@@ -316,7 +316,7 @@ let rec kindof_nonquantifying env scope (typ : AType.t with_pos) = match typ.v w
                 Env.expose env0 substitution concr_codo
             | (_, codomain) -> codomain in*)
 
-        Env.forall_scope_ovs env scope (Pi {domain; eff; codomain})
+        Env.forall_scope_ovs env scope' (Pi {domain; eff; codomain})
 
     | Path expr ->
         let carrie = Env.tv env (Env.tv env T.aType) in
@@ -336,12 +336,12 @@ and check_nonquantifying env scope _ (typ : AType.t with_pos) =
     (*M.unify typ.pos env (kindof_F typ.pos env t) kind;*)
     t
 
-and kindof env t =
+let kindof env t =
     let (env, scope) = Env.push_level env in
     let t = kindof_nonquantifying env scope t in
     Env.exists_scope_ovs env scope t
 
-and check env kind t =
+let check env kind t =
     let (env, scope) = Env.push_level env in
     let t = check_nonquantifying env scope kind t in
     Env.exists_scope_ovs env scope t

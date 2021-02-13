@@ -313,6 +313,25 @@ let implicits (env : t) = Stream.from (Source.list env.scopes)
 
 let tv env kind = T.Uv (Uv.fresh ForAll (Scope (t_scope env)) kind)
 
+let hoisted_ov env scope kind =
+    let rec scope_lift ovs i kind k =
+        if i < Vector.length ovs
+        then begin
+            let ov' : T.ov = Vector.get ovs i in
+            let kind = (T.Pi {domain = ov'.kind; eff = EmptyRow; codomain = kind}) in
+            T.App (scope_lift ovs (i + 1) kind k, Ov ov')
+        end else k kind in
+
+    let rec lift binders kind = match binders with
+        | Uv.Scope scope' :: _ when scope' == scope ->
+            T.Ov (Uv.Scope.fresh_ov scope kind)
+        | Scope scope' :: binders ->
+            scope_lift (Uv.Scope.ovs scope') 0 kind (lift binders)
+        | Type _ :: binders -> lift binders kind
+        | [] -> unreachable None in
+
+    lift env.t_binders kind
+
 let forall_scope_ovs env scope t = T.forall_scope_ovs ~binder: (t_scope env) scope t
 let exists_scope_ovs env scope t = T.exists_scope_ovs ~binder: (t_scope env) scope t
 let instantiate env t = T.instantiate (t_scope env) t
@@ -325,7 +344,7 @@ let reabstract span env scope t =
             | Uv {name = _; quant = Exists; binder; bindees = _; level = _; bound = _} ->
                 (match !binder with
                 | Uv.Type binder when Uv.equal binder root ->
-                    Ov (Uv.Scope.fresh_ov scope (K.kindof_F span env t))
+                    hoisted_ov env scope (K.kindof_F span env t)
                 | _ -> t)
             | t -> t)
     | t -> t
