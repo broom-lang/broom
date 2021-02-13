@@ -13,6 +13,7 @@ module Make
 
 module T = Fc.Type
 module Uv = Fc.Uv
+module Ov = FcType.Ov
 module Binder = Uv.Binder
 module E = Fc.Term.Expr
 (*module Err = TypeError*)
@@ -169,6 +170,10 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
 
                 | _ -> Env.reportError env span (Unify (t, t')))
 
+        | (Ov ov, t') -> (match t' with
+            | Ov ov' when Ov.equal ov ov' -> ()
+            | _ -> Env.reportError env span (Unify (t, t')))
+
         | (Pi {domain; eff; codomain}, t') -> (match t' with
             | Pi {domain = domain'; eff = eff'; codomain = codomain'} ->
                 unify span env domain domain';
@@ -177,12 +182,24 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
 
             | _ -> Env.reportError env span (Unify (t, t')))
 
+        | (Record row, t') -> (match t' with
+            | Record row' -> unify span env row row'
+            | _ -> Env.reportError env span (Unify (t, t')))
+
         | (EmptyRow, t') -> (match t' with
             | EmptyRow -> ()
             | _ -> Env.reportError env span (Unify (t, t')))
 
         | (Tuple typs, t') -> (match t' with
             | Tuple typs' -> Vector.iter2 (unify span env) typs typs'
+            | _ -> Env.reportError env span (Unify (t, t')))
+
+        | (PromotedTuple typs, t') -> (match t' with
+            | PromotedTuple typs' -> Vector.iter2 (unify span env) typs typs'
+            | _ -> Env.reportError env span (Unify (t, t')))
+
+        | (PromotedArray typs, t') -> (match t' with
+            | PromotedArray typs' -> Vector.iter2 (unify span env) typs typs'
             | _ -> Env.reportError env span (Unify (t, t')))
 
         (* TODO: Fancy HKT stuff: *)

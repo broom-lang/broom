@@ -162,6 +162,8 @@ and Ov : (FcTypeSigs.OV
     type scope = Uv.scope
 
     type t = {name : Name.t; binder : scope; kind : kind}
+
+    let equal = (==)
 end
 
 and Typ : (FcTypeSigs.TYPE

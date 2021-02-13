@@ -63,6 +63,8 @@ module type OV = sig
     type scope
 
     type t = {name : Name.t; binder : scope; kind : kind}
+
+    val equal : t -> t -> bool
 end
 
 module type TYPE = sig
