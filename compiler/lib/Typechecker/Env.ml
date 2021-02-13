@@ -315,18 +315,19 @@ let tv env kind = T.Uv (Uv.fresh ForAll (Scope (t_scope env)) kind)
 
 let hoisted_ov env scope kind =
     let rec scope_lift ovs i kind k =
-        if i < Vector.length ovs
+        if i >= 0
         then begin
             let ov' : T.ov = Vector.get ovs i in
             let kind = (T.Pi {domain = ov'.kind; eff = EmptyRow; codomain = kind}) in
-            T.App (scope_lift ovs (i + 1) kind k, Ov ov')
+            T.App (scope_lift ovs (i - 1) kind k, Ov ov')
         end else k kind in
 
     let rec lift binders kind = match binders with
         | Uv.Scope scope' :: _ when scope' == scope ->
             T.Ov (Uv.Scope.fresh_ov scope kind)
         | Scope scope' :: binders ->
-            scope_lift (Uv.Scope.ovs scope') 0 kind (lift binders)
+            let ovs = Uv.Scope.ovs scope' in
+            scope_lift ovs (Vector.length ovs - 1) kind (lift binders)
         | Type _ :: binders -> lift binders kind
         | [] -> unreachable None in
 
