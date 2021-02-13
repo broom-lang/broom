@@ -403,6 +403,7 @@ let implicits (env : t) = Stream.from (Source.list env.scopes)
 let tv env kind = T.Uv (Uv.fresh ForAll (Scope (t_scope env)) kind)
 
 let forall_scope_ovs env scope t = T.forall_scope_ovs ~binder: (t_scope env) scope t
+let exists_scope_ovs env scope t = T.exists_scope_ovs ~binder: (t_scope env) scope t
 let instantiate env t = T.instantiate (t_scope env) t
 
 let reabstract span env scope t =

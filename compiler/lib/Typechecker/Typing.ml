@@ -570,6 +570,10 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         let {TS.term = selectee; eff} = check env selectee_t selectee in
         {term = FExpr.at expr.pos field (FExpr.select selectee label); eff}
 
+    | Proxy carrie ->
+        let carrie = K.kindof env {v = carrie; pos = expr.pos} in
+        {term = FExpr.at expr.pos (Proxy carrie) (FExpr.proxy carrie); eff = EmptyRow}
+
     | Const c -> {term = FExpr.at expr.pos (const_typ c) (FExpr.const c); eff = EmptyRow}
 
     | _ -> todo (Some expr.pos) ~msg: "typeof"
@@ -653,6 +657,10 @@ and emit_clause_body _ {FExpr.pat; body} =
 
 (* # Patterns *)
 
+and elaborate_pat env scope pat =
+    let t = Env.tv env (T.App (Prim TypeIn, Env.tv env T.rep)) in
+    check_pat env scope t pat
+
 (* TODO: use coercions (and subtyping ?): *)
 and check_pat : Env.t -> T.scope -> T.t -> AExpr.pat with_pos -> FExpr.pat * FExpr.var Vector.t
 = fun env scope ptyp pat ->
@@ -689,8 +697,8 @@ and check_pat : Env.t -> T.scope -> T.t -> AExpr.pat with_pos -> FExpr.pat * FEx
     | Wild name -> ({ppos = pat.pos; pterm = WildP name; ptyp}, Vector.empty)
 
     | Proxy carrie ->
-        let {TS.typ = carrie; kind = _} = K.kindof env {pat with v = carrie} in
-        let _ = M.solving_unify pat.pos env ptyp (Proxy carrie) in
+        let carrie = K.kindof env {pat with v = carrie} in
+        M.unify pat.pos env ptyp (Proxy carrie);
         ({ppos = pat.pos; pterm = ProxyP carrie; ptyp}, Vector.empty)
 
     | Const c ->

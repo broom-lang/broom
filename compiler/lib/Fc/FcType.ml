@@ -555,6 +555,16 @@ and Typ : (FcTypeSigs.TYPE
             )
         )
 
+    let exists_scope_ovs ~binder scope t =
+        let binder = Uv.Scope binder in
+        fix binder (fun root_bound ->
+            t |> postwalk_rebinding (fun t -> match t with
+                | Ov {binder; name = _; kind} when binder == scope ->
+                    Uv (Uv.fresh Exists (Type root_bound) kind)
+                | t -> t
+            )
+        )
+
     let instantiate scope t =
         let t = force t in
         match t with

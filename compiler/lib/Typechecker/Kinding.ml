@@ -11,8 +11,8 @@ module Make (Env : TS.ENV)
 
 module AType = Ast.Type
 module T = Fc.Type
-(*module AExpr = Ast.Term.Expr
-module AStmt = Ast.Term.Stmt
+module AExpr = Ast.Term.Expr
+(*module AStmt = Ast.Term.Stmt
 module FExpr = Fc.Term.Expr
 module Err = TypeError*)
 
@@ -291,11 +291,33 @@ and eval pos env typ =
 
 let eval _ _ t = T.force t
 
-let kindof _ (typ : AType.t with_pos) = todo (Some typ.pos)
+let rec kindof_nonquantifying env scope (typ : AType.t with_pos) = match typ.v with
+    | Pi {domain; eff; codomain} ->
+        let env0 = env in
+        let (env, t_scope) = Env.push_level env0 in
+        let (domain, env) = elab_domain env scope domain in
+        let eff : T.t = match eff with
+            | Some eff -> check env T.aRow eff
+            | None -> EmptyRow in
+        let codomain_kind = T.App (Prim TypeIn, Env.tv env T.rep) in
+        let codomain = check env codomain_kind codomain in
 
-let check _ _ (typ : AType.t with_pos) = todo (Some typ.pos)
+        (*let codomain =
+            match (eff, codomain) with (* FIXME: eval `eff` *)
+            | (EmptyRow, Exists (existentials, concr_codo)) ->
+                (* Hoist codomain existentials to make applicative functor (in the ML modules sense): *)
+                let substitution = Vector.map (fun kind ->
+                    let kind = Vector.fold_right (fun codomain domain ->
+                        T.Pi {universals = Vector.empty; domain; eff = EmptyRow; codomain}
+                    ) kind ukinds in
+                    let ov = Env.generate env0 (Name.fresh (), kind) in
+                    Vector.fold (fun callee arg -> T.App (callee, Ov arg)) (Ov ov) universals
+                ) (Vector1.to_vector existentials) in
+                Env.expose env0 substitution concr_codo
+            | (_, codomain) -> codomain in*)
 
-let check_nonquantifying env scope _ (typ : AType.t with_pos) = match typ.v with
+        Env.forall_scope_ovs env t_scope (Pi {domain; eff; codomain})
+
     | Path expr ->
         let carrie = Env.tv env (Env.tv env T.aType) in
         let {TS.term = _; eff} = C.check env (T.Proxy carrie) {typ with v = expr} in
@@ -303,6 +325,26 @@ let check_nonquantifying env scope _ (typ : AType.t with_pos) = match typ.v with
         Env.reabstract typ.pos env scope carrie
 
     | _ -> todo (Some typ.pos) ~msg: "check_nonquantifying"
+
+and elab_domain env scope (domain : AExpr.t with_pos) =
+    let (pat, defs) = C.elaborate_pat env scope domain in
+    let env = Vector.fold (Env.push_val Explicit) env defs in
+    (pat.ptyp, env)
+
+and check_nonquantifying env scope _ (typ : AType.t with_pos) =
+    let t = kindof_nonquantifying env scope typ in
+    (*M.unify typ.pos env (kindof_F typ.pos env t) kind;*)
+    t
+
+and kindof env t =
+    let (env, scope) = Env.push_level env in
+    let t = kindof_nonquantifying env scope t in
+    Env.exists_scope_ovs env scope t
+
+and check env kind t =
+    let (env, scope) = Env.push_level env in
+    let t = check_nonquantifying env scope kind t in
+    Env.exists_scope_ovs env scope t
 
 end
 

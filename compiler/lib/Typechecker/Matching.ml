@@ -199,7 +199,9 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
             | T.Prim pt' when Prim.eq pt pt'-> ()
             | _ -> Env.reportError env span (Unify (t, t')))
 
-        | _ -> todo (Some span) ~msg: "type ctor" in
+        | (t, t') -> todo (Some span)
+            ~msg: ("type ctors "
+                ^ (Util.doc_to_string (PPrint.(T.to_doc t ^/^ string "and" ^/^ T.to_doc t')))) in
 
     fun span env t t' ->
         unify_whnf span env (K.eval span env t) (K.eval span env t')

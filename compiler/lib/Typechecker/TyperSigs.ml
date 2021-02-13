@@ -13,8 +13,9 @@ module type KINDING = sig
     type env
 
     val kindof_F : span -> env -> Fc.Type.t -> Fc.Type.kind
-    val kindof : env -> Ast.Type.t with_pos -> typ kinding
+    val kindof : env -> Ast.Type.t with_pos -> typ
     val check : env -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
+    val kindof_nonquantifying : env -> Fc.Type.scope -> Ast.Type.t with_pos -> typ
     val check_nonquantifying : env -> Fc.Type.scope -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
     (*val eval : Util.span -> env -> typ -> (typ * typ Fc.Type.coercion option) option*)
     val eval : Util.span -> env -> typ -> typ
@@ -31,8 +32,8 @@ module type TYPING = sig
     val check_stmt : env -> Ast.Term.Stmt.t -> Fc.Term.Stmt.t Vector.t typing * Fc.Type.t * env*)
     val check_interactive_stmts : env -> Ast.Term.Stmt.t Vector1.t -> Fc.Program.t typing * env
     (* HACK: (?): *)
-    (*val elaborate_pat : env -> Ast.Term.Expr.pat with_pos ->
-        Fc.Term.Expr.pat * (Fc.Type.ov Vector.t * Fc.Type.t) * Fc.Term.Expr.var Vector.t*)
+    val elaborate_pat : env -> FcType.Uv.Scope.t -> Ast.Term.Expr.pat with_pos
+        -> Fc.Term.Expr.pat * Fc.Term.Expr.var Vector.t
 end
 
 module type MATCHING = sig
@@ -127,6 +128,7 @@ module type ENV = sig
     val tv : t -> T.kind -> T.t
 
     val forall_scope_ovs : t -> T.scope -> T.t -> T.t
+    val exists_scope_ovs : t -> T.scope -> T.t -> T.t
     val instantiate : t -> T.t -> T.t
     val reabstract : span -> t -> T.scope -> T.t -> T.t
 

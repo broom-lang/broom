@@ -129,6 +129,7 @@ module type TYPE = sig
 
     val force : t -> t
     val forall_scope_ovs : binder: scope -> scope -> t -> t
+    val exists_scope_ovs : binder: scope -> scope -> t -> t
     val instantiate : scope -> t -> t
 
     type typ = t
