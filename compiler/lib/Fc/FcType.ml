@@ -37,8 +37,7 @@ module rec Uv : (FcTypeSigs.UV
         | Type of t
 
     and scope =
-        | Local of {level : int; parent : scope
-            ; bindees : t Vector.t txref; ovs : ov Vector.t txref}
+        | Local of {level : int; bindees : t Vector.t txref; ovs : ov Vector.t txref}
         | Global of {bindees : t Vector.t txref; ovs : ov Vector.t txref}
 
     let hash uv = Name.hash uv.name

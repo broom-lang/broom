@@ -88,10 +88,10 @@ let push_val plicity (env : t) (var : E.var) =
 
 let push_level env =
     match env.t_binders with
-    | [Uv.Scope parent] ->
-        let scope = Uv.Local {level = Uv.Scope.level parent + 1; parent
+    | Uv.Scope parent :: _ ->
+        let scope = Uv.Local {level = Uv.Scope.level parent + 1
             ; bindees = TxRef.ref Vector.empty; ovs = TxRef.ref Vector.empty} in
-        ({env with t_binders = [Scope scope]}, scope)
+        ({env with t_binders = Scope scope :: env.t_binders}, scope)
     | _ -> unreachable None
 
 let in_bound (env : t) uv f =
@@ -278,7 +278,7 @@ let instantiate_branch env universals domain app_eff codomain =
     , Vector.map (expose env substitution) codomain )*)
 
 let t_scope (env : t) = match env.t_binders with
-    | [Scope scope] -> scope
+    | Scope scope :: _ -> scope
     | _ -> unreachable None
 
 let find (env : t) pos name =
