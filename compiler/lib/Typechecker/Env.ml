@@ -138,19 +138,6 @@ let push_row env decls =
     let fields = ref [] in
     ({env with scopes = Row (bindings, fields) :: env.scopes}, fields)
 
-let push_existential (env : t) =
-    let bindings = ref [] in
-    let level = env.level + 1 in
-    ( {env with scopes = Hoisting (bindings, level) :: env.scopes; level}
-    , bindings )
-
-let push_skolems (env : t) kinds =
-    let level = env.level + 1 in
-    let ebs = Vector.map (fun kind -> (Name.fresh (), kind)) kinds in
-    let skolems = Vector.map (fun binding -> (binding, level)) ebs in
-    ( {env with scopes = Rigid skolems :: env.scopes; level}
-    , skolems )
-
 let push_axioms (env : t) axioms =
     if Vector.length axioms > 0 then begin
         let bindings = Vector.fold (fun bindings ((_, ((k, _), _), _) as v) ->
@@ -158,16 +145,6 @@ let push_axioms (env : t) axioms =
         ) Name.Map.empty axioms in
         {env with scopes = Axiom bindings :: env.scopes}
     end else env
-
-let generate env binding =
-    let rec generate = function
-        | Hoisting (bindings, level) :: _ ->
-            let ov = (binding, level) in
-            TxRef.set env.tx_log bindings (ov :: !bindings);
-            ov
-        | _ :: scopes' -> generate scopes'
-        | [] -> unreachable None in
-    generate env.scopes
 
 let get_implementation (env : t) (((name, _), _) : T.ov) =
     let rec get = function
@@ -210,72 +187,6 @@ let set_expr (env : t) ref expr = TxRef.set env.tx_log ref expr
 let set_coercion (env : t) ref coercion = TxRef.set env.tx_log ref coercion
 
 let transaction (env : t) thunk = TxRef.transaction env.tx_log thunk*)
-
-(*
-let reabstract env : T.t -> T.ov Vector.t * T.t = function
-    | Exists (params, body) ->
-        let params = Vector1.to_vector params in
-        let params = Vector.map (fun kind -> generate env (Name.fresh (), kind)) params in
-        let substitution = Vector.map (fun ov -> T.Ov ov) params in
-        (params, expose env substitution body)
-    | typ -> (Vector.empty, typ)*)
-
-(*
-let push_abs_skolems env existentials body =
-    let (env, skolems) = push_skolems env (Vector1.to_vector existentials) in
-    let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
-    (env, Option.get (Vector1.of_vector skolems), expose env substitution body)
-
-let push_arrow_skolems env universals domain eff codomain =
-    let (env, skolems) = push_skolems env universals in
-    let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
-    ( env, skolems
-    , expose env substitution domain
-    , expose env substitution eff
-    , expose env substitution codomain )
-
-let push_impli_skolems env universals domain codomain =
-    let (env, skolems) = push_skolems env universals in
-    let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
-    ( env, skolems
-    , expose env substitution domain
-    , expose env substitution codomain )
-
-let instantiate_abs env existentials body =
-    let uvs = Vector1.map (uv env) existentials in
-    let substitution = uvs |> Vector1.to_vector |> Vector.map (fun uv -> T.Uv uv) in
-    (uvs, expose env substitution body)
-
-let instantiate_arrow env universals domain eff codomain =
-    let uvs = Vector.map (uv env) universals in
-    let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
-    ( uvs
-    , expose env substitution domain
-    , expose env substitution eff
-    , expose env substitution codomain )
-
-let instantiate_impli env universals domain codomain =
-    let uvs = Vector.map (uv env) universals in
-    let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
-    ( uvs
-    , expose env substitution domain
-    , expose env substitution codomain )
-
-let instantiate_primop env universals domain app_eff codomain =
-    let uvs = Vector.map (uv env) universals in
-    let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
-    ( uvs
-    , Vector.map (expose env substitution) domain
-    , expose env substitution app_eff
-    , expose env substitution codomain )
-
-let instantiate_branch env universals domain app_eff codomain =
-    let uvs = Vector.map (uv env) universals in
-    let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
-    ( uvs
-    , Vector.map (expose env substitution) domain
-    , expose env substitution app_eff
-    , Vector.map (expose env substitution) codomain )*)
 
 let t_scope (env : t) = match env.t_binders with
     | Scope scope :: _ -> scope
