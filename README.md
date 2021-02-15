@@ -1,4 +1,6 @@
-# 𓎝 Broom
+# Broom
+
+![Broom logo](Broom_logo.svg)
 
 A programming language with first-class modules and algebraic effects.  Still
 very much a work in progress (i.e. not yet usable).
