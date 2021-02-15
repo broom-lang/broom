@@ -7,13 +7,16 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   width="232.77457mm"
-   height="329.04282mm"
-   viewBox="0 0 232.77457 329.04282"
+   width="330mm"
+   height="330mm"
+   viewBox="0 0 330 330"
    version="1.1"
    id="svg8"
    inkscape:version="1.0.2 (e86c870879, 2021-01-15)"
-   sodipodi:docname="Broom_logo.svg">
+   sodipodi:docname="Broom_logo.svg"
+   inkscape:export-filename="/home/nilern/Desktop/Broom_logo.png"
+   inkscape:export-xdpi="43.614391"
+   inkscape:export-ydpi="43.614391">
   <defs
      id="defs2" />
   <sodipodi:namedview
@@ -25,9 +28,9 @@
      inkscape:pageshadow="2"
      inkscape:zoom="0.65469633"
      inkscape:cx="339.70071"
-     inkscape:cy="614.16477"
+     inkscape:cy="615.69219"
      inkscape:document-units="mm"
-     inkscape:current-layer="layer1"
+     inkscape:current-layer="layer3"
      inkscape:document-rotation="0"
      showgrid="false"
      showguides="false"
@@ -44,7 +47,7 @@
      inkscape:pagecheckerboard="true"
      inkscape:snap-page="true">
     <sodipodi:guide
-       position="115.26202,80.441758"
+       position="168.18811,312.2782"
        orientation="1,0"
        id="guide10" />
     <sodipodi:guide
@@ -81,10 +84,10 @@
      id="layer3"
      inkscape:label="Background">
     <rect
-       style="fill:#ffffff;stroke-width:4.99999;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none"
+       style="fill:#ffffff;stroke-width:5.96196;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none"
        id="rect877"
-       width="232.77457"
-       height="329.04279"
+       width="330"
+       height="330"
        x="0"
        y="0" />
   </g>
@@ -96,12 +99,12 @@
      transform="translate(14.720365,36.934394)">
     <path
        style="fill:none;stroke:#000000;stroke-width:15;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 152.35911,244.60841 c 0,0 -33.31603,-43.93073 -56.586518,-66.59327 C 35.062798,118.8914 63.541489,67.423614 100.54166,69.591107 c 41.50301,2.431272 60.29163,49.255363 15.56559,96.732643"
+       d="m 205.51636,244.60841 c 0,0 -33.31603,-43.93073 -56.58652,-66.59327 -60.709795,-59.12374 -32.2311,-110.591529 4.76907,-108.424036 41.50301,2.431272 60.29163,49.255366 15.56559,96.732646"
        id="path30"
        sodipodi:nodetypes="cssc" />
     <path
        style="fill:none;stroke:#000000;stroke-width:15;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 43.954024,244.60841 85.563769,197.8965"
+       d="M 97.111274,244.60841 138.72102,197.8965"
        id="path859"
        sodipodi:nodetypes="cc" />
   </g>
@@ -113,22 +116,22 @@
      transform="translate(14.720365,36.934394)">
     <path
        style="fill:none;stroke:#000000;stroke-width:5;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 46.203583,99.012181 13.091646,55.365991 C 9.0201139,54.264509 46.335668,5.4481636 100.54166,5.5658186 c 54.20599,0.117655 90.0126,49.8001724 90.0126,49.8001724 l -34.50271,43.64619"
+       d="M 99.360834,99.012178 66.248893,55.365988 C 62.177361,54.264506 99.492914,5.4481607 153.69891,5.5658157 c 54.20599,0.117655 90.0126,49.8001723 90.0126,49.8001723 l -34.50271,43.64619"
        id="path862"
        sodipodi:nodetypes="cczcc" />
     <path
        style="fill:none;stroke:#000000;stroke-width:5;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 100.54166,19.583006 V 68.958073"
+       d="M 153.69891,19.583003 V 68.95807"
        id="path868"
        sodipodi:nodetypes="cc" />
     <path
        style="fill:none;stroke:#000000;stroke-width:5;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 48.288964,41.824441 72.344253,78.148904"
+       d="M 101.44621,41.824438 125.5015,78.148901"
        id="path870"
        sodipodi:nodetypes="cc" />
     <path
        style="fill:none;stroke:#000000;stroke-width:5;stroke-linecap:round;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 129.45465,77.492192 152.04022,42.029661"
+       d="M 182.6119,77.492189 205.19747,42.029658"
        id="path872"
        sodipodi:nodetypes="cc" />
   </g>
