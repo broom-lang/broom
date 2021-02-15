@@ -21,13 +21,13 @@
      pagecolor="#ffffff"
      bordercolor="#666666"
      borderopacity="1.0"
-     inkscape:pageopacity="1"
+     inkscape:pageopacity="0"
      inkscape:pageshadow="2"
      inkscape:zoom="0.65469633"
      inkscape:cx="339.70071"
-     inkscape:cy="611.9256"
+     inkscape:cy="614.16477"
      inkscape:document-units="mm"
-     inkscape:current-layer="layer2"
+     inkscape:current-layer="layer1"
      inkscape:document-rotation="0"
      showgrid="false"
      showguides="false"
@@ -40,7 +40,9 @@
      fit-margin-left="25"
      fit-margin-right="25"
      fit-margin-top="40"
-     fit-margin-bottom="40">
+     fit-margin-bottom="40"
+     inkscape:pagecheckerboard="true"
+     inkscape:snap-page="true">
     <sodipodi:guide
        position="115.26202,80.441758"
        orientation="1,0"
@@ -74,6 +76,18 @@
       </cc:Work>
     </rdf:RDF>
   </metadata>
+  <g
+     inkscape:groupmode="layer"
+     id="layer3"
+     inkscape:label="Background">
+    <rect
+       style="fill:#ffffff;stroke-width:4.99999;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:4;stroke-dasharray:none"
+       id="rect877"
+       width="232.77457"
+       height="329.04279"
+       x="0"
+       y="0" />
+  </g>
   <g
      inkscape:label="Stick"
      inkscape:groupmode="layer"
