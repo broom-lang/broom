@@ -1,6 +1,6 @@
 # Broom
 
-![Broom logo](Broom_logo.svg)
+<img src="Broom_logo.svg" alt="Broom logo" width="120"/>
 
 A programming language with first-class modules and algebraic effects.  Still
 very much a work in progress (i.e. not yet usable).
