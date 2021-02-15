@@ -5,19 +5,19 @@
 A programming language with first-class modules and algebraic effects.  Still
 very much a work in progress (i.e. not yet usable).
 
-## Characterization and Planned Features
+## (Planned) Features
 
-* Functional-first
-* Strict evaluation (call by value)
-* Strong static typing
-    - Parametric, higher-rank and impredicative polymorphism
-    - Type inference (but no let-generalization)
-    - Modular implicits
-    - Generalized Algebraic DataTypes
-* ML-style module system
-    - Also supports recursive and first-class modules
-* Algebraic effects
-* The modules and effects are based on row types
+* Functional-first, with strict evaluation
+* ML-style module system with higher-order, recursive and first-class modules
+    - Records and modules are the same, à la 1ML
+    - First-class ML-modules also provide higher-ranked and higher kinded types
+        * with impredicative instantiation
+    - Modular implicits support ad-hoc polymorphism and type level programming
+* Algebraic effects and effect handlers
+* Row typed modules, records, polymorphic variants and effects
+* Conventional and simplified syntax
+    - extensible with procedural hygienic macros
+* Optimizing whole-program compilation to Javascript or (later) native code
 
 ## (Abstract) Syntax
 
