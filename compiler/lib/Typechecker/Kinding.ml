@@ -18,22 +18,16 @@ module Err = TypeError*)
 
 type env = Env.t
 type 'a with_pos = 'a Util.with_pos
-(*type 'a kinding = 'a TS.kinding
 
-let reabstract = Env.reabstract
-let ref = TxRef.ref*)
 let (!) = TxRef.(!)
 
 let kindof_prim : Prim.t -> T.kind = function
     | Int | Bool | String -> T.aType
-    (*| Array | Cell -> Pi {binder = ref T.Binder.of_inert
-        ; domain = T.aType; eff = EmptyRow; codomain = T.aType}
+    | Array | Cell -> Pi {domain = T.aType; eff = EmptyRow; codomain = T.aType}
     | SingleRep -> T.aType
-    | Boxed -> Prim SingleRep*)
+    | Boxed -> Prim SingleRep
     | TypeIn -> Pi {domain = T.rep; eff = EmptyRow; codomain = T.aType}
-    (*| RowOf -> Pi {binder = ref T.Binder.of_inert
-        ; domain = T.aKind; eff = EmptyRow; codomain = T.aKind}*)
-    | _ -> todo None ~msg: "kindof_prim"
+    | RowOf -> Pi {domain = T.aKind; eff = EmptyRow; codomain = T.aKind}
 
 let rec kindof_F pos env : T.t -> T.kind = function
     (*| PromotedArray typs ->
