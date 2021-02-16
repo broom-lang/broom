@@ -30,39 +30,36 @@ let kindof_prim : Prim.t -> T.kind = function
     | RowOf -> Pi {domain = T.aKind; eff = EmptyRow; codomain = T.aKind}
 
 let rec kindof_F pos env : T.t -> T.kind = function
-    (*| PromotedArray typs ->
+    | PromotedArray typs ->
         let el_kind = if Vector.length typs > 0
             then kindof_F pos env (Vector.get typs 0)
-            else Uv (Env.uv env T.aKind) in
+            else Env.tv env T.aKind in
         App (Prim Array, el_kind)
     | PromotedTuple typs -> Tuple (Vector.map (kindof_F pos env) typs)
-    | Tuple typs ->
+    | Tuple typs -> (* FIXME: nested tuples *)
         let kinds = Vector.map (kindof_F pos env) typs in
         App (Prim TypeIn, PromotedArray kinds)
     | Pi _ | Impli _ | Record _ | Proxy _ -> T.aType
     | With _ | EmptyRow -> T.aRow
-    | Fn (domain, body) -> Pi { universals = Vector.empty; domain; eff = EmptyRow
-        ; codomain = kindof_F pos env body }
+    | Fn {param; body} ->
+        Pi {domain = param; eff = EmptyRow; codomain = kindof_F pos env body }
     | App (callee, arg) ->
         (match kindof_F pos env callee with
-        | Pi {universals; domain; eff = _; codomain} ->
-            if Vector.length universals = 0 then begin
-                check_F pos env domain arg;
-                codomain
-            end else todo (Some pos) ~msg: "universals in type application"
-        | _ -> unreachable (Some pos) ~msg: "invalid type application in `kindof_F`.")*)
+        | Pi {domain; eff = _; codomain} -> (* FIXME: universals *)
+            check_F pos env domain arg;
+            codomain
+        | _ -> unreachable (Some pos) ~msg: "invalid type application in `kindof_F`.")
     | Uv {Uv.bound; _} -> (match !bound with
         | Bot kind -> kind
         | Flex typ | Rigid typ -> kindof_F pos env typ)
     | Ov {kind; _} -> kind
     | Prim pt -> kindof_prim pt
-    | _ -> todo (Some pos) ~msg: "kindof_F"
-(*
+
 and check_F pos env kind typ =
     let kind' = kindof_F pos env typ in
-    ignore (M.solving_unify pos env kind' kind)
+    M.unify pos env kind' kind
 
-let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
+(*let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
     let rec elab env (typ : AType.t with_pos) : T.t kinding =
         match typ.v with
         | Declare (decls, body) ->
