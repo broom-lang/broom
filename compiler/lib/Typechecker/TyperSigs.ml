@@ -17,7 +17,7 @@ module type KINDING = sig
     val check : env -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
     val kindof_nonquantifying : env -> Fc.Type.scope -> Ast.Type.t with_pos -> typ
     val check_nonquantifying : env -> Fc.Type.scope -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
-    val eval : Util.span -> env -> typ -> typ
+    val eval : Util.span -> env -> typ -> typ option
 end
 
 module type TYPING = sig

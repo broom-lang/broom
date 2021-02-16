@@ -216,7 +216,9 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
                 ^ (Util.doc_to_string (PPrint.(T.to_doc t ^/^ string "and" ^/^ T.to_doc t')))) in
 
     fun span env t t' ->
-        unify_whnf span env (K.eval span env t) (K.eval span env t')
+        unify_whnf span env
+            (K.eval span env t |> Option.get) (* FIXME: Option.get *)
+            (K.eval span env t' |> Option.get) (* FIXME: Option.get *)
 
 and instance span env sub super = unify span env (Env.instantiate env sub) super
 
@@ -1014,7 +1016,7 @@ and check_uv_assignee pos env uv uv_binder max_uv_level typ =
 
         | Prim _ -> ()
         | _ -> todo (Some pos) ~msg: "check_uv_assignee" in
-    check (K.eval pos env typ)
+    check (K.eval pos env typ |> Option.get) (* FIXME: Option.get *)
 
 (* Public API *)
 

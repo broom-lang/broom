@@ -134,26 +134,17 @@ let rec kindof : Env.t -> AType.t with_pos -> T.t kinding = fun env typ ->
             ) (0, Name.Map.empty) params in
             Exists (Vector1.map snd params, Env.close env substitution typ)
         | None -> typ in
-    {typ; kind}
+    {typ; kind}*)
 
-and eval pos env typ =
+let rec eval =
     let (let* ) = Option.bind in
-    let (let+) = Fun.flip Option.map in
 
-    let rec eval = function
+    let rec eval_forced pos env t = match t with
         | T.App (callee, arg) ->
-            let* (callee, callee_co) = eval callee in
-            let+ (typ, co) = apply callee arg in
-            ( typ
-            , match (callee_co, co) with
-              | (Some callee_co, Some co) ->
-                  Some (T.Trans (Inst (callee_co, Vector1.singleton arg), co))
-              | (Some callee_co, None) -> Some (Inst (callee_co, Vector1.singleton arg))
-              | (None, Some co) -> Some co
-              | (None, None) -> None )
-        | Fn _ as typ -> Some (typ, None)
-        | Ov ov as typ ->
-            (match Env.get_implementation env ov with
+            let* callee = eval pos env callee in
+            apply pos callee arg
+        | Ov _ ->
+            (*match Env.get_implementation env ov with
             | Some (axname, _, uv) ->
                 let typ = T.Uv uv in
                 let+ (typ, co) = eval typ in
@@ -161,32 +152,22 @@ and eval pos env typ =
                 , match co with
                   | Some co -> Some (T.Trans (AUse axname, co))
                   | None -> Some (AUse axname) )
-            | None -> Some (typ, None))
-        | Uv uv as typ ->
-            (match Env.get_uv env uv with
-            | Assigned typ -> eval typ
-            | Unassigned _ -> Some (typ, None))
-        | ( Exists _ | PromotedArray _ | PromotedTuple _
-          | Tuple _ | Pi _ | Impli _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ) as typ ->
-            Some (typ, None)
-        | Bv _ -> unreachable (Some pos) ~msg: "`Bv` in `eval`"
+            | None -> Some (typ, None)*)
+            Some t
+        | Uv _ | Pi _ | Impli _ | Fn _ | Tuple _ | PromotedArray _ | PromotedTuple _
+        | Record _ | With _ | EmptyRow | Proxy _ | Prim _ -> Some t
 
-    and apply callee arg = match callee with
+    and apply pos callee arg = match callee with
         (* NOTE: Arg kinds do not need to be checked here because all `App`s originate from functors: *)
-        | T.Fn (_, body) -> eval (Env.expose env (Vector.singleton arg) body)
-        | Ov _ | App _ | Prim _ -> Some (T.App (callee, arg), None)
-        | Uv uv ->
-            (match Env.get_uv env uv with
-            | Unassigned _ -> None
-            | Assigned _ -> unreachable (Some pos) ~msg: "Assigned in `apply`.")
-        | Exists _ | PromotedArray _ | PromotedTuple _
-        | Tuple _ | Pi _ | Impli _ | Record _ | With _ | EmptyRow | Proxy _ ->
-            unreachable (Some pos) ~msg: "uncallable type in `eval.apply`"
-        | Bv _ -> unreachable (Some pos) ~msg: "`Bv` in `eval.apply`"
-    in eval typ
-*)
+        (*| T.Fn {param = _; body} -> eval (Env.expose env (Vector.singleton arg) body)*)
+        | T.Fn _ -> todo (Some pos)
+        | Ov _ | App _ | Prim _ -> Some (T.App (callee, arg))
+        | Uv _ -> None
+        | Pi _ | Impli _ | Tuple _ | PromotedArray _ | PromotedTuple _
+        | Record _ | With _ | EmptyRow | Proxy _ ->
+            unreachable (Some pos) ~msg: "uncallable type in `eval.apply`" in
 
-let eval _ _ t = T.force t
+    fun pos env t -> eval_forced pos env (T.force t)
 
 let rec kindof_nonquantifying env scope (typ : AType.t with_pos) = match typ.v with
     | Pi {domain; eff; codomain} ->

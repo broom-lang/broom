@@ -104,7 +104,7 @@ let matcher pos env typ matchee clauses =
                 |> Stream.into Sink.len in
 
             if coli < Vector.length matchees then
-                (match K.eval pos env (Vector.get matchees coli).vtyp with
+                (match K.eval pos env (Vector.get matchees coli).vtyp |> Option.get with (* FIXME: Option.get *)
                 | Prim Int ->
                     let (pats, rows, default_rowis) = split_int pats coli in
                     let matchee = Vector.get matchees coli in
