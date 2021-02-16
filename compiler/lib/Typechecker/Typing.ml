@@ -41,46 +41,48 @@ let const_typ c = T.Prim (match c with
 let primop_typ : Env.t -> Primop.t -> T.t = fun env ->
     let open Primop in
     function
-    (*| CellNew -> (* forall a . () -> __cell a *)
-        ( Vector.singleton T.aType, Vector.empty
-        , T.EmptyRow
-        , T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}) )
+    | CellNew -> (* forall a . () -> __cell a *)
+        T.fix (Scope (Env.t_scope env)) (fun t ->
+            Pi { domain = Tuple Vector.empty; eff = EmptyRow
+                ; codomain = App (Prim Cell, Uv (Uv.fresh ForAll (Type t) T.aType)) })
     | CellInit -> (* forall a . (__cell a, a) -> () *)
-        ( Vector.singleton T.aType
-        , Vector.of_list [ T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType})
-            ; Bv {depth = 0; sibli = 0; kind = T.aType} ]
-        , T.EmptyRow, T.Tuple Vector.empty )
+        T.fix (Scope (Env.t_scope env)) (fun t ->
+            let a = T.Uv (Uv.fresh ForAll (Type t) T.aType) in
+            Pi { domain = Tuple (Vector.of_list [T.App (Prim Cell, a); a])
+                ; eff = EmptyRow; codomain = Tuple Vector.empty })
     | CellGet -> (* forall a . __cell a -> a *)
-        ( Vector.singleton T.aType
-        , Vector.singleton (T.App (Prim Cell, Bv {depth = 0; sibli = 0; kind = T.aType}))
-        , T.EmptyRow, T.Bv {depth = 0; sibli = 0; kind = T.aType} )*)
+        T.fix (Scope (Env.t_scope env)) (fun t ->
+            let a = T.Uv (Uv.fresh ForAll (Type t) T.aType) in
+            Pi {domain = T.App (Prim Cell, a); eff = EmptyRow; codomain = a})
     | Int ->
         Pi {domain = Tuple Vector.empty; eff = EmptyRow; codomain = Proxy (Prim Int)}
     | String -> 
         Pi {domain = Tuple Vector.empty; eff = EmptyRow; codomain = Proxy (Prim String)}
-    | Type ->
-        Pi { domain = Tuple Vector.empty
-            ; eff = EmptyRow
+    | Type -> (* () -> [= exists a . [= a]] *)
+        Pi { domain = Tuple Vector.empty; eff = EmptyRow
             ; codomain = Proxy (T.fix (Scope (Env.t_scope env)) (fun t ->
                 Proxy (Uv (Uv.fresh Exists (Type t) T.aType)))) }
 
-    (*| TypeOf -> (* FIXME: Enforce argument purity *)
-        ( Vector.singleton T.aType
-        , Vector.singleton (T.Bv {depth = 0; sibli = 0; kind = T.aType})
-        , EmptyRow, Proxy (Bv {depth = 0; sibli = 0; kind = T.aType}) )
-    | Import ->
-        ( Vector.singleton T.aType
-        , Vector.of_list [T.Proxy (Bv {depth = 0; sibli = 0; kind = T.aType}); Prim String]
-        , EmptyRow, Bv {depth = 0; sibli = 0; kind = T.aType} )
-    | GlobalSet ->
-        ( Vector.singleton T.aType
-        , Vector.of_list [T.Prim String; Bv {depth = 0; sibli = 0; kind = T.aType}]
-        , EmptyRow, Tuple Vector.empty )
-    | GlobalGet ->
-        ( Vector.singleton T.aType
-        , Vector.singleton (T.Prim String)
-        , EmptyRow, Bv {depth = 0; sibli = 0; kind = T.aType} )*)
-    | _ -> todo None ~msg: "primop_typ"
+    | TypeOf -> (* forall a . a -> [= a] *)
+        (* FIXME: Enforce argument purity *)
+        T.fix (Scope (Env.t_scope env)) (fun t ->
+            let a = T.Uv (Uv.fresh ForAll (Type t) T.aType) in
+            Pi {domain = a; eff = EmptyRow; codomain = Proxy a})
+    | Import -> (* forall a . ([= a], __string ()) -> a *)
+        T.fix (Scope (Env.t_scope env)) (fun t ->
+            let a = T.Uv (Uv.fresh ForAll (Type t) T.aType) in
+            Pi { domain = Tuple (Vector.of_list [T.Proxy a; Prim String]); eff = EmptyRow
+                ; codomain = a })
+    | GlobalSet -> (* forall a . (__string (), a) -> () *)
+        T.fix (Scope (Env.t_scope env)) (fun t ->
+            let a = T.Uv (Uv.fresh ForAll (Type t) T.aType) in
+            Pi { domain = Tuple (Vector.of_list [T.Prim String; a]); eff = EmptyRow
+                ; codomain = Tuple Vector.empty })
+    | GlobalGet -> (* forall a . __string () -> a *)
+        T.fix (Scope (Env.t_scope env)) (fun t ->
+            let a = T.Uv (Uv.fresh ForAll (Type t) T.aType) in
+            Pi {domain = Prim String; eff = EmptyRow; codomain = a})
+
 (*
 let branchop_typ : Branchop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t Vector.t =
     let open Branchop in
