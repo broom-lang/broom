@@ -257,7 +257,7 @@ and Typ : (GraphTypeSigs.TYPE
 
         fun f t ->
             let t = force t in
-            match force t with
+            match t with
             | Uv uv ->
                 let uv' = Uv.map_bound f uv in
                 if uv' == uv then t else Uv uv'
