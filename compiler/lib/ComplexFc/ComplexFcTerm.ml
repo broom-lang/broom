@@ -5,7 +5,7 @@ module Uv = GraphType.Uv
 module Ov = GraphType.Ov
 
 module rec Expr : sig
-    include FcSigs.EXPR
+    include ComplexFcSigs.EXPR
         with type def = Stmt.def
         with type stmt = Stmt.t
 
@@ -451,7 +451,7 @@ end = struct
     module VarSet = Set.Make(Var)
 end
 
-and Stmt : FcSigs.STMT
+and Stmt : ComplexFcSigs.STMT
     with type expr = Expr.t
     with type var = Expr.var
 = struct

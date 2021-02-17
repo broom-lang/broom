@@ -3,7 +3,7 @@ open Asserts
 
 module T = GraphType.Type
 module Uv = GraphType.Uv
-module E = Fc.Term.Expr
+module E = ComplexFc.Term.Expr
 module TS = TyperSigs
 
 type var = Util.plicity * E.var

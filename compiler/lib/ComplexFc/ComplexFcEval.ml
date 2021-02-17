@@ -1,7 +1,8 @@
 open Asserts
 
-module Expr = Fc.Term.Expr
-module Stmt = Fc.Term.Stmt
+open ComplexFc.Term
+module Program = ComplexFc.Program
+
 type expr = Expr.t
 type pat = Expr.pat
 
@@ -300,7 +301,7 @@ let run (ns : Namespace.t) program =
             | _ -> else_k ())
         | TupleP _ | ProxyP _ -> unreachable (Some pat.ppos) in
 
-    let {type_fns = _; defs; main} : Fc.Program.t = program in
+    let {type_fns = _; defs; main} : Program.t = program in
     let pos =
         ( (if Vector.length defs > 0
           then (let (pos, _, _) = Vector.get defs 0 in fst pos)

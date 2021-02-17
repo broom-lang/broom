@@ -10,8 +10,8 @@ let (!) = TxRef.(!)
 module AExpr = Ast.Term.Expr
 module AStmt = Ast.Term.Stmt
 
-module FExpr = Fc.Term.Expr
-module FStmt = Fc.Term.Stmt
+module FExpr = ComplexFc.Term.Expr
+module FStmt = ComplexFc.Term.Stmt
 
 module T = GraphType.Type
 module Uv = GraphType.Uv
@@ -712,7 +712,7 @@ let check_interactive_stmts env stmts =
                 | _ -> (stmts, FExpr.at pos (Tuple Vector.empty) (FExpr.tuple [||]))
             else (stmts, FExpr.at pos (Tuple Vector.empty) (FExpr.tuple [||])) in
         FExpr.at pos body.typ (FExpr.let' stmts body) in
-    ( { TS.term = { Fc.Program.type_fns = Vector.empty (*Env.type_fns env (* FIXME: gets all typedefs ever seen *)*)
+    ( { TS.term = { ComplexFc.Program.type_fns = Vector.empty (*Env.type_fns env (* FIXME: gets all typedefs ever seen *)*)
                    ; defs = Vector.empty; main }
     ; eff = EmptyRow } (* FIXME: `; eff }` *)
     , env )

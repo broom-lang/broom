@@ -17,9 +17,9 @@ module Ast = Ast
 
 module GraphType = GraphType
 module Fc = struct
-    include Fc
+    include ComplexFc
 
-    module Eval = FcEval
+    module Eval = ComplexFcEval
 end
 
 module SedlexMenhir = SedlexMenhir

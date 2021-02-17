@@ -1,7 +1,9 @@
+type expr = ComplexFc.Term.Expr.t
+
 type t
 
 val id : t
-val coercer : (Fc.Term.Expr.t -> Fc.Term.Expr.t) -> t
-val apply : t -> Fc.Term.Expr.t -> Fc.Term.Expr.t
-val apply_opt : t option -> Fc.Term.Expr.t -> Fc.Term.Expr.t
+val coercer : (expr -> expr) -> t
+val apply : t -> expr -> expr
+val apply_opt : t option -> expr -> expr
 

@@ -1,6 +1,6 @@
 module Type = GraphType
 
-module Term = FcTerm
+module Term = ComplexFcTerm
 
 module Program = struct
     module Type = Type.Type

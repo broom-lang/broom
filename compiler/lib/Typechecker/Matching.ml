@@ -15,7 +15,7 @@ module T = GraphType.Type
 module Uv = GraphType.Uv
 module Ov = GraphType.Ov
 module Binder = Uv.Binder
-module E = Fc.Term.Expr
+module E = ComplexFc.Term.Expr
 (*module Err = TypeError*)
 
 type env = Env.t

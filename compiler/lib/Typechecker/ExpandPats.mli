@@ -1,5 +1,5 @@
 module T = GraphType.Type
-module E = Fc.Term.Expr
+module E = ComplexFc.Term.Expr
 
 module Make
     (Env : TyperSigs.ENV)

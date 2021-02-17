@@ -2,12 +2,12 @@ open Streaming
 open Asserts
 
 module T = GraphType.Type
-module E = Fc.Term.Expr
-module S = Fc.Term.Stmt
+module E = ComplexFc.Term.Expr
+module S = ComplexFc.Term.Stmt
 type var = E.var
 type expr = E.t
 type pat = E.pat
-type stmt = Fc.Term.Stmt.t
+type stmt = S.t
 
 module Make
     (Env : TyperSigs.ENV)

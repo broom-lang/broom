@@ -1,12 +1,13 @@
-module Expr = Fc.Term.Expr
+module Expr = ComplexFc.Term.Expr
+type expr = Expr.t
 
-type t = Expr.t -> Expr.t
+type t = expr -> expr
 
 let id = Fun.id
 
 let coercer = Fun.id
 
-let apply f (expr : Expr.t) = match expr.term with
+let apply f (expr : expr) = match expr.term with
     | Use _ | Const _ -> f expr
     | _ ->
         let {Expr.term = _; pos; typ; parent = _} = expr in
