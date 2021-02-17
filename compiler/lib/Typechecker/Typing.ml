@@ -21,7 +21,6 @@ type 'a typing = 'a TS.typing
 
 module Make
     (Env : TS.ENV)
-    (ExpandPats : TS.EXPAND_PATS with type env = Env.t)
     (K : TS.KINDING with type env = Env.t)
     (M : TS.MATCHING with type env = Env.t)
 : TS.TYPING with type env = Env.t
@@ -446,12 +445,10 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         let eff = Env.tv env T.aRow in
         let codomain = Env.tv env (T.App (T.Prim TypeIn, Env.tv env T.rep)) in
         let param = FExpr.fresh_var domain in
-        let clauses = clauses |> Vector.map (fun clause ->
-            let clause = check_clause Util.Explicit env scope domain eff codomain clause in
-            {ExpandPats.pat = clause.FExpr.pat; emit = emit_clause_body env clause}
-        ) in
         let matchee = FExpr.at expr.pos param.vtyp (FExpr.use param) in
-        let body = ExpandPats.expand_clauses expr.pos env codomain matchee clauses in
+        let clauses = clauses
+            |> Vector.map (check_clause Util.Explicit env scope domain eff codomain) in
+        let body = FExpr.at expr.pos codomain (FExpr.match' matchee clauses) in
         let typ = Env.forall_scope_ovs env scope (T.Pi {domain; eff; codomain}) in
         {term = FExpr.at expr.pos typ (FExpr.fn scope param body); eff}
 
@@ -528,70 +525,6 @@ and check_clause plicity env scope domain _ codomain ({params; body} : AExpr.cla
     let {TS.term = body; eff = _} = check body_env codomain body in
     (*ignore (M.solving_unify body.pos env body_eff eff);*)
     {FExpr.pat; body}
-
-and emit_clause_body _ {FExpr.pat; body} =
-    let pos = pat.ppos in
-    fun ctx tmp_vars -> match ctx with
-        | ExpandPats.Inline ->
-            let defs = Stream.from (Vector.to_source tmp_vars)
-                |> Stream.map (fun {ExpandPats.src_var; tmp_var} ->
-                    FStmt.Def (pos, src_var, FExpr.at pos src_var.FExpr.vtyp (FExpr.use tmp_var)))
-                |> Stream.into Sink.array in
-            {body with term = FExpr.let' defs body}
-
-        | Shared var ->
-            let codomain = body.typ in
-            if Vector.length tmp_vars = 1 then begin
-                let {ExpandPats.tmp_var; src_var = _} = Vector.get tmp_vars 0 in
-                let domain = tmp_var.vtyp in
-                let ftyp = T.Pi {domain
-                    ; eff = EmptyRow (* NOTE: effect does not matter any more... *)
-                    ; codomain } in
-                FExpr.at pos ftyp (FExpr.fn (todo (Some pos)) var body)
-            end else begin
-                let pos = body.pos in
-                let domain : T.t = Tuple (Vector.map (fun (vars : ExpandPats.final_naming) ->
-                    vars.src_var.vtyp
-                ) tmp_vars) in
-                let ftyp = T.Pi {domain
-                    ; eff = EmptyRow (* NOTE: effect does not matter any more... *)
-                    ; codomain } in
-                let param = FExpr.fresh_var domain in
-                let body = FExpr.at pos codomain (FExpr.let' (Stream.from (Vector.to_source tmp_vars)
-                        |> Stream.indexed
-                        |> Stream.map (fun (i, {ExpandPats.tmp_var = _; src_var}) ->
-                            FStmt.Def (pos, src_var,
-                                FExpr.at pos src_var.vtyp (FExpr.focus (FExpr.at pos domain (FExpr.use param)) i)))
-                        |> Stream.into Sink.array)
-                    body) in
-                FExpr.at pos ftyp (FExpr.fn (todo (Some pos)) param body)
-            end
-
-        | Redirect dest ->
-            let codomain = body.typ in
-            if Vector.length tmp_vars = 1
-            then begin
-                let {ExpandPats.tmp_var; src_var = _} = Vector.get tmp_vars 0 in
-                let domain = tmp_var.vtyp in
-                let ftyp = T.Pi {domain
-                    ; eff = EmptyRow (* NOTE: effect does not matter any more... *)
-                    ; codomain } in
-                FExpr.at pos codomain (FExpr.app (FExpr.at pos ftyp (FExpr.use dest)) Vector.empty
-                    (FExpr.at pos domain (FExpr.use tmp_var)))
-            end else begin
-                let domain : T.t = Tuple (Vector.map (fun (vars : ExpandPats.final_naming) ->
-                    vars.tmp_var.vtyp
-                ) tmp_vars) in
-                let ftyp = T.Pi {domain
-                    ; eff = EmptyRow (* NOTE: effect does not matter any more... *)
-                    ; codomain } in
-                let args = Stream.from (Vector.to_source tmp_vars)
-                    |> Stream.map (fun {ExpandPats.tmp_var; _} ->
-                        FExpr.at pos tmp_var.vtyp (FExpr.use tmp_var))
-                    |> Stream.into (Sink.buffer (Vector.length tmp_vars)) in
-                FExpr.at pos codomain (FExpr.app (FExpr.at pos ftyp (FExpr.use dest)) Vector.empty
-                    (FExpr.at pos domain (FExpr.tuple args)))
-            end
 
 (* # Patterns *)
 

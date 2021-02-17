@@ -135,15 +135,3 @@ module type ENV = sig
     val with_error_handler : t -> error_handler -> t
 end
 
-module type EXPAND_PATS = sig
-    type env
-
-    type ctx = Inline | Shared of Fc.Term.Expr.var | Redirect of Fc.Term.Expr.var
-    type final_naming = {tmp_var : Fc.Term.Expr.var; src_var : Fc.Term.Expr.var}
-    type final_emitter = ctx -> final_naming Vector.t -> Fc.Term.Expr.t
-    type clause' = {pat : Fc.Term.Expr.pat; emit : final_emitter}
-
-    val expand_clauses : Util.span -> env -> Type.t -> Fc.Term.Expr.t -> clause' Vector.t
-        -> Fc.Term.Expr.t
-end
-

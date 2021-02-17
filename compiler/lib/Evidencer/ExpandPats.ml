@@ -2,12 +2,25 @@ open Streaming
 open Asserts
 
 module T = GraphType.Type
+module Fc = ComplexFc
 module E = ComplexFc.Term.Expr
 module S = ComplexFc.Term.Stmt
 type var = E.var
 type expr = E.t
 type pat = E.pat
 type stmt = S.t
+
+module type S = sig
+    type env
+
+    type ctx = Inline | Shared of Fc.Term.Expr.var | Redirect of Fc.Term.Expr.var
+    type final_naming = {tmp_var : Fc.Term.Expr.var; src_var : Fc.Term.Expr.var}
+    type final_emitter = ctx -> final_naming Vector.t -> Fc.Term.Expr.t
+    type clause' = {pat : Fc.Term.Expr.pat; emit : final_emitter}
+
+    val expand_clauses : Util.span -> env -> T.t -> Fc.Term.Expr.t -> clause' Vector.t
+        -> Fc.Term.Expr.t
+end
 
 module Make
     (Env : TyperSigs.ENV)
