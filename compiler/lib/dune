@@ -9,6 +9,7 @@
 (copy_files# (files Util/*))
 (copy_files# (files IRUtil/*))
 (copy_files# (files Ast/*))
+(copy_files# (files GraphType/*))
 (copy_files# (files ComplexFc/*))
 (copy_files# (files Typechecker/*))
 
