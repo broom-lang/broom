@@ -1,7 +1,9 @@
-module type TYPE = FcTypeSigs.TYPE
+module type TYPE = GraphTypeSigs.TYPE
 
 module type EXPR = sig
-    type typ
+    module Type = GraphType
+
+    type typ = Type.Type.t
     type def
     type stmt
 
@@ -19,7 +21,7 @@ module type EXPR = sig
         | Tuple of t array
         | Focus of {mutable focusee : t; index : int}
 
-        | Fn of {t_scope : FcType.Uv.Scope.t; param : var; mutable body : t}
+        | Fn of {t_scope : Type.Uv.Scope.t; param : var; mutable body : t}
         | App of {mutable callee : t; universals : typ Vector.t; mutable arg : t}
         | PrimApp of {op : Primop.t; universals : typ Vector.t; mutable arg : t}
         | PrimBranch of {op : Branchop.t; universals : typ Vector.t; mutable arg : t
@@ -32,7 +34,7 @@ module type EXPR = sig
 
         (*| Axiom of { axioms : (Name.t * Type.kind Vector.t * typ * typ) Vector1.t
             ; mutable body : t }*)
-        | Cast of {mutable castee : t; coercion : FcType.Type.coercion}
+        | Cast of {mutable castee : t; coercion : Type.Type.coercion}
 
         (*| Pack of {existentials : typ Vector1.t; mutable impl : t}
         | Unpack of { existentials : typedef Vector1.t; var : var; mutable value : t
@@ -72,7 +74,7 @@ module type EXPR = sig
 
     val tuple : t Array.t -> t'
     val focus : t -> int -> t'
-    val fn : FcType.Uv.Scope.t -> var -> t -> t'
+    val fn : Type.Uv.Scope.t -> var -> t -> t'
     val app : t -> typ Vector.t -> t -> t'
     val primapp : Primop.t -> typ Vector.t -> t -> t'
     val primbranch : Branchop.t -> typ Vector.t -> t -> prim_clause Vector.t -> t'
@@ -80,7 +82,7 @@ module type EXPR = sig
     val letrec : def Array.t -> t -> t'
     (*val axiom : (Name.t * Type.kind Vector.t * typ * typ) Vector.t -> t -> t'*)
     val match' : t -> clause Vector.t -> t'
-    val cast : t -> FcType.Type.coercion -> t'
+    val cast : t -> Type.Type.coercion -> t'
     (*val pack : typ Vector.t -> t -> t'
     val unpack : typedef Vector1.t -> var -> t -> t -> t'*)
     val record : (Name.t * t) array -> t'
@@ -115,7 +117,6 @@ end
 
 module type TERM = sig
     module rec Expr : (EXPR
-        with type typ = FcType.Type.t
         with type def = Stmt.def
         with type stmt = Stmt.t)
 

@@ -1,5 +1,5 @@
-module Type = FcType.Type
-module Uv = FcType.Uv
+module Type = GraphType.Type
+module Uv = GraphType.Uv
 
 module Term = FcTerm
 

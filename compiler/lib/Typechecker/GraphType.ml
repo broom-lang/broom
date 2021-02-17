@@ -8,7 +8,7 @@ let ref = TxRef.ref
 let (!) = TxRef.(!)
 let (:=) = TxRef.(:=)
 
-module rec Uv : (FcTypeSigs.UV
+module rec Uv : (GraphTypeSigs.UV
     with type typ = Typ.t
     with type kind = Typ.kind
     with type ov = Ov.t
@@ -154,7 +154,7 @@ module rec Uv : (FcTypeSigs.UV
     module HashSet = CCHashSet.Make (Key)
 end
 
-and Ov : (FcTypeSigs.OV
+and Ov : (GraphTypeSigs.OV
     with type kind = Typ.kind
     with type scope = Uv.scope
 ) = struct
@@ -166,7 +166,7 @@ and Ov : (FcTypeSigs.OV
     let equal = (==)
 end
 
-and Typ : (FcTypeSigs.TYPE
+and Typ : (GraphTypeSigs.TYPE
     with type uv = Uv.t
     with type bound = Uv.bound
     with type binder = Uv.binder

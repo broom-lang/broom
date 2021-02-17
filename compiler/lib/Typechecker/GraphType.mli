@@ -1,16 +1,16 @@
-module rec Typ : (FcTypeSigs.TYPE
+module rec Typ : (GraphTypeSigs.TYPE
     with type uv = Uv.t
     with type bound = Uv.bound
     with type binder = Uv.binder
     with type scope = Uv.scope
     with type ov = Ov.t)
 
-and Uv : (FcTypeSigs.UV
+and Uv : (GraphTypeSigs.UV
     with type typ = Typ.t
     with type kind = Typ.kind
     with type ov = Ov.t)
 
-and Ov : FcTypeSigs.OV
+and Ov : GraphTypeSigs.OV
     with type kind = Typ.kind
     with type scope = Uv.scope
 

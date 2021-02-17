@@ -31,7 +31,7 @@ module type TYPING = sig
     val check_stmt : env -> Ast.Term.Stmt.t -> Fc.Term.Stmt.t Vector.t typing * Fc.Type.t * env*)
     val check_interactive_stmts : env -> Ast.Term.Stmt.t Vector1.t -> Fc.Program.t typing * env
     (* HACK: (?): *)
-    val elaborate_pat : env -> FcType.Uv.Scope.t -> Ast.Term.Expr.pat with_pos
+    val elaborate_pat : env -> GraphType.Uv.Scope.t -> Ast.Term.Expr.pat with_pos
         -> Fc.Term.Expr.pat * Fc.Term.Expr.var Vector.t
 end
 

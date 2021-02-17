@@ -13,7 +13,7 @@ module Make
 
 module T = Fc.Type
 module Uv = Fc.Uv
-module Ov = FcType.Ov
+module Ov = GraphType.Ov
 module Binder = Uv.Binder
 module E = Fc.Term.Expr
 (*module Err = TypeError*)
