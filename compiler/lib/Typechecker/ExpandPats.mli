@@ -1,4 +1,4 @@
-module T = Fc.Type
+module T = GraphType.Type
 module E = Fc.Term.Expr
 
 module Make

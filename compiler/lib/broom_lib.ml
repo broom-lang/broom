@@ -14,6 +14,8 @@ module Util = Util (* HACK *)
 module Name = Name
 
 module Ast = Ast
+
+module GraphType = GraphType
 module Fc = struct
     include Fc
 

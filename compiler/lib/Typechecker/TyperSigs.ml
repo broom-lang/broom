@@ -1,22 +1,24 @@
+module Type = GraphType.Type
+
 (* Predeclare types and signatures for typer internal modules so that they can be separated: *)
 
 type span = Util.span
 type 'a with_pos = 'a Ast.with_pos
 
-type typ = Fc.Type.t
-type uv = Fc.Uv.t
+type typ = Type.t
+type uv = GraphType.Uv.t
 
 type 'a typing = {term : 'a; eff : typ}
-type 'a kinding = {typ : 'a; kind : Fc.Type.kind}
+type 'a kinding = {typ : 'a; kind : Type.kind}
 
 module type KINDING = sig
     type env
 
-    val kindof_F : span -> env -> Fc.Type.t -> Fc.Type.kind
+    val kindof_F : span -> env -> Type.t -> Type.kind
     val kindof : env -> Ast.Type.t with_pos -> typ
-    val check : env -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
-    val kindof_nonquantifying : env -> Fc.Type.scope -> Ast.Type.t with_pos -> typ
-    val check_nonquantifying : env -> Fc.Type.scope -> Fc.Type.kind -> Ast.Type.t with_pos -> typ
+    val check : env -> Type.kind -> Ast.Type.t with_pos -> typ
+    val kindof_nonquantifying : env -> Type.scope -> Ast.Type.t with_pos -> typ
+    val check_nonquantifying : env -> Type.scope -> Type.kind -> Ast.Type.t with_pos -> typ
     val eval : Util.span -> env -> typ -> typ option
 end
 
@@ -25,10 +27,10 @@ module type TYPING = sig
 
     val typeof : env -> Ast.Term.Expr.t with_pos -> Fc.Term.Expr.t typing
     val check : env -> typ -> Ast.Term.Expr.t with_pos -> Fc.Term.Expr.t typing
-    (*val implement : env -> (Fc.Type.ov Vector.t * Fc.Type.t) -> Ast.Term.Expr.t with_pos
+    (*val implement : env -> (Type.ov Vector.t * Type.t) -> Ast.Term.Expr.t with_pos
         -> Fc.Term.Expr.t typing
     val check_defs : env -> Ast.Term.Stmt.def Vector.t -> Fc.Term.Stmt.def Vector.t * env
-    val check_stmt : env -> Ast.Term.Stmt.t -> Fc.Term.Stmt.t Vector.t typing * Fc.Type.t * env*)
+    val check_stmt : env -> Ast.Term.Stmt.t -> Fc.Term.Stmt.t Vector.t typing * Type.t * env*)
     val check_interactive_stmts : env -> Ast.Term.Stmt.t Vector1.t -> Fc.Program.t typing * env
     (* HACK: (?): *)
     val elaborate_pat : env -> GraphType.Uv.Scope.t -> Ast.Term.Expr.pat with_pos
@@ -43,7 +45,7 @@ module type MATCHING = sig
 end
 
 module type ENV = sig
-    module T = Fc.Type
+    module T = Type
 
     type t
 
@@ -55,7 +57,7 @@ module type ENV = sig
 
     val find : t -> Util.span -> Name.t -> Fc.Term.Expr.var * bool
     val find_rhs : t -> Util.span -> Name.t -> Fc.Term.Expr.t typing
-    val find_rhst : t -> Util.span -> Name.t -> Fc.Type.t kinding
+    val find_rhst : t -> Util.span -> Name.t -> Type.t kinding
     val implicits : t -> Fc.Term.Expr.var Streaming.Stream.t
 
     val t_scope : t -> T.scope
@@ -140,7 +142,7 @@ module type EXPAND_PATS = sig
     type final_emitter = ctx -> final_naming Vector.t -> Fc.Term.Expr.t
     type clause' = {pat : Fc.Term.Expr.pat; emit : final_emitter}
 
-    val expand_clauses : Util.span -> env -> Fc.Type.t -> Fc.Term.Expr.t -> clause' Vector.t
+    val expand_clauses : Util.span -> env -> Type.t -> Fc.Term.Expr.t -> clause' Vector.t
         -> Fc.Term.Expr.t
 end
 

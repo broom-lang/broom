@@ -1,4 +1,4 @@
-type typ = Fc.Type.t
+type typ = GraphType.Type.t
 
 type t =
     | NonPattern of Ast.Term.Expr.t
@@ -10,11 +10,11 @@ type t =
     | MissingField of typ * string
     | SubType of typ * typ
     | Unify of typ * typ
-    | Unresolvable of Fc.Type.t * typ
-    | IncompleteImpl of Fc.Type.t * Fc.Type.t
+    | Unresolvable of typ * typ
+    | IncompleteImpl of typ * typ
     | ImpureType of Ast.Term.Expr.t
-    | Escape of Fc.Type.t
-    | Occurs of Fc.Type.t * typ
+    | Escape of typ
+    | Occurs of typ * typ
     | Causes of t * t list
 
 exception TypeError of Util.span * t

@@ -13,8 +13,8 @@ module AStmt = Ast.Term.Stmt
 module FExpr = Fc.Term.Expr
 module FStmt = Fc.Term.Stmt
 
-module T = Fc.Type
-module Uv = Fc.Uv
+module T = GraphType.Type
+module Uv = GraphType.Uv
 
 module TS = TyperSigs
 type 'a typing = 'a TS.typing

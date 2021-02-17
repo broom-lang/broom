@@ -1,10 +1,9 @@
-module Type = GraphType.Type
-module Uv = GraphType.Uv
+module Type = GraphType
 
 module Term = FcTerm
 
 module Program = struct
-    module Type = Type
+    module Type = Type.Type
     module Term = Term
 
     type t =

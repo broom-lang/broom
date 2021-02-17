@@ -10,7 +10,7 @@ module Make (Env : TS.ENV)
 = struct
 
 module AType = Ast.Type
-module T = Fc.Type
+module T = GraphType.Type
 module AExpr = Ast.Term.Expr
 (*module AStmt = Ast.Term.Stmt
 module FExpr = Fc.Term.Expr

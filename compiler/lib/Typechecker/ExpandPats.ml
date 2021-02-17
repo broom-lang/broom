@@ -1,7 +1,7 @@
 open Streaming
 open Asserts
 
-module T = Fc.Type
+module T = GraphType.Type
 module E = Fc.Term.Expr
 module S = Fc.Term.Stmt
 type var = E.var
