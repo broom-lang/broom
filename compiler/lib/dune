@@ -12,6 +12,7 @@
 (copy_files# (files GraphType/*))
 (copy_files# (files ComplexFc/*))
 (copy_files# (files Typechecker/*))
+(copy_files# (files Evidencer/*))
 
 (menhir (modules Parser))
 
