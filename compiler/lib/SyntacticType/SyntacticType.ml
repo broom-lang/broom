@@ -18,6 +18,10 @@ type t =
 
 and kind = t
 
+type coercion = Refl of t
+
+type def = Name.t * kind
+
 (* --- *)
 
 let exists_prec = 0
@@ -98,6 +102,11 @@ let rec to_doc t =
 and kind_to_doc t = to_doc t
 
 and tparams_to_doc kinds = PPrint.(separate_map (break 1) kind_to_doc kinds)
+
+let coercion_to_doc (Refl t) = to_doc t
+
+let def_to_doc (name, kind) =
+    PPrint.(infix 4 1 colon (Name.to_doc name) (kind_to_doc kind))
 
 (* --- *)
 

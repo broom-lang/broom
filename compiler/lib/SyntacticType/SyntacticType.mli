@@ -16,7 +16,13 @@ type t =
 
 and kind = t
 
+type coercion = Refl of t
+
+type def = Name.t * t
+
 val to_doc : t -> PPrint.document
+val coercion_to_doc : coercion -> PPrint.document
+val def_to_doc : def -> PPrint.document
 
 val expose : t Vector.t -> t -> t
 val close : int Name.HashMap.t -> t -> t
