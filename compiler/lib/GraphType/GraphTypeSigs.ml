@@ -46,6 +46,7 @@ module type UV = sig
         val level : t -> int
         val ovs : t -> ov Vector.t
         val fresh_ov : t -> kind -> ov
+        val exit : t -> t -> unit
     end
 
     val fresh : quantifier -> binder -> kind -> t
@@ -128,6 +129,8 @@ module type TYPE = sig
     val iter : (t -> unit) -> t -> unit
     val map_children : (t -> t) -> t -> t
     val postwalk_rebinding : (t -> t) -> t -> t
+
+    val ov_tied : int -> t -> bool
 
     val force : t -> t
     val forall_scope_ovs : binder: scope -> scope -> t -> t

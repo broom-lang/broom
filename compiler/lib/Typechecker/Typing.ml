@@ -440,7 +440,8 @@ let check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
 let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
 = fun env expr -> match expr.v with
     | Fn (Explicit, clauses) ->
-        let (env, scope) = Env.push_level env in
+        let env0 = env in
+        let (env, scope) = Env.push_level env0 in
         let domain = Env.tv env (T.App (T.Prim TypeIn, Env.tv env T.rep)) in
         let eff = Env.tv env T.aRow in
         let codomain = Env.tv env (T.App (T.Prim TypeIn, Env.tv env T.rep)) in
@@ -449,6 +450,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         let clauses = clauses
             |> Vector.map (check_clause Util.Explicit env scope domain eff codomain) in
         let body = FExpr.at expr.pos codomain (FExpr.match' matchee clauses) in
+        Uv.Scope.exit (Env.t_scope env0) scope;
         let typ = Env.forall_scope_ovs env scope (T.Pi {domain; eff; codomain}) in
         {term = FExpr.at expr.pos typ (FExpr.fn scope param body); eff}
 

@@ -185,6 +185,7 @@ let rec kindof_nonquantifying env scope (typ : AType.t with_pos) = match typ.v w
                 Env.expose env0 substitution concr_codo
             | (_, codomain) -> codomain in*)
 
+        Uv.Scope.exit scope scope';
         Env.forall_scope_ovs env scope' (Pi {domain; eff; codomain})
 
     | Impli {domain; codomain} ->
@@ -208,6 +209,7 @@ let rec kindof_nonquantifying env scope (typ : AType.t with_pos) = match typ.v w
                 Env.expose env0 substitution concr_codo
             | codomain -> codomain in*)
 
+        Uv.Scope.exit scope scope';
         Env.forall_scope_ovs env scope' (Impli {domain; codomain})
 
     | Tuple typs -> Tuple (Vector.map (kindof_nonquantifying env scope) typs)
@@ -232,14 +234,16 @@ and check_nonquantifying env scope _ (typ : AType.t with_pos) =
     (*M.unify typ.pos env (kindof_F typ.pos env t) kind;*)
     t
 
-let kindof env t =
-    let (env, scope) = Env.push_level env in
+let kindof env0 t =
+    let (env, scope) = Env.push_level env0 in
     let t = kindof_nonquantifying env scope t in
+    Uv.Scope.exit (Env.t_scope env0) scope;
     Env.exists_scope_ovs env scope t
 
-let check env kind t =
-    let (env, scope) = Env.push_level env in
+let check env0 kind t =
+    let (env, scope) = Env.push_level env0 in
     let t = check_nonquantifying env scope kind t in
+    Uv.Scope.exit (Env.t_scope env0) scope;
     Env.exists_scope_ovs env scope t
 
 end

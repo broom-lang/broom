@@ -52,7 +52,7 @@ module rec Uv : (GraphTypeSigs.UV
 
     let graft_mono uv typ = uv.bound := Rigid typ
 
-    module Scope = struct
+    module Scop = struct
         type t = scope
 
         let level = function
@@ -84,20 +84,20 @@ module rec Uv : (GraphTypeSigs.UV
 
         let level = function
             | Type t -> !(t.level)
-            | Scope scope -> Scope.level scope
+            | Scope scope -> Scop.level scope
 
         let add_bindee binder bindee = match binder with
             | Type binder ->
                 let bindees = binder.bindees in
                 if not (Vector.exists ((==) bindee) !bindees)
                 then bindees := Vector.push !bindees bindee
-            | Scope scope -> Scope.add_bindee scope bindee
+            | Scope scope -> Scop.add_bindee scope bindee
 
         let remove_bindee binder bindee = match binder with
             | Type binder ->
                 let bindees = binder.bindees in
                 bindees := Vector.filter ((!=) bindee) !bindees
-            | Scope scope -> Scope.remove_bindee scope bindee
+            | Scope scope -> Scop.remove_bindee scope bindee
     end
 
     let fresh quant binder kind =
@@ -141,6 +141,23 @@ module rec Uv : (GraphTypeSigs.UV
                 Binder.add_bindee !binder uv;
                 uv
             end
+
+    module Scope = struct
+        include Scop
+
+        let exit parent scope =
+            let level = level scope in
+            !(bindees scope) |> Vector.iter (fun bindee -> match !(bindee.bound) with
+                | Bot kind ->
+                    if Typ.ov_tied level kind
+                    then () (* TODO: assign some default? *)
+                    else rebind bindee (Scope parent)
+                | Flex t ->
+                    if Typ.ov_tied level t
+                    then bindee.bound := Rigid t
+                    else rebind bindee (Scope parent)
+                | Rigid _ -> ())
+    end
 
     type uv = t
     module Key = struct
@@ -542,10 +559,30 @@ and Typ : (GraphTypeSigs.TYPE
 
     let kind_to_doc = to_doc
 
-    (* --- *)
-
     let coercion_to_doc = function
         | Refl t -> to_doc t
+
+    (* --- *)
+
+    let ov_tied level t =
+        let rec tied = function
+        | Ov {binder; _} -> Uv.Scope.level binder = level (* the actual work *)
+
+        | Uv uv -> (match !(uv.bound) with
+            | Bot kind -> tied kind
+            | Flex t | Rigid t -> tied t)
+        | Pi {domain; eff; codomain} -> tied domain || tied eff || tied codomain
+        | Impli {domain; codomain} -> tied domain || tied codomain
+        | Fn {param; body} -> tied param || tied body
+        | App (callee, arg) -> tied callee || tied arg
+        | Record row -> tied row
+        | With {base; label = _; field} -> tied base || tied field
+        | EmptyRow -> false
+        | Tuple typs | PromotedTuple typs | PromotedArray typs -> Vector.exists tied typs
+        | Proxy carrie -> tied carrie
+        | Prim _ -> false in
+
+        tied t
 
     let forall_scope_ovs ~binder scope t =
         let binder = Uv.Scope binder in
