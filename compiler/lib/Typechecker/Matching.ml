@@ -11,7 +11,7 @@ module Make
 : TyperSigs.MATCHING with type env = Env.t
 = struct
 
-module T = GraphType.Type
+module T = ComplexFc.Type
 module Uv = GraphType.Uv
 module Ov = GraphType.Ov
 module Binder = Uv.Binder

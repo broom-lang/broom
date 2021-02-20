@@ -635,19 +635,3 @@ and Typ : (ComplexFcSigs.TYPE
         | t -> t
 end
 
-(* HACK: OCaml these constants are 'unsafe' for OCaml recursive modules,
- * so we have to add them here: *)
-module Type = struct
-    include Typ
-
-    (* __typeIn [__boxed] *)
-    let aType = App (Prim TypeIn, PromotedArray (Vector.singleton (Prim Boxed)))
-    let aKind = aType
-
-    (* __rowOf (__typeIn [__boxed]) *)
-    let aRow = App (Prim RowOf, aType)
-
-    (* __array __singleRep *)
-    let rep = App (Prim Array, Prim SingleRep)
-end
-

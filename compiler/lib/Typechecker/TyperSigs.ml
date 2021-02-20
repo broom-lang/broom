@@ -1,5 +1,5 @@
-module Type = GraphType.Type
 module Fc = ComplexFc
+module Type = Fc.Type
 
 (* Predeclare types and signatures for typer internal modules so that they can be separated: *)
 

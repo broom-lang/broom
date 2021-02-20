@@ -1,7 +1,7 @@
 open Streaming
 open Asserts
 
-module T = GraphType.Type
+module T = ComplexFc.Type
 module Uv = GraphType.Uv
 module E = ComplexFc.Term.Expr
 module TS = TyperSigs

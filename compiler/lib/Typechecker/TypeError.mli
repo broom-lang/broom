@@ -1,4 +1,4 @@
-type typ = GraphType.Type.t
+type typ = ComplexFc.Type.t
 
 type t =
     | NonPattern of Ast.Term.Expr.t

@@ -1,5 +1,5 @@
 open Broom_lib
-module Type = GraphType.Type
+module Type = Fc.Type
 module TS = TyperSigs
 module Env = Typer.Env
 module C = Cmdliner

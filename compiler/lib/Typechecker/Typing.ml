@@ -13,7 +13,7 @@ module AStmt = Ast.Term.Stmt
 module FExpr = ComplexFc.Term.Expr
 module FStmt = ComplexFc.Term.Stmt
 
-module T = GraphType.Type
+module T = ComplexFc.Type
 module Uv = GraphType.Uv
 
 module TS = TyperSigs

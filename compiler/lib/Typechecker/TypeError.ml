@@ -1,4 +1,4 @@
-module Type = GraphType.Type
+module Type = ComplexFc.Type
 
 type typ = Type.t
 

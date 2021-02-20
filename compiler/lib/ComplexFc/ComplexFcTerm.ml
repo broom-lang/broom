@@ -1,6 +1,6 @@
 open Streaming
 
-module Type = GraphType.Type
+module Type = GraphType.Typ
 module Uv = GraphType.Uv
 module Ov = GraphType.Ov
 

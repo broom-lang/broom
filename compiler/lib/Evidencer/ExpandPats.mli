@@ -1,5 +1,5 @@
-module T = GraphType.Type
 module Fc = ComplexFc
+module T = Fc.Type
 module E = ComplexFc.Term.Expr
 
 module type S = sig

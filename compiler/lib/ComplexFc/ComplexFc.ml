@@ -1,9 +1,25 @@
-module Type = GraphType
+module Typ = GraphType.Typ
 
 module Term = ComplexFcTerm
 
+(* HACK: These constants are 'unsafe' for OCaml recursive modules,
+ * so we have to add them here: *)
+module Type = struct
+    include Typ
+
+    (* __typeIn [__boxed] *)
+    let aType = Typ.App (Prim TypeIn, PromotedArray (Vector.singleton (Typ.Prim Boxed)))
+    let aKind = aType
+
+    (* __rowOf (__typeIn [__boxed]) *)
+    let aRow = Typ.App (Prim RowOf, aType)
+
+    (* __array __singleRep *)
+    let rep = Typ.App (Prim Array, Prim SingleRep)
+end
+
 module Program = struct
-    module Type = Type.Type
+    module Type = Type
     module Term = Term
 
     type t =
