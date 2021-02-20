@@ -12,8 +12,8 @@ module Make
 = struct
 
 module T = ComplexFc.Type
-module Uv = GraphType.Uv
-module Ov = GraphType.Ov
+module Uv = ComplexFc.Types.Uv
+module Ov = ComplexFc.Types.Ov
 module Binder = Uv.Binder
 module E = ComplexFc.Term.Expr
 (*module Err = TypeError*)

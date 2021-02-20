@@ -8,6 +8,8 @@ let ref = TxRef.ref
 let (!) = TxRef.(!)
 let (:=) = TxRef.(:=)
 
+module Make (Term : ComplexFcSigs.TERM) = struct
+
 module rec Uv : (ComplexFcSigs.UV
     with type typ = Typ.t
     with type kind = Typ.kind
@@ -633,5 +635,7 @@ and Typ : (ComplexFcSigs.TYPE
 
             t
         | t -> t
+end
+
 end
 

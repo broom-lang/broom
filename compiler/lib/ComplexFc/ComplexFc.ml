@@ -1,21 +1,25 @@
-module Typ = GraphType.Typ
+module rec Types : ComplexFcSigs.TYPES = GraphType.Make (Term)
 
-module Term = ComplexFcTerm
+and Term : ComplexFcSigs.TERM
+    with type Expr.typ = Types.Typ.t
+    with type Expr.coercion = Types.Typ.coercion
+    with type Expr.t_scope = Types.Uv.Scope.t
+= ComplexFcTerm.Make (Types)
 
 (* HACK: These constants are 'unsafe' for OCaml recursive modules,
  * so we have to add them here: *)
 module Type = struct
-    include Typ
+    include Types.Typ
 
     (* __typeIn [__boxed] *)
-    let aType = Typ.App (Prim TypeIn, PromotedArray (Vector.singleton (Typ.Prim Boxed)))
+    let aType = App (Prim TypeIn, PromotedArray (Vector.singleton (Prim Boxed)))
     let aKind = aType
 
     (* __rowOf (__typeIn [__boxed]) *)
-    let aRow = Typ.App (Prim RowOf, aType)
+    let aRow = App (Prim RowOf, aType)
 
     (* __array __singleRep *)
-    let rep = Typ.App (Prim Array, Prim SingleRep)
+    let rep = App (Prim Array, Prim SingleRep)
 end
 
 module Program = struct

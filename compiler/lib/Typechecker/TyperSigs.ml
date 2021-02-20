@@ -7,7 +7,7 @@ type span = Util.span
 type 'a with_pos = 'a Ast.with_pos
 
 type typ = Type.t
-type uv = GraphType.Uv.t
+type uv = Fc.Types.Uv.t
 
 type 'a typing = {term : 'a; eff : typ}
 type 'a kinding = {typ : 'a; kind : Type.kind}
@@ -34,7 +34,7 @@ module type TYPING = sig
     val check_stmt : env -> Ast.Term.Stmt.t -> Fc.Term.Stmt.t Vector.t typing * Type.t * env*)
     val check_interactive_stmts : env -> Ast.Term.Stmt.t Vector1.t -> Fc.Program.t typing * env
     (* HACK: (?): *)
-    val elaborate_pat : env -> GraphType.Uv.Scope.t -> Ast.Term.Expr.pat with_pos
+    val elaborate_pat : env -> Fc.Types.Uv.Scope.t -> Ast.Term.Expr.pat with_pos
         -> Fc.Term.Expr.pat * Fc.Term.Expr.var Vector.t
 end
 

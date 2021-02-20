@@ -1,8 +1,10 @@
 open Streaming
 
-module Type = GraphType.Typ
-module Uv = GraphType.Uv
-module Ov = GraphType.Ov
+module Make (Types : ComplexFcSigs.TYPES) = struct
+
+module Type = Types.Typ
+module Uv = Types.Uv
+module Ov = Types.Ov
 
 module rec Expr : sig
     include ComplexFcSigs.EXPR
@@ -36,7 +38,7 @@ end = struct
         | Tuple of t array
         | Focus of {mutable focusee : t; index : int}
 
-        | Fn of {t_scope : GraphType.Uv.Scope.t; param : var; mutable body : t}
+        | Fn of {t_scope : t_scope; param : var; mutable body : t}
         | App of {mutable callee : t; universals : typ Vector.t; mutable arg : t}
         | PrimApp of {op : Primop.t; universals : typ Vector.t; mutable arg : t}
         | PrimBranch of {op : Branchop.t; universals : typ Vector.t; mutable arg : t
@@ -477,5 +479,7 @@ and Stmt : ComplexFcSigs.STMT
         | Expr expr -> Expr.to_doc expr
 
     let rhs (Def (_, _, expr) | Expr expr) = expr
+end
+
 end
 

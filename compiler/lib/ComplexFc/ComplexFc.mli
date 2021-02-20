@@ -1,13 +1,13 @@
-module Typ = GraphType.Typ
+module Types : ComplexFcSigs.TYPES
 
 module Term : ComplexFcSigs.TERM
-    with type Expr.typ = Typ.t
-    with type Expr.coercion = Typ.coercion
-    with type Expr.t_scope = GraphType.Uv.Scope.t
+    with type Expr.typ = Types.Typ.t
+    with type Expr.coercion = Types.Typ.coercion
+    with type Expr.t_scope = Types.Uv.Scope.t
 
 module Type : sig
     (* `struct include` strengthens types so that `Type.t` = `Typ.t` etc.: *)
-    include module type of struct include Typ end
+    include module type of struct include Types.Typ end
 
     val aType : t
     val aKind : t

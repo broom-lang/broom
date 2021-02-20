@@ -14,7 +14,7 @@ module FExpr = ComplexFc.Term.Expr
 module FStmt = ComplexFc.Term.Stmt
 
 module T = ComplexFc.Type
-module Uv = GraphType.Uv
+module Uv = ComplexFc.Types.Uv
 
 module TS = TyperSigs
 type 'a typing = 'a TS.typing

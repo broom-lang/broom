@@ -142,6 +142,24 @@ module type TYPE = sig
     module Hashtbl : CCHashtbl.S with type key = t
 end
 
+module type TYPES = sig
+    module rec Typ : (TYPE
+        with type uv = Uv.t
+        with type bound = Uv.bound
+        with type binder = Uv.binder
+        with type scope = Uv.scope
+        with type ov = Ov.t)
+
+    and Uv : (UV
+        with type typ = Typ.t
+        with type kind = Typ.kind
+        with type ov = Ov.t)
+
+    and Ov : OV
+        with type kind = Typ.kind
+        with type scope = Uv.scope
+end
+
 module type EXPR = sig
     type typ
     type coercion
