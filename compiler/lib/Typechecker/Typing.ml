@@ -486,7 +486,13 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
                 FExpr.primapp GlobalGet (Vector.singleton typ)
                     (FExpr.at expr.pos (Env.tuple env (Vector.singleton (T.Prim String)))
                         (FExpr.values [|namexpr|]))*) in
-        {term = FExpr.at expr.pos typ term; eff = EmptyRow}
+        let term = FExpr.at expr.pos typ term in
+        let (typ, co) = K.eval expr.pos env typ |> (* FIXME: *) Option.get in
+
+        { term = (match co with
+            | Some co -> FExpr.at expr.pos typ (FExpr.cast term co)
+            | None -> term)
+        ; eff = EmptyRow }
 
     | Tuple exprs ->
         let eff = Env.tv env T.aRow in

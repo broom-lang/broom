@@ -20,7 +20,7 @@ module type KINDING = sig
     val check : env -> Type.kind -> Ast.Type.t with_pos -> typ
     val kindof_nonquantifying : env -> Type.scope -> Ast.Type.t with_pos -> typ
     val check_nonquantifying : env -> Type.scope -> Type.kind -> Ast.Type.t with_pos -> typ
-    val eval : Util.span -> env -> typ -> typ option
+    val eval : Util.span -> env -> typ -> (typ * Type.coercion option) option
 end
 
 module type TYPING = sig

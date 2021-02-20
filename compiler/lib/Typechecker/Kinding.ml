@@ -129,11 +129,23 @@ and check_F pos env kind typ =
 
 let rec eval =
     let (let* ) = Option.bind in
+    let (let+) = Fun.flip Option.map in
 
     let rec eval_forced pos env t = match t with
         | T.App (callee, arg) ->
-            let* callee = eval pos env callee in
-            apply pos callee arg
+            let* (callee, callee_co) = eval pos env callee in
+            let+ (typ, co) = apply pos callee arg in
+            ( typ
+            , match (callee_co, co) with
+              | (Some _, Some _) ->
+                  (*Some (T.Trans (Inst (callee_co, Vector1.singleton arg), co))*)
+                  todo (Some pos)
+              | (Some _, None) ->
+                  (*Some (Inst (callee_co, Vector1.singleton arg))*)
+                  todo (Some pos)
+              | (None, Some co) -> Some co
+              | (None, None) -> None )
+
         | Ov _ ->
             (*match Env.get_implementation env ov with
             | Some (axname, _, uv) ->
@@ -144,15 +156,15 @@ let rec eval =
                   | Some co -> Some (T.Trans (AUse axname, co))
                   | None -> Some (AUse axname) )
             | None -> Some (typ, None)*)
-            Some t
+            Some (t, None)
         | Uv _ | Pi _ | Impli _ | Fn _ | Tuple _ | PromotedArray _ | PromotedTuple _
-        | Record _ | With _ | EmptyRow | Proxy _ | Prim _ -> Some t
+        | Record _ | With _ | EmptyRow | Proxy _ | Prim _ -> Some (t, None)
 
     and apply pos callee arg = match callee with
         (* NOTE: Arg kinds do not need to be checked here because all `App`s originate from functors: *)
         (*| T.Fn {param = _; body} -> eval (Env.expose env (Vector.singleton arg) body)*)
         | T.Fn _ -> todo (Some pos)
-        | Ov _ | App _ | Prim _ -> Some (T.App (callee, arg))
+        | Ov _ | App _ | Prim _ -> Some (T.App (callee, arg), None)
         | Uv _ -> None
         | Pi _ | Impli _ | Tuple _ | PromotedArray _ | PromotedTuple _
         | Record _ | With _ | EmptyRow | Proxy _ ->
