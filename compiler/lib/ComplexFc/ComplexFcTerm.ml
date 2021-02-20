@@ -6,14 +6,19 @@ module Ov = GraphType.Ov
 
 module rec Expr : sig
     include ComplexFcSigs.EXPR
+        with type typ = Type.t
+        with type coercion = Type.coercion
+        with type t_scope = Uv.Scope.t
         with type def = Stmt.def
         with type stmt = Stmt.t
 
     val def_to_doc : var -> PPrint.document
 end = struct
-    module Type = GraphType
+    module Type = Type
 
-    type typ = Type.Type.t
+    type typ = Type.t
+    type coercion = Type.coercion
+    type t_scope = Uv.Scope.t
     type def = Stmt.def
     type stmt = Stmt.t
 
@@ -44,7 +49,7 @@ end = struct
 
         (*| Axiom of { axioms : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t
             ; mutable body : t }*)
-        | Cast of {mutable castee : t; coercion : Type.Type.coercion}
+        | Cast of {mutable castee : t; coercion : coercion}
 
         (*| Pack of {existentials : Type.t Vector1.t; mutable impl : t}
         | Unpack of { existentials : typedef Vector1.t; var : var; mutable value : t
@@ -78,7 +83,7 @@ end = struct
     let var_to_doc (var : var) = Name.to_doc var.name
 
     let def_to_doc (var : var) =
-        PPrint.(infix 4 1 colon (var_to_doc var) (Type.Type.to_doc var.vtyp))
+        PPrint.(infix 4 1 colon (var_to_doc var) (Type.to_doc var.vtyp))
 
     let cast_prec = 1
     let app_prec = 2
@@ -88,7 +93,7 @@ end = struct
         let open PPrint in
 
         let ov_to_doc {Ov.name; binder = _; kind} =
-            infix 4 1 colon (Name.to_doc name) (Type.Type.kind_to_doc kind) in
+            infix 4 1 colon (Name.to_doc name) (Type.kind_to_doc kind) in
 
         let rec to_doc prec expr = match expr.term with
             | Tuple exprs ->
@@ -160,7 +165,7 @@ end = struct
                     ^/^ to_doc s body)*)
             | Cast {castee; coercion} ->
                 infix 4 1 (string "|>") (to_doc cast_prec castee)
-                    (Type.Type.coercion_to_doc coercion)
+                    (Type.coercion_to_doc coercion)
                 |> prec_parens (prec > cast_prec)
             (*| Pack {existentials; impl} ->
                 string "pack" ^^ blank 1
@@ -201,7 +206,7 @@ end = struct
             | Select {selectee; label} ->
                 prefix 4 0 (to_doc dot_prec selectee)
                     (dot ^^ string (Option.get (Name.basename label)))
-            | Proxy typ -> brackets (Type.Type.to_doc typ)
+            | Proxy typ -> brackets (Type.to_doc typ)
             | Use var -> var_to_doc var
             | Const c -> Const.to_doc c
             | Patchable r -> TxRef.(to_doc prec !r) in
@@ -240,7 +245,7 @@ end = struct
             surround_separate_map 4 0 (parens empty)
                 lparen (comma ^^ break 1) rparen
                 pat_to_doc (Vector.to_list pats)
-        | ProxyP typ -> brackets (Type.Type.to_doc typ)
+        | ProxyP typ -> brackets (Type.to_doc typ)
         | VarP var -> parens (def_to_doc var)
         | WildP name -> underscore ^^ Name.to_doc name
         | ConstP c -> Const.to_doc c
