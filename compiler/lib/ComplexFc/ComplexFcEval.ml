@@ -93,16 +93,16 @@ let run (ns : Namespace.t) program =
 
     let rec eval : Env.t -> cont -> expr -> Value.t
     = fun env k expr -> match expr.term with
-        | Tuple exprs -> (match Array.length exprs with
+        | Tuple exprs -> (match Vector.length exprs with
             | 0 -> k (Tuple Vector.empty)
             | len ->
                 let rec eval_values i vs v =
                     let i = i + 1 in
                     let vals = Vector.append vs (Vector.singleton v) in
                     if i < len
-                    then eval env (eval_values i vals) (Array.get exprs i)
+                    then eval env (eval_values i vals) (Vector.get exprs i)
                     else k (Tuple vals) in
-                eval env (eval_values 0 Vector.empty) (Array.get exprs 0))
+                eval env (eval_values 0 Vector.empty) (Vector.get exprs 0))
 
         | Focus {focusee; index} ->
             let k : cont = function
@@ -214,7 +214,7 @@ let run (ns : Namespace.t) program =
         | Let {defs; body} ->
             let env = Env.push env in
             let rec define i =
-                if i < Array1.length defs then match Array1.get defs i with
+                if i < Vector1.length defs then match Vector1.get defs i with
                     | Def (pos, {Expr.name; _}, vexpr) ->
                         let k v =
                             Env.add pos env name v;
@@ -226,12 +226,13 @@ let run (ns : Namespace.t) program =
                 else eval env k body in
             define 0
 
-        (*| LetType {body = expr; _} | Axiom {body = expr; _}*)
         | Cast {castee = expr; _} (*| Pack {impl = expr; _}*) -> eval env k expr
+
+        | Convert _ -> todo (Some expr.pos)
 
         | Use {name; _} -> k (Env.find expr.pos env name)
 
-        | Record fields -> (match Array.length fields with
+        | Record fields -> (match Vector.length fields with
             | 0 -> k (Record Name.Map.empty)
             | len ->
                 let rec eval_fields i r label v =
@@ -239,27 +240,27 @@ let run (ns : Namespace.t) program =
                         let i = i + 1 in
                         let r = Name.Map.add label v r in
                         if i < len then begin
-                            let (label, expr) = Array.get fields i in
+                            let (label, expr) = Vector.get fields i in
                             eval env (eval_fields i r label) expr
                         end else k (Record r)
                     end else bug (Some expr.pos) ~msg: "duplicate record fields" in
-                let (label, expr) = Array.get fields 0 in
+                let (label, expr) = Vector.get fields 0 in
                 eval env (eval_fields 0 Name.Map.empty label) expr)
 
         | Where {base; fields} ->
-            let len = Array1.length fields in
+            let len = Vector1.length fields in
             let rec eval_fields i base label v =
                 if Name.Map.mem label base then begin
                     let i = i + 1 in
                     let base = Name.Map.add label v base in
                     if i < len then begin
-                        let (label, expr) = Array1.get fields i in
+                        let (label, expr) = Vector1.get fields i in
                         eval env (eval_fields i base label) expr
                     end else k (Record base)
                 end else bug (Some expr.pos) ~msg: "`where` a new label" in
             let k : cont = function
                 | Record base ->
-                    let (label, expr) = Array1.get fields 0 in
+                    let (label, expr) = Vector1.get fields 0 in
                     eval env (eval_fields 0 base label) expr
                 | _ -> bug (Some expr.pos) ~msg: "`where` to a non-record" in
             eval env k base
@@ -285,8 +286,6 @@ let run (ns : Namespace.t) program =
         | Const (Int n) -> k (Value.Int n)
         | Const (String s) -> k (Value.String s)
 
-        | Patchable eref -> TxRef.(eval env k !eref)
-
         | Letrec _ -> bug (Some expr.pos) ~msg: "encountered `letrec` at runtime"
 
     and bind : Env.t -> cont' -> cont' -> pat -> cont
@@ -307,7 +306,7 @@ let run (ns : Namespace.t) program =
           then (let (pos, _, _) = Vector.get defs 0 in fst pos)
           else fst main.pos)
         , snd main.pos ) in
-    let defs = defs |> Vector.to_array |> Array.map (fun def -> Stmt.Def def) in
+    let defs = defs |> Vector.map (fun def -> Stmt.Def def) in
     let expr = Expr.at pos main.typ (Expr.let' defs main) in
     (ns, eval Env.empty exit expr)
 

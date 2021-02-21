@@ -42,7 +42,11 @@ end
 module Expander = Expander.Make (StringHashtbl)
 
 module TyperSigs = TyperSigs (* HACK *)
-module Typer = Typer
+module Typer = struct
+    include Typer
+
+    module Finish = FinishTyping
+end
 
 module ExpandPats = ExpandPats
 (*module FwdRefs = FwdRefs*)

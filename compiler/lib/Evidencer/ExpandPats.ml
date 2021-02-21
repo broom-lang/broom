@@ -226,7 +226,7 @@ let emit pos codomain states start =
                             {E.pat; body = emit' target.name})))
             | Destructure {defs; body} ->
                 let expr = emit' body.name in
-                {expr with term = E.let' (Vector1.to_array defs) expr}
+                {expr with term = E.let' (Vector1.to_vector defs) expr}
             | Final {tmp_vars; emit} -> emit Inline (Option.get tmp_vars) in
 
         if state.refcount > 1 && not (Name.Hashtbl.mem shareds state_name)
@@ -243,14 +243,14 @@ let emit pos codomain states start =
     (* TODO: Warnings for redundant states (refcount = 0) *)
     {body with term = E.let' (Stream.from (Source.seq (Name.Hashtbl.to_seq_values shareds))
         |> Stream.map (fun def -> S.Def def)
-        |> Stream.into Sink.array) body}
+        |> Stream.into (Vector.sink ())) body}
 
 let expand_clauses : Util.span -> Env.t -> T.t -> expr -> clause' Vector.t -> expr
 = fun pos env codomain matchee clauses ->
     let var = E.fresh_var matchee.typ in
     let (states, start) = matcher pos env codomain var clauses in
     let body = emit pos codomain states start.name in
-    E.at pos codomain (E.let' [|Def (pos, var, matchee)|] body)
+    E.at pos codomain (E.let' (Vector.singleton (S.Def (pos, var, matchee))) body)
 
 end
 

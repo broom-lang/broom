@@ -23,10 +23,11 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
         let apply f (expr : expr) = match expr.term with
             | Use _ | Const _ -> f expr
             | _ ->
-                let {Expr.term = _; pos; typ; parent = _} = expr in
+                let {Expr.term = _; pos; typ} = expr in
                 let var = Expr.fresh_var typ in
                 let body = f (Expr.at pos typ (Expr.use var)) in
-                Expr.at pos typ (Expr.let' [|Def (pos, var, expr)|] body)
+                Expr.at pos typ
+                    (Expr.let' (Vector.singleton (Term.Stmt.Def (pos, var, expr))) body)
 
         let apply_opt f expr = match f with
             | Some f -> apply f expr
@@ -666,6 +667,7 @@ and Term : ComplexFcSigs.TERM
     with type Expr.typ = Types.Typ.t
     with type Expr.coercion = Types.Typ.coercion
     with type Expr.t_scope = Types.Uv.Scope.t
+    with type Expr.coercer = Types.Coercer.t
 = struct
     module Uv = Types.Uv
     module Ov = Types.Ov
@@ -677,6 +679,7 @@ and Term : ComplexFcSigs.TERM
             with type t_scope = Types.Uv.Scope.t
             with type def = Stmt.def
             with type stmt = Stmt.t
+            with type coercer = Types.Coercer.t
 
         val def_to_doc : var -> PPrint.document
     end = struct
@@ -687,6 +690,7 @@ and Term : ComplexFcSigs.TERM
         type t_scope = Types.Uv.Scope.t
         type def = Stmt.def
         type stmt = Stmt.t
+        type coercer = Types.Coercer.t
 
         and var = {name : Name.t; vtyp : typ}
 
@@ -694,46 +698,39 @@ and Term : ComplexFcSigs.TERM
 
         and t =
             { term : t'
-            ; mutable parent : t option
             ; typ : typ
             ; pos : Util.span }
 
         and t' =
-            | Tuple of t array
-            | Focus of {mutable focusee : t; index : int}
-
-            | Fn of {t_scope : t_scope; param : var; mutable body : t}
-            | App of {mutable callee : t; universals : typ Vector.t; mutable arg : t}
-            | PrimApp of {op : Primop.t; universals : typ Vector.t; mutable arg : t}
-            | PrimBranch of {op : Branchop.t; universals : typ Vector.t; mutable arg : t
+            | Use of var
+            | Fn of {t_scope : t_scope; param : var; body : t}
+            | App of {callee : t; universals : typ Vector.t; arg : t}
+            | PrimApp of {op : Primop.t; universals : typ Vector.t; arg : t}
+            | PrimBranch of {op : Branchop.t; universals : typ Vector.t; arg : t
                 ; clauses : prim_clause Vector.t}
 
-            | Let of {defs : stmt Array1.t; mutable body : t}
-            | Letrec of {defs : def Array1.t; mutable body : t}
-            (*| LetType of {typedefs : typedef Vector1.t; mutable body : t}*)
-            | Match of {mutable matchee : t; clauses : clause Vector.t}
+            | Let of {defs : stmt Vector1.t; body : t}
+            | Letrec of {defs : def Vector1.t; body : t}
+            | Match of {matchee : t; clauses : clause Vector.t}
 
-            (*| Axiom of { axioms : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t
-                ; mutable body : t }*)
-            | Cast of {mutable castee : t; coercion : coercion}
+            (*| Axiom of { axioms : (Name.t * Type.kind Vector.t * typ * typ) Vector1.t
+                ; body : t }*)
+            | Cast of {castee : t; coercion : coercion}
+            | Convert of {coerce : coercer option txref; arg : t}
 
-            (*| Pack of {existentials : Type.t Vector1.t; mutable impl : t}
-            | Unpack of { existentials : typedef Vector1.t; var : var; mutable value : t
-                ; mutable body : t }*)
+            | Record of (Name.t * t) Vector.t
+            | Where of {base : t; fields : (Name.t * t) Vector1.t}
+            | With of {base : t; label : Name.t; field : t}
+            | Select of {selectee : t; label : Name.t}
 
-            | Record of (Name.t * t) array
-            | Where of {mutable base : t; fields : (Name.t * t) Array1.t}
-            | With of {mutable base : t; label : Name.t; mutable field : t}
-            | Select of {mutable selectee : t; label : Name.t}
+            | Tuple of t Vector.t
+            | Focus of {focusee : t; index : int}
 
             | Proxy of typ
+
             | Const of Const.t
 
-            | Use of var
-
-            | Patchable of t TxRef.t
-
-        and clause = {pat : pat; mutable body : t}
+        and clause = {pat : pat; body : t}
         and prim_clause = {res : var option; prim_body : t}
 
         and pat = {pterm: pat'; ptyp : typ; ppos : Util.span}
@@ -743,7 +740,7 @@ and Term : ComplexFcSigs.TERM
             | ConstP of Const.t
             | VarP of var
             | WildP of Name.t
-            
+
         let prec_parens show_parens doc = if show_parens then PPrint.parens doc else doc
 
         let var_to_doc (var : var) = Name.to_doc var.name
@@ -765,7 +762,7 @@ and Term : ComplexFcSigs.TERM
                 | Tuple exprs ->
                     surround_separate_map 4 0 (parens empty)
                         lparen (comma ^^ break 1) rparen
-                        (to_doc 0) (Array.to_list exprs)
+                        (to_doc 0) (Vector.to_list exprs)
                 | Focus {focusee; index} ->
                     prefix 4 1 (to_doc dot_prec focusee) (dot ^^ string (Int.to_string index))
                 | Fn {t_scope; param; body} ->
@@ -778,13 +775,13 @@ and Term : ComplexFcSigs.TERM
                 | Let {defs; body} ->
                     surround 4 1 (string "let" ^^ blank 1 ^^ lbrace)
                         (separate_map (semi ^^ hardline)
-                            Stmt.to_doc (Array1.to_list defs)
+                            Stmt.to_doc (Vector1.to_list defs)
                         ^^ semi ^^ hardline ^^ to_doc 0 body)
                         rbrace
                 | Letrec {defs; body} ->
                     surround 4 1 (string "letrec" ^^ blank 1 ^^ lbrace)
                         (separate_map (semi ^^ hardline)
-                            Stmt.def_to_doc (Array1.to_list defs)
+                            Stmt.def_to_doc (Vector1.to_list defs)
                         ^^ semi ^^ hardline ^^ to_doc 0 body)
                         rbrace
                 (*| LetType {typedefs; body} ->
@@ -833,36 +830,25 @@ and Term : ComplexFcSigs.TERM
                     infix 4 1 (string "|>") (to_doc cast_prec castee)
                         (Type.coercion_to_doc coercion)
                     |> prec_parens (prec > cast_prec)
-                (*| Pack {existentials; impl} ->
-                    string "pack" ^^ blank 1
-                        ^^ surround_separate 4 0 empty
-                            langle (comma ^^ break 1) rangle
-                            (Vector1.to_list (Vector1.map (Type.to_doc s) existentials) @ [to_doc s impl])
-                | Unpack {existentials; var; value; body} ->
-                    group(
-                        surround 4 1
-                            (string "unpack" ^^ blank 1
-                                ^^ surround_separate 4 0 empty
-                                    langle (comma ^^ break 1) rangle
-                                    (Vector1.to_list (Vector1.map (Type.binding_to_doc s) existentials)
-                                        @ [def_to_doc s var])
-                                ^^ blank 1 ^^ equals)
-                            (to_doc s value)
-                            (string "in")
-                        ^/^ to_doc s body)*)
+
+                | Convert {coerce = _; arg} ->
+                    infix 4 1 (string "|>>") (to_doc cast_prec arg)
+                        (Type.to_doc expr.typ)
+                    |> prec_parens (prec > cast_prec)
+                
                 | Record fields ->
                     surround_separate_map 4 0 (braces empty)
                         lbrace (comma ^^ break 1) rbrace
                         (fun (label, field) ->
                             infix 4 1 equals (string (Name.basename label |> Option.get))
                                 (to_doc 0 field))
-                        (Array.to_list fields)
+                        (Vector.to_list fields)
                 | Where {base; fields} ->
                     surround 4 0 (to_doc 0 base ^^ blank 1 ^^ string "where" ^^ blank 1 ^^ lbrace)
                         (separate_map (comma ^^ break 1) 
                             (fun (label, field) ->
                                 infix 4 1 equals (Name.to_doc label) (to_doc 1 field))
-                            (Array1.to_list fields))
+                            (Vector1.to_list fields))
                         rbrace
                     |> prec_parens (prec > 0)
                 | With {base; label; field} ->
@@ -874,8 +860,8 @@ and Term : ComplexFcSigs.TERM
                         (dot ^^ string (Option.get (Name.basename label)))
                 | Proxy typ -> brackets (Type.to_doc typ)
                 | Use var -> var_to_doc var
-                | Const c -> Const.to_doc c
-                | Patchable r -> TxRef.(to_doc prec !r) in
+                | Const c -> Const.to_doc c in
+
             to_doc 0 expr
 
     (*
@@ -920,7 +906,7 @@ and Term : ComplexFcSigs.TERM
 
         let fresh_var vtyp = var (Name.fresh ()) vtyp
 
-        let at pos typ term = {term; pos; typ; parent = None}
+        let at pos typ term = {term; pos; typ}
 
         let tuple vals = Tuple vals
 
@@ -930,17 +916,17 @@ and Term : ComplexFcSigs.TERM
         let primapp op universals arg = PrimApp {op; universals; arg}
         let primbranch op universals arg clauses = PrimBranch {op; universals; arg; clauses}
 
-        let let' defs body = match Array1.of_array defs with
+        let let' defs body = match Vector1.of_vector defs with
             | Some defs -> (match body.term with
-                | Let {defs = defs'; body} -> Let {defs = Array1.append defs defs'; body}
+                | Let {defs = defs'; body} -> Let {defs = Vector1.append defs defs'; body}
                 | _ -> Let {defs; body})
             | None -> body.term
 
-        let letrec defs body = match Array1.of_array defs with
+        let letrec defs body = match Vector1.of_vector defs with
             | Some defs -> (match body.term with
                 | Letrec {defs = defs'; body} ->
                     (* NOTE: expects alphatization, would be unsound otherwise: *)
-                    Letrec {defs = Array1.append defs defs'; body}
+                    Letrec {defs = Vector1.append defs defs'; body}
                 | _ -> Letrec {defs; body})
             | None -> body.term
 
@@ -954,17 +940,12 @@ and Term : ComplexFcSigs.TERM
         let cast castee = function
             (*| Type.Refl _ -> castee.term*)
             | coercion -> Cast {castee; coercion}
-    (*
-        let pack existentials impl = match Vector1.of_vector existentials with
-            | Some existentials -> Pack {existentials; impl}
-            | None -> impl.term
 
-        let unpack existentials var value body = Unpack {existentials; var; value; body}
-    *)
+        let convert arg coerce = Convert {coerce; arg}
 
         let record fields = Record fields
 
-        let where base fields = match Array1.of_array fields with
+        let where base fields = match Vector1.of_vector fields with
             | Some fields -> Where {base; fields}
             | None -> base.term
 
@@ -972,15 +953,14 @@ and Term : ComplexFcSigs.TERM
         let proxy t = Proxy t
         let const c = Const c
         let use v = Use v
-        let patchable ref = Patchable ref
 
         let map_children f (expr : t) =
             let term = expr.term in
             let term' = match term with
                 | Tuple vals ->
-                    let vals' = Array.map f vals in
+                    let vals' = Vector.map f vals in
                     let noop = Stream.from (Source.zip_with (==)
-                            (Source.array vals') (Source.array vals))
+                            (Vector.to_source vals') (Vector.to_source vals))
                         |> Stream.into (Sink.all ~where: Fun.id) in
                     if noop then term else tuple vals'
 
@@ -1016,7 +996,7 @@ and Term : ComplexFcSigs.TERM
                     else primbranch op universals arg' clauses'
 
                 | Let {defs; body} ->
-                    let defs' = Array1.map (fun stmt -> match stmt with
+                    let defs' = Vector1.map (fun stmt -> match stmt with
                         | Stmt.Def (pos, var, expr) ->
                             let expr' = f expr in
                             if expr' == expr then stmt else Def (pos, var, expr')
@@ -1027,23 +1007,23 @@ and Term : ComplexFcSigs.TERM
                     let body' = f body in
                     if body' == body
                         && Stream.from (Source.zip_with (==)
-                            (Array1.to_source defs') (Array1.to_source defs))
+                            (Vector1.to_source defs') (Vector1.to_source defs))
                         |> Stream.into (Sink.all ~where: Fun.id)
                     then term
-                    else let' (Array1.to_array defs') body'
+                    else let' (Vector1.to_vector defs') body'
 
                 | Letrec {defs; body} ->
-                    let defs' = Array1.map (fun ((pos, var, expr) as def) ->
+                    let defs' = Vector1.map (fun ((pos, var, expr) as def) ->
                         let expr' = f expr in
                         if expr' == expr then def else (pos, var, expr')
                     ) defs in
                     let body' = f body in
                     if body' == body
                         && Stream.from (Source.zip_with (==)
-                            (Array1.to_source defs') (Array1.to_source defs))
+                            (Vector1.to_source defs') (Vector1.to_source defs))
                         |> Stream.into (Sink.all ~where: Fun.id)
                     then term
-                    else letrec (Array1.to_array defs') body'
+                    else letrec (Vector1.to_vector defs') body'
 
                 (*| LetType {typedefs; body} ->
                     let body' = f body in
@@ -1057,21 +1037,14 @@ and Term : ComplexFcSigs.TERM
                     let castee' = f castee in
                     if castee' == castee then term else cast castee' coercion
 
-                (*| Pack {existentials; impl} ->
-                    let impl' = f impl in
-                    if impl' == impl then term else pack (Vector1.to_vector existentials) impl'
-
-                | Unpack {existentials; var; value; body} ->
-                    let value' = f value in
-                    let body' = f body in
-                    if value' == value && body' == body
-                    then term
-                    else unpack existentials var value' body'*)
+                | Convert {coerce; arg} ->
+                    let arg' = f arg in
+                    if arg' == arg then term else convert arg' coerce
 
                 | Record fields ->
-                    let fields' = Array.map (fun (label, field) -> (label, f field)) fields in
+                    let fields' = Vector.map (fun (label, field) -> (label, f field)) fields in
                     let noop = Stream.from (Source.zip_with (fun (_, expr') (_, expr) -> expr' == expr)
-                            (Source.array fields') (Source.array fields))
+                            (Vector.to_source fields') (Vector.to_source fields))
                         |> Stream.into (Sink.all ~where: Fun.id) in
                     if noop then term else record fields'
 
@@ -1082,13 +1055,13 @@ and Term : ComplexFcSigs.TERM
 
                 | Where {base; fields} ->
                     let base' = f base in
-                    let fields' = Array1.map (fun (label, field) -> (label, f field)) fields in
+                    let fields' = Vector1.map (fun (label, field) -> (label, f field)) fields in
                     if base' == base
                         && Stream.from (Source.zip_with (fun (_, expr') (_, expr) -> expr' == expr)
-                            (Array1.to_source fields') (Array1.to_source fields))
+                            (Vector1.to_source fields') (Vector1.to_source fields))
                         |> Stream.into (Sink.all ~where: Fun.id)
                     then term
-                    else where base' (Array1.to_array fields')
+                    else where base' (Vector1.to_vector fields')
 
                 | Select {selectee; label} ->
                     let selectee' = f selectee in
@@ -1104,13 +1077,7 @@ and Term : ComplexFcSigs.TERM
                     then term
                     else match' matchee' clauses'
 
-                | Proxy _ | Use _ | Const _ -> term
-
-                | Patchable rref ->
-                    let open TxRef in
-                    let expr = !rref in
-                    let expr' = f expr in
-                    if expr' == expr then term else patchable (ref expr') in
+                | Proxy _ | Use _ | Const _ -> term in
             if term' == term then expr else {expr with term = term'}
 
         module Var = struct

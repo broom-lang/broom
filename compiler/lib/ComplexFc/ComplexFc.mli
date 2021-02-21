@@ -1,9 +1,10 @@
-module Types : ComplexFcSigs.TYPES
+module rec Types : (ComplexFcSigs.TYPES with type Coercer.expr = Term.Expr.t)
 
-module Term : ComplexFcSigs.TERM
+and Term : ComplexFcSigs.TERM
     with type Expr.typ = Types.Typ.t
     with type Expr.coercion = Types.Typ.coercion
     with type Expr.t_scope = Types.Uv.Scope.t
+    with type Expr.coercer = Types.Coercer.t
 
 module Type : sig
     (* `struct include` strengthens types so that `Type.t` = `Typ.t` etc.: *)

@@ -123,6 +123,12 @@ let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
     let* ({TS.term = program; eff}, tenv) =
         Typer.check_interactive_stmts tenv stmts |> Result.map_error type_err in
     if debug then begin
+        debug_heading "Un`Finish`ed FC from Typechecker";
+        pprint (Fc.Program.to_doc program ^^ twice hardline)
+    end;
+
+    let program = Typer.Finish.finish program in
+    if debug then begin
         debug_heading "FC from Typechecker";
         pprint (Fc.Program.to_doc program ^^ twice hardline)
     end;

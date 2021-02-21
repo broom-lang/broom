@@ -180,6 +180,7 @@ module type EXPR = sig
     type typ
     type coercion
     type t_scope
+    type coercer
     type def
     type stmt
 
@@ -189,46 +190,39 @@ module type EXPR = sig
 
     and t =
         { term : t'
-        ; mutable parent : t option
         ; typ : typ
         ; pos : Util.span }
 
     and t' = private
-        | Tuple of t array
-        | Focus of {mutable focusee : t; index : int}
-
-        | Fn of {t_scope : t_scope; param : var; mutable body : t}
-        | App of {mutable callee : t; universals : typ Vector.t; mutable arg : t}
-        | PrimApp of {op : Primop.t; universals : typ Vector.t; mutable arg : t}
-        | PrimBranch of {op : Branchop.t; universals : typ Vector.t; mutable arg : t
+        | Use of var
+        | Fn of {t_scope : t_scope; param : var; body : t}
+        | App of {callee : t; universals : typ Vector.t; arg : t}
+        | PrimApp of {op : Primop.t; universals : typ Vector.t; arg : t}
+        | PrimBranch of {op : Branchop.t; universals : typ Vector.t; arg : t
             ; clauses : prim_clause Vector.t}
 
-        | Let of {defs : stmt Array1.t; mutable body : t}
-        | Letrec of {defs : def Array1.t; mutable body : t}
-        (*| LetType of {typedefs : typedef Vector1.t; mutable body : t}*)
-        | Match of {mutable matchee : t; clauses : clause Vector.t}
+        | Let of {defs : stmt Vector1.t; body : t}
+        | Letrec of {defs : def Vector1.t; body : t}
+        | Match of {matchee : t; clauses : clause Vector.t}
 
         (*| Axiom of { axioms : (Name.t * Type.kind Vector.t * typ * typ) Vector1.t
-            ; mutable body : t }*)
-        | Cast of {mutable castee : t; coercion : coercion}
+            ; body : t }*)
+        | Cast of {castee : t; coercion : coercion}
+        | Convert of {coerce : coercer option txref; arg : t}
 
-        (*| Pack of {existentials : typ Vector1.t; mutable impl : t}
-        | Unpack of { existentials : typedef Vector1.t; var : var; mutable value : t
-            ; mutable body : t }*)
+        | Record of (Name.t * t) Vector.t
+        | Where of {base : t; fields : (Name.t * t) Vector1.t}
+        | With of {base : t; label : Name.t; field : t}
+        | Select of {selectee : t; label : Name.t}
 
-        | Record of (Name.t * t) array
-        | Where of {mutable base : t; fields : (Name.t * t) Array1.t}
-        | With of {mutable base : t; label : Name.t; mutable field : t}
-        | Select of {mutable selectee : t; label : Name.t}
+        | Tuple of t Vector.t
+        | Focus of {focusee : t; index : int}
 
         | Proxy of typ
+
         | Const of Const.t
 
-        | Use of var
-
-        | Patchable of t TxRef.t
-
-    and clause = {pat : pat; mutable body : t}
+    and clause = {pat : pat; body : t}
     and prim_clause = {res : var option; prim_body : t}
 
     and pat = {pterm: pat'; ptyp : typ; ppos : Util.span}
@@ -248,26 +242,26 @@ module type EXPR = sig
 
     val at : Util.span -> typ -> t' -> t
 
-    val tuple : t Array.t -> t'
+    val tuple : t Vector.t -> t'
     val focus : t -> int -> t'
     val fn : t_scope -> var -> t -> t'
     val app : t -> typ Vector.t -> t -> t'
     val primapp : Primop.t -> typ Vector.t -> t -> t'
     val primbranch : Branchop.t -> typ Vector.t -> t -> prim_clause Vector.t -> t'
-    val let' : stmt Array.t -> t -> t'
-    val letrec : def Array.t -> t -> t'
+    val let' : stmt Vector.t -> t -> t'
+    val letrec : def Vector.t -> t -> t'
     (*val axiom : (Name.t * Type.kind Vector.t * typ * typ) Vector.t -> t -> t'*)
     val match' : t -> clause Vector.t -> t'
     val cast : t -> coercion -> t'
+    val convert : t -> coercer option txref -> t'
     (*val pack : typ Vector.t -> t -> t'
     val unpack : typedef Vector1.t -> var -> t -> t -> t'*)
-    val record : (Name.t * t) array -> t'
-    val where : t -> (Name.t * t) array -> t'
+    val record : (Name.t * t) Vector.t -> t'
+    val where : t -> (Name.t * t) Vector.t -> t'
     val select : t -> Name.t -> t'
     val proxy : typ -> t'
     val const : Const.t -> t'
     val use : var -> t'
-    val patchable : t TxRef.t -> t'
 
     val map_children : (t -> t) -> t -> t
 

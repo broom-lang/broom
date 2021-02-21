@@ -486,13 +486,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
                 FExpr.primapp GlobalGet (Vector.singleton typ)
                     (FExpr.at expr.pos (Env.tuple env (Vector.singleton (T.Prim String)))
                         (FExpr.values [|namexpr|]))*) in
-        let term = FExpr.at expr.pos typ term in
-        let (typ, co) = K.eval expr.pos env typ |> (* FIXME: *) Option.get in
-
-        { term = (match co with
-            | Some co -> FExpr.at expr.pos typ (FExpr.cast term co)
-            | None -> term)
-        ; eff = EmptyRow }
+        {term = FExpr.at expr.pos typ term; eff = EmptyRow}
 
     | Tuple exprs ->
         let eff = Env.tv env T.aRow in
@@ -502,7 +496,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
                 M.unify expr.pos env eff' eff;
                 expr)
             |> Stream.into (Sink.zip
-                (Sink.buffer (Vector.length exprs))
+                (Vector.sink ())
                 (Sink.premap (fun (expr : FExpr.t) -> expr.typ) (Vector.sink ()))) in
         {term = FExpr.at expr.pos (Tuple typs) (FExpr.tuple exprs); eff}
 
@@ -525,7 +519,7 @@ and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
 = fun env super expr ->
     let {TS.term = expr; eff} = typeof env expr in
     M.instance expr.pos env expr.typ super;
-    {term = FExpr.at expr.pos super (FExpr.cast expr (Refl super)); eff}
+    {term = expr; eff}
 
 and check_clause plicity env scope domain _ codomain ({params; body} : AExpr.clause) =
     let (pat, vars) = check_pat env scope domain params in
@@ -644,14 +638,14 @@ let check_interactive_stmts env stmts =
         Array.iter (CCVector.push stmts') stmts'';
         env
     ) env stmts in
-    let stmts = CCVector.to_array stmts' in
+    let stmts = Vector.build stmts' in
     let main =
         let (stmts, body) =
-            if Array.length stmts > 0
-            then match Array.get stmts 0 with
-                | Expr expr -> (Array.sub stmts 0 (Array.length stmts - 1), expr)
-                | _ -> (stmts, FExpr.at pos (Tuple Vector.empty) (FExpr.tuple [||]))
-            else (stmts, FExpr.at pos (Tuple Vector.empty) (FExpr.tuple [||])) in
+            if Vector.length stmts > 0
+            then match Vector.get stmts 0 with
+                | Expr expr -> (Vector.sub stmts 0 (Vector.length stmts - 1), expr)
+                | _ -> (stmts, FExpr.at pos (Tuple Vector.empty) (FExpr.tuple Vector.empty))
+            else (stmts, FExpr.at pos (Tuple Vector.empty) (FExpr.tuple Vector.empty)) in
         FExpr.at pos body.typ (FExpr.let' stmts body) in
     ( { TS.term = { ComplexFc.Program.type_fns = Vector.empty (*Env.type_fns env (* FIXME: gets all typedefs ever seen *)*)
                    ; defs = Vector.empty; main }
