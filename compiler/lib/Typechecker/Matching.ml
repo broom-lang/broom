@@ -106,16 +106,16 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
     let articulate span env t (uv : Uv.t) t' =
         (*unify span env kind (K.kindof span env t);*)
         check_uv_assignee span env t !(uv.binder) Int.max_int t';
-        Uv.graft_mono uv t' in
+        Uv.graft_mono uv t' (* FIXME: *) None in
 
     let merge t (uv : Uv.t) binder t' (uv' : Uv.t) binder' =
         if Binder.level binder < Binder.level binder'
         then begin
             !(uv'.bindees) |> Vector.iter (fun bindee -> Uv.rebind bindee (Type uv));
-            Uv.graft_mono uv' t
+            Uv.graft_mono uv' t (* FIXME: *) None
         end else begin
             !(uv.bindees) |> Vector.iter (fun bindee -> Uv.rebind bindee (Type uv'));
-            Uv.graft_mono uv t'
+            Uv.graft_mono uv t' (* FIXME: *) None
         end in
 
     let subsume span env t (uv : Uv.t) t' = match !(uv.bound) with
@@ -140,11 +140,11 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
         | (Flex {typ = t; coerce = _}, Rigid {typ = t'; coerce = _}) ->
             Env.in_bounds env uv uv' (fun env -> unify span env t t');
             !(uv.bindees) |> Vector.iter (fun bindee -> Uv.rebind bindee (Type uv'));
-            Uv.graft_mono uv t'
+            Uv.graft_mono uv t' (* FIXME: *) None
         | (Rigid {typ = t; coerce = _}, Flex {typ = t'; coerce = _}) ->
             Env.in_bounds env uv uv' (fun env -> unify span env t t');
             !(uv'.bindees) |> Vector.iter (fun bindee -> Uv.rebind bindee (Type uv));
-            Uv.graft_mono uv' t
+            Uv.graft_mono uv' t (* FIXME: *) None
 
         | (Rigid {typ = t; coerce = _}, Rigid {typ = t'; coerce = _}) ->
             Env.in_bounds env uv uv' (fun env -> unify span env t t');

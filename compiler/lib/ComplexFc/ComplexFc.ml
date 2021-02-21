@@ -77,8 +77,7 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
                 | Rigid _ -> true)
             | Scope _ -> false
 
-        let graft_mono uv typ =
-            uv.bound := Rigid {typ; coerce = todo None}
+        let graft_mono uv typ coerce = uv.bound := Rigid {typ; coerce}
 
         module Scop = struct
             type t = scope
@@ -266,7 +265,7 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
 
         let fix binder f =
             let root = Uv.fresh ForAll binder (*tmp:*)EmptyRow in
-            Uv.graft_mono root (f root);
+            Uv.graft_mono root (f root) None;
             Uv root
 
         (* --- *)

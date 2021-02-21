@@ -66,7 +66,7 @@ module type UV = sig
     val fresh : quantifier -> binder -> kind -> t
     val is_locked : t -> bool
     val rebind : t -> binder -> unit
-    val graft_mono : t -> typ -> unit
+    val graft_mono : t -> typ -> coercer option -> unit
     val map_bound : (typ -> typ) -> t -> t
 
     module Hashtbl : CCHashtbl.S with type key = t
