@@ -120,7 +120,7 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
 
     let subsume span env t (uv : Uv.t) t' = match !(uv.bound) with
         | Uv.Bot _ -> articulate span env t uv t'
-        | Flex typ -> Env.in_bound env uv (fun env -> unify span env typ t');
+        | Flex {typ; coerce = _} -> Env.in_bound env uv (fun env -> unify span env typ t');
         | Rigid _ -> (* Must be polymorphic while t' must be a monotype: *)
             Env.reportError env span (Unify (t, t')) in
 
@@ -133,20 +133,20 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
         | (Bot _, _) -> articulate span env t uv t'
         | (_, Bot _) -> articulate span env t' uv' t
 
-        | (Flex t, Flex t') ->
+        | (Flex {typ = t; coerce = _}, Flex {typ = t'; coerce = _}) ->
             Env.in_bounds env uv uv' (fun env -> unify span env t t');
             merge t uv !(uv.binder) t' uv' !(uv'.binder)
 
-        | (Flex t, Rigid t') ->
+        | (Flex {typ = t; coerce = _}, Rigid {typ = t'; coerce = _}) ->
             Env.in_bounds env uv uv' (fun env -> unify span env t t');
             !(uv.bindees) |> Vector.iter (fun bindee -> Uv.rebind bindee (Type uv'));
             Uv.graft_mono uv t'
-        | (Rigid t, Flex t') ->
+        | (Rigid {typ = t; coerce = _}, Flex {typ = t'; coerce = _}) ->
             Env.in_bounds env uv uv' (fun env -> unify span env t t');
             !(uv'.bindees) |> Vector.iter (fun bindee -> Uv.rebind bindee (Type uv));
             Uv.graft_mono uv' t
 
-        | (Rigid t, Rigid t') ->
+        | (Rigid {typ = t; coerce = _}, Rigid {typ = t'; coerce = _}) ->
             Env.in_bounds env uv uv' (fun env -> unify span env t t');
             merge t uv !(uv.binder) t' uv' !(uv'.binder) in
 
@@ -999,7 +999,7 @@ and check_uv_assignee pos env uv uv_binder max_uv_level typ =
         | Uv uv' as t ->
             (match !(uv'.bound) with
             | Bot _ -> ()
-            | Flex typ | Rigid typ -> check typ);
+            | Flex {typ; _} | Rigid {typ; _} -> check typ);
 
             if t == uv
             then Env.reportError env pos (Occurs (uv, typ))

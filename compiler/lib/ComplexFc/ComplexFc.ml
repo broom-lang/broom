@@ -50,15 +50,14 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
             ; binder : binder txref
             ; bindees : t Vector.t txref
             ; level : int txref
-            ; bound : bound txref
-            ; coerce : coercer option txref }
+            ; bound : bound txref }
 
         and quantifier = ForAll | Exists
 
         and bound =
-            | Bot of kind
-            | Flex of typ
-            | Rigid of typ
+            | Bot of {kind : kind; coerce : coercer option}
+            | Flex of {typ : typ; coerce : coercer option}
+            | Rigid of {typ : typ; coerce : coercer option}
 
         and binder =
             | Scope of scope
@@ -79,10 +78,7 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
             | Scope _ -> false
 
         let graft_mono uv typ =
-            uv.bound := Rigid typ;
-            uv.coerce := todo None (*Some (Coercer.coercer (fun expr ->
-                Expr.at expr.pos typ (Expr.app expr (Vector.singleton typ)
-                    (Expr.at expr.pos (Tuple Vector.empty) (Expr.tuple [||])))))*)
+            uv.bound := Rigid {typ; coerce = todo None}
 
         module Scop = struct
             type t = scope
@@ -135,8 +131,7 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
         let fresh quant binder kind =
             let uv = {name = Name.fresh (); quant; binder = ref binder
                 ; bindees = ref Vector.empty; level = ref (-1)
-                ; bound = ref (Bot kind)
-                ; coerce = ref None} in
+                ; bound = ref (Bot {kind; coerce = None})} in
             Binder.add_bindee binder uv;
             uv
 
@@ -148,31 +143,29 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
             Binder.remove_bindee !(uv.binder) uv;
             bind uv binder'
 
-        let map_bound f ({name = _; quant; binder; bindees = _; level; bound; coerce} as uv) =
+        let map_bound f ({name = _; quant; binder; bindees = _; level; bound} as uv) =
             match !bound with
             | Bot _ -> uv
-            | Flex typ ->
+            | Flex {typ; coerce} ->
                 let typ' = f typ in
                 if typ' == typ
                 then uv
                 else begin
                     let uv = {name = Name.fresh (); quant; binder
                         ; bindees = ref Vector.empty; level = ref !level
-                        ; bound = ref (Flex (f typ))
-                        ; coerce} in
+                        ; bound = ref (Flex {typ = f typ; coerce})} in
                     Binder.add_bindee !binder uv;
                     uv
                 end
 
-            | Rigid typ ->
+            | Rigid {typ; coerce} ->
                 let typ' = f typ in
                 if typ' == typ
                 then uv
                 else begin
                     let uv = {name = Name.fresh (); quant; binder
                         ; bindees = ref Vector.empty; level = ref !level
-                        ; bound = ref (Rigid (f typ))
-                        ; coerce} in
+                        ; bound = ref (Rigid {typ = f typ; coerce})} in
                     Binder.add_bindee !binder uv;
                     uv
                 end
@@ -183,13 +176,13 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
             let exit parent scope =
                 let level = level scope in
                 !(bindees scope) |> Vector.iter (fun bindee -> match !(bindee.bound) with
-                    | Bot kind ->
+                    | Bot {kind; _} ->
                         if Typ.ov_tied level kind
                         then () (* TODO: assign some default? *)
                         else rebind bindee (Scope parent)
-                    | Flex t ->
-                        if Typ.ov_tied level t
-                        then bindee.bound := Rigid t
+                    | Flex {typ; coerce} ->
+                        if Typ.ov_tied level typ
+                        then bindee.bound := Rigid {typ; coerce}
                         else rebind bindee (Scope parent)
                     | Rigid _ -> ())
         end
@@ -281,7 +274,7 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
         (* OPTIMIZE: Path compression, ranking: *)
         let rec force t = match t with
             | Uv uv -> (match !(uv.bound) with
-                | Rigid typ when Vector.length !(uv.bindees) = 0 ->
+                | Rigid {typ; coerce = _} when Vector.length !(uv.bindees) = 0 ->
                     force typ
                 | _ -> t)
             | Ov _ | Fn _ | App _ | Pi _ | Impli _
@@ -291,7 +284,7 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
         let iter f = function
             | Uv uv -> (match !(uv.bound) with
                 | Bot _ -> ()
-                | Flex typ | Rigid typ -> f typ)
+                | Flex {typ; coerce = _} | Rigid {typ; coerce = _} -> f typ)
             | Fn {param; body} -> f param; f body
             | App (callee, arg) -> f callee; f arg
             | Pi {domain; eff; codomain} -> f domain; f eff; f codomain
@@ -542,7 +535,7 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
                 let body = match t with
                     | Uv uv -> (match !(uv.bound) with
                         | Bot _ | Flex _ -> SVar uv.name
-                        | Rigid typ -> to_syn typ)
+                        | Rigid {typ; coerce = _} -> to_syn typ)
                     | Ov {binder = _; name; kind = _} -> SVar name
                     | Fn {param; body} ->
                         SFn {param = (Name.fresh (), to_syn param); body = to_syn body}
@@ -572,9 +565,9 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
 
             and bindee_to_syn = function
                 | Uv {name; bound; _} -> (match !bound with
-                    | Bot kind -> (name, SBot, to_syn kind)
-                    | Flex typ -> (name, SFlex, to_syn typ)
-                    | Rigid typ -> (name, SRigid, to_syn typ))
+                    | Bot {kind; _} -> (name, SBot, to_syn kind)
+                    | Flex {typ; _} -> (name, SFlex, to_syn typ)
+                    | Rigid {typ; _} -> (name, SRigid, to_syn typ))
                 | _ -> unreachable None in
 
             analyze t;
@@ -603,8 +596,8 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
             | Ov {binder; _} -> Uv.Scope.level binder = level (* the actual work *)
 
             | Uv uv -> (match !(uv.bound) with
-                | Bot kind -> tied kind
-                | Flex t | Rigid t -> tied t)
+                | Bot {kind; _} -> tied kind
+                | Flex {typ; _} | Rigid {typ; _} -> tied typ)
             | Pi {domain; eff; codomain} -> tied domain || tied eff || tied codomain
             | Impli {domain; codomain} -> tied domain || tied codomain
             | Fn {param; body} -> tied param || tied body
@@ -651,7 +644,7 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
                 let t = t |> postwalk_rebinding (fun t -> match t with
                     | Uv {quant = ForAll; binder; bound; _} ->
                         (match !bound with
-                        | Bot kind when locally_bound !binder ->
+                        | Bot {kind; _} when locally_bound !binder ->
                             Uv (Uv.fresh ForAll !binder kind)
                         | _ -> t)
                     | t -> t) in
@@ -660,8 +653,8 @@ module rec Types : Sigs.TYPES with type Coercer.expr = Term.Expr.t = struct
                 | Uv ({quant = ForAll; bound; _} as uv) ->
                     (match !bound with
                     | Bot _ -> ()
-                    | Flex typ | Rigid typ ->
-                        bound := Flex typ;
+                    | Flex {typ; coerce} | Rigid {typ; coerce} ->
+                        bound := Flex {typ; coerce};
                         Uv.rebind uv (Scope scope))
                 | _ -> ());
 

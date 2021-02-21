@@ -50,8 +50,8 @@ let rec kindof_F pos env : T.t -> T.kind = function
             codomain
         | _ -> unreachable (Some pos) ~msg: "invalid type application in `kindof_F`.")
     | Uv {Uv.bound; _} -> (match !bound with
-        | Bot kind -> kind
-        | Flex typ | Rigid typ -> kindof_F pos env typ)
+        | Bot {kind; _} -> kind
+        | Flex {typ; _} | Rigid {typ; _} -> kindof_F pos env typ)
     | Ov {kind; _} -> kind
     | Prim pt -> kindof_prim pt
 

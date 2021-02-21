@@ -26,15 +26,14 @@ module type UV = sig
         ; binder : binder txref
         ; bindees : t Vector.t txref
         ; level : int txref
-        ; bound : bound txref
-        ; coerce : coercer option txref }
+        ; bound : bound txref }
 
     and quantifier = ForAll | Exists
 
     and bound =
-        | Bot of kind
-        | Flex of typ
-        | Rigid of typ
+        | Bot of {kind : kind; coerce : coercer option}
+        | Flex of {typ : typ; coerce : coercer option}
+        | Rigid of {typ : typ; coerce : coercer option}
 
     and binder =
         | Scope of scope
