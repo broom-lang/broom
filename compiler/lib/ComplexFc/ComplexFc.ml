@@ -667,7 +667,7 @@ and Term : ComplexFcSigs.TERM
     with type Expr.typ = Types.Typ.t
     with type Expr.coercion = Types.Typ.coercion
     with type Expr.t_scope = Types.Uv.Scope.t
-    with type Expr.coercer = Types.Coercer.t
+    with type Expr.bound = Types.Uv.bound
 = struct
     module Uv = Types.Uv
     module Ov = Types.Ov
@@ -679,7 +679,7 @@ and Term : ComplexFcSigs.TERM
             with type t_scope = Types.Uv.Scope.t
             with type def = Stmt.def
             with type stmt = Stmt.t
-            with type coercer = Types.Coercer.t
+            with type bound = Types.Uv.bound
 
         val def_to_doc : var -> PPrint.document
     end = struct
@@ -690,7 +690,7 @@ and Term : ComplexFcSigs.TERM
         type t_scope = Types.Uv.Scope.t
         type def = Stmt.def
         type stmt = Stmt.t
-        type coercer = Types.Coercer.t
+        type bound = Types.Uv.bound
 
         and var = {name : Name.t; vtyp : typ}
 
@@ -716,7 +716,7 @@ and Term : ComplexFcSigs.TERM
             (*| Axiom of { axioms : (Name.t * Type.kind Vector.t * typ * typ) Vector1.t
                 ; body : t }*)
             | Cast of {castee : t; coercion : coercion}
-            | Convert of {coerce : coercer option txref; arg : t}
+            | Convert of {bound : bound txref; arg : t}
 
             | Record of (Name.t * t) Vector.t
             | Where of {base : t; fields : (Name.t * t) Vector1.t}
@@ -831,7 +831,7 @@ and Term : ComplexFcSigs.TERM
                         (Type.coercion_to_doc coercion)
                     |> prec_parens (prec > cast_prec)
 
-                | Convert {coerce = _; arg} ->
+                | Convert {bound = _; arg} ->
                     infix 4 1 (string "|>>") (to_doc cast_prec arg)
                         (Type.to_doc expr.typ)
                     |> prec_parens (prec > cast_prec)
@@ -941,7 +941,9 @@ and Term : ComplexFcSigs.TERM
             (*| Type.Refl _ -> castee.term*)
             | coercion -> Cast {castee; coercion}
 
-        let convert arg coerce = Convert {coerce; arg}
+        let convert arg = function
+            | Some bound -> Convert {bound; arg}
+            | None -> arg.term
 
         let record fields = Record fields
 
@@ -1037,9 +1039,9 @@ and Term : ComplexFcSigs.TERM
                     let castee' = f castee in
                     if castee' == castee then term else cast castee' coercion
 
-                | Convert {coerce; arg} ->
+                | Convert {bound; arg} ->
                     let arg' = f arg in
-                    if arg' == arg then term else convert arg' coerce
+                    if arg' == arg then term else convert arg' (Some bound)
 
                 | Record fields ->
                     let fields' = Vector.map (fun (label, field) -> (label, f field)) fields in

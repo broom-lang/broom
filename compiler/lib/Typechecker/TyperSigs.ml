@@ -1,10 +1,12 @@
 module Fc = ComplexFc
 module Type = Fc.Type
+module Uv = Fc.Types.Uv
 
 (* Predeclare types and signatures for typer internal modules so that they can be separated: *)
 
 type span = Util.span
 type 'a with_pos = 'a Ast.with_pos
+type 'a txref = 'a TxRef.t
 
 type typ = Type.t
 type uv = Fc.Types.Uv.t
@@ -42,7 +44,7 @@ module type MATCHING = sig
     type env
 
     val unify : span -> env -> typ -> typ -> unit
-    val instance : span -> env -> typ -> typ -> unit
+    val instance : span -> env -> typ -> typ -> Uv.bound txref option
 end
 
 module type ENV = sig

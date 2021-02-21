@@ -469,7 +469,7 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
         let codomain = Env.tv env (T.App (T.Prim TypeIn, Env.tv env T.rep)) in
         let ft = T.Pi {domain; eff = EmptyRow; codomain} in
         let op_t = primop_typ env op in
-        M.instance expr.pos env op_t ft;
+        let (*HACK:*) _ = M.instance expr.pos env op_t ft in
         let {TS.term = arg; eff = _} = check env domain arg in
 
         { term = FExpr.at expr.pos codomain (FExpr.primapp op Vector.empty arg)
@@ -518,8 +518,8 @@ let rec typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
 and check : Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
 = fun env super expr ->
     let {TS.term = expr; eff} = typeof env expr in
-    M.instance expr.pos env expr.typ super;
-    {term = expr; eff}
+    let bound = M.instance expr.pos env expr.typ super in
+    {term = FExpr.at expr.pos super (FExpr.convert expr bound); eff}
 
 and check_clause plicity env scope domain _ codomain ({params; body} : AExpr.clause) =
     let (pat, vars) = check_pat env scope domain params in

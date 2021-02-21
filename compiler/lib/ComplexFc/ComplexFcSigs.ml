@@ -169,7 +169,8 @@ module type TYPES = sig
     and Uv : (UV
         with type typ = Typ.t
         with type kind = Typ.kind
-        with type ov = Ov.t)
+        with type ov = Ov.t
+        with type coercer = Coercer.t)
 
     and Ov : OV
         with type kind = Typ.kind
@@ -180,7 +181,7 @@ module type EXPR = sig
     type typ
     type coercion
     type t_scope
-    type coercer
+    type bound
     type def
     type stmt
 
@@ -208,7 +209,7 @@ module type EXPR = sig
         (*| Axiom of { axioms : (Name.t * Type.kind Vector.t * typ * typ) Vector1.t
             ; body : t }*)
         | Cast of {castee : t; coercion : coercion}
-        | Convert of {coerce : coercer option txref; arg : t}
+        | Convert of {bound : bound txref; arg : t}
 
         | Record of (Name.t * t) Vector.t
         | Where of {base : t; fields : (Name.t * t) Vector1.t}
@@ -253,7 +254,7 @@ module type EXPR = sig
     (*val axiom : (Name.t * Type.kind Vector.t * typ * typ) Vector.t -> t -> t'*)
     val match' : t -> clause Vector.t -> t'
     val cast : t -> coercion -> t'
-    val convert : t -> coercer option txref -> t'
+    val convert : t -> bound txref option -> t'
     (*val pack : typ Vector.t -> t -> t'
     val unpack : typedef Vector1.t -> var -> t -> t -> t'*)
     val record : (Name.t * t) Vector.t -> t'

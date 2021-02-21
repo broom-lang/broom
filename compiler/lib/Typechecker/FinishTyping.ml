@@ -61,7 +61,10 @@ let rec finish_expr env : Expr.t -> Expr.t = fun expr ->
 
         | Cast _ -> unreachable (Some expr.pos) ~msg: "encountered Cast"
 
-        | Convert {coerce; arg} -> Coercer.apply_opt !coerce arg
+        | Convert {bound; arg} ->
+            (match !bound with
+            | Bot {coerce; _} | Flex {coerce; _} | Rigid {coerce; _} ->
+                Coercer.apply_opt coerce arg)
 
         | Select {selectee; label} ->
             {expr with term = Expr.select (finish_expr env selectee) label}

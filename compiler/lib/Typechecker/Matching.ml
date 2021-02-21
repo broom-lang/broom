@@ -220,7 +220,12 @@ let rec unify : Util.span -> Env.t -> T.t -> T.t -> unit
             (K.eval span env t |> Option.get |> fst) (* FIXME: Option.get *)
             (K.eval span env t' |> Option.get |> fst) (* FIXME: Option.get *)
 
-and instance span env sub super = unify span env (Env.instantiate env sub) super
+and instance span env sub super =
+    let sub = Env.instantiate env sub in
+    unify span env sub super;
+    match sub with
+    | Uv sub -> Some (sub.bound)
+    | _ -> None
 
 (*
 (* # Focalization *)
