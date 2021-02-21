@@ -1,10 +1,24 @@
 type subst = TxRef.Subst.t
 type 'a txref = 'a TxRef.t
 
+module type COERCER = sig
+    type expr
+
+    type t
+
+    (* HACK: Seems to be no way to make this 'safe' without the useless `unit ->` or
+     * revealing `type t = expr -> expr`: *)
+    val id : unit -> t 
+    val coercer : (expr -> expr) -> t
+    val apply : t -> expr -> expr
+    val apply_opt : t option -> expr -> expr
+end
+
 module type UV = sig
     type typ
     type kind
     type ov
+    type coercer
 
     type t =
         { name : Name.t
@@ -12,7 +26,8 @@ module type UV = sig
         ; binder : binder txref
         ; bindees : t Vector.t txref
         ; level : int txref
-        ; bound : bound txref }
+        ; bound : bound txref
+        ; coerce : coercer option txref }
 
     and quantifier = ForAll | Exists
 
@@ -143,6 +158,8 @@ module type TYPE = sig
 end
 
 module type TYPES = sig
+    module Coercer : COERCER
+
     module rec Typ : (TYPE
         with type uv = Uv.t
         with type bound = Uv.bound

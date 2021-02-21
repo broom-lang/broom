@@ -342,7 +342,7 @@ let reabstract span env scope t =
     match t with
     | Uv root ->
         t |> T.postwalk_rebinding (fun t -> match t with
-            | Uv {name = _; quant = Exists; binder; bindees = _; level = _; bound = _} ->
+            | Uv {quant = Exists; binder; _} ->
                 (match !binder with
                 | Uv.Type binder when Uv.equal binder root ->
                     hoisted_ov env scope (K.kindof_F span env t)
