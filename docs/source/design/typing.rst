@@ -69,3 +69,40 @@ axioms:
             . (:\mathsf{typeIn} \; r1, \mathsf{row}, \mathsf{typeIn} \; r2) \rightarrow \mathsf{type}
     \end{align*}
 
+*******
+MLF-ing
+*******
+
+.. math::
+    \frac{
+        x : \Sigma \in \Gamma
+    } {
+        \Gamma \vdash x :_\pure \Sigma \leadsto \epsilon
+    }
+
+.. math::
+    \frac{
+        \Gamma, x : \hat{\alpha} \vdash e :_\eff \Sigma \leadsto C
+    } {
+        \Gamma \vdash \lambda x . e :_\pure \hat{\alpha} \rightarrow_\eff \Sigma \leadsto C
+    }
+
+.. math::
+    \frac{
+        \Gamma \vdash T \leadsto \Sigma_d \\
+        \Gamma, x : \Sigma_d \vdash e :_\eff \Sigma \leadsto C
+    } {
+        \Gamma \vdash \lambda x : T . e :_\pure \Sigma_d \rightarrow_\eff \Sigma \leadsto C
+    }
+
+.. math::
+    \frac{
+        \Gamma \vdash e_c :_{\eff_c} \Sigma_c \leadsto C_c \\
+        \Gamma \vdash e_a :_{\eff_a} \Sigma_a \leadsto C_a
+    } {
+        \Gamma \vdash e_c \, e_a :_\hat{\eff} \hat{\alpha_c} \leadsto
+            \hat{\alpha} \geq \Sigma_c \wedge
+            \hat{\alpha_d} \geq \Sigma_a \wedge
+            \hat{\alpha} \sim \hat{\alpha_d} \rightarrow_\hat{\eff} \hat{\alpha_c}
+    }
+
