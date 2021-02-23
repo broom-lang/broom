@@ -4,7 +4,7 @@ Type System
 
 .. math::
     \newcommand{\eff}{\iota}
-    \newcommand{\pure}{{(||)}}
+    \newcommand{\pure}{{(|)}}
 
 .. math::
     \frac{
@@ -40,9 +40,9 @@ Type System
 .. math::
     \frac{}{\Gamma \vdash n \Rightarrow_\pure \mathsf{\_\_int} \dashv \Gamma}
 
--------
+=======
 Kinding
--------
+=======
 
 ``:`` is 'of type' and ``::`` is 'of kind'
 
@@ -69,40 +69,72 @@ axioms:
             . (:\mathsf{typeIn} \; r1, \mathsf{row}, \mathsf{typeIn} \; r2) \rightarrow \mathsf{type}
     \end{align*}
 
-*******
+=======
 MLF-ing
-*******
+=======
+
+------------------------------------------------------------------------------------
+Expression Type Synthesis :math:`\Gamma \vdash e \Rightarrow_\eff \Sigma \leadsto C`
+------------------------------------------------------------------------------------
 
 .. math::
     \frac{
         x : \Sigma \in \Gamma
     } {
-        \Gamma \vdash x :_\pure \Sigma \leadsto \epsilon
+        \Gamma \vdash x \Rightarrow_\pure \Sigma \leadsto \epsilon
     }
 
 .. math::
     \frac{
-        \Gamma, x : \hat{\alpha} \vdash e :_\eff \Sigma \leadsto C
+        \Gamma, x : \hat{\alpha} \vdash e \Rightarrow_\eff \Sigma \leadsto C
     } {
-        \Gamma \vdash \lambda x . e :_\pure \hat{\alpha} \rightarrow_\eff \Sigma \leadsto C
+        \Gamma \vdash \lambda x . e \Rightarrow_\pure \hat{\alpha} \rightarrow_\eff \Sigma \leadsto C
     }
 
 .. math::
     \frac{
-        \Gamma \vdash T \leadsto \Sigma_d \\
-        \Gamma, x : \Sigma_d \vdash e :_\eff \Sigma \leadsto C
+        \Gamma \vdash T \leadsto \exists \overline{\alpha} . \Sigma_d \\
+        \Gamma, \overline{\alpha}, x : \Sigma_d \vdash e \Rightarrow_\eff \Sigma \leadsto C
     } {
-        \Gamma \vdash \lambda x : T . e :_\pure \Sigma_d \rightarrow_\eff \Sigma \leadsto C
+        \Gamma \vdash \lambda x : T . e \Rightarrow_\pure
+            \forall \overline{\alpha} . \Sigma_d \rightarrow_\eff \Sigma \leadsto \supset C
     }
 
 .. math::
     \frac{
-        \Gamma \vdash e_c :_{\eff_c} \Sigma_c \leadsto C_c \\
-        \Gamma \vdash e_a :_{\eff_a} \Sigma_a \leadsto C_a
+        \Gamma \vdash e_c \Leftarrow_{\eff_c} \hat{\alpha_d} \rightarrow \hat{\alpha_c} \leadsto C_c \\
+        \Gamma \vdash e_a \Leftarrow_{\eff_a} \hat{\alpha_d} \leadsto C_a
     } {
-        \Gamma \vdash e_c \, e_a :_\hat{\eff} \hat{\alpha_c} \leadsto
-            \hat{\alpha} \geq \Sigma_c \wedge
-            \hat{\alpha_d} \geq \Sigma_a \wedge
-            \hat{\alpha} \sim \hat{\alpha_d} \rightarrow_\hat{\eff} \hat{\alpha_c}
+        \Gamma \vdash e_c \, e_a \Rightarrow_\hat{\eff} \hat{\alpha_c}
+            \leadsto
+                C_c \wedge C_a \wedge
+                \hat{\eff} \sim \eff_c \wedge \hat{\eff} \sim \eff_a
+    }
+
+.. math::
+    \frac{
+        \Gamma \vdash T \leadsto \exists \overline{\alpha} . \Sigma \\
+        \overline{\alpha' \, \overline{\beta}} = hoist(\Gamma, \overline{\alpha}) \\
+        \Sigma' = [\overline{\alpha' \, \overline{\beta}/\alpha}]\Sigma \\
+        \Gamma \vdash e \Leftarrow_\eff \Sigma' \leadsto C \\
+        \overline{\hat{\gamma}} = fuv(\Sigma_e) \cup fuv(C) - fuv(\Gamma)
+    } {
+        \Gamma \vdash (e : T) \Rightarrow_\eff \Sigma'
+            \leadsto
+                \exists \overline{\hat{\gamma}} . \overline{\alpha' \sim \hat{\alpha'}}
+                    \supset C
+    }
+
+----------------------------------------------------------------------------------
+Expression Type Checking :math:`\Gamma \vdash e \Leftarrow_\eff \Sigma \leadsto C`
+----------------------------------------------------------------------------------
+
+.. math::
+    \frac{
+        \Gamma \vdash e \Rightarrow_\eff \Sigma_e \leadsto C
+    } {
+        \Gamma \vdash e \Leftarrow_\eff \Sigma
+            \leadsto
+                C \wedge \hat{\beta} \geq \Sigma_e \wedge \hat{\beta} \sim \Sigma
     }
 
