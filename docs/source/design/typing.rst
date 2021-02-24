@@ -93,7 +93,16 @@ Expression Type Synthesis :math:`\Gamma \vdash e \Rightarrow_\eff \Sigma \leadst
 
 .. math::
     \frac{
-        \Gamma \vdash T \leadsto \exists \overline{\alpha} . \Sigma_d \\
+        \Gamma \vdash T \leadsto \Sigma_d \\
+        \Gamma, x : \Sigma_d \vdash e \Rightarrow_\eff \Sigma \leadsto C
+    } {
+        \Gamma \vdash \lambda x : T . e \Rightarrow_\pure
+            \Sigma_d \rightarrow_\eff \Sigma \leadsto C
+    }
+
+.. math::
+    \frac{
+        \Gamma \vdash T \leadsto \exists \overline{\alpha} . \Sigma_d, \overline{\alpha} \neq \epsilon \\
         \Gamma, \overline{\alpha}, x : \Sigma_d \vdash e \Rightarrow_\eff \Sigma \leadsto C
     } {
         \Gamma \vdash \lambda x : T . e \Rightarrow_\pure
