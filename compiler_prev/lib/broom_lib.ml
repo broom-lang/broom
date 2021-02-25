@@ -14,11 +14,11 @@ module Util = Util (* HACK *)
 module Name = Name
 
 module Ast = Ast
-(*module Fc = struct
+module Fc = struct
     include Fc
 
     module Eval = FcEval
-end*)
+end
 
 module SedlexMenhir = SedlexMenhir
 
@@ -38,21 +38,21 @@ module Parse = struct
         with SedlexMenhir.ParseError err -> Error err
 end
 
-(*module Expander = Expander.Make (StringHashtbl)
+module Expander = Expander.Make (StringHashtbl)
 
 module TyperSigs = TyperSigs (* HACK *)
 module Typer = Typer
 
 module ExpandPats = ExpandPats
-module FwdRefs = FwdRefs*)
+module FwdRefs = FwdRefs
 
 type error =
     | Parse of SedlexMenhir.parse_error
-    (*| Type of (Util.span * Typer.TypeError.t)
-    | FwdRefs of FwdRefs.error CCVector.ro_vector*)
+    | Type of (Util.span * Typer.TypeError.t)
+    | FwdRefs of FwdRefs.error CCVector.ro_vector
 
 let parse_err err = Parse err
-(*let type_err err = Type err
+let type_err err = Type err
 let fwd_ref_errs errs = FwdRefs errs
 
 module Cps = struct
@@ -66,5 +66,5 @@ module Untuple = Untuple
 module Cfg = Cfg
 module ScheduleData = ScheduleData
 
-module ToJs = ToJs*)
+module ToJs = ToJs
 
