@@ -9,6 +9,7 @@
 (copy_files# (files IRCommon/*))
 (copy_files# (files Ast/*))
 (copy_files# (files Expander/*))
+(copy_files# (files Fc/*))
 (copy_files# (files Typechecker/*))
 
 (menhir (modules Parser))
