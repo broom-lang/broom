@@ -71,3 +71,27 @@ module Ref = struct
     let eq : 'a t -> 'a t -> bool = (==)
 end
 
+type 'a ref = 'a Ref.t
+
+let ref = Ref.ref
+let (!) = Ref.(!)
+let (:=) = Ref.(:=)
+
+module Queue = struct
+    type 'a t = {front : 'a list ref; back : 'a list ref}
+
+    let create () = {front = ref []; back = ref []}
+
+    let ensure_front {front; back} = match !front with
+        | _ :: _ -> ()
+        | [] -> front := List.rev !back
+
+    let push {front = _; back} v = back := v :: !back
+
+    let pop ({front; back = _} as q) =
+        ensure_front q;
+        match !front with
+        | v :: vs -> front := vs; Some v
+        | [] -> None
+end
+

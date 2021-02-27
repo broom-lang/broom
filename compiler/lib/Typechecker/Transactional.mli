@@ -10,3 +10,11 @@ module Ref : sig
     val eq : 'a t -> 'a t -> bool
 end
 
+module Queue : sig
+    type 'a t
+
+    val create : unit -> 'a t
+    val push : 'a t -> 'a -> unit
+    val pop : 'a t -> 'a option
+end
+
