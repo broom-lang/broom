@@ -14,6 +14,7 @@ module Util = Util (* HACK *)
 module Name = Name
 
 module Ast = Ast
+module Fc = Fc
 (*module Fc = struct
     include Fc
 
@@ -40,20 +41,20 @@ end
 
 module Expander = Expander.Make (StringHashtbl)
 
-(*module TyperSigs = TyperSigs (* HACK *)
+module TyperSigs = TyperSigs (* HACK *)
 module Typer = Typer
 
-module ExpandPats = ExpandPats
+(*module ExpandPats = ExpandPats
 module FwdRefs = FwdRefs*)
 
 type error =
     | Parse of SedlexMenhir.parse_error
-    (*| Type of (Util.span * Typer.TypeError.t)
-    | FwdRefs of FwdRefs.error CCVector.ro_vector*)
+    | Type of Typer.Error.t list
+    (*| FwdRefs of FwdRefs.error CCVector.ro_vector*)
 
 let parse_err err = Parse err
-(*let type_err err = Type err
-let fwd_ref_errs errs = FwdRefs errs
+let type_err errs = Type errs
+(*let fwd_ref_errs errs = FwdRefs errs
 
 module Cps = struct
     include Cps

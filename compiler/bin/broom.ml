@@ -1,6 +1,6 @@
 open Broom_lib
-(*module TS = TyperSigs
-module Env = Typer.Env*)
+module TS = TyperSigs
+(*module Env = Typer.Env*)
 module C = Cmdliner
 module PP = PPrint
 
@@ -12,9 +12,9 @@ let debug_heading str =
     print_endline (str ^ "\n" ^ String.make (String.length str) '=' ^ "\n")
 let pwrite output = PP.ToChannel.pretty 1.0 80 output
 let pprint = pwrite stdout
-(*let pprint_err = pwrite stderr*)
+let pprint_err = pwrite stderr
 
-let eval_envs path = (Expander.Bindings.empty path, (*Typer.Env.eval*) (), (*Fc.Eval.Namespace.create*) ())
+let eval_envs path = (Expander.Bindings.empty path, Typer.Env.eval (), (*Fc.Eval.Namespace.create*) ())
 
 (*let build path debug check_only filename outfile =
     let open PPrint in
@@ -109,7 +109,7 @@ let eval_envs path = (Expander.Bindings.empty path, (*Typer.Env.eval*) (), (*Fc.
 
 let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
     let open PPrint in
-    (*let (let* ) = Result.bind in*)
+    let (let* ) = Result.bind in
 
     let (eenv, stmts) = Expander.expand_interactive_stmt eenv stmt in
     if debug then begin
@@ -118,14 +118,14 @@ let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
         pprint (doc ^^ twice hardline);
     end;
 
-    (*let* ({TS.term = program; eff}, tenv) =
+    let* ({TS.term = program; eff = _}, tenv) =
         Typer.check_interactive_stmts tenv stmts |> Result.map_error type_err in
     if debug then begin
         debug_heading "FC from Typechecker";
-        pprint (Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
+        pprint (Fc.Program.to_doc program ^^ twice hardline)
     end;
 
-    let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
+    (*let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
     if debug then begin
         debug_heading "Nonrecursive FC";
         pprint (Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
@@ -162,11 +162,13 @@ let rep debug ((_, (*tenv*)_, _) as envs) filename input =
         (match err with
         | Parse err ->
             prerr_endline (SedlexMenhir.string_of_ParseError err);
-        (*| Type (pos, err) ->
+        | Type errs ->
             flush stdout;
-            pprint_err PPrint.(hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ hardline);
+            pprint_err PPrint.(hardline
+                ^^ separate_map (twice hardline) Typer.Error.to_doc errs
+                ^^ hardline);
             flush stderr;
-        | FwdRefs errors ->
+        (*| FwdRefs errors ->
             errors |> CCVector.iter (fun err -> pprint_err (FwdRefs.error_to_doc err));
             flush stderr*));
         envs
