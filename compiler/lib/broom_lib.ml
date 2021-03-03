@@ -38,9 +38,9 @@ module Parse = struct
         with SedlexMenhir.ParseError err -> Error err
 end
 
-(*module Expander = Expander.Make (StringHashtbl)
+module Expander = Expander.Make (StringHashtbl)
 
-module TyperSigs = TyperSigs (* HACK *)
+(*module TyperSigs = TyperSigs (* HACK *)
 module Typer = Typer
 
 module ExpandPats = ExpandPats

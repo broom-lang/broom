@@ -14,7 +14,7 @@ let pwrite output = PP.ToChannel.pretty 1.0 80 output
 let pprint = pwrite stdout
 (*let pprint_err = pwrite stderr*)
 
-let eval_envs path = ((*Expander.Bindings.empty*) path, (*Typer.Env.eval*) (), (*Fc.Eval.Namespace.create*) ())
+let eval_envs path = (Expander.Bindings.empty path, (*Typer.Env.eval*) (), (*Fc.Eval.Namespace.create*) ())
 
 (*let build path debug check_only filename outfile =
     let open PPrint in
@@ -107,9 +107,9 @@ let eval_envs path = ((*Expander.Bindings.empty*) path, (*Typer.Env.eval*) (), (
         if not check_only then close_out output
     )*)
 
-let ep (*debug*)_ (eenv, tenv, venv) (_ : Ast.Term.Stmt.t) =
-    (*let open PPrint in
-    let (let* ) = Result.bind in
+let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
+    let open PPrint in
+    (*let (let* ) = Result.bind in*)
 
     let (eenv, stmts) = Expander.expand_interactive_stmt eenv stmt in
     if debug then begin
@@ -118,7 +118,7 @@ let ep (*debug*)_ (eenv, tenv, venv) (_ : Ast.Term.Stmt.t) =
         pprint (doc ^^ twice hardline);
     end;
 
-    let* ({TS.term = program; eff}, tenv) =
+    (*let* ({TS.term = program; eff}, tenv) =
         Typer.check_interactive_stmts tenv stmts |> Result.map_error type_err in
     if debug then begin
         debug_heading "FC from Typechecker";
