@@ -1,5 +1,0 @@
-val foo = 1
-val foo = 2
-
-fun main _ = 0
-

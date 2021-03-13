@@ -1,5 +1,0 @@
-fun forev (n: __int) = orever n
-fun orever (n: __int) = forev n
-
-fun main _ = 0
-

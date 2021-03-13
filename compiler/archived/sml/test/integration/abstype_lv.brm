@@ -1,4 +1,0 @@
-val t: type = __int
-
-fun main _ = 0
-

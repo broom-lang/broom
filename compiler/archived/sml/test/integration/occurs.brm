@@ -1,4 +1,0 @@
-fun foo (_: __int) = foo
-
-fun main _ = 0
-

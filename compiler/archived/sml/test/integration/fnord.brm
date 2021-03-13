@@ -1,4 +1,0 @@
-val foo: __int = fnord
-
-fun main _ = 0
-

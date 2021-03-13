@@ -1,6 +1,0 @@
-fun f (n: __int) = ans
-val n = f 23
-val ans = 42
-
-fun main _ = 0
-

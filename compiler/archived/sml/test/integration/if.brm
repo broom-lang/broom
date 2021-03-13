@@ -1,7 +1,0 @@
-val n = match True
-    | True -> 23
-    | False -> 42
-    end
-
-fun main _ = 0
-

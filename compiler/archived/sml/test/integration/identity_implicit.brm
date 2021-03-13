@@ -1,5 +1,0 @@
-val identity: pi (a: type) => a -> a = fn _ => fn x -> x end end
-val n: __int = identity 5
-
-fun main _ = 0
-

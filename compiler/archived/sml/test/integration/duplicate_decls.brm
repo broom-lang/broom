@@ -1,7 +1,0 @@
-type FOO_FOO = interface
-    val foo : __int
-    val foo : bool
-end
-
-fun main _ = 0
-

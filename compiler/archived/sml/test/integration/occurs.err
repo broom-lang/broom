@@ -1,4 +1,0 @@
-TypeError in [test/integration/occurs.brm:1.8-1.19]: Int -> ^g__1 is not a subtype of ^g__1
-because TypeError in [test/integration/occurs.brm:1.8-1.19]: Occurs check: unifying ^g__1 with Int -> ^g__1 would create infinite type.
-TypeError in [test/integration/occurs.brm:1.8-1.19]: Int -> ^g__1 is not a subtype of ^g__1
-because TypeError in [test/integration/occurs.brm:1.8-1.19]: Occurs check: unifying ^g__1 with Int -> ^g__1 would create infinite type.

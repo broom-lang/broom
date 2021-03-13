@@ -1,4 +1,0 @@
-val n: __int = 5
-
-fun main _ = 0
-

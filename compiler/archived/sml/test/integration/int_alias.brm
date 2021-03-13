@@ -1,5 +1,0 @@
-type id = __int
-val myId: id = 5
-
-fun main _ = 0
-

@@ -1,2 +1,0 @@
-structure Pos = AntlrStreamPos
-

@@ -1,5 +1,0 @@
-val m = 5
-val n = m
-
-fun main _ = 0
-

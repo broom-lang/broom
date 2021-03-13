@@ -1,7 +1,0 @@
-src/Parser/lexer.ml-ulex.sml
-src/Parser/parser.ml-antlr.sml
-.cm/
-broom
-broom.amd64-linux
-test/unit/unit
-
