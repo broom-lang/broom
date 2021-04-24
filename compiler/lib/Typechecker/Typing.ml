@@ -49,6 +49,18 @@ module Make (Kinding : TyperSigs.KINDING) = struct
             env
         ) env stmts);
 
-        todo (Some span)
+        let stmts = CCVector.to_array stmts' in
+        let main =
+            let (stmts, body) =
+                if Array.length stmts > 0
+                then match Array.get stmts 0 with
+                    | Expr expr -> (Array.sub stmts 0 (Array.length stmts - 1), expr)
+                    | _ -> (stmts, FExpr.at span (Tuple Vector.empty) (FExpr.values [||]))
+                else (stmts, FExpr.at span (Tuple Vector.empty) (FExpr.values [||])) in
+            FExpr.at span body.typ (FExpr.let' stmts body) in
+        ( { TS.term = { Fc.Program.type_fns = Vector.empty (* FIXME *)
+                       ; defs = Vector.empty; main }
+          ; eff }
+        , env )
 end
 
