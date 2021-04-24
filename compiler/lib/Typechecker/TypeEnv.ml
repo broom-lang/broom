@@ -1,7 +1,8 @@
 open Asserts
 
 module T = Fc.Type
-type var = Fc.Term.Expr.var
+module FExpr = Fc.Term.Expr
+type var = FExpr.var
 module Tx = Transactional
 open Tx.Ref
 
@@ -24,6 +25,8 @@ let eval () =
     ; level = 1
     ; error_handler = fun err -> unreachable (Some err.pos) }
 
+let uv env kind = ref (T.Unassigned (Name.fresh (), kind, env.level))
+
 let push_val (env : t) (var : var) =
     match env.scopes with
     | Vals bindings :: scopes' ->
@@ -31,5 +34,16 @@ let push_val (env : t) (var : var) =
     | scopes ->
         {env with scopes = Vals (Name.Map.singleton var.name var) :: scopes}
 
-let uv env kind = ref (T.Unassigned (Name.fresh (), kind, env.level))
+let find_val (env : t) span name =
+    let rec find = function
+        | Vals kvs :: scopes -> (match Name.Map.find_opt name kvs with
+            | Some var -> var
+            | None -> find scopes)
+        | [] ->
+            report_error env ({v = Unbound name; pos = span});
+            (* FIXME: levels: *)
+            let kind = T.App {callee = Prim TypeIn; arg = Uv (uv env T.rep)} in
+            let typ = T.Uv (uv env kind) in
+            FExpr.var Explicit name typ in
+    find env.scopes
 

@@ -27,7 +27,11 @@ module Make (Kinding : TyperSigs.KINDING) = struct
         | Int _ -> Int
         | String _ -> String)
 
-    let typeof _ _ (expr : AExpr.t with_pos) : FExpr.t typing = match expr.v with
+    let typeof _ env (expr : AExpr.t with_pos) : FExpr.t typing = match expr.v with
+        | Var name ->
+            let var = Env.find_val env expr.pos name in
+            {term = FExpr.at expr.pos var.vtyp (FExpr.use var); eff = EmptyRow}
+
         | Const c ->
             let typ = const_typ c in
             {term = FExpr.at expr.pos typ (FExpr.const c); eff = EmptyRow}
@@ -72,12 +76,12 @@ module Make (Kinding : TyperSigs.KINDING) = struct
 
         let stmts' = CCVector.create () in
         let eff = T.Uv (Env.uv env T.aRow) in
-        ignore (Vector1.fold (fun env stmt ->
+        let env = Vector1.fold (fun env stmt ->
             let (stmt, env, stmt_eff) = check_interactive_stmt ctrs env stmt in
             CCVector.push stmts' stmt;
             ignore (unify ctrs span env stmt_eff eff);
             env
-        ) env stmts);
+        ) env stmts in
 
         let stmts = CCVector.to_array stmts' in
         let main =

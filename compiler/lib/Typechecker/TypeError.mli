@@ -1,4 +1,5 @@
-type t'
+type t' =
+    | Unbound of Name.t
 
 type t = t' Util.with_pos
 
