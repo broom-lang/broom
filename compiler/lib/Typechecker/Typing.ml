@@ -48,9 +48,9 @@ module Make (Kinding : TyperSigs.KINDING) = struct
     let check_interactive_stmt : ctrs -> Env.t -> AStmt.t -> FStmt.t * Env.t * eff
     = fun ctrs env -> function
         | Def (span, pat, expr) ->
-            let (pat, env) = typeof_pat ctrs env pat in
+            let (pat, env') = typeof_pat ctrs env pat in
             let {TS.term = expr; eff} = check ctrs env pat.ptyp expr in
-            (Def (span, pat, expr), env, eff)
+            (Def (span, pat, expr), env', eff)
 
         | Expr expr ->
             let {TS.term = expr; eff} = typeof ctrs env expr in
