@@ -1,14 +1,15 @@
 module Tx = Transactional
 module Type = FcType.Type
+type plicity = Util.plicity
 
 module type EXPR = sig
     type def
     type stmt
     type coercer
 
-    and var = {name : Name.t; vtyp : Type.t}
+    type var = {plicity : Util.plicity; name : Name.t; vtyp : Type.t}
 
-    and t =
+    type t =
         { term : t'
         ; mutable parent : t option
         ; typ : Type.t
@@ -64,8 +65,8 @@ module type EXPR = sig
     val to_doc : t -> PPrint.document
     val pat_to_doc : pat -> PPrint.document
 
-    val var : Name.t -> Type.t -> var
-    val fresh_var : Type.t -> var
+    val var : plicity -> Name.t -> Type.t -> var
+    val fresh_var : plicity -> Type.t -> var
 
     val at : Util.span -> Type.t -> t' -> t
     val pat_at : Util.span -> Type.t -> pat' -> pat

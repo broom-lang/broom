@@ -18,9 +18,9 @@ end = struct
     type stmt = Stmt.t
     type coercer = Coercer.t
 
-    and var = {name : Name.t; vtyp : Type.t}
+    type var = {plicity : Util.plicity; name : Name.t; vtyp : Type.t}
 
-    and t =
+    type t =
         { term : t'
         ; mutable parent : t option
         ; typ : Type.t
@@ -247,9 +247,9 @@ end = struct
         | WildP name -> underscore ^^ Name.to_doc name
         | ConstP c -> Const.to_doc c
 
-    let var name vtyp = {name; vtyp}
+    let var plicity name vtyp = {plicity; name; vtyp}
 
-    let fresh_var vtyp = var (Name.fresh ()) vtyp
+    let fresh_var plicity vtyp = var plicity (Name.fresh ()) vtyp
 
     let at pos typ term = {term; pos; typ; parent = None}
 
@@ -463,7 +463,7 @@ and Coercer : FcSigs.COERCER with type expr = Expr.t = struct
         | Use _ | Const _ -> f expr
         | _ ->
             let {Expr.term = _; pos; typ; parent = _} = expr in
-            let var = Expr.fresh_var typ in
+            let var = Expr.fresh_var Explicit typ in
             let pat = Expr.pat_at pos typ (VarP var) in
             let body = f (Expr.at pos typ (Expr.use var)) in
             Expr.at pos typ (Expr.let' [|Def (pos, pat, expr)|] body)

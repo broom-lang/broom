@@ -1,5 +1,6 @@
 open Asserts
 type 'a with_pos = 'a Util.with_pos
+type plicity = Util.plicity
 
 module TS = TyperSigs
 module AExpr = Ast.Term.Expr
@@ -38,7 +39,14 @@ module Make (Kinding : TyperSigs.KINDING) = struct
         let coerce = subtype ctrs expr.pos env expr.typ super in
         {TS.term = Coercer.apply_opt coerce expr; eff}
 
-    let typeof_pat _ env (pat : AExpr.t with_pos) = match pat.v with
+    let typeof_pat _ env (plicity : plicity) (pat : AExpr.t with_pos) = match pat.v with
+        | Var name ->
+            let kind = T.App {callee = Prim TypeIn; arg = Uv (Env.uv env T.rep)} in
+            let typ = T.Uv (Env.uv env kind) in
+            let var = FExpr.var plicity name typ in
+            ( FExpr.pat_at pat.pos typ (VarP var)
+            , Env.push_val env var )
+
         | Const c ->
             let typ = const_typ c in
             (FExpr.pat_at pat.pos typ (ConstP c), env)
@@ -48,7 +56,7 @@ module Make (Kinding : TyperSigs.KINDING) = struct
     let check_interactive_stmt : ctrs -> Env.t -> AStmt.t -> FStmt.t * Env.t * eff
     = fun ctrs env -> function
         | Def (span, pat, expr) ->
-            let (pat, env') = typeof_pat ctrs env pat in
+            let (pat, env') = typeof_pat ctrs env Explicit pat in
             let {TS.term = expr; eff} = check ctrs env pat.ptyp expr in
             (Def (span, pat, expr), env', eff)
 
