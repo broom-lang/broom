@@ -10,8 +10,9 @@ type 'a with_pos = 'a Util.with_pos
 type 'a typing = {term : 'a; eff : Type.t}
 
 module type TYPING = sig
-    val typeof : Env.t -> AExpr.t with_pos -> FExpr.t typing
-    val check_interactive_stmts : Env.t -> AStmt.t Vector1.t -> Fc.Program.t typing * Env.t
+    val typeof : Constraint.queue -> Env.t -> AExpr.t with_pos -> FExpr.t typing
+    val check_interactive_stmts : Constraint.queue -> Env.t -> AStmt.t Vector1.t
+        -> Fc.Program.t typing * Env.t
 end
 
 module type KINDING = sig
