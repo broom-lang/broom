@@ -1,5 +1,6 @@
 module Tx = Transactional
 module Type = FcType.Type
+module Coercer = Fc.Term.Coercer
 
 type simple =
     | Subtype of {span : Util.span; env : TypeEnv.t
@@ -16,4 +17,5 @@ type t =
     | Simples of queue
 
 val unify : queue -> Util.span -> TypeEnv.t -> Type.t -> Type.t -> Type.coercion Tx.Ref.t
+val subtype : queue -> Util.span -> TypeEnv.t -> Type.t -> Type.t -> Coercer.t option Tx.Ref.t
 

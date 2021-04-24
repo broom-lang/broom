@@ -7,6 +7,7 @@ module AStmt = Ast.Term.Stmt
 module T = Fc.Type
 module FStmt = Fc.Term.Stmt
 module FExpr = Fc.Term.Expr
+module Coercer = Fc.Term.Coercer
 module Env = TypeEnv
 type eff = T.t
 type 'a typing = 'a TyperSigs.typing
@@ -14,7 +15,12 @@ type ctrs = Constraint.queue
 
 module Make (Kinding : TyperSigs.KINDING) = struct
     (* OPTIMIZE: First try to unify on the fly: *)
-    let unify ctrs span env t t' = Constraint.unify ctrs span env t t'
+    let unify ctrs span env t t' = T.Patchable (Constraint.unify ctrs span env t t')
+
+    (* OPTIMIZE: First try to subtype on the fly: *)
+    let subtype ctrs span env sub super =
+        let cofr = Constraint.subtype ctrs span env sub super in
+        Some (Coercer.coercer (fun expr -> FExpr.at span super (FExpr.convert cofr expr)))
 
     let const_typ (c : Const.t) = T.Prim (match c with
         | Int _ -> Int
@@ -27,13 +33,28 @@ module Make (Kinding : TyperSigs.KINDING) = struct
 
         | _ -> todo (Some expr.pos)
 
-    let check_interactive_stmt : ctrs -> FStmt.t CCVector.vector -> Env.t -> AStmt.t -> Env.t * eff
-    = fun ctrs stmts' env -> function
-        | Def (span, _, _) -> todo (Some span)
+    let check ctrs env super expr =
+        let {TS.term = expr; eff} = typeof ctrs env expr in
+        let coerce = subtype ctrs expr.pos env expr.typ super in
+        {TS.term = Coercer.apply_opt coerce expr; eff}
+
+    let typeof_pat _ env (pat : AExpr.t with_pos) = match pat.v with
+        | Const c ->
+            let typ = const_typ c in
+            (FExpr.pat_at pat.pos typ (ConstP c), env)
+
+        | _ -> todo (Some pat.pos)
+
+    let check_interactive_stmt : ctrs -> Env.t -> AStmt.t -> FStmt.t * Env.t * eff
+    = fun ctrs env -> function
+        | Def (span, pat, expr) ->
+            let (pat, env) = typeof_pat ctrs env pat in
+            let {TS.term = expr; eff} = check ctrs env pat.ptyp expr in
+            (Def (span, pat, expr), env, eff)
+
         | Expr expr ->
             let {TS.term = expr; eff} = typeof ctrs env expr in
-            CCVector.push stmts' (Expr expr);
-            (env, eff)
+            (Expr expr, env, eff)
 
     let check_interactive_stmts ctrs env stmts =
         let span =
@@ -44,7 +65,8 @@ module Make (Kinding : TyperSigs.KINDING) = struct
         let stmts' = CCVector.create () in
         let eff = T.Uv (Env.uv env T.aRow) in
         ignore (Vector1.fold (fun env stmt ->
-            let (env, stmt_eff) = check_interactive_stmt ctrs stmts' env stmt in
+            let (stmt, env, stmt_eff) = check_interactive_stmt ctrs env stmt in
+            CCVector.push stmts' stmt;
             ignore (unify ctrs span env stmt_eff eff);
             env
         ) env stmts);
@@ -53,7 +75,7 @@ module Make (Kinding : TyperSigs.KINDING) = struct
         let main =
             let (stmts, body) =
                 if Array.length stmts > 0
-                then match Array.get stmts 0 with
+                then match Array.get stmts (Array.length stmts - 1) with
                     | Expr expr -> (Array.sub stmts 0 (Array.length stmts - 1), expr)
                     | _ -> (stmts, FExpr.at span (Tuple Vector.empty) (FExpr.values [||]))
                 else (stmts, FExpr.at span (Tuple Vector.empty) (FExpr.values [||])) in

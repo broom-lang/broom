@@ -4,6 +4,7 @@ module Type = FcType.Type
 module type EXPR = sig
     type def
     type stmt
+    type coercer
 
     and var = {name : Name.t; vtyp : Type.t}
 
@@ -46,7 +47,7 @@ module type EXPR = sig
 
         | Use of var
 
-        | Patchable of t Tx.Ref.t
+        | Convert of coercer option Tx.Ref.t * t
 
     and clause = {pat : pat; mutable body : t}
     and prim_clause = {res : var option; prim_body : t}
@@ -67,6 +68,7 @@ module type EXPR = sig
     val fresh_var : Type.t -> var
 
     val at : Util.span -> Type.t -> t' -> t
+    val pat_at : Util.span -> Type.t -> pat' -> pat
 
     val values : t Array.t -> t'
     val focus : t -> int -> t'
@@ -87,7 +89,7 @@ module type EXPR = sig
     val proxy : Type.t -> t'
     val const : Const.t -> t'
     val use : var -> t'
-    val patchable : t Tx.Ref.t -> t'
+    val convert : coercer option Tx.Ref.t -> t -> t'
 
     val map_children : (t -> t) -> t -> t
 
@@ -95,11 +97,22 @@ module type EXPR = sig
     module VarSet : Set.S with type elt = var
 end
 
+module type COERCER = sig
+    type expr
+
+    type t
+
+    val id : t
+    val coercer : (expr -> expr) -> t
+    val apply : t -> expr -> expr
+    val apply_opt : t option -> expr -> expr
+end
+
 module type STMT = sig
     type expr
-    type var
+    type pat
 
-    type def = Util.span * var * expr
+    type def = Util.span * pat * expr
 
     type t
         = Def of def
@@ -118,7 +131,7 @@ module type TERM = sig
 
     and Stmt : (STMT
         with type expr = Expr.t
-        with type var = Expr.var)
+        with type pat = Expr.pat)
 end
 
 module type PROGRAM = sig

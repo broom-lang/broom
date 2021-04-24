@@ -1,5 +1,6 @@
 module Tx = Transactional
 module Type = FcType.Type
+module Coercer = Fc.Term.Coercer
 
 type simple =
     | Subtype of {span : Util.span; env : TypeEnv.t
@@ -19,4 +20,9 @@ let unify ctrs span env ltyp rtyp =
     let coercion = Tx.Ref.ref (Type.Refl rtyp) in
     Tx.Queue.push ctrs (Unify {span; env; ltyp; rtyp; coercion});
     coercion
+
+let subtype ctrs span env sub super =
+    let coerce = Tx.Ref.ref None in
+    Tx.Queue.push ctrs (Subtype {span; env; sub; super; coerce});
+    coerce
 

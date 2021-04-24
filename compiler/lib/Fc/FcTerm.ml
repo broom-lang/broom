@@ -10,11 +10,13 @@ module rec Expr : sig
     include FcSigs.EXPR
         with type def = Stmt.def
         with type stmt = Stmt.t
+        with type coercer = Coercer.t
 
     val def_to_doc : var -> PPrint.document
 end = struct
     type def = Stmt.def
     type stmt = Stmt.t
+    type coercer = Coercer.t
 
     and var = {name : Name.t; vtyp : Type.t}
 
@@ -57,7 +59,7 @@ end = struct
 
         | Use of var
 
-        | Patchable of t Tx.Ref.t
+        | Convert of coercer option Tx.Ref.t * t
 
     and clause = {pat : pat; mutable body : t}
     and prim_clause = {res : var option; prim_body : t}
@@ -184,7 +186,7 @@ end = struct
         | Proxy typ -> brackets (Type.to_doc typ)
         | Use var -> var_to_doc var
         | Const c -> Const.to_doc c
-        | Patchable r -> to_doc !r
+        | Convert (_, expr) -> prefix 4 1 (string "?") (to_doc expr)
 
     and axiom_to_doc (name, universals, l, r) =
         let open PPrint in
@@ -251,6 +253,8 @@ end = struct
 
     let at pos typ term = {term; pos; typ; parent = None}
 
+    let pat_at ppos ptyp pterm = {pterm; ppos; ptyp}
+
     let values vals = Tuple vals
 
     let focus focusee index = Focus {focusee; index}
@@ -298,7 +302,7 @@ end = struct
     let proxy t = Proxy t
     let const c = Const c
     let use v = Use v
-    let patchable ref = Patchable ref
+    let convert f expr = Convert (f, expr)
 
     let map_children f (expr : t) =
         let term = expr.term in
@@ -432,10 +436,9 @@ end = struct
 
             | Proxy _ | Use _ | Const _ -> term
 
-            | Patchable r ->
-                let expr = !r in
+            | Convert (co, expr) ->
                 let expr' = f expr in
-                if expr' == expr then term else patchable (ref expr') in
+                if expr' == expr then term else convert co expr' in
         if term' == term then expr else {expr with term = term'}
 
     module Var = struct
@@ -447,23 +450,46 @@ end = struct
     module VarSet = Set.Make(Var)
 end
 
+and Coercer : FcSigs.COERCER with type expr = Expr.t = struct
+    type expr = Expr.t
+
+    type t = expr -> expr
+
+    let id = Fun.id
+
+    let coercer = Fun.id
+
+    let apply f (expr : Expr.t) = match expr.term with
+        | Use _ | Const _ -> f expr
+        | _ ->
+            let {Expr.term = _; pos; typ; parent = _} = expr in
+            let var = Expr.fresh_var typ in
+            let pat = Expr.pat_at pos typ (VarP var) in
+            let body = f (Expr.at pos typ (Expr.use var)) in
+            Expr.at pos typ (Expr.let' [|Def (pos, pat, expr)|] body)
+
+    let apply_opt f expr = match f with
+        | Some f -> apply f expr
+        | None -> expr
+end
+
 and Stmt : FcSigs.STMT
     with type expr = Expr.t
-    with type var = Expr.var
+    with type pat = Expr.pat
 = struct
     module Type = Type
 
     type expr = Expr.t
-    type var = Expr.var
+    type pat = Expr.pat
 
-    type def = Util.span * var * expr
+    type def = Util.span * pat * expr
 
     type t
         = Def of def
         | Expr of expr
 
     let def_to_doc ((_, var, expr) : def) =
-        PPrint.(infix 4 1 equals (Expr.def_to_doc var) (Expr.to_doc expr))
+        PPrint.(infix 4 1 equals (Expr.pat_to_doc var) (Expr.to_doc expr))
 
     let to_doc = function
         | Def def -> def_to_doc def
