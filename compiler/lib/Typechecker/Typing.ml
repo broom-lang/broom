@@ -14,14 +14,9 @@ type eff = T.t
 type 'a typing = 'a TyperSigs.typing
 type ctrs = Constraint.queue
 
-module Make (Kinding : TyperSigs.KINDING) = struct
-    (* OPTIMIZE: First try to unify on the fly: *)
-    let unify ctrs span env t t' = T.Patchable (Constraint.unify ctrs span env t t')
-
-    (* OPTIMIZE: First try to subtype on the fly: *)
-    let subtype ctrs span env sub super =
-        let cofr = Constraint.subtype ctrs span env sub super in
-        Some (Coercer.coercer (fun expr -> FExpr.at span super (FExpr.convert cofr expr)))
+module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
+    let unify = Constraints.unify
+    let subtype = Constraints.subtype
 
     let const_typ (c : Const.t) = T.Prim (match c with
         | Int _ -> Int

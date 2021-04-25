@@ -48,7 +48,7 @@ module type EXPR = sig
 
         | Use of var
 
-        | Convert of coercer option Tx.Ref.t * t
+        | Convert of coercer Tx.Ref.t * t
 
     and clause = {pat : pat; mutable body : t}
     and prim_clause = {res : var option; prim_body : t}
@@ -90,7 +90,7 @@ module type EXPR = sig
     val proxy : Type.t -> t'
     val const : Const.t -> t'
     val use : var -> t'
-    val convert : coercer option Tx.Ref.t -> t -> t'
+    val convert : coercer Tx.Ref.t -> t -> t'
 
     val map_children : (t -> t) -> t -> t
 

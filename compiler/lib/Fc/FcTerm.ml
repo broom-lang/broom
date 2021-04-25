@@ -59,7 +59,7 @@ end = struct
 
         | Use of var
 
-        | Convert of coercer option Tx.Ref.t * t
+        | Convert of coercer Tx.Ref.t * t
 
     and clause = {pat : pat; mutable body : t}
     and prim_clause = {res : var option; prim_body : t}

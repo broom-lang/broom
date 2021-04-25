@@ -8,8 +8,9 @@ type 'a typing = 'a Sigs.typing
 
 module Error = TypeError
 
-module rec Kinding : Sigs.KINDING = MakeKinding(Typing)
-and Typing : Sigs.TYPING = MakeTyping(Kinding)
+module rec Kinding : Sigs.KINDING = MakeKinding (Typing)
+and Typing : Sigs.TYPING = MakeTyping (Kinding) (Ctrs)
+and Ctrs : Sigs.CONSTRAINTS = Constraints.Make (Kinding)
 
 let check_interactive_stmts env stmt =
     let open Transactional.Ref in
@@ -17,6 +18,7 @@ let check_interactive_stmts env stmt =
     let errors = ref [] in
     let env = Env.with_error_handler env (fun error -> errors := error :: !errors) in
     let res = Typing.check_interactive_stmts ctrs env stmt in
+    Ctrs.solve ctrs;
     match !errors with
     | [] -> Ok res
     | errors -> Error (List.rev errors)
