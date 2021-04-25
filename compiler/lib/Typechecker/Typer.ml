@@ -9,7 +9,7 @@ type 'a typing = 'a Sigs.typing
 
 module Error = TypeError
 
-module rec Kinding : Sigs.KINDING = MakeKinding (Typing)
+module rec Kinding : Sigs.KINDING = MakeKinding (Typing) (Constraints)
 and Typing : Sigs.TYPING = MakeTyping (Kinding) (Constraints)
 and Constraints : Sigs.CONSTRAINTS = MakeConstraints (Kinding)
 

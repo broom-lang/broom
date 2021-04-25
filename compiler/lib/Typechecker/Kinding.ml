@@ -1,5 +1,6 @@
 open Asserts
 
+module TS = TyperSigs
 module AType = Ast.Type
 module T = Fc.Type
 module Env = TypeEnv
@@ -7,8 +8,53 @@ open Transactional.Ref
 
 type 'a with_pos = 'a Util.with_pos
 
-module Make (Typing : TyperSigs.TYPING) = struct
+module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
     let elaborate _ (typ : AType.t with_pos) = todo (Some typ.pos)
+
+    let kindof_prim : Prim.t -> T.kind = function
+        | Int | Bool | String -> T.aType
+        | Array | Cell -> Pi {universals = Vector.empty; domain = T.aType; eff = EmptyRow
+            ; codomain = T.aType}
+        | SingleRep -> T.aType
+        | Boxed -> Prim SingleRep
+        | TypeIn -> Pi {universals = Vector.empty; domain = T.rep; eff = EmptyRow
+            ; codomain = T.aType}
+        | RowOf -> Pi {universals = Vector.empty; domain = T.aKind; eff = EmptyRow
+            ; codomain = T.aKind}
+
+    let rec kindof_F ctrs span env : T.t -> T.kind = function
+        | Exists {existentials = _; body} -> kindof_F ctrs span env body
+        | PromotedArray typs ->
+            let el_kind = if Vector.length typs > 0
+                then kindof_F ctrs span env (Vector.get typs 0)
+                else Uv (Env.uv env T.aKind) in
+            App {callee = Prim Array; arg = el_kind}
+        | PromotedTuple typs -> Tuple (Vector.map (kindof_F ctrs span env) typs)
+        | Tuple typs ->
+            let kinds = Vector.map (kindof_F ctrs span env) typs in
+            App {callee = Prim TypeIn; arg = PromotedArray kinds}
+        | Pi _ | Impli _ | Record _ | Proxy _ -> T.aType
+        | With _ | EmptyRow -> T.aRow
+        | Fn {param = domain; body} -> Pi { universals = Vector.empty; domain; eff = EmptyRow
+            ; codomain = kindof_F ctrs span env body }
+        | App {callee; arg} ->
+            (match kindof_F ctrs span env callee with
+            | Pi {universals; domain; eff = _; codomain} ->
+                if Vector.length universals = 0 then begin
+                    check_F ctrs span env domain arg;
+                    codomain
+                end else todo (Some span) ~msg: "universals in type application"
+            | _ -> unreachable (Some span) ~msg: "invalid type application in `kindof_F`.")
+        | Ov _ -> todo (Some span) (*((_, kind), _) -> kind*)
+        | Bv _ -> todo (Some span) (*{kind; _} -> kind*)
+        | Uv uv -> (match !uv with
+            | Unassigned (_, kind, _) -> kind
+            | Assigned typ -> kindof_F ctrs span env typ)
+        | Prim pt -> kindof_prim pt
+
+    and check_F ctrs span env kind typ =
+        let kind' = kindof_F ctrs span env typ in
+        ignore (Constraints.unify ctrs span env kind' kind)
 
     let eval span _ typ =
         let (let*) = Option.bind in

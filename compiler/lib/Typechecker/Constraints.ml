@@ -1,3 +1,5 @@
+open Asserts
+
 module TS = TyperSigs
 module T = FcType.Type
 module E = Fc.Term.Expr
@@ -10,10 +12,104 @@ module Make (K : TS.KINDING) = struct
     type queue = Constraint.queue
 
 (* # Solvers *)
+ 
+    let occurs_check span env uv typ =
+        let rec check : T.t -> unit = function
+            | Exists {existentials = _; body} -> check body
+            | PromotedArray typs -> Vector.iter check typs
+            | PromotedTuple typs -> Vector.iter check typs
+            | Tuple typs -> Vector.iter check typs
+            | Pi {universals = _; domain; eff; codomain} -> check domain; check eff; check codomain
+            | Impli {universals = _; domain; codomain} -> check domain; check codomain
+            | Record row -> check row
+            | With {base; label = _; field} -> check base; check field
+            | EmptyRow -> ()
+            | Proxy carrie -> check carrie
+            | Fn {param = _; body} -> check body
+            | App {callee; arg} -> check callee; check arg
+            | Ov _ (*ov*) -> todo (Some span)
+                (*(match Env.get_implementation env ov with
+                | Some (_, _, uv') -> check (Uv uv')
+                | None -> ())*)
+            | Uv uv' ->
+                (match !uv' with
+                | Unassigned _ ->
+                    if uv = uv'
+                    then Env.report_error env {v = Occurs (uv, typ); pos = span}
+                    else ()
+                | Assigned typ -> check typ)
+            | Bv _ | Prim _ -> () in
+        check typ
 
-    let solve_subtype_whnf _ _ _ _ _ = Asserts.todo None
+    (* Occurs check, ov escape check, HKT capturability check and uv level updates.
+       Complected for speed. *)
+    let check_uv_assignee span env uv level max_uv_level typ =
+        let rec check : T.t -> unit = function
+            | Exists {existentials = _; body} -> check body
+            | PromotedArray typs -> Vector.iter check typs
+            | PromotedTuple typs -> Vector.iter check typs
+            | Tuple typs -> Vector.iter check typs
+            | Pi {universals = _; domain; eff; codomain} -> check domain; check eff; check codomain
+            | Impli {universals = _; domain; codomain} -> check domain; check codomain
+            | Record row -> check row
+            | With {base; label = _; field} -> check base; check field
+            | EmptyRow -> ()
+            | Proxy carrie -> check carrie
+            | Fn {param = _; body} -> check body
+            | App {callee; arg} -> check callee; check arg
+            | Ov _ -> todo (Some span) (*((_, level') as ov) ->
+                (match Env.get_implementation env ov with
+                | Some (_, _, uv') -> check (Uv uv')
+                | None ->
+                    if level' <= level
+                    then ()
+                    else Env.reportError env pos (Escape ov))*)
+            | Uv uv' ->
+                (match !uv' with
+                | Unassigned (name, kind, level') ->
+                    if uv = uv'
+                    then Env.report_error env {v = Occurs (uv, typ); pos = span}
+                    else if level' <= level
+                    then ()
+                    else if level' <= max_uv_level
+                    then uv' := (Unassigned (name, kind, level)) (* hoist *)
+                    else Env.report_error env {v = IncompleteImpl (uv, uv'); pos = span}
+                | Assigned typ -> check typ)
+            | Bv _ | Prim _ -> () in
+        check typ
 
-    let solve_subtype ctrs span env sub super _ =
+    let rec solve_subtype_whnf ctrs span env sub super = match (sub, super) with
+        (* TODO: uv impredicativity clashes *)
+        (* FIXME: prevent nontermination from impredicative instantiation: *)
+        | (T.Uv uv, T.Uv uv') when Tx.Ref.eq uv uv' -> None
+        | (Uv _, Uv _) -> todo (Some span)
+        | (Uv uv, _) ->
+            (match !uv with
+            | Unassigned (_, kind, _) ->
+                occurs_check span env uv super;
+                ignore (unify ctrs span env kind (K.kindof_F ctrs span env super));
+                uv := Assigned super;
+                None
+            | Assigned _ -> unreachable (Some span) ~msg: "Assigned `typ` in `subtype_whnf`")
+        | (_, Uv uv) ->
+            (match !uv with
+            | Unassigned (_, kind, _) ->
+                occurs_check span env uv sub;
+                ignore (unify ctrs span env (K.kindof_F ctrs span env sub) kind);
+                uv := Assigned sub;
+                None
+            | Assigned _ -> unreachable (Some span) ~msg: "Assigned `super` in `subtype_whnf`")
+
+        | (Prim sub_p, super) -> (match super with
+            | Prim super_p when Prim.eq sub_p super_p -> None
+            | _ ->
+                Env.report_error env {v = Subtype (sub, super); pos = span};
+                None)
+
+        | _ -> todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
+            ^ Util.doc_to_string (T.to_doc super))
+
+    and solve_subtype ctrs span env sub super _ =
         let (let*) = Option.bind in
         let (let+) = Fun.flip Option.map in
 
@@ -37,9 +133,29 @@ module Make (K : TS.KINDING) = struct
             E.at span super (E.cast v co')))
         | (None, None, None) -> None)
 
-    let solve_unify_whnf _ _ _ _ _ = Asserts.todo None
+    and solve_unify_whnf ctrs span env ltyp rtyp = match (ltyp, rtyp) with
+        (* TODO: uv impredicativity clashes: *)
+        | (T.Uv uv, T.Uv uv') when Tx.Ref.eq uv uv' -> None
+        | (Uv _, Uv _) -> todo (Some span)
+        | (Uv uv, typ') | (typ', Uv uv) ->
+            (match !uv with
+            | Unassigned (_, kind, level) ->
+                check_uv_assignee span env uv level Int.max_int typ';
+                ignore (unify ctrs span env (K.kindof_F ctrs span env typ') kind);
+                uv := Assigned typ';
+                None
+            | Assigned _ -> unreachable (Some span) ~msg: "Assigned `typ` in `unify_whnf`")
 
-    let solve_unify ctrs span env ltyp rtyp _ =
+        | (EmptyRow, rtyp) -> (match rtyp with
+            | EmptyRow -> None
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
+
+        | _ -> todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
+            ^ Util.doc_to_string (T.to_doc rtyp))
+
+    and solve_unify ctrs span env ltyp rtyp _ =
         let (let*) = Option.bind in
         let (let+) = Fun.flip Option.map in
 
@@ -56,7 +172,7 @@ module Make (K : TS.KINDING) = struct
         | (None, None, Some co'') -> Some (Symm co'')
         | (None, None, None) -> None)
 
-    let solve ctrs =
+    and solve ctrs =
         let solve1 = function
             | Subtype {span; env; sub; super; coerce} as ctr ->
                 (match solve_subtype ctrs span env sub super coerce with
@@ -84,13 +200,13 @@ module Make (K : TS.KINDING) = struct
 (* # Generators *)
 
     (* OPTIMIZE: First try to unify on the fly: *)
-    let unify ctrs span env ltyp rtyp =
+    and unify ctrs span env ltyp rtyp =
         let coercion = Tx.Ref.ref (T.Refl rtyp) in
         Tx.Queue.push ctrs (Unify {span; env; ltyp; rtyp; coercion});
         Some (T.Patchable coercion)
 
     (* OPTIMIZE: First try to subtype on the fly: *)
-    let subtype ctrs span env sub super =
+    and subtype ctrs span env sub super =
         let coerce = Tx.Ref.ref Coercer.id in
         Tx.Queue.push ctrs (Subtype {span; env; sub; super; coerce});
         Some (Coercer.coercer (fun expr -> E.at span super (E.convert coerce expr)))
