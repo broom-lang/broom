@@ -100,37 +100,28 @@ module Make (K : TS.KINDING) = struct
                 None
             | Assigned _ -> unreachable (Some span) ~msg: "Assigned `super` in `subtype_whnf`")
 
-        | (EmptyRow, _) -> (match super with
-            | EmptyRow ->
-                Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "EmptyRow coercion called"))
-            | _ ->
-                Env.report_error env {v = Subtype (sub, super); pos = span};
-                None)
+        | (Record _, super) ->
+            solve_unify_whnf ctrs span env sub super
+            |> Option.map (fun co ->
+                Coercer.coercer (fun v -> E.at span super (E.cast v co)))
 
-        | (PromotedArray _, super) -> (match super with
-            | PromotedArray _ ->
-                ignore (solve_unify_whnf ctrs span env sub super);
-                Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "PromotedArray coercion called"))
-            | _ ->
-                Env.report_error env {v = Subtype (sub, super); pos = span};
-                None)
+        | (With _, super) ->
+            ignore (solve_unify_whnf ctrs span env sub super);
+            Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "With coercion called"))
+        | (EmptyRow, super) ->
+            ignore (solve_unify_whnf ctrs span env sub super);
+            Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "EmptyRow coercion called"))
+        | (PromotedArray _, super) ->
+            ignore (solve_unify_whnf ctrs span env sub super);
+            Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "PromotedArray coercion called"))
+        | (PromotedTuple _, super) ->
+            ignore (solve_unify_whnf ctrs span env sub super);
+            Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "PromotedTuple coercion called"))
 
-        | (PromotedTuple _, super) -> (match super with
-            | PromotedTuple _ ->
-                ignore (solve_unify_whnf ctrs span env sub super);
-                Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "PromotedTuple coercion called"))
-            | _ ->
-                Env.report_error env {v = Subtype (sub, super); pos = span};
-                None)
-
-        | (App _, super) -> (match super with
-            | App _ ->
-                solve_unify_whnf ctrs span env sub super
-                |> Option.map (fun co ->
-                    Coercer.coercer (fun v -> E.at span super (E.cast v co)))
-            | _ ->
-                Env.report_error env {v = Subtype (sub, super); pos = span};
-                None)
+        | (App _, super) ->
+            solve_unify_whnf ctrs span env sub super
+            |> Option.map (fun co ->
+                Coercer.coercer (fun v -> E.at span super (E.cast v co)))
 
         | (Prim sub_p, super) -> (match super with
             | Prim super_p when Prim.eq sub_p super_p -> None
