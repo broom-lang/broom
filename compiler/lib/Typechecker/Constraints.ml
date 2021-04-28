@@ -156,13 +156,69 @@ module Make (K : TS.KINDING) = struct
                         CCVector.push coercions coercion;
                         noop && Option.is_none coercion
                     ) true ltyps rtyps in
-                    if noop
+                    if not noop
                     then Some (T.PromotedArrayCo (coercions |> CCVector.mapi (fun i -> function
                         | Some coercion -> coercion
                         | None -> T.Refl (Vector.get rtyps i)
                     ) |> Vector.build))
                     else None
                 end else failwith "~ promoted array lengths"
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
+
+        | (PromotedTuple ltyps, rtyp) -> (match rtyp with
+            | PromotedTuple rtyps ->
+                if Vector.length ltyps = Vector.length rtyps then begin
+                    let coercions = CCVector.create () in
+                    let noop = Vector.fold2 (fun noop ltyp rtyp ->
+                        let coercion = unify ctrs span env ltyp rtyp in
+                        CCVector.push coercions coercion;
+                        noop && Option.is_none coercion
+                    ) true ltyps rtyps in
+                    if not noop
+                    then Some (PromotedTupleCo (coercions |> CCVector.mapi (fun i -> function
+                        | Some coercion -> coercion
+                        | None -> T.Refl (Vector.get rtyps i)
+                    ) |> Vector.build))
+                    else None
+                end else failwith "~ promoted values lengths"
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
+
+        | (Tuple ltyps, rtyp) -> (match rtyp with
+            | Tuple rtyps ->
+                if Vector.length ltyps = Vector.length rtyps then begin
+                    let coercions = CCVector.create () in
+                    let noop = Vector.fold2 (fun noop ltyp rtyp ->
+                        let coercion = unify ctrs span env ltyp rtyp in
+                        CCVector.push coercions coercion;
+                        noop && Option.is_none coercion
+                    ) true ltyps rtyps in
+                    if not noop
+                    then Some (TupleCo (coercions |> CCVector.mapi (fun i -> function
+                        | Some coercion -> coercion
+                        | None -> T.Refl (Vector.get rtyps i)
+                    ) |> Vector.build))
+                    else None
+                end else failwith "~ tuple lengths"
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
+
+        | (Record lrow, rtyp) -> (match rtyp with
+            | Record rrow ->
+                unify ctrs span env lrow rrow
+                |> Option.map (fun co -> T.RecordCo co)
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
+
+        | (Proxy lcarrie, rtyp) -> (match rtyp with
+            | Proxy rcarrie ->
+                unify ctrs span env lcarrie rcarrie
+                |> Option.map (fun co -> T.ProxyCo co)
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
