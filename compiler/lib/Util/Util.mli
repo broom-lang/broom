@@ -13,9 +13,11 @@ type 'a with_pos = {v : 'a; pos: span}
 type 'a docs_op =
     | InfixL of {prec : int; l : 'a; op : document; r : 'a}
     | InfixR of {prec : int; l : 'a; op : document; r : 'a}
+    | Prefix of {prec : int; op : document; arg : 'a}
+    | Postfix of {prec : int; arg : 'a; op : document}
     | Unary of document
 
-val with_prec : (int -> 'a -> 'a docs_op) -> 'a -> document
+val with_prec : ('a -> 'a docs_op) -> int -> 'a -> document
 
 val doc_to_string : document -> string
 
