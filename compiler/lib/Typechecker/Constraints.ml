@@ -109,19 +109,19 @@ module Make (K : TS.KINDING) = struct
         | _ -> todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
             ^ Util.doc_to_string (T.to_doc super))
 
-    and solve_subtype ctrs span env sub super _ =
+    and solve_subtype ctrs span env sub super =
         let (let*) = Option.bind in
         let (let+) = Fun.flip Option.map in
 
-        let* (sub', co) = K.eval span env sub in
-        let+ (super', co') = K.eval span env super in
-        let coerce = solve_subtype_whnf ctrs span env sub' super' in
+        let* (sub, co) = K.eval span env sub in
+        let+ (super, co') = K.eval span env super in
+        let coerce = solve_subtype_whnf ctrs span env sub super in
         (match (co, coerce, co') with
         | (Some co, Some coerce, Some co') -> Some (Coercer.coercer (fun v ->
-            let castee = Coercer.apply coerce (E.at span sub' (E.cast v co)) in
+            let castee = Coercer.apply coerce (E.at span sub (E.cast v co)) in
             E.at span super (E.cast castee (Symm co'))))
         | (Some co, Some coerce, None) -> Some (Coercer.coercer (fun v ->
-            Coercer.apply coerce (E.at span sub' (E.cast v co))))
+            Coercer.apply coerce (E.at span sub (E.cast v co))))
         | (Some co, None, Some co') -> Some (Coercer.coercer (fun v ->
             E.at span super (E.cast v (Trans (co, Symm co')))))
         | (Some co, None, None) -> Some (Coercer.coercer (fun v ->
@@ -133,7 +133,8 @@ module Make (K : TS.KINDING) = struct
             E.at span super (E.cast v co')))
         | (None, None, None) -> None)
 
-    and solve_unify_whnf ctrs span env ltyp rtyp = match (ltyp, rtyp) with
+    and solve_unify_whnf ctrs span env ltyp rtyp =
+        match (ltyp, rtyp) with
         (* TODO: uv impredicativity clashes: *)
         | (T.Uv uv, T.Uv uv') when Tx.Ref.eq uv uv' -> None
         | (Uv _, Uv _) -> todo (Some span)
@@ -146,8 +147,48 @@ module Make (K : TS.KINDING) = struct
                 None
             | Assigned _ -> unreachable (Some span) ~msg: "Assigned `typ` in `unify_whnf`")
 
+        | (PromotedArray ltyps, rtyp) -> (match rtyp with
+            | PromotedArray rtyps ->
+                if Vector.length ltyps = Vector.length rtyps then begin
+                    let coercions = CCVector.create () in
+                    let noop = Vector.fold2 (fun noop ltyp rtyp ->
+                        let coercion = unify ctrs span env ltyp rtyp in
+                        CCVector.push coercions coercion;
+                        noop && Option.is_none coercion
+                    ) true ltyps rtyps in
+                    if noop
+                    then Some (T.PromotedArrayCo (coercions |> CCVector.mapi (fun i -> function
+                        | Some coercion -> coercion
+                        | None -> T.Refl (Vector.get rtyps i)
+                    ) |> Vector.build))
+                    else None
+                end else failwith "~ promoted array lengths"
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
+
+        | (App {callee; arg}, rtyp) -> (match rtyp with
+            | App {callee = callee'; arg = arg'} ->
+                (* NOTE: Callees must already be in WHNF because of the Krivine-style `K.eval`: *)
+                let callee_co = solve_unify_whnf ctrs span env callee callee' in
+                let arg_co = unify ctrs span env arg arg' in
+                (match (callee_co, arg_co) with
+                | (Some callee_co, Some arg_co) -> Some (Comp (callee_co, Vector1.singleton arg_co))
+                | (Some callee_co, None) -> Some (Comp (callee_co, Vector1.singleton (T.Refl arg')))
+                | (None, Some arg_co) -> Some (Comp (Refl callee', Vector1.singleton arg_co))
+                | (None, None) -> None)
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
+
         | (EmptyRow, rtyp) -> (match rtyp with
             | EmptyRow -> None
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
+
+        | (Prim pt, rtyp) -> (match rtyp with
+            | Prim pt' when Prim.eq pt pt'-> None
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
@@ -155,14 +196,14 @@ module Make (K : TS.KINDING) = struct
         | _ -> todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
             ^ Util.doc_to_string (T.to_doc rtyp))
 
-    and solve_unify ctrs span env ltyp rtyp _ =
+    and solve_unify ctrs span env ltyp rtyp =
         let (let*) = Option.bind in
         let (let+) = Fun.flip Option.map in
 
         let* (ltyp, co) = K.eval span env ltyp in
         let+ (rtyp, co'') = K.eval span env rtyp in
         let co' = solve_unify_whnf ctrs span env ltyp rtyp in
-        (match (co, co', co'') with
+        match (co, co', co'') with
         | (Some co, Some co', Some co'') -> Some (T.Trans (Trans (co, co'), Symm co''))
         | (Some co, Some co', None) -> Some (Trans (co, co'))
         | (Some co, None, Some co'') -> Some (Trans (co, Symm co''))
@@ -170,19 +211,19 @@ module Make (K : TS.KINDING) = struct
         | (None, Some co', Some co'') -> Some (Trans (co', Symm co''))
         | (None, Some co', None) -> Some co'
         | (None, None, Some co'') -> Some (Symm co'')
-        | (None, None, None) -> None)
+        | (None, None, None) -> None
 
     and solve ctrs =
         let solve1 = function
             | Subtype {span; env; sub; super; coerce} as ctr ->
-                (match solve_subtype ctrs span env sub super coerce with
+                (match solve_subtype ctrs span env sub super with
                 | Some co -> coerce := (match co with
                     | Some co -> co
                     | None -> Coercer.id)
                 | None -> Tx.Queue.push ctrs ctr)
 
             | Unify {span; env; ltyp; rtyp; coercion} as ctr ->
-                (match solve_unify ctrs span env ltyp rtyp coercion with
+                (match solve_unify ctrs span env ltyp rtyp with
                 | Some co -> coercion := (match co with
                     | Some co -> co
                     | None -> Refl rtyp)
@@ -199,11 +240,13 @@ module Make (K : TS.KINDING) = struct
 
 (* # Generators *)
 
-    (* OPTIMIZE: First try to unify on the fly: *)
     and unify ctrs span env ltyp rtyp =
-        let coercion = Tx.Ref.ref (T.Refl rtyp) in
-        Tx.Queue.push ctrs (Unify {span; env; ltyp; rtyp; coercion});
-        Some (T.Patchable coercion)
+        match solve_unify ctrs span env ltyp rtyp with
+        | Some co -> co
+        | None ->
+            let coercion = Tx.Ref.ref (T.Refl rtyp) in
+            Tx.Queue.push ctrs (Unify {span; env; ltyp; rtyp; coercion});
+            Some (T.Patchable coercion)
 
     (* OPTIMIZE: First try to subtype on the fly: *)
     and subtype ctrs span env sub super =

@@ -84,7 +84,9 @@ module Queue = struct
 
     let ensure_front {front; back} = match !front with
         | _ :: _ -> ()
-        | [] -> front := List.rev !back
+        | [] ->
+            front := List.rev !back;
+            back := []
 
     let push {front = _; back} v = back := v :: !back
 
