@@ -8,13 +8,13 @@
     - Also hardcoded syntactic sugar expansions
 * Typecheck
     - Generate constraints
+        * Also emits primop calls for interactive global defs and uses ATM
     - Solve constraints (that weren't solved on the fly)
     - Clean up coercion function and type nodes from Fc tree
 * Pattern expansion and coverage checking
     - Needs type information, so after typechecking
 * Forward reference implementation and soundness checking
     - Easier without complicated patterns, so after pattern expansion
-    - Also deal with REPL/macro globals here?
 
 After this point there are no user errors, only warnings.
 
