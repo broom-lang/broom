@@ -68,3 +68,6 @@ module ScheduleData = ScheduleData
 
 module ToJs = ToJs*)
 
+module Value = Value
+module Namespace = Namespace
+

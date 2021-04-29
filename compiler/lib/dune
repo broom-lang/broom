@@ -11,6 +11,7 @@
 (copy_files# (files Expander/*))
 (copy_files# (files Fc/*))
 (copy_files# (files Typechecker/*))
+(copy_files# (files Eval/*))
 
 (menhir (modules Parser))
 

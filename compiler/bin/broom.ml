@@ -14,7 +14,7 @@ let pwrite output = PP.ToChannel.pretty 1.0 80 output
 let pprint = pwrite stdout
 let pprint_err = pwrite stderr
 
-let eval_envs path = (Expander.Bindings.empty path, Typer.Env.eval (), Fc.Eval.Namespace.create ())
+let eval_envs path = (Expander.Bindings.empty path, Typer.Env.eval (), Namespace.create ())
 
 (*let build path debug check_only filename outfile =
     let open PPrint in
@@ -133,7 +133,7 @@ let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
 
     let (venv, v) = Fc.Eval.run venv program in
     let doc = infix 4 1 bang
-        (infix 4 1 colon (Fc.Eval.Value.to_doc v)
+        (infix 4 1 colon (Value.to_doc v)
             (Fc.Type.to_doc program.main.typ))
         (Fc.Type.to_doc eff) in
     pprint doc;
