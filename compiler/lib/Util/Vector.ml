@@ -16,6 +16,14 @@ let iter2 f xs ys =
     then iteri (fun i x -> f x (get ys i)) xs
     else raise (Invalid_argument "Vector.iter2: inequal lengths")
 
+let map_children f xs =
+    let changed = ref false in
+    let xs' = xs |> map (fun x ->
+        let x' = f x in
+        if x' != x then changed := true;
+        x') in
+    if !changed then xs' else xs
+
 let map2 f xs ys =
     if length ys = length xs
     then mapi (fun i x -> f x (get ys i)) xs

@@ -10,7 +10,7 @@ dev-repo: "git://github.com/nilern/broom.git"
 maintainer: "pauli.jaakkola@iki.fi"
 
 depends: ["ocaml" "containers" "containers-data" "streaming"
-          "menhir" "sedlex" "pprint" "unionFind"
+          "menhir" "sedlex" "pprint"
           "cmdliner" "linenoise"
           "ppx_inline_test"]
 build: ["dune" "build" "-p" name "@install" "-j" jobs]

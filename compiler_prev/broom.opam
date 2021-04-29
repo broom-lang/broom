@@ -1,0 +1,17 @@
+opam-version: "2.0"
+
+name: "broom"
+version: "0.1.0"
+synopsis: "The Broom programming language"
+license: "BSD-3-Clause"
+homepage: "https://github.com/nilern/broom"
+bug-reports: "https://github.com/nilern/broom/issues"
+dev-repo: "git://github.com/nilern/broom.git"
+maintainer: "pauli.jaakkola@iki.fi"
+
+depends: ["ocaml" "containers" "containers-data" "streaming"
+          "menhir" "sedlex" "pprint" "unionFind"
+          "cmdliner" "linenoise"
+          "ppx_inline_test"]
+build: ["dune" "build" "-p" name "@install" "-j" jobs]
+

@@ -1,27 +1,26 @@
 open Streaming
 
-module Make (Type : FcSigs.TYPE) : FcSigs.TERM
-    with module Type = Type
-= struct 
+module Tx = Transactional
+module Type = FcType.Type
 
-module Type = Type
+let ref = Tx.Ref.ref
+let (!) = Tx.Ref.(!)
 
 module rec Expr : sig
     include FcSigs.EXPR
-        with module Type = Type
         with type def = Stmt.def
         with type stmt = Stmt.t
+        with type coercer = Coercer.t
 
-    val def_to_doc : Type.subst -> var -> PPrint.document
+    val def_to_doc : var -> PPrint.document
 end = struct
-    module Type = Type
-
     type def = Stmt.def
     type stmt = Stmt.t
+    type coercer = Coercer.t
 
-    and var = {name : Name.t; vtyp : Type.t}
+    type var = {plicity : Util.plicity; name : Name.t; vtyp : Type.t}
 
-    and t =
+    type t =
         { term : t'
         ; mutable parent : t option
         ; typ : Type.t
@@ -31,7 +30,7 @@ end = struct
         | Tuple of t array
         | Focus of {mutable focusee : t; index : int}
 
-        | Fn of {universals : Type.binding Vector.t; param : var; mutable body : t}
+        | Fn of {universals : Type.def Vector.t; param : var; mutable body : t}
         | App of {mutable callee : t; universals : Type.t Vector.t; mutable arg : t}
         | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t}
         | PrimBranch of {op : Branchop.t; universals : Type.t Vector.t; mutable arg : t
@@ -39,15 +38,15 @@ end = struct
 
         | Let of {defs : stmt Array1.t; mutable body : t}
         | Letrec of {defs : def Array1.t; mutable body : t}
-        | LetType of {typedefs : Type.binding Vector1.t; mutable body : t}
+        | LetType of {typedefs : Type.def Vector1.t; mutable body : t}
         | Match of {mutable matchee : t; clauses : clause Vector.t}
 
         | Axiom of { axioms : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t
             ; mutable body : t }
-        | Cast of {mutable castee : t; coercion : Type.t Type.coercion}
+        | Cast of {mutable castee : t; coercion : Type.coercion}
 
         | Pack of {existentials : Type.t Vector1.t; mutable impl : t}
-        | Unpack of { existentials : Type.binding Vector1.t; var : var; mutable value : t
+        | Unpack of { existentials : Type.def Vector1.t; var : var; mutable value : t
             ; mutable body : t }
 
         | Record of (Name.t * t) array
@@ -60,7 +59,7 @@ end = struct
 
         | Use of var
 
-        | Patchable of t TxRef.rref
+        | Convert of coercer Tx.Ref.t * t
 
     and clause = {pat : pat; mutable body : t}
     and prim_clause = {res : var option; prim_body : t}
@@ -75,173 +74,207 @@ end = struct
 
     let var_to_doc (var : var) = Name.to_doc var.name
 
-    let def_to_doc s (var : var) =
-        PPrint.(infix 4 1 colon (var_to_doc var) (Type.to_doc s var.vtyp))
+    let def_to_doc (var : var) =
+        PPrint.(infix 4 1 colon (var_to_doc var) (Type.to_doc var.vtyp))
 
-    let rec to_doc s (expr : t) =
-        let open PPrint in
-        match expr.term with
-        | Tuple exprs ->
-            surround_separate_map 4 0 (parens empty)
-                lparen (comma ^^ break 1) rparen
-                (to_doc s) (Array.to_list exprs)
-        | Focus {focusee; index} ->
-            prefix 4 1 (selectee_to_doc s focusee) (dot ^^ string (Int.to_string index))
-        | Fn {universals; param; body} ->
-            string "fun"
-            ^^ surround_separate_map 4 0 empty
-                    (blank 1 ^^ langle) (comma ^^ break 1) rangle
-                    (Type.binding_to_doc s) (Vector.to_list universals)
-            ^^ blank 1 ^^ parens (def_to_doc s param) ^^ blank 1
-            ^^ surround 4 1 lbrace (to_doc s body) rbrace 
-        | Let {defs; body} ->
-            surround 4 1 (string "let" ^^ blank 1 ^^ lbrace)
-                (separate_map (semi ^^ hardline)
-                    (Stmt.to_doc s) (Array1.to_list defs)
-                ^^ semi ^^ hardline ^^ to_doc s body)
-                rbrace
-        | Letrec {defs; body} ->
-            surround 4 1 (string "letrec" ^^ blank 1 ^^ lbrace)
-                (separate_map (semi ^^ hardline)
-                    (Stmt.def_to_doc s) (Array1.to_list defs)
-                ^^ semi ^^ hardline ^^ to_doc s body)
-                rbrace
-        | LetType {typedefs; body} ->
-            surround 4 1 (string "letrec" ^^ blank 1 ^^ lbrace)
-                (separate_map (semi ^^ hardline)
-                    (Type.binding_to_doc s) (Vector1.to_list typedefs)
-                ^^ semi ^^ hardline ^^ to_doc s body)
-                rbrace
-        | Match {matchee; clauses} ->
-            let start = string "match" ^^ blank 1 ^^ to_doc s matchee ^^ blank 1 ^^ lbrace in
-            surround_separate_map 0 1 (start ^^ rbrace)
-                start (break 1) rbrace
-                (clause_to_doc s) (Vector.to_list clauses)
-        | App {callee; universals; arg} ->
-            prefix 4 1 (to_doc s callee)
-                (surround_separate_map 4 0 empty
-                    (break 1 ^^ langle) (comma ^^ break 1) (rangle ^^ break 1)
-                    (Type.to_doc s) (Vector.to_list universals)
-                ^^ to_doc s arg)
-        | PrimApp {op; universals; arg} ->
-            prefix 4 1 (string "__" ^^ Primop.to_doc op)
-                (surround_separate_map 4 0 empty
-                    (break 1 ^^ langle) (comma ^^ break 1) (rangle ^^ break 1)
-                    (Type.to_doc s) (Vector.to_list universals)
-                ^^ to_doc s arg)
-        | PrimBranch {op; universals; arg; clauses} ->
-            prefix 4 1 (string "__" ^^ Branchop.to_doc op)
-                (surround_separate_map 4 0 empty
-                    (break 1 ^^ langle) (comma ^^ break 1) (rangle ^^ break 1)
-                    (Type.to_doc s) (Vector.to_list universals)
-                ^^ to_doc s arg
-                ^^ blank 1 ^^ surround_separate_map 0 1 (braces bar)
-                    lbrace (break 1) rbrace
-                    (prim_clause_to_doc s) (Vector.to_list clauses))
-        | Axiom {axioms; body} ->
-            group(
-                surround 4 1 (string "axiom")
-                    (align (separate_map (semi ^^ break 1) (axiom_to_doc s)
-                        (Vector1.to_list axioms)))
-                    (string "in")
-                ^/^ to_doc s body)
-        | Cast {castee; coercion} ->
-            infix 4 1 (string "|>") (castee_to_doc s castee) (Type.coercion_to_doc s coercion)
-        | Pack {existentials; impl} ->
-            string "pack" ^^ blank 1
-                ^^ surround_separate 4 0 empty
-                    langle (comma ^^ break 1) rangle
-                    (Vector1.to_list (Vector1.map (Type.to_doc s) existentials) @ [to_doc s impl])
-        | Unpack {existentials; var; value; body} ->
-            group(
-                surround 4 1
-                    (string "unpack" ^^ blank 1
-                        ^^ surround_separate 4 0 empty
-                            langle (comma ^^ break 1) rangle
-                            (Vector1.to_list (Vector1.map (Type.binding_to_doc s) existentials)
-                                @ [def_to_doc s var])
-                        ^^ blank 1 ^^ equals)
-                    (to_doc s value)
-                    (string "in")
-                ^/^ to_doc s body)
-        | Record fields ->
-            surround_separate_map 4 0 (braces empty)
-                lbrace (comma ^^ break 1) rbrace
-                (fun (label, field) ->
-                    infix 4 1 equals (string (Name.basename label |> Option.get)) (to_doc s field))
-                (Array.to_list fields)
-        | Where {base; fields} ->
-            surround 4 0 (to_doc s base ^^ blank 1 ^^ string "where" ^^ blank 1 ^^ lbrace)
-                (separate_map (comma ^^ break 1) 
+    let w_prec = 3
+    let cast_prec = 2
+    let app_prec = 1
+    let pack_prec = app_prec
+    let dot_prec = 0
+
+    let rec to_doc expr =
+        let rec to_doc_prec prec expr = Util.with_prec to_docs prec expr
+
+            and to_docs expr =
+            let open PPrint in
+
+            match expr.term with
+            | With {base; label; field} ->
+                let op = string "with" ^^ blank 1 ^^ Name.to_doc label ^^ blank 1 ^^ equals in
+                InfixL {prec = w_prec; l = base; op; r = field}
+
+            | Where {base; fields} ->
+                let fields_doc = surround_separate_map 4 0 (braces empty)
+                    lbrace (semi ^^ break 1) rbrace
                     (fun (label, field) ->
-                        infix 4 1 equals (Name.to_doc label) (to_doc s field))
-                    (Array1.to_list fields))
-                rbrace
-        | With {base; label; field} ->
-            infix 4 1 (string "with") (base_to_doc s base)
-                (infix 4 1 equals (Name.to_doc label) (to_doc s field))
-        | Select {selectee; label} ->
-            prefix 4 0 (selectee_to_doc s selectee)
-                (dot ^^ string (Option.get (Name.basename label)))
-        | Proxy typ -> brackets (Type.to_doc s typ)
-        | Use var -> var_to_doc var
-        | Const c -> Const.to_doc c
-        | Patchable r -> TxRef.(to_doc s !r)
+                        infix 4 1 equals (Name.to_doc label) (to_doc field))
+                    (Array1.to_list fields) in
+                Postfix {prec = w_prec; arg = base; op = string "where" ^^ blank 1 ^^ fields_doc}
 
-    and axiom_to_doc s (name, universals, l, r) =
+            | Cast {castee; coercion} ->
+                Postfix {prec = cast_prec; arg = castee
+                    ; op = prefix 4 1 (string "|>") (Type.coercion_to_doc coercion)}
+
+            | App {callee; universals; arg} ->
+                if Vector.length universals = 0
+                then Prefix {prec = app_prec; op = to_doc_prec app_prec callee; arg} (* HACK *)
+                else begin
+                    let op = surround_separate_map 4 0 empty
+                        langle (comma ^^ break 1) rangle
+                        Type.to_doc (Vector.to_list universals) in
+                    InfixL {prec = app_prec; l = callee; op; r = arg}
+                end
+
+            | Convert (_, expr) -> Prefix {prec = app_prec; op = string "?"; arg = expr} 
+
+            | PrimApp {op = pop; universals; arg} ->
+                let op = prefix 4 1 (string "__" ^^ Primop.to_doc pop)
+                    (surround_separate_map 4 0 empty
+                        langle (comma ^^ break 1) rangle
+                        Type.to_doc (Vector.to_list universals)) in
+                Prefix {prec = app_prec; op; arg}
+
+            | PrimBranch {op = bop; universals; arg; clauses} ->
+                let op = prefix 4 1 (string "__" ^^ Branchop.to_doc bop)
+                    (surround_separate_map 4 0 empty
+                        (break 1 ^^ langle) (comma ^^ break 1) (rangle ^^ break 1)
+                        (Type.to_doc) (Vector.to_list universals)) in
+                let op = prefix 4 1 op (to_doc_prec app_prec arg) in
+                Unary (prefix 4 1 op (surround_separate_map 0 1 (braces bar)
+                    lbrace (break 1) rbrace
+                    prim_clause_to_doc (Vector.to_list clauses)))
+
+            | Pack {existentials; impl} ->
+                let op = prefix 4 1 (string "pack") 
+                    (surround_separate 4 0 empty
+                        langle (comma ^^ break 1) rangle
+                        (Vector1.to_list (Vector1.map Type.to_doc existentials))) in
+                Prefix {prec = pack_prec; op; arg = impl}
+
+            | Select {selectee; label} ->
+                Postfix {prec = dot_prec; arg = selectee
+                    ; op = dot ^^ string (Option.get (Name.basename label))}
+
+            | Focus {focusee; index} ->
+                Postfix {prec = dot_prec; arg = focusee
+                    ; op = dot ^^ string (Int.to_string index)}
+
+            | Fn {universals; param; body} ->
+                Unary (string "fun"
+                    ^^ surround_separate_map 4 0 empty
+                            (blank 1 ^^ langle) (comma ^^ break 1) rangle
+                            Type.def_to_doc (Vector.to_list universals)
+                    ^^ blank 1 ^^ parens (def_to_doc param) ^^ blank 1
+                    ^^ surround 4 1 lbrace (to_doc body) rbrace )
+
+            | Let {defs; body} ->
+                Unary (surround 4 1 (string "let" ^^ blank 1 ^^ lbrace)
+                    (separate_map (semi ^^ hardline)
+                        Stmt.to_doc (Array1.to_list defs)
+                    ^^ semi ^^ hardline ^^ to_doc body)
+                    rbrace)
+
+            | Letrec {defs; body} ->
+                Unary (surround 4 1 (string "letrec" ^^ blank 1 ^^ lbrace)
+                    (separate_map (semi ^^ hardline)
+                        Stmt.def_to_doc (Array1.to_list defs)
+                    ^^ semi ^^ hardline ^^ to_doc body)
+                    rbrace)
+
+            | LetType {typedefs; body} ->
+                Unary (surround 4 1 (string "lettype" ^^ blank 1 ^^ lbrace)
+                    (separate_map (semi ^^ hardline)
+                        Type.def_to_doc (Vector1.to_list typedefs)
+                    ^^ semi ^^ hardline ^^ to_doc body)
+                    rbrace)
+
+            | Axiom {axioms; body} ->
+                Unary (surround 4 1 (string "axiom" ^^ blank 1 ^^ lbrace)
+                    (separate_map (semi ^^ hardline)
+                        axiom_to_doc (Vector1.to_list axioms)
+                    ^^ semi ^^ hardline ^^ to_doc body)
+                    rbrace)
+
+            | Unpack {existentials; var; value; body} ->
+                Unary (surround 4 1 (string "unpack" ^^ blank 1 ^^ lbrace)
+                    (infix 4 1 equals
+                        (surround_separate_map 4 0 empty
+                            langle (comma ^^ break 1) rangle
+                            Type.def_to_doc (Vector1.to_list existentials)
+                        ^^ blank 1 ^^ def_to_doc var)
+                        (to_doc value)
+                    ^^ semi ^^ hardline ^^ to_doc body)
+                    rbrace)
+
+            | Match {matchee; clauses} ->
+                let start = string "match" ^^ blank 1 ^^ to_doc matchee ^^ blank 1 ^^ lbrace in
+                Unary (surround_separate_map 0 1 (start ^^ rbrace)
+                    start (break 1) rbrace
+                    clause_to_doc (Vector.to_list clauses))
+
+            | Record fields ->
+                Unary (surround_separate_map 4 0 (braces empty)
+                    lbrace (semi ^^ break 1) rbrace
+                    (fun (label, field) ->
+                        infix 4 1 equals (string (Option.get (Name.basename label)))
+                            (to_doc field))
+                    (Array.to_list fields))
+
+            | Tuple exprs ->
+                Unary (surround_separate_map 4 0 (parens empty)
+                    lparen (comma ^^ break 1) rparen
+                    to_doc (Array.to_list exprs))
+
+            | Proxy typ -> Unary (brackets (Type.to_doc typ))
+
+            | Use var -> Unary (var_to_doc var)
+            | Const c -> Unary (Const.to_doc c) in
+        to_doc_prec 0 expr
+
+    and axiom_to_doc (name, universals, l, r) =
         let open PPrint in
+        
+        let universal_to_doc universals body =
+            if Vector.length universals = 0
+            then body
+            else prefix 4 1
+                (string "forall" ^^ blank 1 ^^
+                    separate_map (blank 1) Type.kind_to_doc
+                        (Vector.to_list universals))
+                body in
+
         match Vector.to_list universals with
         | _ :: _ ->
             infix 4 1 colon (Name.to_doc name)
                 (infix 4 1 tilde
-                    (Type.universal_to_doc s universals (Type.to_doc s l))
-                    (Type.universal_to_doc s universals (Type.to_doc s r)))
+                    (universal_to_doc universals (Type.to_doc l))
+                    (universal_to_doc universals (Type.to_doc r)))
         | [] ->
             infix 4 1 colon (Name.to_doc name)
-                (infix 4 1 tilde (Type.to_doc s l) (Type.to_doc s r))
+                (infix 4 1 tilde (Type.to_doc l) (Type.to_doc r))
 
-    and clause_to_doc s {pat; body} =
+    and clause_to_doc {pat; body} =
         PPrint.(bar ^^ blank 1
-            ^^ infix 4 1 (string "->") (pat_to_doc s pat) (to_doc s body))
+            ^^ infix 4 1 (string "->") (pat_to_doc pat) (to_doc body))
 
-    and prim_clause_to_doc s {res; prim_body} =
+    and prim_clause_to_doc {res; prim_body} =
         PPrint.(bar ^^ blank 1
             ^^ infix 4 1 (string "->")
                 (match res with
-                | Some var -> def_to_doc s var
+                | Some var -> def_to_doc var
                 | None -> empty)
-                (to_doc s prim_body))
+                (to_doc prim_body))
 
-    and castee_to_doc s (castee : t) = match castee.term with
-        | Fn _ -> PPrint.parens (to_doc s castee)
-        | _ -> to_doc s castee
-
-    and base_to_doc s (base : t) = match base.term with
-        | Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ -> PPrint.parens (to_doc s base)
-        | _ -> to_doc s base
-
-    and selectee_to_doc s (selectee : t) = match selectee.term with
-        | Fn _ | Cast _ | Letrec _ | LetType _ | Axiom _ | App _ | Where _ | With _ ->
-            PPrint.parens (to_doc s selectee)
-        | _ -> to_doc s selectee
-
-    and pat_to_doc s (pat : pat) =
+    and pat_to_doc (pat : pat) =
         let open PPrint in
         match pat.pterm with
         | TupleP pats ->
             surround_separate_map 4 0 (parens empty)
                 lparen (comma ^^ break 1) rparen
-                (pat_to_doc s) (Vector.to_list pats)
-        | ProxyP typ -> brackets (Type.to_doc s typ)
-        | VarP var -> parens (def_to_doc s var)
+                (pat_to_doc) (Vector.to_list pats)
+        | ProxyP typ -> brackets (Type.to_doc typ)
+        | VarP var -> parens (def_to_doc var)
         | WildP name -> underscore ^^ Name.to_doc name
         | ConstP c -> Const.to_doc c
 
-    let var name vtyp = {name; vtyp}
+    let var plicity name vtyp = {plicity; name; vtyp}
 
-    let fresh_var vtyp = var (Name.fresh ()) vtyp
+    let fresh_var plicity vtyp = var plicity (Name.fresh ()) vtyp
 
     let at pos typ term = {term; pos; typ; parent = None}
+
+    let pat_at ppos ptyp pterm = {pterm; ppos; ptyp}
 
     let values vals = Tuple vals
 
@@ -290,7 +323,7 @@ end = struct
     let proxy t = Proxy t
     let const c = Const c
     let use v = Use v
-    let patchable ref = Patchable ref
+    let convert f expr = Convert (f, expr)
 
     let map_children f (expr : t) =
         let term = expr.term in
@@ -424,12 +457,24 @@ end = struct
 
             | Proxy _ | Use _ | Const _ -> term
 
-            | Patchable rref ->
-                let open TxRef in
-                let expr = !rref in
+            | Convert (co, expr) ->
                 let expr' = f expr in
-                if expr' == expr then term else patchable (ref expr') in
+                if expr' == expr then term else convert co expr' in
         if term' == term then expr else {expr with term = term'}
+
+    let map_pat_children f (pat : pat) =
+        let term = pat.pterm in
+        let term' = match term with
+            | TupleP pats ->
+                let pats' = Vector.map f pats in
+                if Stream.from (Source.zip_with (fun pat pat' -> pat == pat')
+                        (Vector.to_source pats) (Vector.to_source pats'))
+                    |> Stream.into (Sink.all ~where: Fun.id)
+                then term
+                else TupleP pats'
+
+            | ProxyP _ | ConstP _ | VarP _ | WildP _ -> term in
+        if term' == term then pat else {pat with pterm = term'}
 
     module Var = struct
         type t = var
@@ -440,31 +485,51 @@ end = struct
     module VarSet = Set.Make(Var)
 end
 
+and Coercer : FcSigs.COERCER with type expr = Expr.t = struct
+    type expr = Expr.t
+
+    type t = expr -> expr
+
+    let id = Fun.id
+
+    let coercer = Fun.id
+
+    let apply f (expr : Expr.t) = match expr.term with
+        | Use _ | Const _ -> f expr
+        | _ ->
+            let {Expr.term = _; pos; typ; parent = _} = expr in
+            let var = Expr.fresh_var Explicit typ in
+            let pat = Expr.pat_at pos typ (VarP var) in
+            let body = f (Expr.at pos typ (Expr.use var)) in
+            Expr.at pos typ (Expr.let' [|Def (pos, pat, expr)|] body)
+
+    let apply_opt f expr = match f with
+        | Some f -> apply f expr
+        | None -> expr
+end
+
 and Stmt : FcSigs.STMT
-    with module Type = Type
     with type expr = Expr.t
-    with type var = Expr.var
+    with type pat = Expr.pat
 = struct
     module Type = Type
 
     type expr = Expr.t
-    type var = Expr.var
+    type pat = Expr.pat
 
-    type def = Util.span * var * expr
+    type def = Util.span * pat * expr
 
     type t
         = Def of def
         | Expr of expr
 
-    let def_to_doc s ((_, var, expr) : def) =
-        PPrint.(infix 4 1 equals (Expr.def_to_doc s var) (Expr.to_doc s expr))
+    let def_to_doc ((_, var, expr) : def) =
+        PPrint.(infix 4 1 equals (Expr.pat_to_doc var) (Expr.to_doc expr))
 
-    let to_doc s = function
-        | Def def -> def_to_doc s def
-        | Expr expr -> Expr.to_doc s expr
+    let to_doc = function
+        | Def def -> def_to_doc def
+        | Expr expr -> Expr.to_doc expr
 
     let rhs (Def (_, _, expr) | Expr expr) = expr
-end
-
 end
 

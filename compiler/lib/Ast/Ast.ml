@@ -1,6 +1,5 @@
 module PP = PPrint
 
-
 type 'a with_pos = 'a Util.with_pos
 
 module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct

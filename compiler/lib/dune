@@ -1,20 +1,17 @@
 (library
   (name broom_lib)
   (public_name broom.lib)
-  (libraries containers containers-data streaming menhirLib pprint unionFind)
+  (libraries containers containers-data streaming menhirLib pprint)
   (preprocess (pps sedlex.ppx))
   (library_flags -ccopt -Wl,-z,relro,-z,now))
 
-(copy_files# (files Expander/*))
 (copy_files# (files Util/*))
-(copy_files# (files IRUtil/*))
+(copy_files# (files IRCommon/*))
 (copy_files# (files Ast/*))
+(copy_files# (files Expander/*))
 (copy_files# (files Fc/*))
 (copy_files# (files Typechecker/*))
-(copy_files# (files Cps/*))
-(copy_files# (files Optimizer/*))
-(copy_files# (files Cfg/*))
-(copy_files# (files Js/*))
+(copy_files# (files Eval/*))
 
 (menhir (modules Parser))
 

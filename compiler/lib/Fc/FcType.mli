@@ -1,15 +1,5 @@
-module rec Typ : (FcTypeSigs.TYPE
-    with type uv = Uv.t
-    with type subst = Uv.subst)
-
-and Uv : (FcTypeSigs.UV
-    with type kind = Typ.kind
-    with type typ = Typ.t
-    with type level = Typ.level)
-
 module Type : sig
-    (* `struct include` strengthens types so that `Type.t` = `Typ.t` etc.: *)
-    include module type of struct include Typ end
+    include FcTypeSigs.TYPE
 
     val aType : t
     val aKind : t

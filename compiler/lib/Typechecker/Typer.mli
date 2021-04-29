@@ -1,12 +1,14 @@
-module TypeError = TypeError
+module Sigs = TyperSigs
 
-module Env : TyperSigs.ENV
+type 'a with_pos = 'a Util.with_pos
+type 'a typing = 'a Sigs.typing
 
-type 'a typing = 'a TyperSigs.typing
+module Error = TypeError
 
-val check_program : Env.t -> Ast.Term.Stmt.def Vector.t -> Ast.Term.Expr.t Util.with_pos
-    -> (Fc.Program.t, Util.span * TypeError.t) result
+module Kinding : Sigs.KINDING
 
-val check_interactive_stmts : Env.t -> Ast.Term.Stmt.t Vector1.t
-    -> (Fc.Program.t typing * Env.t, Util.span * TypeError.t) result
+module Typing : Sigs.TYPING
+
+val check_interactive_stmts : Namespace.t -> Ast.Term.Stmt.t Vector1.t
+    -> (Fc.Program.t typing * Namespace.t, TypeError.t list) result
 

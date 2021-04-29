@@ -5,51 +5,6 @@ module Stmt = Fc.Term.Stmt
 type expr = Expr.t
 type pat = Expr.pat
 
-module Value = struct
-    type t =
-        | Tuple of t Vector.t
-        | Fn of ((t -> t) -> t -> t)
-        | Record of t Name.Map.t
-        | Proxy
-        | Cell of t option ref
-        | Int of int
-        | Bool of bool
-        | String of string
-
-    let rec to_doc =
-        let open PPrint in
-        function
-        | Tuple vs -> surround_separate_map 4 0 (parens empty)
-            lparen (comma ^^ break 1) rparen
-            to_doc (Vector.to_list vs)
-        | Fn _ -> braces (bar ^^ blank 1 ^^ infix 4 1 (string "->") underscore underscore)
-        | Record fields ->
-            let field_to_doc (label, v) =
-                infix 4 1 equals (Name.to_doc label) (to_doc v) in
-            surround_separate_map 4 0 (braces empty)
-                lbrace (comma ^^ break 1) rbrace
-                field_to_doc (Name.Map.bindings fields)
-        | Proxy -> brackets underscore
-        | Cell v -> sharp ^^ angles (string "cell" ^/^ match !v with
-            | Some contents -> to_doc contents
-            | None -> string "uninitialized")
-        | Int n -> string (Int.to_string n)
-        | Bool true -> string "True"
-        | Bool false -> string "False"
-        | String s -> dquotes (string s)
-end
-
-module Namespace = struct
-    module Map = Name.Hashtbl
-
-    type t = Value.t Map.t
-
-    let create () = Map.create 0
-    let add = Map.add
-    let find = Map.find
-    let clone = Map.copy
-end
-
 module Env = struct
     module Scope = struct
         type t = Value.t Name.Hashtbl.t
@@ -88,8 +43,6 @@ type cont' = unit -> Value.t
 let exit = Fun.id
 
 let run (ns : Namespace.t) program =
-    let ns = Namespace.clone ns in
-
     let rec eval : Env.t -> cont -> expr -> Value.t
     = fun env k expr -> match expr.term with
         | Tuple exprs -> (match Array.length exprs with
@@ -149,14 +102,25 @@ let run (ns : Namespace.t) program =
                     | Tuple args when Vector.length args = 2 ->
                         (match Vector.get args 0 with
                         | String name ->
-                            Namespace.add ns (Name.of_string name) (Vector.get args 1);
-                            k (Tuple Vector.empty)
+                            (match Option.bind (Name.parse name) (Namespace.find ns) with
+                            | Some var ->
+                                var := Some (Vector.get args 1);
+                                k (Tuple Vector.empty)
+                            | None -> bug (Some expr.pos) ~msg: ("global " ^ name ^ " not found at runtime"))
                         | _ -> bug (Some expr.pos) ~msg: "globalSet name not a string at runtime")
                     | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
                 | GlobalGet -> (match arg with
                     | Tuple args when Vector.length args = 1 ->
                         (match Vector.get args 0 with
-                        | String name -> k (Namespace.find ns (Name.of_string name))
+                        | String name ->
+                            (match Option.bind (Name.parse name) (Namespace.find ns) with
+                            | Some var ->
+                                (match !var with
+                                | Some v -> k v
+                                | None ->
+                                    bug (Some expr.pos)
+                                        ~msg: ("tried to read uninitialized global " ^ name ^ " at runtime"))
+                            | None -> bug (Some expr.pos) ~msg: ("global " ^ name ^ " not found at runtime"))
                         | _ -> bug (Some expr.pos) ~msg: "globalGet name not a string at runtime")
                     | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
                 | Import -> todo (Some expr.pos) ~msg: "foreign import in interpreter" in
@@ -214,11 +178,14 @@ let run (ns : Namespace.t) program =
             let env = Env.push env in
             let rec define i =
                 if i < Array1.length defs then match Array1.get defs i with
-                    | Def (pos, {Expr.name; _}, vexpr) ->
-                        let k v =
-                            Env.add pos env name v;
-                            define (i + 1) in
-                        eval env k vexpr
+                    | Def (pos, pat, vexpr) -> (match pat with
+                        | {pterm = VarP {name; _}; _} ->
+                            let k v =
+                                Env.add pos env name v;
+                                define (i + 1) in
+                            eval env k vexpr
+                        | {ppos; _} ->
+                            bug (Some ppos) ~msg: "encountered non-variable pattern at runtime")
                     | Expr expr ->
                         let k _ = define (i + 1) in
                         eval env k expr
@@ -284,8 +251,7 @@ let run (ns : Namespace.t) program =
         | Const (Int n) -> k (Value.Int n)
         | Const (String s) -> k (Value.String s)
 
-        | Patchable eref -> TxRef.(eval env k !eref)
-
+        | Convert _ -> bug (Some expr.pos) ~msg: "uncountered Convert expr node at runtime"
         | Letrec _ -> bug (Some expr.pos) ~msg: "encountered `letrec` at runtime"
 
     and bind : Env.t -> cont' -> cont' -> pat -> cont
@@ -308,5 +274,5 @@ let run (ns : Namespace.t) program =
         , snd main.pos ) in
     let defs = defs |> Vector.to_array |> Array.map (fun def -> Stmt.Def def) in
     let expr = Expr.at pos main.typ (Expr.let' defs main) in
-    (ns, eval Env.empty exit expr)
+    eval Env.empty exit expr
 

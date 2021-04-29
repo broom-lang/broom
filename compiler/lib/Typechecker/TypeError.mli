@@ -1,23 +1,13 @@
-type typ = Fc.Type.t
+module T = Fc.Type
 
-type t =
-    | NonPattern of Ast.Term.Expr.t
-    | InvalidDecl of Ast.Term.Stmt.t
-    | InvalidField of Ast.Term.Stmt.t
+type t' =
+    | Subtype of T.t * T.t
+    | Unify of T.t * T.t
     | Unbound of Name.t
-    | Unusable of Fc.Type.template * typ
-    | TupleWidth of typ * int * Ast.Term.Expr.t * int
-    | MissingField of typ * string
-    | SubType of typ * typ
-    | Unify of typ * typ
-    | Unresolvable of Fc.Type.t * typ
-    | Unsolvable of Residual.t
-    | IncompleteImpl of Fc.Type.uv * Fc.Type.uv
-    | ImpureType of Ast.Term.Expr.t
-    | Escape of Fc.Type.ov
-    | Occurs of Fc.Type.uv * typ
+    | Occurs of T.uv * T.t
+    | IncompleteImpl of T.uv * T.uv
 
-exception TypeError of Util.span * t
+type t = t' Util.with_pos
 
-val to_doc : Util.span -> Fc.Uv.subst -> t -> PPrint.document
+val to_doc : t -> PPrint.document
 

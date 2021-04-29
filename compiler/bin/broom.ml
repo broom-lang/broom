@@ -1,24 +1,23 @@
 open Broom_lib
 module TS = TyperSigs
-module Env = Typer.Env
 module C = Cmdliner
 module PP = PPrint
 
 let name = "broom"
-let name_c = String.capitalize_ascii name
-let prompt = name ^ "> "
+(*let name_c = String.capitalize_ascii name
+let prompt = name ^ "> "*)
 
 let debug_heading str =
-    print_endline (str ^ "\n" ^ String.make (String.length str) '=' ^ "\n")
+    print_endline ("\n" ^ str ^ "\n" ^ String.make (String.length str) '=' ^ "\n")
 let pwrite output = PP.ToChannel.pretty 1.0 80 output
 let pprint = pwrite stdout
 let pprint_err = pwrite stderr
 
-let eval_envs path = (Expander.Bindings.empty path, Typer.Env.eval (), Fc.Eval.Namespace.create ())
+let eval_envs path = (Expander.Bindings.empty path, Namespace.empty)
 
-let build path debug check_only filename outfile =
+(*let build path debug check_only filename outfile =
     let open PPrint in
-    let (let*) = Result.bind in
+    let (let* ) = Result.bind in
     let input = open_in filename in
     let output = if not check_only then open_out outfile else stdout in
     let tenv = Typer.Env.program () in
@@ -105,43 +104,43 @@ let build path debug check_only filename outfile =
     ) ~finally: (fun () ->
         close_in input;
         if not check_only then close_out output
-    )
+    )*)
 
-let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
+let ep debug (eenv, ns) (stmt : Ast.Term.Stmt.t) =
     let open PPrint in
-    let (let*) = Result.bind in
+    let (let* ) = Result.bind in
 
     let (eenv, stmts) = Expander.expand_interactive_stmt eenv stmt in
     if debug then begin
         debug_heading "Expanded AST";
         let doc = separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc (Vector1.to_list stmts) in
-        pprint (doc ^^ twice hardline);
+        pprint (doc ^^ hardline);
     end;
 
-    let* ({TS.term = program; eff}, tenv) =
-        Typer.check_interactive_stmts tenv stmts |> Result.map_error type_err in
+    let* ({TS.term = program; eff}, ns) =
+        Typer.check_interactive_stmts ns stmts |> Result.map_error type_err in
     if debug then begin
         debug_heading "FC from Typechecker";
-        pprint (Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
+        pprint (Fc.Program.to_doc program ^^ hardline)
     end;
 
-    let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
+    (*let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
     if debug then begin
         debug_heading "Nonrecursive FC";
         pprint (Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
-    end;
+    end;*)
 
-    let (venv, v) = Fc.Eval.run venv program in
+    let v = Fc.Eval.run ns program in
     let doc = infix 4 1 bang
-        (infix 4 1 colon (Fc.Eval.Value.to_doc v)
-            (Env.document tenv Fc.Type.to_doc program.main.typ))
-        (Env.document tenv Fc.Type.to_doc eff) in
-    pprint doc;
+        (infix 4 1 colon (Value.to_doc v)
+            (Fc.Type.to_doc program.main.typ))
+        (Fc.Type.to_doc eff) in
+    pprint (doc ^^ hardline);
 
-    Ok (eenv, tenv, venv)
+    Ok (eenv, ns)
 
-let rep debug ((_, tenv, _) as envs) filename input =
-    let (let*) = Result.bind in
+let rep debug envs filename input =
+    let (let* ) = Result.bind in
     match (
         let* stmts = Parse.parse_stmts filename input |> Result.map_error parse_err in
         if debug then begin
@@ -162,16 +161,18 @@ let rep debug ((_, tenv, _) as envs) filename input =
         (match err with
         | Parse err ->
             prerr_endline (SedlexMenhir.string_of_ParseError err);
-        | Type (pos, err) ->
+        | Type errs ->
             flush stdout;
-            pprint_err PPrint.(hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ hardline);
+            pprint_err PPrint.(hardline
+                ^^ separate_map (twice hardline) Typer.Error.to_doc errs
+                ^^ hardline);
             flush stderr;
-        | FwdRefs errors ->
+        (*| FwdRefs errors ->
             errors |> CCVector.iter (fun err -> pprint_err (FwdRefs.error_to_doc err));
-            flush stderr);
+            flush stderr*));
         envs
 
-let repl path debug =
+(*let repl path debug =
     let rec loop envs =
         match LNoise.linenoise prompt with
         | None -> ()
@@ -186,7 +187,7 @@ let lep path debug filename =
     let input = open_in filename in
     Fun.protect (fun () ->
         rep debug (eval_envs path) filename (Sedlexing.Utf8.from_channel input)
-    ) ~finally: (fun () -> close_in input)
+    ) ~finally: (fun () -> close_in input)*)
 
 (* # CLI Args & Flags *)
 
@@ -201,7 +202,7 @@ let debug =
     let doc = "run compiler in debug mode" in
     C.Arg.(value & flag & info ["debug"] ~doc)
 
-let infile =
+(*let infile =
     let docv = "INFILE" in
     let doc = "entry point filename" in
     C.Arg.(value & pos 0 string "" & info [] ~docv ~doc)
@@ -221,7 +222,7 @@ let build_t =
 let check_t =
     let doc = "typecheck program" in
     ( C.Term.(const ignore $ (const build $ path $ debug $ const true $ infile $ const ""))
-    , C.Term.info "check" ~doc )
+    , C.Term.info "check" ~doc )*)
 
 let eval_t =
     let doc = "evaluate statements" in
@@ -233,7 +234,7 @@ let eval_t =
         $ (const eval_envs $ path) $ const "CLI arg" $ (const Sedlexing.Utf8.from_string $ expr)))
     , C.Term.info "eval" ~doc )
 
-let script_t =
+(*let script_t =
     let doc = "evaluate statements from file" in
     let filename =
         let docv = "FILENAME" in
@@ -244,7 +245,7 @@ let script_t =
 
 let repl_t =
     let doc = "interactive evaluation loop" in
-    (C.Term.(const repl $ path $ debug), C.Term.info "repl" ~doc)
+    (C.Term.(const repl $ path $ debug), C.Term.info "repl" ~doc)*)
 
 let default_t =
     let doc = "effective, modular, functional programming language. WIP." in
@@ -254,5 +255,5 @@ let default_t =
 
 let () =
     Hashtbl.randomize ();
-    C.Term.exit (C.Term.eval_choice default_t [build_t; check_t; repl_t; script_t; eval_t])
+    C.Term.exit (C.Term.eval_choice default_t [(*build_t; check_t; repl_t; script_t;*) eval_t])
 
