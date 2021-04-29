@@ -24,9 +24,7 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         | String _ -> String)
 
     let typeof _ env (expr : AExpr.t with_pos) : FExpr.t typing = match expr.v with
-        | Var name ->
-            let var = Env.find_val env expr.pos name in
-            {term = FExpr.at expr.pos var.vtyp (FExpr.use var); eff = EmptyRow}
+        | Var name -> {term = Env.find_val env expr.pos name; eff = EmptyRow}
 
         | Const c ->
             let typ = const_typ c in
@@ -39,30 +37,41 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         let coerce = subtype ctrs expr.pos env expr.typ super in
         {TS.term = Coercer.apply_opt coerce expr; eff}
 
-    let typeof_pat _ env (plicity : plicity) (pat : AExpr.t with_pos) = match pat.v with
+    let typeof_pat _ is_global env (plicity : plicity) (pat : AExpr.t with_pos) = match pat.v with
         | Var name ->
             let kind = T.App {callee = Prim TypeIn; arg = Uv (Env.uv env T.rep)} in
             let typ = T.Uv (Env.uv env kind) in
             let var = FExpr.var plicity name typ in
             ( FExpr.pat_at pat.pos typ (VarP var)
-            , Env.push_val env var )
+            , Env.push_val is_global env var
+            , Vector.singleton var )
 
         | Const c ->
             let typ = const_typ c in
-            (FExpr.pat_at pat.pos typ (ConstP c), env)
+            (FExpr.pat_at pat.pos typ (ConstP c), env, Vector.empty)
 
         | _ -> todo (Some pat.pos)
 
-    let check_interactive_stmt : ctrs -> Env.t -> AStmt.t -> FStmt.t * Env.t * eff
-    = fun ctrs env -> function
+    let check_interactive_stmt : ctrs -> Env.t -> FStmt.t CCVector.vector -> AStmt.t -> Env.t * eff
+    = fun ctrs env stmts' -> function
         | Def (span, pat, expr) ->
-            let (pat, env') = typeof_pat ctrs env Explicit pat in
+            let (pat, env', vars) = typeof_pat ctrs true env Explicit pat in
             let {TS.term = expr; eff} = check ctrs env pat.ptyp expr in
-            (Def (span, pat, expr), env', eff)
+            CCVector.push stmts' (Def (span, pat, expr));
+            vars |> Vector.iter (fun ({FExpr.vtyp = typ; _} as var) ->
+                let namexpr = FExpr.at span (Prim String)
+                    (FExpr.const (String (Name.to_string var.name))) in
+                let global_init = FExpr.at span (Tuple Vector.empty)
+                    (FExpr.primapp GlobalSet (Vector.singleton typ)
+                        (FExpr.at span (Tuple Vector.empty)
+                        (FExpr.values [|namexpr; FExpr.at span typ (FExpr.use var)|]))) in
+                CCVector.push stmts' (Expr global_init));
+            (env', eff)
 
         | Expr expr ->
             let {TS.term = expr; eff} = typeof ctrs env expr in
-            (Expr expr, env, eff)
+            CCVector.push stmts' (Expr expr);
+            (env, eff)
 
     let check_interactive_stmts ns errors ctrs stmts =
         let env = Env.with_error_handler (Env.toplevel ns)
@@ -76,8 +85,7 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         let stmts' = CCVector.create () in
         let eff = T.Uv (Env.uv env T.aRow) in
         let env = Vector1.fold (fun env stmt ->
-            let (stmt, env, stmt_eff) = check_interactive_stmt ctrs env stmt in
-            CCVector.push stmts' stmt;
+            let (env, stmt_eff) = check_interactive_stmt ctrs env stmts' stmt in
             ignore (unify ctrs span env stmt_eff eff);
             env
         ) env stmts in

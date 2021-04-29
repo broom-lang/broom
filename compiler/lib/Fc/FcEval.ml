@@ -102,7 +102,7 @@ let run (ns : Namespace.t) program =
                     | Tuple args when Vector.length args = 2 ->
                         (match Vector.get args 0 with
                         | String name ->
-                            (match Namespace.find ns (Name.of_string name) with
+                            (match Option.bind (Name.parse name) (Namespace.find ns) with
                             | Some var ->
                                 var := Some (Vector.get args 1);
                                 k (Tuple Vector.empty)
@@ -113,7 +113,7 @@ let run (ns : Namespace.t) program =
                     | Tuple args when Vector.length args = 1 ->
                         (match Vector.get args 0 with
                         | String name ->
-                            (match Namespace.find ns (Name.of_string name) with
+                            (match Option.bind (Name.parse name) (Namespace.find ns) with
                             | Some var ->
                                 (match !var with
                                 | Some v -> k v

@@ -55,6 +55,11 @@ let to_string n =
         | None -> "$" in
     prefix ^ Int.to_string n
 
+let parse s =
+    match String.split_on_char '$' s with
+    | [_; ics] -> int_of_string_opt ics
+    | _ -> None
+
 let basename_iso = PIso.prism of_string basename
 
 let iso = PIso.iso (* FIXME: *) of_string to_string

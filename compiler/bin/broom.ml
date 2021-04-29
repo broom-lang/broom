@@ -8,7 +8,7 @@ let name = "broom"
 let prompt = name ^ "> "*)
 
 let debug_heading str =
-    print_endline (str ^ "\n" ^ String.make (String.length str) '=' ^ "\n")
+    print_endline ("\n" ^ str ^ "\n" ^ String.make (String.length str) '=' ^ "\n")
 let pwrite output = PP.ToChannel.pretty 1.0 80 output
 let pprint = pwrite stdout
 let pprint_err = pwrite stderr
@@ -114,14 +114,14 @@ let ep debug (eenv, ns) (stmt : Ast.Term.Stmt.t) =
     if debug then begin
         debug_heading "Expanded AST";
         let doc = separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc (Vector1.to_list stmts) in
-        pprint (doc ^^ twice hardline);
+        pprint (doc ^^ hardline);
     end;
 
     let* ({TS.term = program; eff}, ns) =
         Typer.check_interactive_stmts ns stmts |> Result.map_error type_err in
     if debug then begin
         debug_heading "FC from Typechecker";
-        pprint (Fc.Program.to_doc program ^^ twice hardline)
+        pprint (Fc.Program.to_doc program ^^ hardline)
     end;
 
     (*let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
@@ -135,7 +135,7 @@ let ep debug (eenv, ns) (stmt : Ast.Term.Stmt.t) =
         (infix 4 1 colon (Value.to_doc v)
             (Fc.Type.to_doc program.main.typ))
         (Fc.Type.to_doc eff) in
-    pprint doc;
+    pprint (doc ^^ hardline);
 
     Ok (eenv, ns)
 
