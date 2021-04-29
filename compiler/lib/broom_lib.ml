@@ -14,12 +14,11 @@ module Util = Util (* HACK *)
 module Name = Name
 
 module Ast = Ast
-module Fc = Fc
-(*module Fc = struct
+module Fc = struct
     include Fc
 
     module Eval = FcEval
-end*)
+end
 
 module SedlexMenhir = SedlexMenhir
 
