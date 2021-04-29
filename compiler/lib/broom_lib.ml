@@ -43,19 +43,19 @@ module Expander = Expander.Make (StringHashtbl)
 module TyperSigs = TyperSigs (* HACK *)
 module Typer = Typer
 
-(*module ExpandPats = ExpandPats
-module FwdRefs = FwdRefs*)
+(*module ExpandPats = ExpandPats*)
+module FwdRefs = FwdRefs
 
 type error =
     | Parse of SedlexMenhir.parse_error
     | Type of Typer.Error.t list
-    (*| FwdRefs of FwdRefs.error CCVector.ro_vector*)
+    | FwdRefs of FwdRefs.error CCVector.ro_vector
 
 let parse_err err = Parse err
 let type_err errs = Type errs
-(*let fwd_ref_errs errs = FwdRefs errs
+let fwd_ref_errs errs = FwdRefs errs
 
-module Cps = struct
+(*module Cps = struct
     include Cps
 
     module Convert = CpsConvert

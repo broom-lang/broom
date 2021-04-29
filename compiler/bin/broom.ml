@@ -124,11 +124,11 @@ let ep debug (eenv, ns) (stmt : Ast.Term.Stmt.t) =
         pprint (Fc.Program.to_doc program ^^ hardline)
     end;
 
-    (*let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
+    let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
     if debug then begin
         debug_heading "Nonrecursive FC";
-        pprint (Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
-    end;*)
+        pprint (Fc.Program.to_doc program ^^ hardline)
+    end;
 
     let v = Fc.Eval.run ns program in
     let doc = infix 4 1 bang
@@ -167,9 +167,9 @@ let rep debug envs filename input =
                 ^^ separate_map (twice hardline) Typer.Error.to_doc errs
                 ^^ hardline);
             flush stderr;
-        (*| FwdRefs errors ->
+        | FwdRefs errors ->
             errors |> CCVector.iter (fun err -> pprint_err (FwdRefs.error_to_doc err));
-            flush stderr*));
+            flush stderr);
         envs
 
 (*let repl path debug =
