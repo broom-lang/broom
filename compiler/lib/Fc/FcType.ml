@@ -1,6 +1,5 @@
 module Tx = Transactional
-
-let (!) = Tx.Ref.(!)
+open Tx.Ref
 
 module Typ = struct
     type level = int
@@ -237,6 +236,67 @@ module Typ = struct
         | (Trans _ | Comp _ | Inst _) as co ->
             PPrint.parens (coercion_to_doc co)
         | co -> coercion_to_doc co
+
+    let map_coercion_children f co = match co with
+        | Symm arg ->
+            let arg' = f arg in
+            if arg' == arg then co else Symm arg'
+
+        | Trans (co1, co2) ->
+            let co1' = f co1 in
+            let co2' = f co2 in
+            if co1' == co1 && co2' == co2 then co else Trans (co1', co2')
+
+        | ExistsCo (existentials, body) ->
+            let body' = f body in
+            if body' == body then co else ExistsCo (existentials, body')
+
+        | PiCo {universals; domain; codomain} ->
+            let domain' = f domain in
+            let codomain' = f codomain in
+            if domain' == domain && codomain' == codomain
+            then co
+            else PiCo {universals; domain = domain'; codomain = codomain'}
+
+        | RecordCo row ->
+            let row' = f row in
+            if row' == row then co else ProxyCo row'
+
+        | WithCo {base; label; field} ->
+            let base' = f base in
+            let field' = f field in
+            if base' == base && field' == field
+            then co
+            else WithCo {base = base'; label; field = field'}
+
+        | TupleCo cos ->
+            let cos' = Vector.map_children f cos in
+            if cos' == cos then co else TupleCo cos'
+
+        | PromotedTupleCo cos ->
+            let cos' = Vector.map_children f cos in
+            if cos' == cos then co else PromotedTupleCo cos'
+
+        | PromotedArrayCo cos ->
+            let cos' = Vector.map_children f cos in
+            if cos' == cos then co else PromotedArrayCo cos'
+
+        | ProxyCo carrie ->
+            let carrie' = f carrie in
+            if carrie' == carrie then co else ProxyCo carrie'
+
+        | Comp (callee, args) ->
+            let callee' = f callee in
+            let args' = Vector1.map_children f args in
+            if callee' == callee && args' == args then co else Comp (callee', args')
+
+        | Inst (co', args) ->
+            let co'' = f co' in
+            if co'' == co' then co else Inst (co'', args)
+
+        | Refl _ | Axiom _ | AUse _ -> co
+
+        | Patchable rco -> Patchable (ref (f !rco))
 end
 
 (* HACK: OCaml these constants are 'unsafe' for OCaml recursive modules,

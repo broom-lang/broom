@@ -18,9 +18,13 @@ let check_interactive_stmts env stmt =
     let ctrs = Transactional.Queue.create () in
     let errors = ref [] in
     let env = Env.with_error_handler env (fun error -> errors := error :: !errors) in
-    let res = Typing.check_interactive_stmts ctrs env stmt in
+
+    let (typing, env) = Typing.check_interactive_stmts ctrs env stmt in
     Constraints.solve ctrs;
+
     match !errors with
-    | [] -> Ok res
+    | [] ->
+        let program = ApplyCoercions.apply_coercions typing.term in
+        Ok ({typing with term = program}, env)
     | errors -> Error (List.rev errors)
 

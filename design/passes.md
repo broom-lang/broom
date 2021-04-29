@@ -14,6 +14,7 @@
     - Needs type information, so after typechecking
 * Forward reference implementation and soundness checking
     - Easier without complicated patterns, so after pattern expansion
+    - Also deal with REPL/macro globals here?
 
 After this point there are no user errors, only warnings.
 

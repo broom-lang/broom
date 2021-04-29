@@ -93,6 +93,7 @@ module type EXPR = sig
     val convert : coercer Tx.Ref.t -> t -> t'
 
     val map_children : (t -> t) -> t -> t
+    val map_pat_children : (pat -> pat) -> pat -> pat
 
     module Var : Set.OrderedType with type t = var
     module VarSet : Set.S with type elt = var

@@ -26,6 +26,7 @@ let fold = Vector.fold
 let foldi = Vector.foldi
 let exists = Vector.exists
 let map = Vector.map
+let map_children = Vector.map_children
 let mapi = Vector.mapi
 let map2 = Vector.map2
 let iter = Vector.iter

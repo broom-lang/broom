@@ -64,5 +64,7 @@ module type TYPE = sig
     val def_to_doc : def -> PPrint.document
     val to_doc : t -> PPrint.document
     val coercion_to_doc : coercion -> PPrint.document
+
+    val map_coercion_children : (coercion -> coercion) -> coercion -> coercion
 end
 

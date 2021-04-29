@@ -462,6 +462,20 @@ end = struct
                 if expr' == expr then term else convert co expr' in
         if term' == term then expr else {expr with term = term'}
 
+    let map_pat_children f (pat : pat) =
+        let term = pat.pterm in
+        let term' = match term with
+            | TupleP pats ->
+                let pats' = Vector.map f pats in
+                if Stream.from (Source.zip_with (fun pat pat' -> pat == pat')
+                        (Vector.to_source pats) (Vector.to_source pats'))
+                    |> Stream.into (Sink.all ~where: Fun.id)
+                then term
+                else TupleP pats'
+
+            | ProxyP _ | ConstP _ | VarP _ | WildP _ -> term in
+        if term' == term then pat else {pat with pterm = term'}
+
     module Var = struct
         type t = var
 
