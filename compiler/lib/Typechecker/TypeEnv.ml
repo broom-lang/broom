@@ -48,7 +48,7 @@ let find_val (env : t) span name =
             | None -> find scopes)
         | [] ->
             (match Namespace.find_typ env.namespace name with
-            | Some typ ->
+            | Some {vtyp = typ; plicity = _; name = _} ->
                 let namexpr = FExpr.at span (Prim String)
                     (FExpr.const (String (Name.to_string name))) in
                 FExpr.primapp GlobalGet (Vector.singleton typ)
