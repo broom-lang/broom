@@ -43,8 +43,6 @@ type cont' = unit -> Value.t
 let exit = Fun.id
 
 let run (ns : Namespace.t) program =
-    let ns = Namespace.clone ns in
-
     let rec eval : Env.t -> cont -> expr -> Value.t
     = fun env k expr -> match expr.term with
         | Tuple exprs -> (match Array.length exprs with
@@ -104,15 +102,24 @@ let run (ns : Namespace.t) program =
                     | Tuple args when Vector.length args = 2 ->
                         (match Vector.get args 0 with
                         | String name ->
-                            Namespace.add ns (Name.of_string name) (Vector.get args 1);
-                            k (Tuple Vector.empty)
+                            (match Namespace.find ns (Name.of_string name) with
+                            | Some var ->
+                                var := Some (Vector.get args 1);
+                                k (Tuple Vector.empty)
+                            | None -> bug (Some expr.pos) ~msg: ("global " ^ name ^ " not found at runtime"))
                         | _ -> bug (Some expr.pos) ~msg: "globalSet name not a string at runtime")
                     | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
                 | GlobalGet -> (match arg with
                     | Tuple args when Vector.length args = 1 ->
                         (match Vector.get args 0 with
-                        | String name -> (match Namespace.find ns (Name.of_string name) with
-                            | Some v -> k v
+                        | String name ->
+                            (match Namespace.find ns (Name.of_string name) with
+                            | Some var ->
+                                (match !var with
+                                | Some v -> k v
+                                | None ->
+                                    bug (Some expr.pos)
+                                        ~msg: ("tried to read uninitialized global " ^ name ^ " at runtime"))
                             | None -> bug (Some expr.pos) ~msg: ("global " ^ name ^ " not found at runtime"))
                         | _ -> bug (Some expr.pos) ~msg: "globalGet name not a string at runtime")
                     | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
@@ -267,5 +274,5 @@ let run (ns : Namespace.t) program =
         , snd main.pos ) in
     let defs = defs |> Vector.to_array |> Array.map (fun def -> Stmt.Def def) in
     let expr = Expr.at pos main.typ (Expr.let' defs main) in
-    (ns, eval Env.empty exit expr)
+    eval Env.empty exit expr
 

@@ -13,6 +13,7 @@ module Env = TypeEnv
 type eff = T.t
 type 'a typing = 'a TyperSigs.typing
 type ctrs = Constraint.queue
+open Transactional.Ref
 
 module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
     let unify = Constraints.unify
@@ -63,7 +64,10 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             let {TS.term = expr; eff} = typeof ctrs env expr in
             (Expr expr, env, eff)
 
-    let check_interactive_stmts ctrs env stmts =
+    let check_interactive_stmts ns errors ctrs stmts =
+        let env = Env.with_error_handler (Env.toplevel ns)
+            (fun error -> errors := error :: !errors) in
+
         let span =
             let (start, _) = AStmt.pos (Vector1.get stmts 0) in
             let (_, stop) = AStmt.pos (Vector1.get stmts (Vector1.length stmts - 1)) in
@@ -90,6 +94,6 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         ( { TS.term = { Fc.Program.type_fns = Vector.empty (* FIXME *)
                        ; defs = Vector.empty; main }
           ; eff }
-        , env )
+        , Env.namespace env )
 end
 

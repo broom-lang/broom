@@ -1,6 +1,5 @@
 open Broom_lib
 module TS = TyperSigs
-module Env = Typer.Env
 module C = Cmdliner
 module PP = PPrint
 
@@ -14,7 +13,7 @@ let pwrite output = PP.ToChannel.pretty 1.0 80 output
 let pprint = pwrite stdout
 let pprint_err = pwrite stderr
 
-let eval_envs path = (Expander.Bindings.empty path, Typer.Env.eval (), Namespace.create ())
+let eval_envs path = (Expander.Bindings.empty path, Namespace.empty)
 
 (*let build path debug check_only filename outfile =
     let open PPrint in
@@ -107,7 +106,7 @@ let eval_envs path = (Expander.Bindings.empty path, Typer.Env.eval (), Namespace
         if not check_only then close_out output
     )*)
 
-let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
+let ep debug (eenv, ns) (stmt : Ast.Term.Stmt.t) =
     let open PPrint in
     let (let* ) = Result.bind in
 
@@ -118,8 +117,8 @@ let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
         pprint (doc ^^ twice hardline);
     end;
 
-    let* ({TS.term = program; eff}, tenv) =
-        Typer.check_interactive_stmts tenv stmts |> Result.map_error type_err in
+    let* ({TS.term = program; eff}, ns) =
+        Typer.check_interactive_stmts ns stmts |> Result.map_error type_err in
     if debug then begin
         debug_heading "FC from Typechecker";
         pprint (Fc.Program.to_doc program ^^ twice hardline)
@@ -131,16 +130,16 @@ let ep debug (eenv, tenv, venv) (stmt : Ast.Term.Stmt.t) =
         pprint (Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
     end;*)
 
-    let (venv, v) = Fc.Eval.run venv program in
+    let v = Fc.Eval.run ns program in
     let doc = infix 4 1 bang
         (infix 4 1 colon (Value.to_doc v)
             (Fc.Type.to_doc program.main.typ))
         (Fc.Type.to_doc eff) in
     pprint doc;
 
-    Ok (eenv, tenv, venv)
+    Ok (eenv, ns)
 
-let rep debug ((_, (*tenv*)_, _) as envs) filename input =
+let rep debug envs filename input =
     let (let* ) = Result.bind in
     match (
         let* stmts = Parse.parse_stmts filename input |> Result.map_error parse_err in

@@ -12,7 +12,8 @@ type scope =
     | Vals of var Name.Map.t
 
 type t =
-    { scopes : scope list
+    { namespace : Namespace.t Tx.Ref.t
+    ; scopes : scope list
     ; level : T.level
     ; error_handler : error_handler }
 
@@ -20,10 +21,13 @@ let report_error (env : t) err = env.error_handler err
 
 let with_error_handler (env : t) error_handler = {env with error_handler}
 
-let eval () =
-    { scopes = []
+let toplevel namespace =
+    { namespace = ref namespace
+    ; scopes = []
     ; level = 1
     ; error_handler = fun err -> unreachable (Some err.pos) }
+
+let namespace (env : t) = !(env.namespace)
 
 let uv env kind = ref (T.Unassigned (Name.fresh (), kind, env.level))
 

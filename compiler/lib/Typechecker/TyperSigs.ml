@@ -13,8 +13,8 @@ type 'a typing = {term : 'a; eff : T.t}
 
 module type TYPING = sig
     val typeof : Constraint.queue -> Env.t -> AExpr.t with_pos -> FExpr.t typing
-    val check_interactive_stmts : Constraint.queue -> Env.t -> AStmt.t Vector1.t
-        -> Fc.Program.t typing * Env.t
+    val check_interactive_stmts : Namespace.t -> TypeError.t list Tx.Ref.t
+        -> Constraint.queue -> AStmt.t Vector1.t -> Fc.Program.t typing * Namespace.t
 end
 
 module type KINDING = sig

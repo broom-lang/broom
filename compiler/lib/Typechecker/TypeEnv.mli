@@ -3,7 +3,9 @@ type var = Fc.Term.Expr.var
 
 type t
 
-val eval : unit -> t
+val toplevel : Namespace.t -> t
+
+val namespace : t -> Namespace.t
 
 type error_handler = TypeError.t -> unit
 

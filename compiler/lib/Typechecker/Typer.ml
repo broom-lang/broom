@@ -3,6 +3,8 @@ module Env = TypeEnv
 module MakeKinding = Kinding.Make
 module MakeTyping = Typing.Make
 module MakeConstraints = Constraints.Make
+module Tx = Transactional
+open Tx.Ref
 
 type 'a with_pos = 'a Util.with_pos
 type 'a typing = 'a Sigs.typing
@@ -13,18 +15,16 @@ module rec Kinding : Sigs.KINDING = MakeKinding (Typing) (Constraints)
 and Typing : Sigs.TYPING = MakeTyping (Kinding) (Constraints)
 and Constraints : Sigs.CONSTRAINTS = MakeConstraints (Kinding)
 
-let check_interactive_stmts env stmt =
-    let open Transactional.Ref in
-    let ctrs = Transactional.Queue.create () in
+let check_interactive_stmts ns stmt =
     let errors = ref [] in
-    let env = Env.with_error_handler env (fun error -> errors := error :: !errors) in
+    let ctrs = Tx.Queue.create () in
 
-    let (typing, env) = Typing.check_interactive_stmts ctrs env stmt in
+    let (typing, ns) = Typing.check_interactive_stmts ns errors ctrs stmt in
     Constraints.solve ctrs;
 
     match !errors with
     | [] ->
         let program = ApplyCoercions.apply_coercions typing.term in
-        Ok ({typing with term = program}, env)
+        Ok ({typing with term = program}, ns)
     | errors -> Error (List.rev errors)
 
