@@ -51,22 +51,22 @@ let eval_envs path = (Expander.Bindings.empty path, Namespace.empty)
                 | None -> Asserts.bug (Some pos) ~msg: "program expansion succeeded without main function" in
             if debug then begin
                 debug_heading "Expanded AST";
-                pprint (Ast.Term.Expr.to_doc program ^^ twice hardline);
+                pprint (Ast.Term.Expr.to_doc program ^^ hardline);
             end;
 
             let* program = Typer.check_program tenv Vector.empty program |> Result.map_error type_err in
             if debug then begin
                 debug_heading "FC from Typechecker";
-                pprint (Typer.Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
+                pprint (Fc.Program.to_doc program ^^ hardline)
             end;
 
             let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
             if debug then begin
                 debug_heading "Nonrecursive FC";
-                pprint (Typer.Env.document tenv Fc.Program.to_doc program ^^ twice hardline)
+                pprint (Fc.Program.to_doc program ^^ hardline)
             end;
 
-            if not check_only then begin
+            (*if not check_only then begin
                 let program = Cps.Convert.convert (Fc.Type.Prim Int) program in
                 if debug then begin
                     debug_heading "CPS from CPS-conversion";
@@ -86,7 +86,7 @@ let eval_envs path = (Expander.Bindings.empty path, Namespace.empty)
                 end;
 
                 pwrite output (ToJs.emit program)
-            end;
+            end;*)
             Ok ()
         ) with
         | Ok () -> ()
@@ -183,11 +183,11 @@ let repl path debug =
     print_endline (name_c ^ " prototype REPL. Press Ctrl+D (on *nix, Ctrl+Z on Windows) to quit.");
     loop (Expander.Bindings.empty path, Namespace.empty)
 
-(*let lep path debug filename =
+let lep path debug filename =
     let input = open_in filename in
     Fun.protect (fun () ->
         rep debug (eval_envs path) filename (Sedlexing.Utf8.from_channel input)
-    ) ~finally: (fun () -> close_in input)*)
+    ) ~finally: (fun () -> close_in input)
 
 (* # CLI Args & Flags *)
 
@@ -234,14 +234,14 @@ let eval_t =
         $ (const eval_envs $ path) $ const "CLI arg" $ (const Sedlexing.Utf8.from_string $ expr)))
     , C.Term.info "eval" ~doc )
 
-(*let script_t =
+let script_t =
     let doc = "evaluate statements from file" in
     let filename =
         let docv = "FILENAME" in
         let doc = "the file to evaluate" in
         C.Arg.(value & pos 0 string "" & info [] ~docv ~doc) in
     ( C.Term.(const ignore $ (const lep $ path $ debug $ filename))
-    , C.Term.info "script" ~doc )*)
+    , C.Term.info "script" ~doc )
 
 let repl_t =
     let doc = "interactive evaluation loop" in
@@ -255,5 +255,5 @@ let default_t =
 
 let () =
     Hashtbl.randomize ();
-    C.Term.exit (C.Term.eval_choice default_t [(*build_t; check_t;*) repl_t; (*script_t;*) eval_t])
+    C.Term.exit (C.Term.eval_choice default_t [(*build_t; check_t;*) repl_t; script_t; eval_t])
 
