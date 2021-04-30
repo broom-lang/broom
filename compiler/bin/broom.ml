@@ -15,12 +15,11 @@ let pprint_err = pwrite stderr
 
 let eval_envs path = (Expander.Bindings.empty path, Namespace.empty)
 
-(*let build path debug check_only filename outfile =
+let build path debug check_only filename outfile =
     let open PPrint in
     let (let* ) = Result.bind in
     let input = open_in filename in
     let output = if not check_only then open_out outfile else stdout in
-    let tenv = Typer.Env.program () in
     Fun.protect (fun () ->
         let input = Sedlexing.Utf8.from_channel input in
 
@@ -54,7 +53,8 @@ let eval_envs path = (Expander.Bindings.empty path, Namespace.empty)
                 pprint (Ast.Term.Expr.to_doc program ^^ hardline);
             end;
 
-            let* program = Typer.check_program tenv Vector.empty program |> Result.map_error type_err in
+            let* {term = program; eff = _} =
+                Typer.check_program Vector.empty program |> Result.map_error type_err in
             if debug then begin
                 debug_heading "FC from Typechecker";
                 pprint (Fc.Program.to_doc program ^^ hardline)
@@ -90,21 +90,23 @@ let eval_envs path = (Expander.Bindings.empty path, Namespace.empty)
             Ok ()
         ) with
         | Ok () -> ()
-        | Error err -> (match err with
-            | FwdRefs errors ->
-                errors |> CCVector.iter (fun err ->
-                    pprint_err (FwdRefs.error_to_doc err));
-                flush stderr
-            | Type (pos, err) ->
+        | Error err ->
+            (match err with
+            | Parse err ->
+                prerr_endline (SedlexMenhir.string_of_ParseError err);
+            | Type errs ->
                 flush stdout;
-                pprint_err PPrint.(hardline ^^ Env.document tenv (Typer.TypeError.to_doc pos) err ^^ hardline);
-                flush stderr
-            | Parse parse_error ->
-                prerr_endline (SedlexMenhir.string_of_ParseError parse_error))
+                pprint_err PPrint.(hardline
+                    ^^ separate_map (twice hardline) Typer.Error.to_doc errs
+                    ^^ hardline);
+                flush stderr;
+            | FwdRefs errors ->
+                errors |> CCVector.iter (fun err -> pprint_err (FwdRefs.error_to_doc err));
+                flush stderr)
     ) ~finally: (fun () ->
         close_in input;
         if not check_only then close_out output
-    )*)
+    )
 
 let ep debug (eenv, ns) (stmt : Ast.Term.Stmt.t) =
     let open PPrint in
@@ -202,7 +204,7 @@ let debug =
     let doc = "run compiler in debug mode" in
     C.Arg.(value & flag & info ["debug"] ~doc)
 
-(*let infile =
+let infile =
     let docv = "INFILE" in
     let doc = "entry point filename" in
     C.Arg.(value & pos 0 string "" & info [] ~docv ~doc)
@@ -222,7 +224,7 @@ let build_t =
 let check_t =
     let doc = "typecheck program" in
     ( C.Term.(const ignore $ (const build $ path $ debug $ const true $ infile $ const ""))
-    , C.Term.info "check" ~doc )*)
+    , C.Term.info "check" ~doc )
 
 let eval_t =
     let doc = "evaluate statements" in
@@ -255,5 +257,5 @@ let default_t =
 
 let () =
     Hashtbl.randomize ();
-    C.Term.exit (C.Term.eval_choice default_t [(*build_t; check_t;*) repl_t; script_t; eval_t])
+    C.Term.exit (C.Term.eval_choice default_t [build_t; check_t; repl_t; script_t; eval_t])
 
