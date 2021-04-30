@@ -39,8 +39,8 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
 
     let typeof_pat _ is_global env (plicity : plicity) (pat : AExpr.t with_pos) = match pat.v with
         | Var name ->
-            let kind = T.App {callee = Prim TypeIn; arg = Uv (Env.uv env T.rep)} in
-            let typ = T.Uv (Env.uv env kind) in
+            let kind = T.App {callee = Prim TypeIn; arg = Uv (Env.uv env false T.rep)} in
+            let typ = T.Uv (Env.uv env false kind) in
             let var = FExpr.var plicity name typ in
             ( FExpr.pat_at pat.pos typ (VarP var)
             , Env.push_val is_global env var
@@ -83,7 +83,7 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             (start, stop) in
 
         let stmts' = CCVector.create () in
-        let eff = T.Uv (Env.uv env T.aRow) in
+        let eff = T.Uv (Env.uv env false T.aRow) in
         let env = Vector1.fold (fun env stmt ->
             let (env, stmt_eff) = check_interactive_stmt ctrs env stmts' stmt in
             ignore (unify ctrs span env stmt_eff eff);

@@ -66,13 +66,13 @@ module Make (K : TS.KINDING) = struct
                     else Env.reportError env pos (Escape ov))*)
             | Uv uv' ->
                 (match !uv' with
-                | Unassigned (name, kind, level') ->
+                | Unassigned (is_fwd, name, kind, level') ->
                     if uv = uv'
                     then Env.report_error env {v = Occurs (uv, typ); pos = span}
                     else if level' <= level
                     then ()
                     else if level' <= max_uv_level
-                    then uv' := (Unassigned (name, kind, level)) (* hoist *)
+                    then uv' := (Unassigned (is_fwd, name, kind, level)) (* hoist *)
                     else Env.report_error env {v = IncompleteImpl (uv, uv'); pos = span}
                 | Assigned typ -> check typ)
             | Bv _ | Prim _ -> () in
@@ -85,19 +85,23 @@ module Make (K : TS.KINDING) = struct
         | (Uv _, Uv _) -> todo (Some span)
         | (Uv uv, _) ->
             (match !uv with
-            | Unassigned (_, kind, _) ->
+            | Unassigned (false, _, kind, _) ->
                 occurs_check span env uv super;
                 ignore (unify ctrs span env kind (K.kindof_F ctrs span env super));
                 uv := Assigned super;
                 None
+            | Unassigned (true, _, _, _) ->
+                unreachable (Some span) ~msg: "Forward declared uv in `subtype_whnf`"
             | Assigned _ -> unreachable (Some span) ~msg: "Assigned `typ` in `subtype_whnf`")
         | (_, Uv uv) ->
             (match !uv with
-            | Unassigned (_, kind, _) ->
+            | Unassigned (false, _, kind, _) ->
                 occurs_check span env uv sub;
                 ignore (unify ctrs span env (K.kindof_F ctrs span env sub) kind);
                 uv := Assigned sub;
                 None
+            | Unassigned (true, _, _, _) ->
+                unreachable (Some span) ~msg: "Forward declared uv in `subtype_whnf`"
             | Assigned _ -> unreachable (Some span) ~msg: "Assigned `super` in `subtype_whnf`")
 
         | (Record _, super) ->
@@ -163,12 +167,14 @@ module Make (K : TS.KINDING) = struct
         | (Uv _, Uv _) -> todo (Some span)
         | (Uv uv, typ') | (typ', Uv uv) ->
             (match !uv with
-            | Unassigned (_, kind, level) ->
+            | Unassigned (false, _, kind, level) ->
                 check_uv_assignee span env uv level Int.max_int typ';
                 ignore (unify ctrs span env (K.kindof_F ctrs span env typ') kind);
                 uv := Assigned typ';
                 None
-            | Assigned _ -> unreachable (Some span) ~msg: "Assigned `typ` in `unify_whnf`")
+            | Unassigned (true, _, _, _) ->
+                unreachable (Some span) ~msg: "Forward declared uv in `solve_unify_whnf`"
+            | Assigned _ -> unreachable (Some span) ~msg: "Assigned `typ` in `solve_unify_whnf`")
 
         | (PromotedArray ltyps, rtyp) -> (match rtyp with
             | PromotedArray rtyps ->

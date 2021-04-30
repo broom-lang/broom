@@ -30,7 +30,7 @@ let toplevel namespace =
 
 let namespace (env : t) = env.namespace
 
-let uv env kind = ref (T.Unassigned (Name.fresh (), kind, env.level))
+let uv env is_fwd kind = ref (T.Unassigned (is_fwd, Name.fresh (), kind, env.level))
 
 let push_val is_global (env : t) (var : var) =
     if is_global
@@ -58,8 +58,8 @@ let find_val (env : t) span name =
             | None ->
                 report_error env ({v = Unbound name; pos = span});
                 (* FIXME: levels: *)
-                let kind = T.App {callee = Prim TypeIn; arg = Uv (uv env T.rep)} in
-                let typ = T.Uv (uv env kind) in
+                let kind = T.App {callee = Prim TypeIn; arg = Uv (uv env false T.rep)} in
+                let typ = T.Uv (uv env false kind) in
                 FExpr.at span typ (FExpr.use (FExpr.var Explicit name typ))) in
     find env.scopes
 

@@ -27,7 +27,7 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
         | PromotedArray typs ->
             let el_kind = if Vector.length typs > 0
                 then kindof_F ctrs span env (Vector.get typs 0)
-                else Uv (Env.uv env T.aKind) in
+                else Uv (Env.uv env false T.aKind) in
             App {callee = Prim Array; arg = el_kind}
         | PromotedTuple typs -> Tuple (Vector.map (kindof_F ctrs span env) typs)
         | Tuple typs ->
@@ -48,7 +48,7 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
         | Ov _ -> todo (Some span) (*((_, kind), _) -> kind*)
         | Bv _ -> todo (Some span) (*{kind; _} -> kind*)
         | Uv uv -> (match !uv with
-            | Unassigned (_, kind, _) -> kind
+            | Unassigned (_, _, kind, _) -> kind
             | Assigned typ -> kindof_F ctrs span env typ)
         | Prim pt -> kindof_prim pt
 
@@ -85,7 +85,8 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
             | Uv uv as typ ->
                 (match !uv with
                 | Assigned typ -> eval typ (* OPTIMIZE: path compression *)
-                | Unassigned _ -> Some (typ, None))
+                | Unassigned (false, _, _, _) -> Some (typ, None)
+                | Unassigned (true, _, _, _) -> None)
             | ( Exists _ | PromotedArray _ | PromotedTuple _
               | Tuple _ | Pi _ | Impli _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ) as typ ->
                 Some (typ, None)

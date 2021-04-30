@@ -28,7 +28,7 @@ module type TYPE = sig
     and uv = uvv Tx.Ref.t
 
     and uvv =
-        | Unassigned of Name.t * kind * level
+        | Unassigned of bool * Name.t * kind * level
         | Assigned of typ
 
     and ov = {name : Name.t; kind : kind; level : level}

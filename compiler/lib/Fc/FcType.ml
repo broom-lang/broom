@@ -25,7 +25,7 @@ module Typ = struct
     and uv = uvv Tx.Ref.t
 
     and uvv =
-        | Unassigned of Name.t * kind * level
+        | Unassigned of bool * Name.t * kind * level
         | Assigned of typ
 
     and ov = {name : Name.t; kind : kind; level : level}
@@ -73,7 +73,7 @@ module Typ = struct
         let rec to_doc_prec prec = function
             | Uv uv -> (match !uv with
                 | Assigned t -> to_doc_prec prec t
-                | Unassigned (name, _, _) -> qmark ^^ Name.to_doc name)
+                | Unassigned (_, name, _, _) -> qmark ^^ Name.to_doc name)
 
             | Exists {existentials; body} ->
                 prefix 4 1

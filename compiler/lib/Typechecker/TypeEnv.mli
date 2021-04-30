@@ -16,5 +16,5 @@ val with_error_handler : t -> error_handler -> t
 val push_val : bool -> t -> var -> t
 val find_val : t -> Util.span -> Name.t -> expr
 
-val uv : t -> T.kind -> T.uv
+val uv : t -> bool -> T.kind -> T.uv
 
