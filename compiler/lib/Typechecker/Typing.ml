@@ -1,3 +1,5 @@
+open Streaming
+
 open Asserts
 type 'a with_pos = 'a Util.with_pos
 type plicity = Util.plicity
@@ -37,10 +39,10 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         let coerce = subtype ctrs expr.pos env expr.typ super in
         {TS.term = Coercer.apply_opt coerce expr; eff}
 
-    let typeof_pat _ is_global env (plicity : plicity) (pat : AExpr.t with_pos) = match pat.v with
+    let typeof_pat _ is_global is_fwd env (plicity : plicity) (pat : AExpr.t with_pos) = match pat.v with
         | Var name ->
             let kind = T.App {callee = Prim TypeIn; arg = Uv (Env.uv env false T.rep)} in
-            let typ = T.Uv (Env.uv env false kind) in
+            let typ = T.Uv (Env.uv env is_fwd kind) in
             let var = FExpr.var plicity name typ in
             ( FExpr.pat_at pat.pos typ (VarP var)
             , Env.push_val is_global env var
@@ -52,10 +54,35 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
 
         | _ -> todo (Some pat.pos)
 
+    let check_defs ctrs env defs =
+        let pats = CCVector.create () in
+        let env = Vector.fold (fun env (_, pat, _) ->
+            let (pat, env, _) = typeof_pat ctrs false true env Explicit pat in
+            CCVector.push pats pat;
+            env
+        ) env defs in
+        let pats = Vector.build pats in
+        let defs = Source.zip_with (fun (pat : FExpr.pat) (span, _, expr) ->
+                let {TS.term = expr; eff} = check ctrs env pat.ptyp expr in
+                ignore (Constraints.unify ctrs expr.pos env eff T.EmptyRow);
+                (span, pat, expr)
+            ) (Vector.to_source pats) (Vector.to_source defs)
+            |> Stream.from |> Stream.into (Vector.sink ()) in
+        (defs, env)
+
+    let check_program errors ctrs defs main =
+        let env = Env.with_error_handler Env.empty
+            (fun error -> errors := error :: !errors) in
+
+        let (defs, env) = check_defs ctrs env defs in
+        let {TS.term = main; eff} = check ctrs env (T.Tuple Vector.empty) main in
+
+        {TS.term = {Fc.Program.type_fns = Env.type_fns env; defs; main}; eff}
+
     let check_interactive_stmt : ctrs -> Env.t -> FStmt.t CCVector.vector -> AStmt.t -> Env.t * eff
     = fun ctrs env stmts' -> function
         | Def (span, pat, expr) ->
-            let (pat, env', vars) = typeof_pat ctrs true env Explicit pat in
+            let (pat, env', vars) = typeof_pat ctrs true false env Explicit pat in
             let {TS.term = expr; eff} = check ctrs env pat.ptyp expr in
             CCVector.push stmts' (Def (span, pat, expr));
             vars |> Vector.iter (fun ({FExpr.vtyp = typ; _} as var) ->
@@ -102,6 +129,6 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         ( { TS.term = { Fc.Program.type_fns = Vector.empty (* FIXME *)
                        ; defs = Vector.empty; main }
           ; eff }
-        , Env.namespace env )
+        , Env.namespace env |> Option.get )
 end
 

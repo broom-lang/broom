@@ -4,9 +4,11 @@ type expr = Fc.Term.Expr.t
 
 type t
 
+val empty : t
 val toplevel : Namespace.t -> t
 
-val namespace : t -> Namespace.t
+val namespace : t -> Namespace.t option
+val type_fns : t -> T.def Vector.t
 
 type error_handler = TypeError.t -> unit
 

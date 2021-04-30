@@ -1,4 +1,5 @@
 module Sigs = TyperSigs
+module T = Fc.Type
 module Env = TypeEnv
 module MakeKinding = Kinding.Make
 module MakeTyping = Typing.Make
@@ -14,6 +15,19 @@ module Error = TypeError
 module rec Kinding : Sigs.KINDING = MakeKinding (Typing) (Constraints)
 and Typing : Sigs.TYPING = MakeTyping (Kinding) (Constraints)
 and Constraints : Sigs.CONSTRAINTS = MakeConstraints (Kinding)
+
+let check_program defs main =
+    let errors = ref [] in
+    let ctrs = Tx.Queue.create () in
+
+    let typing = Typing.check_program errors ctrs defs main in
+    Constraints.solve ctrs;
+
+    match !errors with
+    | [] ->
+        let program = ApplyCoercions.apply_coercions typing.term in
+        Ok {typing with term = program}
+    | errors -> Error (List.rev errors)
 
 let check_interactive_stmts ns stmt =
     let errors = ref [] in

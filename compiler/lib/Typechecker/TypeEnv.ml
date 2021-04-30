@@ -13,7 +13,7 @@ type scope =
     | Vals of var Name.Map.t
 
 type t =
-    { namespace : Namespace.t
+    { namespace : Namespace.t option
     ; scopes : scope list
     ; level : T.level
     ; error_handler : error_handler }
@@ -22,19 +22,29 @@ let report_error (env : t) err = env.error_handler err
 
 let with_error_handler (env : t) error_handler = {env with error_handler}
 
+let empty =
+    { namespace = None
+    ; scopes = []
+    ; level = 1
+    ; error_handler = fun err -> unreachable (Some err.pos) }
+
 let toplevel namespace =
-    { namespace = namespace
+    { namespace = Some namespace
     ; scopes = []
     ; level = 1
     ; error_handler = fun err -> unreachable (Some err.pos) }
 
 let namespace (env : t) = env.namespace
 
+let type_fns _ = Vector.empty (* TODO *)
+
 let uv env is_fwd kind = ref (T.Unassigned (is_fwd, Name.fresh (), kind, env.level))
 
 let push_val is_global (env : t) (var : var) =
     if is_global
-    then {env with namespace = Namespace.add env.namespace var}
+    then match env.namespace with
+        | Some ns -> {env with namespace = Some (Namespace.add ns var)}
+        | None -> unreachable None
     else match env.scopes with
         | Vals bindings :: scopes' ->
             {env with scopes = Vals (Name.Map.add var.name var bindings) :: scopes'}
@@ -47,7 +57,7 @@ let find_val (env : t) span name =
             | Some var -> FExpr.at span var.vtyp (FExpr.use var)
             | None -> find scopes)
         | [] ->
-            (match Namespace.find_typ env.namespace name with
+            (match Option.bind env.namespace (Fun.flip Namespace.find_typ name) with
             | Some {vtyp = typ; plicity = _; name = _} ->
                 let namexpr = FExpr.at span (Prim String)
                     (FExpr.const (String (Name.to_string name))) in
