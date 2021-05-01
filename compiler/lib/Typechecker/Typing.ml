@@ -25,7 +25,13 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         | Int _ -> Int
         | String _ -> String)
 
-    let typeof_pat _ is_global is_fwd env (plicity : plicity) (pat : AExpr.t with_pos) = match pat.v with
+    let rec typeof_pat ctrs is_global is_fwd env (plicity : plicity) (pat : AExpr.t with_pos) = match pat.v with
+        | Ann (pat, typ) ->
+            let kind = T.App {callee = Prim TypeIn; arg = Uv (Env.uv env false T.rep)} in
+            let typ = K.check env kind typ in
+            (* TODO: let (_, typ) = Env.reabstract env typ in*)
+            check_pat ctrs is_global is_fwd env plicity typ pat
+
         | Var name ->
             let kind = T.App {callee = Prim TypeIn; arg = Uv (Env.uv env false T.rep)} in
             let typ = T.Uv (Env.uv env is_fwd kind) in
@@ -39,6 +45,8 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             (FExpr.pat_at pat.pos typ (ConstP c), env, Vector.empty)
 
         | _ -> todo (Some pat.pos)
+
+    and check_pat _ _ _ _ _ _ (pat : AExpr.t with_pos) = todo (Some pat.pos)
 
     let rec typeof ctrs env (expr : AExpr.t with_pos) : FExpr.t typing = match expr.v with
         | Let (defs, body) ->
