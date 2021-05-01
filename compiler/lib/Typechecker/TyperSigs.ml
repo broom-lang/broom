@@ -21,6 +21,7 @@ end
 
 module type KINDING = sig
     val elaborate : Env.t -> AType.t with_pos -> T.t
+    val check : Env.t -> T.kind -> AType.t with_pos -> T.t
     val kindof_F : Constraint.queue -> span -> Env.t -> T.t -> T.kind
     val eval : span -> Env.t -> T.t -> (T.t * T.t T.coercion option) option
 end

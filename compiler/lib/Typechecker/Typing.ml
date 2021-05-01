@@ -17,7 +17,7 @@ type 'a typing = 'a TyperSigs.typing
 type ctrs = Constraint.queue
 open Transactional.Ref
 
-module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
+module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
     let unify = Constraints.unify
     let subtype = Constraints.subtype
 
@@ -46,6 +46,10 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             let {TS.term = body; eff} = typeof ctrs env body in
             {term = FExpr.at expr.pos body.typ (FExpr.letrec (Vector.to_array defs) body); eff}
 
+        | Ann (expr, super) ->
+            let super = K.check env (App {callee = Prim TypeIn; arg = Uv (Env.uv env false T.rep)}) super in
+            check ctrs env super expr (* FIXME: handle abstract types, abstract type generation effect *)
+
         | Var name -> {term = Env.find_val env expr.pos name; eff = EmptyRow}
 
         | Const c ->
@@ -68,6 +72,7 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         ) env defs in
         let pats = Vector.build pats in
         let defs = Source.zip_with (fun (pat : FExpr.pat) (span, _, expr) ->
+                (* FIXME: generate abstract types, abstract type generaiton effect: *)
                 let {TS.term = expr; eff} = check ctrs env pat.ptyp expr in
                 ignore (Constraints.unify ctrs expr.pos env eff T.EmptyRow);
                 (span, pat, expr)
