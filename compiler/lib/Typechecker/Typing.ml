@@ -89,6 +89,9 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             let typ = const_typ c in
             {term = FExpr.at expr.pos typ (FExpr.const c); eff = EmptyRow}
 
+        | Wild _ -> bug (Some expr.pos) ~msg: "_-expression reached typechecker"
+        | AppSequence _ -> bug (Some expr.pos) ~msg: "AppSequence expression reached typechecker"
+
         | _ -> todo (Some expr.pos)
 
     and check ctrs env super expr =
