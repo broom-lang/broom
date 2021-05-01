@@ -1,23 +1,18 @@
 open Broom_lib
-module TS = TyperSigs
 module C = Cmdliner
-module PP = PPrint
+
+let (let*) = Result.bind
+let (let+) = Fun.flip Result.map
 
 let name = "broom"
 let name_c = String.capitalize_ascii name
 let prompt = name ^ "> "
 
-let debug_heading str =
-    print_endline ("\n" ^ str ^ "\n" ^ String.make (String.length str) '=' ^ "\n")
-let pwrite output = PP.ToChannel.pretty 1.0 80 output
-let pprint = pwrite stdout
-let pprint_err = pwrite stderr
-
 let eval_envs path = (Expander.Bindings.empty path, Namespace.empty)
 
 let build path debug check_only filename outfile =
     let open PPrint in
-    let (let* ) = Result.bind in
+
     let input = open_in filename in
     let output = if not check_only then open_out outfile else stdout in
     Fun.protect (fun () ->
@@ -27,67 +22,15 @@ let build path debug check_only filename outfile =
             let* defs = Parse.parse_defs filename input |> Result.map_error parse_err in
             if debug then begin
                 print_newline ();
-                debug_heading "Parsed AST";
-                let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.def_to_doc
-                    (Vector.to_list defs))) in
-                pprint (doc ^^ twice hardline);
+                Util.debug_heading "Parsed AST";
+                let doc = group (separate_map (semi ^^ break 1) Ast.Term.Stmt.def_to_doc
+                    (Vector.to_list defs)) in
+                Util.pprint (doc ^^ twice hardline);
             end;
 
-            let program =
-                let pos = match Vector1.of_vector defs with
-                    | Some defs ->
-                        let ((start, _), _, _) = Vector1.get defs 0 in
-                        let ((_, stop), _, _) = Vector1.get defs (Vector1.length defs - 1) in
-                        (start, stop)
-                    | None ->
-                        let pos = {Lexing.pos_fname = filename; pos_lnum = 1; pos_bol = 0; pos_cnum = 0} in
-                        (pos, pos) in
-                let entry = {Util.pos; v = Ast.Term.Expr.App ( {pos; v = Var (Name.of_string "main")}
-                    , Explicit, {pos; v = Tuple Vector.empty} )} in
-                let (defs, entry) = Expander.expand_program (Expander.Bindings.empty path) defs entry in
-                match Vector1.of_vector defs with
-                | Some defs -> {Util.pos; v = Ast.Term.Expr.Let (defs, entry)}
-                | None -> Asserts.bug (Some pos) ~msg: "program expansion succeeded without main function" in
-            if debug then begin
-                debug_heading "Expanded AST";
-                pprint (Ast.Term.Expr.to_doc program ^^ hardline);
-            end;
-
-            let* {term = program; eff = _} =
-                Typer.check_program Vector.empty program |> Result.map_error type_err in
-            if debug then begin
-                debug_heading "FC from Typechecker";
-                pprint (Fc.Program.to_doc program ^^ hardline)
-            end;
-
-            let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
-            if debug then begin
-                debug_heading "Nonrecursive FC";
-                pprint (Fc.Program.to_doc program ^^ hardline)
-            end;
-
-            if not check_only then begin
-                let program = Cps.Convert.convert (Fc.Type.Prim Int) program in
-                if debug then begin
-                    debug_heading "CPS from CPS-conversion";
-                    pprint (Cps.Program.to_doc program ^^ twice hardline)
-                end;
-
-                let program = Untuple.untuple program in
-                if debug then begin
-                    debug_heading "CPS after untupling";
-                    pprint (Cps.Program.to_doc program ^^ twice hardline);
-                end;
-
-                let program = ScheduleData.schedule program in
-                if debug then begin
-                    debug_heading "CFG from Dataflow Scheduling";
-                    pprint (Cfg.Program.to_doc program ^^ twice hardline)
-                end;
-
-                pwrite output (ToJs.emit program)
-            end;
-            Ok ()
+            if check_only
+            then Result.map ignore (Compiler.check_program ~debug ~path ~filename defs)
+            else Compiler.compile_program ~debug ~path ~filename ~output defs
         ) with
         | Ok () -> ()
         | Error err ->
@@ -96,64 +39,43 @@ let build path debug check_only filename outfile =
                 prerr_endline (SedlexMenhir.string_of_ParseError err);
             | Type errs ->
                 flush stdout;
-                pprint_err PPrint.(hardline
+                Util.pprint_err (hardline
                     ^^ separate_map (twice hardline) Typer.Error.to_doc errs
                     ^^ hardline);
                 flush stderr;
             | FwdRefs errors ->
-                errors |> CCVector.iter (fun err -> pprint_err (FwdRefs.error_to_doc err));
+                errors |> CCVector.iter (fun err -> Util.pprint_err (FwdRefs.error_to_doc err));
                 flush stderr)
     ) ~finally: (fun () ->
         close_in input;
         if not check_only then close_out output
     )
 
-let ep debug (eenv, ns) (stmt : Ast.Term.Stmt.t) =
-    let open PPrint in
-    let (let* ) = Result.bind in
-
-    let (eenv, stmts) = Expander.expand_interactive_stmt eenv stmt in
-    if debug then begin
-        debug_heading "Expanded AST";
-        let doc = separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc (Vector1.to_list stmts) in
-        pprint (doc ^^ hardline);
-    end;
-
-    let* ({TS.term = program; eff}, ns) =
-        Typer.check_interactive_stmts ns stmts |> Result.map_error type_err in
-    if debug then begin
-        debug_heading "FC from Typechecker";
-        pprint (Fc.Program.to_doc program ^^ hardline)
-    end;
-
-    let* program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
-    if debug then begin
-        debug_heading "Nonrecursive FC";
-        pprint (Fc.Program.to_doc program ^^ hardline)
-    end;
-
-    let v = Fc.Eval.run ns program in
-    let doc = infix 4 1 bang
-        (infix 4 1 colon (Value.to_doc v)
-            (Fc.Type.to_doc program.main.typ))
-        (Fc.Type.to_doc eff) in
-    pprint (doc ^^ hardline);
-
-    Ok (eenv, ns)
-
 let rep debug envs filename input =
-    let (let* ) = Result.bind in
+    let open PPrint in
+
     match (
         let* stmts = Parse.parse_stmts filename input |> Result.map_error parse_err in
         if debug then begin
-            debug_heading "\nParsed AST";
-            let doc = PPrint.(group (separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc
-                (Vector.to_list stmts))) in
-            pprint PPrint.(doc ^^ twice hardline)
+            Util.debug_heading "\nParsed AST";
+            let doc = group (separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc
+                (Vector.to_list stmts)) in
+            Util.pprint (doc ^^ twice hardline)
         end;
 
         let* envs = Vector.fold (fun envs stmt ->
-            Result.bind envs (fun envs -> ep debug envs stmt)
+            let* (eenv, ns) = envs in
+            let+ (eenv, ns, {TyperSigs.term = program; eff}) =
+                Compiler.check_interactive_stmt ~debug eenv ns stmt in
+
+            let v = Fc.Eval.run ns program in
+            let doc = infix 4 1 bang
+                (infix 4 1 colon (Value.to_doc v)
+                    (Fc.Type.to_doc program.main.typ))
+                (Fc.Type.to_doc eff) in
+            Util.pprint (doc ^^ hardline);
+
+            (eenv, ns)
         ) (Ok envs) stmts in
         print_newline ();
         Ok envs 
@@ -165,12 +87,12 @@ let rep debug envs filename input =
             prerr_endline (SedlexMenhir.string_of_ParseError err);
         | Type errs ->
             flush stdout;
-            pprint_err PPrint.(hardline
+            Util.pprint_err PPrint.(hardline
                 ^^ separate_map (twice hardline) Typer.Error.to_doc errs
                 ^^ hardline);
             flush stderr;
         | FwdRefs errors ->
-            errors |> CCVector.iter (fun err -> pprint_err (FwdRefs.error_to_doc err));
+            errors |> CCVector.iter (fun err -> Util.pprint_err (FwdRefs.error_to_doc err));
             flush stderr);
         envs
 

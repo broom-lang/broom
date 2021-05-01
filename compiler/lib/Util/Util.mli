@@ -20,4 +20,9 @@ type 'a docs_op =
 val with_prec : ('a -> 'a docs_op) -> int -> 'a -> document
 
 val doc_to_string : document -> string
+val pwrite : out_channel -> document -> unit
+val pprint : document -> unit
+val pprint_err : document -> unit
+
+val debug_heading : string -> unit
 

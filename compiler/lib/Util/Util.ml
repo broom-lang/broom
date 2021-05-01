@@ -52,3 +52,9 @@ let doc_to_string doc =
     PPrint.ToBuffer.compact buf doc;
     Buffer.contents buf
 
+let debug_heading str =
+    print_endline ("\n" ^ str ^ "\n" ^ String.make (String.length str) '=' ^ "\n")
+let pwrite output = PPrint.ToChannel.pretty 1.0 80 output
+let pprint = pwrite stdout
+let pprint_err = pwrite stderr
+
