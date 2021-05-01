@@ -59,6 +59,19 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             let typ = T.Tuple (Vector.map (fun {FExpr.typ; _} -> typ) exprs) in
             {term = FExpr.at expr.pos typ (FExpr.tuple (Vector.to_array exprs)); eff}
 
+        | Record stmts ->
+            let fields = CCVector.create () in
+            let eff = T.Uv (Env.uv env false T.aRow) in
+            let typ = T.Record (Vector.fold (fun base -> function
+                | AStmt.Def (_, {v = Var label; _}, expr) ->
+                    let {TS.term; eff = eff'} = typeof ctrs env expr in
+                    CCVector.push fields (label, term);
+                    ignore (Constraints.unify ctrs expr.pos env eff' eff);
+                    T.With {base; label; field = term.typ}
+                | _ -> bug (Some expr.pos) ~msg: "bad record field reached typechecker"
+            ) T.EmptyRow stmts) in
+            {term = FExpr.at expr.pos typ (FExpr.record (CCVector.to_array fields)); eff }
+
         | Var name -> {term = Env.find_val env expr.pos name; eff = EmptyRow}
 
         | Const c ->
