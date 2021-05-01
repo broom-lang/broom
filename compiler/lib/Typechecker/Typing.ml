@@ -25,20 +25,6 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         | Int _ -> Int
         | String _ -> String)
 
-    let typeof _ env (expr : AExpr.t with_pos) : FExpr.t typing = match expr.v with
-        | Var name -> {term = Env.find_val env expr.pos name; eff = EmptyRow}
-
-        | Const c ->
-            let typ = const_typ c in
-            {term = FExpr.at expr.pos typ (FExpr.const c); eff = EmptyRow}
-
-        | _ -> todo (Some expr.pos)
-
-    let check ctrs env super expr =
-        let {TS.term = expr; eff} = typeof ctrs env expr in
-        let coerce = subtype ctrs expr.pos env expr.typ super in
-        {TS.term = Coercer.apply_opt coerce expr; eff}
-
     let typeof_pat _ is_global is_fwd env (plicity : plicity) (pat : AExpr.t with_pos) = match pat.v with
         | Var name ->
             let kind = T.App {callee = Prim TypeIn; arg = Uv (Env.uv env false T.rep)} in
@@ -54,7 +40,26 @@ module Make (Kinding : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
 
         | _ -> todo (Some pat.pos)
 
-    let check_defs ctrs env defs =
+    let rec typeof ctrs env (expr : AExpr.t with_pos) : FExpr.t typing = match expr.v with
+        | Let (defs, body) ->
+            let (defs, env) = check_defs ctrs env (Vector1.to_vector defs) in
+            let {TS.term = body; eff} = typeof ctrs env body in
+            {term = FExpr.at expr.pos body.typ (FExpr.letrec (Vector.to_array defs) body); eff}
+
+        | Var name -> {term = Env.find_val env expr.pos name; eff = EmptyRow}
+
+        | Const c ->
+            let typ = const_typ c in
+            {term = FExpr.at expr.pos typ (FExpr.const c); eff = EmptyRow}
+
+        | _ -> todo (Some expr.pos)
+
+    and check ctrs env super expr =
+        let {TS.term = expr; eff} = typeof ctrs env expr in
+        let coerce = subtype ctrs expr.pos env expr.typ super in
+        {TS.term = Coercer.apply_opt coerce expr; eff}
+
+    and check_defs ctrs env defs =
         let pats = CCVector.create () in
         let env = Vector.fold (fun env (_, pat, _) ->
             let (pat, env, _) = typeof_pat ctrs false true env Explicit pat in
