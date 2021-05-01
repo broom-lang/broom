@@ -79,6 +79,10 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             let {TS.term = selectee; eff} = check ctrs env selectee_typ selectee in
             {term = FExpr.at expr.pos typ (FExpr.select selectee label); eff}
 
+        | Proxy carrie ->
+            let carrie = K.elaborate env {v = carrie; pos = expr.pos} in
+            {term = FExpr.at expr.pos (Proxy carrie) (FExpr.proxy carrie); eff = EmptyRow}
+
         | Var name -> {term = Env.find_val env expr.pos name; eff = EmptyRow}
 
         | Const c ->
