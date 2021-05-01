@@ -55,7 +55,7 @@ let parse_err err = Parse err
 let type_err errs = Type errs
 let fwd_ref_errs errs = FwdRefs errs
 
-(*module Cps = struct
+module Cps = struct
     include Cps
 
     module Convert = CpsConvert
@@ -66,7 +66,7 @@ module Untuple = Untuple
 module Cfg = Cfg
 module ScheduleData = ScheduleData
 
-module ToJs = ToJs*)
+module ToJs = ToJs
 
 module Value = Value
 module Namespace = Namespace

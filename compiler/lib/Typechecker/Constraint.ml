@@ -9,7 +9,7 @@ type simple =
         ; coerce : Coercer.t Tx.Ref.t}
     | Unify of {span : Util.span; env : Env.t
         ; ltyp : T.t; rtyp : T.t
-        ; coercion : T.coercion Tx.Ref.t}
+        ; coercion : T.t T.coercion Tx.Ref.t}
 
 type queue = simple Tx.Queue.t
 

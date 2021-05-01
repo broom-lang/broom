@@ -66,7 +66,7 @@ let build path debug check_only filename outfile =
                 pprint (Fc.Program.to_doc program ^^ hardline)
             end;
 
-            (*if not check_only then begin
+            if not check_only then begin
                 let program = Cps.Convert.convert (Fc.Type.Prim Int) program in
                 if debug then begin
                     debug_heading "CPS from CPS-conversion";
@@ -86,7 +86,7 @@ let build path debug check_only filename outfile =
                 end;
 
                 pwrite output (ToJs.emit program)
-            end;*)
+            end;
             Ok ()
         ) with
         | Ok () -> ()

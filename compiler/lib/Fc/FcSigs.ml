@@ -32,7 +32,7 @@ module type EXPR = sig
 
         | Axiom of { axioms : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t
             ; mutable body : t }
-        | Cast of {mutable castee : t; coercion : Type.coercion}
+        | Cast of {mutable castee : t; coercion : Type.t Type.coercion}
 
         | Pack of {existentials : Type.t Vector1.t; mutable impl : t}
         | Unpack of { existentials : Type.def Vector1.t; var : var; mutable value : t
@@ -81,7 +81,7 @@ module type EXPR = sig
     val letrec : def Array.t -> t -> t'
     val axiom : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector.t -> t -> t'
     val match' : t -> clause Vector.t -> t'
-    val cast : t -> Type.coercion -> t'
+    val cast : t -> Type.t Type.coercion -> t'
     val pack : Type.t Vector.t -> t -> t'
     val unpack : Type.def Vector1.t -> var -> t -> t -> t'
     val record : (Name.t * t) array -> t'

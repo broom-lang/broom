@@ -37,24 +37,24 @@ module type TYPE = sig
 
     and def = Name.t * kind
 
-    and coercion =
-        | Refl of t
-        | Symm of coercion
-        | Trans of coercion * coercion
-        | Comp of coercion * coercion Vector1.t
-        | Axiom of kind Vector.t * t * t
+    and 'typ coercion =
+        | Refl of 'typ
+        | Symm of 'typ coercion
+        | Trans of 'typ coercion * 'typ coercion
+        | Comp of 'typ coercion * 'typ coercion Vector1.t
+        | Axiom of kind Vector.t * 'typ * 'typ
         | AUse of Name.t
-        | ExistsCo of kind Vector1.t * coercion
-        | Inst of coercion * t Vector1.t
+        | ExistsCo of kind Vector1.t * 'typ coercion
+        | Inst of 'typ coercion * 'typ Vector1.t
         | PiCo of {universals : kind Vector.t
-            ; domain : coercion; codomain : coercion}
-        | RecordCo of coercion
-        | WithCo of {base : coercion; label : Name.t; field : coercion}
-        | TupleCo of coercion Vector.t
-        | PromotedTupleCo of coercion Vector.t
-        | PromotedArrayCo of coercion Vector.t
-        | ProxyCo of coercion
-        | Patchable of coercion Tx.Ref.t
+            ; domain : 'typ coercion; codomain : 'typ coercion}
+        | RecordCo of 'typ coercion
+        | WithCo of {base : 'typ coercion; label : Name.t; field : 'typ coercion}
+        | TupleCo of 'typ coercion Vector.t
+        | PromotedTupleCo of 'typ coercion Vector.t
+        | PromotedArrayCo of 'typ coercion Vector.t
+        | ProxyCo of 'typ coercion
+        | Patchable of 'typ coercion Tx.Ref.t
 
     and typ = t
 
@@ -63,8 +63,9 @@ module type TYPE = sig
     val kind_to_doc : kind -> PPrint.document
     val def_to_doc : def -> PPrint.document
     val to_doc : t -> PPrint.document
-    val coercion_to_doc : coercion -> PPrint.document
+    val coercion_to_doc' : ('typ -> PPrint.document) -> 'typ coercion -> PPrint.document
+    val coercion_to_doc : t coercion -> PPrint.document
 
-    val map_coercion_children : (coercion -> coercion) -> coercion -> coercion
+    val map_coercion_children : ('typ coercion -> 'typ coercion) -> 'typ coercion -> 'typ coercion
 end
 

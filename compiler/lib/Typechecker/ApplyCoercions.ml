@@ -3,7 +3,7 @@ open Term
 open Transactional.Ref
 
 let rec eval_coercions co =
-    let rec eval_coercion : Type.coercion -> Type.coercion = function
+    let rec eval_coercion : Type.t Type.coercion -> Type.t Type.coercion = function
         | Patchable rco -> eval_coercion !rco
         | co -> co in
 
