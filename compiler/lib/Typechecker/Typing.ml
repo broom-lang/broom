@@ -50,6 +50,15 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             let super = K.check env (App {callee = Prim TypeIn; arg = Uv (Env.uv env false T.rep)}) super in
             check ctrs env super expr (* FIXME: handle abstract types, abstract type generation effect *)
 
+        | Tuple exprs ->
+            let eff = T.Uv (Env.uv env false T.aRow) in
+            let exprs = exprs |> Vector.map (fun expr ->
+                let {TS.term; eff = eff'} = typeof ctrs env expr in
+                ignore (Constraints.unify ctrs expr.pos env eff' eff);
+                term) in
+            let typ = T.Tuple (Vector.map (fun {FExpr.typ; _} -> typ) exprs) in
+            {term = FExpr.at expr.pos typ (FExpr.tuple (Vector.to_array exprs)); eff}
+
         | Var name -> {term = Env.find_val env expr.pos name; eff = EmptyRow}
 
         | Const c ->
@@ -101,7 +110,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
                 let global_init = FExpr.at span (Tuple Vector.empty)
                     (FExpr.primapp GlobalSet (Vector.singleton typ)
                         (FExpr.at span (Tuple Vector.empty)
-                        (FExpr.values [|namexpr; FExpr.at span typ (FExpr.use var)|]))) in
+                        (FExpr.tuple [|namexpr; FExpr.at span typ (FExpr.use var)|]))) in
                 CCVector.push stmts' (Expr global_init));
             (env', eff)
 
@@ -133,8 +142,8 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
                 if Array.length stmts > 0
                 then match Array.get stmts (Array.length stmts - 1) with
                     | Expr expr -> (Array.sub stmts 0 (Array.length stmts - 1), expr)
-                    | _ -> (stmts, FExpr.at span (Tuple Vector.empty) (FExpr.values [||]))
-                else (stmts, FExpr.at span (Tuple Vector.empty) (FExpr.values [||])) in
+                    | _ -> (stmts, FExpr.at span (Tuple Vector.empty) (FExpr.tuple [||]))
+                else (stmts, FExpr.at span (Tuple Vector.empty) (FExpr.tuple [||])) in
             FExpr.at span body.typ (FExpr.let' stmts body) in
         ( { TS.term = { Fc.Program.type_fns = Vector.empty (* FIXME *)
                        ; defs = Vector.empty; main }

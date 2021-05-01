@@ -71,7 +71,7 @@ module type EXPR = sig
     val at : Util.span -> Type.t -> t' -> t
     val pat_at : Util.span -> Type.t -> pat' -> pat
 
-    val values : t Array.t -> t'
+    val tuple : t Array.t -> t'
     val focus : t -> int -> t'
     val fn : Type.def Vector.t -> var -> t -> t'
     val app : t -> Type.t Vector.t -> t -> t'

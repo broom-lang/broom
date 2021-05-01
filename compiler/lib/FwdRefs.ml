@@ -407,7 +407,7 @@ let emit shapes expr =
                                 (Expr (E.at pos (Tuple Vector.empty) (E.primapp CellInit
                                     (Vector.singleton value.typ)
                                     (E.at pos (Tuple (Vector.of_list [cell.vtyp; value.typ]))
-                                        (E.values (Array.of_list [
+                                        (E.tuple (Array.of_list [
                                             E.at pos cell.vtyp (E.use cell)
                                             ; E.at value.pos value.typ (E.use var)]))))))
                         | Backward -> Stream.single (S.Def (pos, pat, value))
@@ -422,7 +422,7 @@ let emit shapes expr =
                         | Backward -> Stream.empty
                         | WasForward {cell} ->
                             let arg = E.at pos (Tuple Vector.empty)
-                                (E.values (Array.init 0 (fun _ -> unreachable (Some pos)))) in
+                                (E.tuple (Array.init 0 (fun _ -> unreachable (Some pos)))) in
                             let value = E.at pos cell.vtyp (E.primapp CellNew Vector.empty arg) in
                             Stream.single (S.Def (pos, {pat with pterm = VarP cell}, value))
                         | Forward _ -> unreachable (Some pos))
