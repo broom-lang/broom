@@ -72,6 +72,13 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             ) T.EmptyRow stmts) in
             {term = FExpr.at expr.pos typ (FExpr.record (CCVector.to_array fields)); eff }
 
+        | Select (selectee, label) -> (* TODO: lacks-constraint: *)
+            let base = T.Uv (Env.uv env false T.aRow) in
+            let typ = T.Uv (Env.uv env false T.aType) in
+            let selectee_typ = T.Record (With {base; label; field = typ}) in
+            let {TS.term = selectee; eff} = check ctrs env selectee_typ selectee in
+            {term = FExpr.at expr.pos typ (FExpr.select selectee label); eff}
+
         | Var name -> {term = Env.find_val env expr.pos name; eff = EmptyRow}
 
         | Const c ->
