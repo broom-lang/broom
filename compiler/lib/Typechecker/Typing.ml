@@ -46,6 +46,10 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             let typs = Vector.map (fun (pat : FExpr.pat) -> pat.ptyp) pats in
             (FExpr.pat_at pat.pos (Tuple typs) (TupleP pats), env, vars)
 
+        | Proxy carrie ->
+            let carrie = K.elaborate env {v = carrie; pos = pat.pos} in
+            (FExpr.pat_at pat.pos (Proxy carrie) (ProxyP carrie), env, Vector.empty)
+
         | Var name ->
             let typ = T.Uv (Env.uv env is_fwd (Env.some_type_kind env false)) in
             let var = FExpr.var plicity name typ in
