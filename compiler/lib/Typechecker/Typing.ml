@@ -28,8 +28,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
     let rec typeof_pat ctrs is_global is_fwd env (plicity : plicity) (pat : AExpr.t with_pos) =
         match pat.v with
         | Ann (pat, typ) ->
-            let kind = T.App {callee = Prim TypeIn; arg = Uv (Env.uv env false T.rep)} in
-            let typ = K.check env kind typ in
+            let typ = K.check env (Env.some_type_kind env false) typ in
             (* TODO: let (_, typ) = Env.reabstract env typ in*)
             check_pat ctrs is_global is_fwd env plicity typ pat
 
@@ -48,16 +47,14 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             (FExpr.pat_at pat.pos (Tuple typs) (TupleP pats), env, vars)
 
         | Var name ->
-            let kind = T.App {callee = Prim TypeIn; arg = Uv (Env.uv env false T.rep)} in
-            let typ = T.Uv (Env.uv env is_fwd kind) in
+            let typ = T.Uv (Env.uv env is_fwd (Env.some_type_kind env false)) in
             let var = FExpr.var plicity name typ in
             ( FExpr.pat_at pat.pos typ (VarP var)
             , Env.push_val is_global env var
             , Vector.singleton var )
 
         | Wild name ->
-            let kind = T.App {callee = Prim TypeIn; arg = Uv (Env.uv env false T.rep)} in
-            let typ = T.Uv (Env.uv env is_fwd kind) in
+            let typ = T.Uv (Env.uv env is_fwd (Env.some_type_kind env false)) in
             (FExpr.pat_at pat.pos typ (WildP name), env, Vector.empty)
 
         | Const c ->
@@ -75,7 +72,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             {term = FExpr.at expr.pos body.typ (FExpr.letrec (Vector.to_array defs) body); eff}
 
         | Ann (expr, super) ->
-            let super = K.check env (App {callee = Prim TypeIn; arg = Uv (Env.uv env false T.rep)}) super in
+            let super = K.check env (Env.some_type_kind env false) super in
             check ctrs env super expr (* FIXME: handle abstract types, abstract type generation effect *)
 
         | Tuple exprs ->

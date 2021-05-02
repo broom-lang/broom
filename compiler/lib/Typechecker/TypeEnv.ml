@@ -40,6 +40,8 @@ let type_fns _ = Vector.empty (* TODO *)
 
 let uv env is_fwd kind = ref (T.Unassigned (is_fwd, Name.fresh (), kind, env.level))
 
+let some_type_kind env is_fwd = T.App {callee = Prim TypeIn; arg = Uv (uv env is_fwd T.rep)}
+
 let push_val is_global (env : t) (var : var) =
     if is_global
     then match env.namespace with

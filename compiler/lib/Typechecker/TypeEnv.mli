@@ -19,4 +19,5 @@ val push_val : bool -> t -> var -> t
 val find_val : t -> Util.span -> Name.t -> expr
 
 val uv : t -> bool -> T.kind -> T.uv
+val some_type_kind : t -> bool -> T.t
 
