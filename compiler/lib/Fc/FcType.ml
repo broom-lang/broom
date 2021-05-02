@@ -86,14 +86,14 @@ module Typ = struct
                     (string "forall" ^/^ tparams_to_doc (Vector.to_list universals))
                     (dot ^^ blank 1
                     ^^ infix 4 1 (string "-!" ^^ blank 1 ^^ to_doc eff)
-                        (string "->" ^^ blank 1
-                        ^^ to_doc_prec (pi_prec + 1) domain) (to_doc_prec pi_prec codomain))
+                        (to_doc_prec (pi_prec + 1) domain)
+                        (string "->" ^^ blank 1 ^^ to_doc_prec pi_prec codomain))
                 |> prec_parens (prec > pi_prec)
 
             | Pi {universals = _; domain; eff; codomain} ->
                 infix 4 1 (string "-!" ^^ blank 1 ^^ to_doc eff)
-                (string "->" ^^ blank 1
-                    ^^ to_doc_prec (pi_prec + 1) domain) (to_doc_prec pi_prec codomain)
+                    (to_doc_prec (pi_prec + 1) domain)
+                    (string "->" ^^ blank 1 ^^ to_doc_prec pi_prec codomain)
 
             | Impli {universals = _; domain; codomain} ->
                 infix 4 1 (string "=>")

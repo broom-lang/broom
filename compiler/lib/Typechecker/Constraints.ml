@@ -82,7 +82,19 @@ module Make (K : TS.KINDING) = struct
         (* TODO: uv impredicativity clashes *)
         (* FIXME: prevent nontermination from impredicative instantiation: *)
         | (T.Uv uv, T.Uv uv') when Tx.Ref.eq uv uv' -> None
-        | (Uv _, Uv _) -> todo (Some span)
+        | (Uv sub_uv, Uv super_uv) -> (* OPTIMIZE: Union-Find ranking: *)
+            (match (!sub_uv, !super_uv) with
+            | ( Unassigned (false, _, sub_kind, sub_level)
+              , Unassigned (false, _, super_kind, super_level) ) ->
+                ignore (unify ctrs span env sub_kind super_kind);
+                if super_level < sub_level
+                then sub_uv := Assigned super
+                else super_uv := Assigned sub;
+                None
+            | (Unassigned (true, _, _, _), _) | (_, Unassigned (true, _, _, _)) ->
+                unreachable (Some span) ~msg: "Forward declared uv in `solve_subtype_whnf`"
+            | (Assigned _, _) | (_, Assigned _) ->
+                unreachable (Some span) ~msg: "Assigned in `solve_subtype_whnf`")
         | (Uv uv, _) ->
             (match !uv with
             | Unassigned (false, _, kind, _) ->
@@ -164,7 +176,18 @@ module Make (K : TS.KINDING) = struct
         match (ltyp, rtyp) with
         (* TODO: uv impredicativity clashes: *)
         | (T.Uv uv, T.Uv uv') when Tx.Ref.eq uv uv' -> None
-        | (Uv _, Uv _) -> todo (Some span)
+        | (Uv luv, Uv ruv) ->
+            (match (!luv, !ruv) with
+            | (Unassigned (false, _, lkind, llevel), Unassigned (false, _, rkind, rlevel)) ->
+                ignore (unify ctrs span env lkind rkind);
+                if rlevel < llevel
+                then luv := Assigned rtyp
+                else ruv := Assigned ltyp;
+                None
+            | (Unassigned (true, _, _, _), _) | (_, Unassigned (true, _, _, _)) ->
+                unreachable (Some span) ~msg: "Forward declared uv in `solve_unify_whnf`"
+            | (Assigned _, _) | (_, Assigned _) ->
+                unreachable (Some span) ~msg: "Assigned uv in `solve_unify_whnf`")
         | (Uv uv, typ') | (typ', Uv uv) ->
             (match !uv with
             | Unassigned (false, _, kind, level) ->
