@@ -1,6 +1,9 @@
 module T = Fc.Type
+module AExpr = Ast.Term.Expr
+type 'a with_pos = 'a Util.with_pos
 
 type t' =
+    | NonPattern of AExpr.t with_pos
     | Subtype of T.t * T.t
     | Unify of T.t * T.t
     | Unbound of Name.t

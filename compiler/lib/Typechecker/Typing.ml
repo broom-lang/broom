@@ -65,7 +65,15 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             let typ = const_typ c in
             (FExpr.pat_at pat.pos typ (ConstP c), env, Vector.empty)
 
-        | _ -> todo (Some pat.pos)
+        | Fn _ ->
+            Env.report_error env {v = NonPattern pat; pos = pat.pos};
+            let typ = T.Uv (Env.uv env is_fwd (Env.some_type_kind env false)) in
+            (FExpr.pat_at pat.pos typ (WildP (Name.of_string "")), env, Vector.empty)
+
+        | AppSequence _ -> bug (Some pat.pos) ~msg: "typechecker encountered AppSequence pattern"
+
+        | Focus _ | Let _ | App _ | PrimApp _ | PrimBranch _ | Select _ | Record _ ->
+            todo (Some pat.pos) ~msg: "in check_pat"
 
     and check_pat _ _ _ _ _ _ (pat : AExpr.t with_pos) = todo (Some pat.pos)
 
