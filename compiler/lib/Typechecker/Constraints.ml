@@ -116,6 +116,11 @@ module Make (K : TS.KINDING) = struct
                 unreachable (Some span) ~msg: "Forward declared uv in `subtype_whnf`"
             | Assigned _ -> unreachable (Some span) ~msg: "Assigned `super` in `subtype_whnf`")
 
+        | (Pi _, super) ->
+            solve_unify_whnf ctrs span env sub super
+            |> Option.map (fun co ->
+                Coercer.coercer (fun v -> E.at span super (E.cast v co)))
+
         | (Record _, super) ->
             solve_unify_whnf ctrs span env sub super
             |> Option.map (fun co ->
@@ -198,6 +203,22 @@ module Make (K : TS.KINDING) = struct
             | Unassigned (true, _, _, _) ->
                 unreachable (Some span) ~msg: "Forward declared uv in `solve_unify_whnf`"
             | Assigned _ -> unreachable (Some span) ~msg: "Assigned `typ` in `solve_unify_whnf`")
+
+        | (Pi {universals = luniversals; domain = ldomain; eff = leff; codomain = lcodomain}, rtyp)
+          when Vector.length luniversals = 0 -> (* HACK *)
+            (match rtyp with
+            | Pi {universals = runiversals; domain = rdomain; eff = reff; codomain = rcodomain}
+              when Vector.length runiversals = 0 -> (* HACK *)
+                let domain_co = unify ctrs span env ldomain rdomain in
+                let eff_co = unify ctrs span env leff reff in
+                let codomain_co = unify ctrs span env lcodomain rcodomain in
+
+                (match (domain_co, eff_co, codomain_co) with
+                | (None, None, None) -> None
+                | _ -> todo (Some span))
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
 
         | (PromotedArray ltyps, rtyp) -> (match rtyp with
             | PromotedArray rtyps ->
@@ -358,8 +379,11 @@ module Make (K : TS.KINDING) = struct
 
     (* OPTIMIZE: First try to subtype on the fly: *)
     and subtype ctrs span env sub super =
-        let coerce = Tx.Ref.ref Coercer.id in
-        Tx.Queue.push ctrs (Subtype {span; env; sub; super; coerce});
-        Some (Coercer.coercer (fun expr -> E.at span super (E.convert coerce expr)))
+        match solve_subtype ctrs span env sub super with
+        | Some co -> co
+        | None ->
+            let coerce = Tx.Ref.ref Coercer.id in
+            Tx.Queue.push ctrs (Subtype {span; env; sub; super; coerce});
+            Some (Coercer.coercer (fun expr -> E.at span super (E.convert coerce expr)))
 end
 
