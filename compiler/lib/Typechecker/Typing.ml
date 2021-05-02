@@ -85,6 +85,23 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         | None -> (pat, env, vars)
 
     let rec typeof ctrs env (expr : AExpr.t with_pos) : FExpr.t typing = match expr.v with
+        | Fn (plicity, clauses) ->
+            let domain = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+            let eff = match plicity with
+                | Explicit -> T.Uv (Env.uv env false T.aRow)
+                | Implicit -> EmptyRow in
+            let codomain = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+            let param = FExpr.fresh_var Explicit domain in
+
+            let matchee = FExpr.at expr.pos domain (FExpr.use param) in
+            let clauses = clauses
+                |> Vector.map (check_clause ctrs env plicity ~domain ~eff ~codomain) in
+            let body = FExpr.at expr.pos codomain (FExpr.match' matchee clauses) in
+
+            let universals = Vector.empty in (* FIXME *)
+            let typ = T.Pi {universals; domain; eff; codomain} in
+            {term = FExpr.at expr.pos typ (FExpr.fn universals param body); eff = EmptyRow}
+
         | Let (defs, body) ->
             let (defs, env) = check_defs ctrs env (Vector1.to_vector defs) in
             let {TS.term = body; eff} = typeof ctrs env body in
@@ -142,6 +159,14 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         let {TS.term = expr; eff} = typeof ctrs env expr in
         let coerce = subtype ctrs expr.pos env expr.typ super in
         {TS.term = Coercer.apply_opt coerce expr; eff}
+
+    and check_clause ctrs env plicity ~domain ~eff ~codomain {params; body} =
+        (* OPTIMIZE: Don't make vars vector to be just ignored here: *)
+        let (pat, env, _) = check_pat ctrs false false env plicity domain params in
+        (* FIXME: abstract type creation, type creation effect: *)
+        let {TS.term = body; eff = body_eff} = check ctrs env codomain body in
+        ignore (Constraints.unify ctrs body.pos env body_eff eff);
+        {pat; body}
 
     and check_defs ctrs env defs =
         let pats = CCVector.create () in
