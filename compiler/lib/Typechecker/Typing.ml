@@ -55,6 +55,11 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             , Env.push_val is_global env var
             , Vector.singleton var )
 
+        | Wild name ->
+            let kind = T.App {callee = Prim TypeIn; arg = Uv (Env.uv env false T.rep)} in
+            let typ = T.Uv (Env.uv env is_fwd kind) in
+            (FExpr.pat_at pat.pos typ (WildP name), env, Vector.empty)
+
         | Const c ->
             let typ = const_typ c in
             (FExpr.pat_at pat.pos typ (ConstP c), env, Vector.empty)
