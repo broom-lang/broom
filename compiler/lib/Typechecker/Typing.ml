@@ -75,7 +75,14 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         | Focus _ | Let _ | App _ | PrimApp _ | PrimBranch _ | Select _ | Record _ ->
             todo (Some pat.pos) ~msg: "in check_pat"
 
-    and check_pat _ _ _ _ _ _ (pat : AExpr.t with_pos) = todo (Some pat.pos)
+    and check_pat ctrs is_global is_fwd env plicity sub (pat : AExpr.t with_pos) =
+        let (pat, env, vars) = typeof_pat ctrs is_global is_fwd env plicity pat in
+        let super = pat.ptyp in
+        match Constraints.subtype ctrs pat.ppos env sub super with
+        | Some coerce ->
+            let f_expr = Coercer.reify pat.ppos sub coerce in
+            (FExpr.pat_at pat.ppos super (View (f_expr, pat)), env, vars)
+        | None -> (pat, env, vars)
 
     let rec typeof ctrs env (expr : AExpr.t with_pos) : FExpr.t typing = match expr.v with
         | Let (defs, body) ->

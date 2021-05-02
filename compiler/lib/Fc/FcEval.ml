@@ -256,6 +256,7 @@ let run (ns : Namespace.t) program =
 
     and bind : Env.t -> cont' -> cont' -> pat -> cont
     = fun env then_k else_k pat v -> match pat.pterm with
+        | View (_, _) -> todo (Some pat.ppos)
         | VarP {name; _} -> Env.add pat.ppos env name v; then_k ()
         | WildP _ -> then_k ()
         | ConstP (Int n) -> (match v with

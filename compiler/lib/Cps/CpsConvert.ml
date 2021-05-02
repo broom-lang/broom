@@ -397,7 +397,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
     and convert_pattern pat : Pattern.t = match pat.pterm with
         | ConstP c -> Const c
         | WildP _ -> Wild
-        | VarP _ | TupleP _ | ProxyP _ ->
+        | View _ | VarP _ | TupleP _ | ProxyP _ ->
             bug (Some pat.ppos) ~msg: "unexpanded pattern in CPS conversion"
 
     and continue k parent state value = match k with

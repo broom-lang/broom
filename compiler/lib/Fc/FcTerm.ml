@@ -66,6 +66,7 @@ end = struct
 
     and pat = {pterm: pat'; ptyp : Type.t; ppos : Util.span}
     and pat' =
+        | View of t * pat
         | TupleP of pat Vector.t
         | ProxyP of Type.t
         | ConstP of Const.t
@@ -259,6 +260,7 @@ end = struct
     and pat_to_doc (pat : pat) =
         let open PPrint in
         match pat.pterm with
+        | View (f, pat) -> infix 4 1 (string "<-") (pat_to_doc pat) (to_doc f)
         | TupleP pats ->
             surround_separate_map 4 0 (parens empty)
                 lparen (comma ^^ break 1) rparen
@@ -465,6 +467,10 @@ end = struct
     let map_pat_children f (pat : pat) =
         let term = pat.pterm in
         let term' = match term with
+            | View (g, child) ->
+                let child' = f child in
+                if child' == child then term else View (g, child')
+
             | TupleP pats ->
                 let pats' = Vector.map f pats in
                 if Stream.from (Source.zip_with (fun pat pat' -> pat == pat')
@@ -485,6 +491,7 @@ end = struct
     module VarSet = Set.Make(Var)
 end
 
+(* FIXME?: Abstract type generation effects: *)
 and Coercer : FcSigs.COERCER with type expr = Expr.t = struct
     type expr = Expr.t
 
@@ -506,6 +513,13 @@ and Coercer : FcSigs.COERCER with type expr = Expr.t = struct
     let apply_opt f expr = match f with
         | Some f -> apply f expr
         | None -> expr
+
+    let reify span domain (f : t) =
+        let var = Expr.fresh_var Explicit domain in
+        let body = f (Expr.at span domain (Expr.use var)) in
+        let typ = Type.Pi {universals = Vector.empty; domain; eff = EmptyRow
+            ; codomain = body.typ} in
+        Expr.at span typ (Expr.fn Vector.empty var body)
 end
 
 and Stmt : FcSigs.STMT

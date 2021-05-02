@@ -27,12 +27,15 @@ let rec apply_expr_cos expr =
 
     Expr.map_children apply_expr_cos (apply_co expr)
 
-let rec apply_pat_cos : Expr.pat -> Expr.pat = fun pat -> match pat.pterm with
-    | TupleP _ -> Expr.map_pat_children apply_pat_cos pat
+let rec apply_pat_cos pat =
+    let apply_co : Expr.pat -> Expr.pat = fun pat -> match pat.pterm with
+        | View (f, arg) -> {pat with pterm = View (apply_expr_cos f, arg)}
 
-    | ProxyP _
-    | ConstP _
-    | VarP _ | WildP _ -> pat
+        | TupleP _ | ProxyP _
+        | ConstP _
+        | VarP _ | WildP _ -> Expr.map_pat_children apply_pat_cos pat in
+
+    Expr.map_pat_children apply_pat_cos (apply_co pat)
 
 let apply_def_cos (span, pat, expr) = (span, apply_pat_cos pat, apply_expr_cos expr)
 

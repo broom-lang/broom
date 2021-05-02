@@ -55,6 +55,7 @@ module type EXPR = sig
 
     and pat = {pterm: pat'; ptyp : Type.t; ppos : Util.span}
     and pat' =
+        | View of t * pat
         | TupleP of pat Vector.t
         | ProxyP of Type.t
         | ConstP of Const.t
@@ -108,6 +109,7 @@ module type COERCER = sig
     val coercer : (expr -> expr) -> t
     val apply : t -> expr -> expr
     val apply_opt : t option -> expr -> expr
+    val reify : Util.span -> Type.t -> t -> expr
 end
 
 module type STMT = sig
