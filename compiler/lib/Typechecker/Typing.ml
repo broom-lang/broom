@@ -102,6 +102,20 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             let typ = T.Pi {universals; domain; eff; codomain} in
             {term = FExpr.at expr.pos typ (FExpr.fn universals param body); eff = EmptyRow}
 
+        | App (callee, Explicit, arg) ->
+            (* TODO: Effect opening à la Koka *)
+            (* OPTIMIZE: eta-expands universal callees: *)
+            let domain = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+            let eff = T.Uv (Env.uv env false T.aRow) in
+            let codomain = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+            let callee_super = T.Pi {universals = Vector.empty; domain; eff; codomain} in
+            let {TS.term = callee; eff = callee_eff} = check ctrs env callee_super callee in
+            ignore (Constraints.unify ctrs callee.FExpr.pos env callee_eff eff);
+            let {TS.term = arg; eff = arg_eff} = check ctrs env domain arg in
+            ignore (Constraints.unify ctrs arg.pos env arg_eff eff);
+            (* FIXME: Existential result opening *)
+            {term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg); eff}
+
         | Let (defs, body) ->
             let (defs, env) = check_defs ctrs env (Vector1.to_vector defs) in
             let {TS.term = body; eff} = typeof ctrs env body in
