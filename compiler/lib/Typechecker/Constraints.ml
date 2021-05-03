@@ -12,34 +12,6 @@ module Make (K : TS.KINDING) = struct
     type queue = Constraint.queue
 
 (* # Solvers *)
- 
-    let occurs_check span env uv typ =
-        let rec check : T.t -> unit = function
-            | Exists {existentials = _; body} -> check body
-            | PromotedArray typs -> Vector.iter check typs
-            | PromotedTuple typs -> Vector.iter check typs
-            | Tuple typs -> Vector.iter check typs
-            | Pi {universals = _; domain; eff; codomain} -> check domain; check eff; check codomain
-            | Impli {universals = _; domain; codomain} -> check domain; check codomain
-            | Record row -> check row
-            | With {base; label = _; field} -> check base; check field
-            | EmptyRow -> ()
-            | Proxy carrie -> check carrie
-            | Fn {param = _; body} -> check body
-            | App {callee; arg} -> check callee; check arg
-            | Ov _ (*ov*) -> todo (Some span)
-                (*(match Env.get_implementation env ov with
-                | Some (_, _, uv') -> check (Uv uv')
-                | None -> ())*)
-            | Uv uv' ->
-                (match !uv' with
-                | Unassigned _ ->
-                    if uv = uv'
-                    then Env.report_error env {v = Occurs (uv, typ); pos = span}
-                    else ()
-                | Assigned typ -> check typ)
-            | Bv _ | Prim _ -> () in
-        check typ
 
     (* Occurs check, ov escape check, HKT capturability check and uv level updates.
        Complected for speed. *)
@@ -78,88 +50,89 @@ module Make (K : TS.KINDING) = struct
             | Bv _ | Prim _ -> () in
         check typ
 
-    let rec solve_subtype_whnf ctrs span env sub super = match (sub, super) with
-        (* TODO: uv impredicativity clashes *)
-        (* FIXME: prevent nontermination from impredicative instantiation: *)
-        | (T.Uv uv, T.Uv uv') when Tx.Ref.eq uv uv' -> None
-        | (Uv sub_uv, Uv super_uv) -> (* OPTIMIZE: Union-Find ranking: *)
-            (match (!sub_uv, !super_uv) with
-            | ( Unassigned (false, _, sub_kind, sub_level)
-              , Unassigned (false, _, super_kind, super_level) ) ->
-                ignore (unify ctrs span env sub_kind super_kind);
-                if super_level < sub_level
-                then sub_uv := Assigned super
-                else super_uv := Assigned sub;
-                None
-            | (Unassigned (true, _, _, _), _) | (_, Unassigned (true, _, _, _)) ->
-                unreachable (Some span) ~msg: "Forward declared uv in `solve_subtype_whnf`"
-            | (Assigned _, _) | (_, Assigned _) ->
-                unreachable (Some span) ~msg: "Assigned in `solve_subtype_whnf`")
-        | (Uv uv, _) ->
-            (match !uv with
-            | Unassigned (false, _, kind, _) ->
-                occurs_check span env uv super;
-                ignore (unify ctrs span env kind (K.kindof_F ctrs span env super));
-                uv := Assigned super;
-                None
-            | Unassigned (true, _, _, _) ->
-                unreachable (Some span) ~msg: "Forward declared uv in `subtype_whnf`"
-            | Assigned _ -> unreachable (Some span) ~msg: "Assigned `typ` in `subtype_whnf`")
-        | (_, Uv uv) ->
-            (match !uv with
-            | Unassigned (false, _, kind, _) ->
-                occurs_check span env uv sub;
-                ignore (unify ctrs span env (K.kindof_F ctrs span env sub) kind);
-                uv := Assigned sub;
-                None
-            | Unassigned (true, _, _, _) ->
-                unreachable (Some span) ~msg: "Forward declared uv in `subtype_whnf`"
-            | Assigned _ -> unreachable (Some span) ~msg: "Assigned `super` in `subtype_whnf`")
+    (* FIXME: prevent nontermination from impredicative instantiation: *)
+    let rec solve_subtype_whnf ctrs span env sub super =
+        let (let+) = Fun.flip Option.map in
 
-        | (Pi _, super) ->
-            solve_unify_whnf ctrs span env sub super
-            |> Option.map (fun co ->
-                Coercer.coercer (fun v -> E.at span super (E.cast v co)))
+        match (sub, super) with
+        | (T.Exists _, super) -> (match super with
+            | Uv _ -> None
+            | _ ->
+                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
+                ^ Util.doc_to_string (T.to_doc super)))
 
-        | (Record _, super) ->
-            solve_unify_whnf ctrs span env sub super
-            |> Option.map (fun co ->
-                Coercer.coercer (fun v -> E.at span super (E.cast v co)))
+        | (sub, T.Impli {universals = _; domain = _; codomain = _}) -> (match sub with
+            | Uv _ -> None
+            | _ ->
+                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
+                ^ Util.doc_to_string (T.to_doc super)))
 
-        | (With _, super) ->
-            ignore (solve_unify_whnf ctrs span env sub super);
-            Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "With coercion called"))
-        | (EmptyRow, super) ->
-            ignore (solve_unify_whnf ctrs span env sub super);
-            Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "EmptyRow coercion called"))
-        | (PromotedArray _, super) ->
-            ignore (solve_unify_whnf ctrs span env sub super);
-            Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "PromotedArray coercion called"))
-        | (PromotedTuple _, super) ->
-            ignore (solve_unify_whnf ctrs span env sub super);
-            Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "PromotedTuple coercion called"))
+        | (sub, Pi {universals = super_universals; domain = _; eff = _; codomain = _})
+          when Vector.length super_universals > 0 -> (match sub with
+            | Uv _ -> None
+            | _ ->
+                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
+                ^ Util.doc_to_string (T.to_doc super)))
 
-        | (App _, super) ->
-            solve_unify_whnf ctrs span env sub super
-            |> Option.map (fun co ->
-                Coercer.coercer (fun v -> E.at span super (E.cast v co)))
+        | (sub, Exists _) -> (match sub with
+            | Uv _ -> None
+            | _ ->
+                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
+                ^ Util.doc_to_string (T.to_doc super)))
 
-        | (Prim sub_p, super) -> (match super with
-            | Prim super_p when Prim.eq sub_p super_p -> None
+        | (Impli {universals = _; domain = _; codomain = _}, super) -> (match super with
+            | Uv _ -> None
+            | _ ->
+                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
+                ^ Util.doc_to_string (T.to_doc super)))
+
+        | (Pi {universals = sub_universals; domain = _; eff = _; codomain = _}, super)
+          when Vector.length sub_universals > 0 -> (match super with
+            | Uv _ -> None
+            | _ ->
+                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
+                ^ Util.doc_to_string (T.to_doc super)))
+
+        | (Tuple _, super) -> (match super with
+            | Uv _ -> None
+            | Tuple _ -> (* covariant *)
+                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
+                ^ Util.doc_to_string (T.to_doc super))
             | _ ->
                 Env.report_error env {v = Subtype (sub, super); pos = span};
                 None)
 
-        | _ -> todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
-            ^ Util.doc_to_string (T.to_doc super))
+        | (Uv _, _) | (_, Uv _)
+        | (Pi _, _) | (Record _, _) | (Proxy _, _) | (App _, _)
+        | (Bv _, _) | (Ov _, _) | (Prim _, _) ->
+            (* Nothing to instantiate, delegate to unification: *)
+            Some (let+ co = solve_unify_whnf ctrs span env sub super in
+                  Coercer.coercer (fun v -> E.at span super (E.cast v co)))
+
+        (* TODO: Should these be outright unreachable?: *)
+        | (With _, super) ->
+            ignore (solve_unify_whnf ctrs span env sub super);
+            Some (Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "With coercion called")))
+        | (EmptyRow, super) ->
+            ignore (solve_unify_whnf ctrs span env sub super);
+            Some (Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "EmptyRow coercion called")))
+        | (PromotedArray _, super) ->
+            ignore (solve_unify_whnf ctrs span env sub super);
+            Some (Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "PromotedArray coercion called")))
+        | (PromotedTuple _, super) ->
+            ignore (solve_unify_whnf ctrs span env sub super);
+            Some (Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "PromotedTuple coercion called")))
+        | (Fn _, super) ->
+            ignore (solve_unify_whnf ctrs span env sub super);
+            Some (Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "Fn coercion called")))
 
     and solve_subtype ctrs span env sub super =
         let (let*) = Option.bind in
         let (let+) = Fun.flip Option.map in
 
         let* (sub, co) = K.eval span env sub in
-        let+ (super, co') = K.eval span env super in
-        let coerce = solve_subtype_whnf ctrs span env sub super in
+        let* (super, co') = K.eval span env super in
+        let+ coerce = solve_subtype_whnf ctrs span env sub super in
         (match (co, coerce, co') with
         | (Some co, Some coerce, Some co') -> Some (Coercer.coercer (fun v ->
             let castee = Coercer.apply coerce (E.at span sub (E.cast v co)) in
@@ -179,7 +152,6 @@ module Make (K : TS.KINDING) = struct
 
     and solve_unify_whnf ctrs span env ltyp rtyp =
         match (ltyp, rtyp) with
-        (* TODO: uv impredicativity clashes: *)
         | (T.Uv uv, T.Uv uv') when Tx.Ref.eq uv uv' -> None
         | (Uv luv, Uv ruv) ->
             (match (!luv, !ruv) with
