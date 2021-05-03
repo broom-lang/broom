@@ -170,7 +170,13 @@ let rec expand_typ define_toplevel env (typ : typ with_pos) : typ with_pos =
         | None -> body)
 
     | Tuple typs ->
-        {typ with v = Tuple (Vector.map (expand_typ define_toplevel env) typs)}
+        let typs = typs |> Vector.map (expand_typ define_toplevel env) in
+        let end_pos = snd typ.pos in
+        typs |> Vector.fold_right (fun acc (typ : typ with_pos) ->
+            { Util.v = Type.Tuple (Vector.of_array_unsafe [|typ; acc|])
+            ; pos = (fst typ.pos, end_pos)}
+        ) {v = Tuple Vector.empty; pos = (end_pos, end_pos)}
+
     | Record decls | Row decls ->
         let vars = CCVector.create () in
         let decls = expand_decls define_toplevel (CCVector.push vars) env decls in
@@ -255,10 +261,24 @@ and expand define_toplevel env expr : expr with_pos = match expr.v with
     | Ann (expr, typ) ->
         {expr with v = Ann (expand define_toplevel env expr
             , expand_typ define_toplevel env typ)}
+
     | Tuple exprs ->
-        {expr with v = Tuple (Vector.map (expand define_toplevel env) exprs)}
+        let exprs = exprs |> Vector.map (expand define_toplevel env) in
+        let end_pos = snd expr.pos in
+        exprs |> Vector.fold_right (fun acc expr ->
+            { Util.v = Expr.Tuple (Vector.of_array_unsafe [|expr; acc|])
+            ; pos = (fst expr.pos, end_pos) }
+        ) {v = Tuple Vector.empty; pos = (end_pos, end_pos)}
+
     | Focus (focusee, index) ->
-        {expr with v = Focus (expand define_toplevel env focusee, index)}
+        let span = expr.pos in
+        let rec get focusee = function
+            | 0 -> {Util.v = Expr.Focus (focusee, 0); pos = span}
+            | index ->
+                let focusee = {Util.v = Expr.Focus (focusee, 1); pos = span} in
+                get focusee (index - 1) in
+        get (expand define_toplevel env focusee) index
+
     | Record stmts ->
         (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
         let vars = CCVector.create () in
@@ -350,6 +370,7 @@ and expand_pat define_toplevel report_def env (pat : pat with_pos) =
     | Ann (pat, typ) ->
         let (pat, env) = expand_pat define_toplevel report_def env pat in
         ({pat with v = Ann (pat, expand_typ define_toplevel env typ)}, env)
+
     | Tuple pats ->
         let pats' = CCVector.create () in
         let env = Vector.fold (fun env pat ->
@@ -357,7 +378,15 @@ and expand_pat define_toplevel report_def env (pat : pat with_pos) =
             CCVector.push pats' pat;
             env
         ) env pats in
-        ({pat with v = Tuple (Vector.build pats')}, env)
+        let pats = Vector.build pats' in (* OPTIMIZE *)
+
+        let end_pos = snd pat.pos in
+        ( pats |> Vector.fold_right (fun acc pat ->
+              { Util.v = Expr.Tuple (Vector.of_array_unsafe [|pat; acc|])
+              ; pos = (fst pat.pos, end_pos) }
+          ) {v = Tuple Vector.empty; pos = (end_pos, end_pos)}
+        , env )
+
     | Focus (focusee, label) ->
         let (focusee, env) = expand_pat define_toplevel report_def env focusee in
         ({pat with v = Focus (focusee, label)}, env)
