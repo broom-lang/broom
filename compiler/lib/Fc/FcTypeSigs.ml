@@ -67,5 +67,7 @@ module type TYPE = sig
     val coercion_to_doc : t coercion -> PPrint.document
 
     val map_coercion_children : ('typ coercion -> 'typ coercion) -> 'typ coercion -> 'typ coercion
+
+    val ov_eq : ov -> ov -> bool
 end
 

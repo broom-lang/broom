@@ -302,9 +302,11 @@ module Make (K : TS.KINDING) = struct
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
 
-        | (Ov _, _) ->
-            todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
-            ^ Util.doc_to_string (T.to_doc rtyp))
+        | (Ov lov, rtyp) -> (match rtyp with
+            | Ov rov when T.ov_eq lov rov -> None
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
 
         | (Prim pt, rtyp) -> (match rtyp with
             | Prim pt' when Prim.eq pt pt'-> None

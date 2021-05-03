@@ -297,6 +297,8 @@ module Typ = struct
         | Refl _ | Axiom _ | AUse _ -> co
 
         | Patchable rco -> Patchable (ref (f !rco))
+
+    let ov_eq {name; _} {name = name'; _} = Name.equal name name'
 end
 
 (* HACK: OCaml these constants are 'unsafe' for OCaml recursive modules,
