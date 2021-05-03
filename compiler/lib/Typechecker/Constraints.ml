@@ -282,10 +282,6 @@ module Make (K : TS.KINDING) = struct
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
 
-        | (Fn _, _) ->
-            todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
-            ^ Util.doc_to_string (T.to_doc rtyp))
-
         | (App {callee; arg}, rtyp) -> (match rtyp with
             | App {callee = callee'; arg = arg'} ->
                 (* NOTE: Callees must already be in WHNF because of the Krivine-style `K.eval`: *)
@@ -306,7 +302,7 @@ module Make (K : TS.KINDING) = struct
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
 
-        | (Ov _, _) | (Bv _, _) ->
+        | (Ov _, _) ->
             todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
             ^ Util.doc_to_string (T.to_doc rtyp))
 
@@ -315,6 +311,9 @@ module Make (K : TS.KINDING) = struct
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
+
+        | (Fn _, _) -> unreachable (Some span) ~msg: "Fn in `solve_unify_whnf`"
+        | (Bv _, _) -> unreachable (Some span) ~msg: "Bv in `solve_unify_whnf`"
 
     and solve_unify ctrs span env ltyp rtyp =
         let (let*) = Option.bind in
