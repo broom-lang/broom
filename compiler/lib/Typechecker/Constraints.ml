@@ -152,19 +152,20 @@ module Make (K : TS.KINDING) = struct
 
     and solve_unify_whnf ctrs span env ltyp rtyp =
         match (ltyp, rtyp) with
-        | (T.Uv uv, T.Uv uv') when Tx.Ref.eq uv uv' -> None
-        | (Uv luv, Uv ruv) ->
-            (match (!luv, !ruv) with
-            | (Unassigned (false, _, lkind, llevel), Unassigned (false, _, rkind, rlevel)) ->
-                ignore (unify ctrs span env lkind rkind);
-                if rlevel < llevel
-                then luv := Assigned rtyp
-                else ruv := Assigned ltyp;
-                None
-            | (Unassigned (true, _, _, _), _) | (_, Unassigned (true, _, _, _)) ->
-                unreachable (Some span) ~msg: "Forward declared uv in `solve_unify_whnf`"
-            | (Assigned _, _) | (_, Assigned _) ->
-                unreachable (Some span) ~msg: "Assigned uv in `solve_unify_whnf`")
+        | (T.Uv luv, T.Uv ruv) ->
+            if Tx.Ref.eq luv ruv
+            then None
+            else (match (!luv, !ruv) with (* OPTIMIZE: Union-Find ranking: *)
+                | (Unassigned (false, _, lkind, llevel), Unassigned (false, _, rkind, rlevel)) ->
+                    ignore (unify ctrs span env lkind rkind);
+                    if rlevel < llevel
+                    then luv := Assigned rtyp
+                    else ruv := Assigned ltyp;
+                    None
+                | (Unassigned (true, _, _, _), _) | (_, Unassigned (true, _, _, _)) ->
+                    unreachable (Some span) ~msg: "Forward declared uv in `solve_unify_whnf`"
+                | (Assigned _, _) | (_, Assigned _) ->
+                    unreachable (Some span) ~msg: "Assigned uv in `solve_unify_whnf`")
         | (Uv uv, typ') | (typ', Uv uv) ->
             (match !uv with
             | Unassigned (false, _, kind, level) ->
@@ -176,18 +177,67 @@ module Make (K : TS.KINDING) = struct
                 unreachable (Some span) ~msg: "Forward declared uv in `solve_unify_whnf`"
             | Assigned _ -> unreachable (Some span) ~msg: "Assigned `typ` in `solve_unify_whnf`")
 
-        | (Pi {universals = luniversals; domain = ldomain; eff = leff; codomain = lcodomain}, rtyp)
-          when Vector.length luniversals = 0 -> (* HACK *)
-            (match rtyp with
-            | Pi {universals = runiversals; domain = rdomain; eff = reff; codomain = rcodomain}
-              when Vector.length runiversals = 0 -> (* HACK *)
-                let domain_co = unify ctrs span env ldomain rdomain in
-                let eff_co = unify ctrs span env leff reff in
-                let codomain_co = unify ctrs span env lcodomain rcodomain in
+        | (Exists _, _) ->
+            todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
+            ^ Util.doc_to_string (T.to_doc rtyp))
 
-                (match (domain_co, eff_co, codomain_co) with
-                | (None, None, None) -> None
-                | _ -> todo (Some span))
+        | (Impli _, _) ->
+            todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
+            ^ Util.doc_to_string (T.to_doc rtyp))
+
+        | (Pi {universals = luniversals; domain = ldomain; eff = leff; codomain = lcodomain}, rtyp) ->
+            (match rtyp with
+            | Pi {universals = runiversals; domain = rdomain; eff = reff; codomain = rcodomain} ->
+                if Vector.length luniversals = 0 && Vector.length runiversals = 0
+                then begin
+                    let domain_co = unify ctrs span env ldomain rdomain in
+                    let eff_co = unify ctrs span env leff reff in
+                    let codomain_co = unify ctrs span env lcodomain rcodomain in
+
+                    match (domain_co, eff_co, codomain_co) with
+                    | (None, None, None) -> None
+                    | _ -> todo (Some span)
+                end else todo (Some span)
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
+
+        | (Tuple ltyps, rtyp) -> (match rtyp with
+            | Tuple rtyps ->
+                if Vector.length ltyps = Vector.length rtyps then begin
+                    let coercions = CCVector.create () in
+                    let noop = Vector.fold2 (fun noop ltyp rtyp ->
+                        let coercion = unify ctrs span env ltyp rtyp in
+                        CCVector.push coercions coercion;
+                        noop && Option.is_none coercion
+                    ) true ltyps rtyps in
+                    if not noop
+                    then Some (TupleCo (coercions |> CCVector.mapi (fun i -> function
+                        | Some coercion -> coercion
+                        | None -> T.Refl (Vector.get rtyps i)
+                    ) |> Vector.build))
+                    else None
+                end else failwith "~ tuple lengths"
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
+
+        | (Record lrow, rtyp) -> (match rtyp with
+            | Record rrow ->
+                unify ctrs span env lrow rrow
+                |> Option.map (fun co -> T.RecordCo co)
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
+
+        | (With _, _) ->
+            todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
+            ^ Util.doc_to_string (T.to_doc rtyp))
+
+        | (Proxy lcarrie, rtyp) -> (match rtyp with
+            | Proxy rcarrie ->
+                unify ctrs span env lcarrie rcarrie
+                |> Option.map (fun co -> T.ProxyCo co)
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
@@ -232,41 +282,9 @@ module Make (K : TS.KINDING) = struct
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
 
-        | (Tuple ltyps, rtyp) -> (match rtyp with
-            | Tuple rtyps ->
-                if Vector.length ltyps = Vector.length rtyps then begin
-                    let coercions = CCVector.create () in
-                    let noop = Vector.fold2 (fun noop ltyp rtyp ->
-                        let coercion = unify ctrs span env ltyp rtyp in
-                        CCVector.push coercions coercion;
-                        noop && Option.is_none coercion
-                    ) true ltyps rtyps in
-                    if not noop
-                    then Some (TupleCo (coercions |> CCVector.mapi (fun i -> function
-                        | Some coercion -> coercion
-                        | None -> T.Refl (Vector.get rtyps i)
-                    ) |> Vector.build))
-                    else None
-                end else failwith "~ tuple lengths"
-            | _ ->
-                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
-                None)
-
-        | (Record lrow, rtyp) -> (match rtyp with
-            | Record rrow ->
-                unify ctrs span env lrow rrow
-                |> Option.map (fun co -> T.RecordCo co)
-            | _ ->
-                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
-                None)
-
-        | (Proxy lcarrie, rtyp) -> (match rtyp with
-            | Proxy rcarrie ->
-                unify ctrs span env lcarrie rcarrie
-                |> Option.map (fun co -> T.ProxyCo co)
-            | _ ->
-                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
-                None)
+        | (Fn _, _) ->
+            todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
+            ^ Util.doc_to_string (T.to_doc rtyp))
 
         | (App {callee; arg}, rtyp) -> (match rtyp with
             | App {callee = callee'; arg = arg'} ->
@@ -288,14 +306,15 @@ module Make (K : TS.KINDING) = struct
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
 
+        | (Ov _, _) | (Bv _, _) ->
+            todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
+            ^ Util.doc_to_string (T.to_doc rtyp))
+
         | (Prim pt, rtyp) -> (match rtyp with
             | Prim pt' when Prim.eq pt pt'-> None
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
-
-        | _ -> todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
-            ^ Util.doc_to_string (T.to_doc rtyp))
 
     and solve_unify ctrs span env ltyp rtyp =
         let (let*) = Option.bind in
