@@ -151,6 +151,8 @@ module Make (K : TS.KINDING) = struct
         | (None, None, None) -> None)
 
     and solve_unify_whnf ctrs span env ltyp rtyp =
+        let (let+) = Fun.flip Option.map in
+
         match (ltyp, rtyp) with
         | (T.Uv luv, T.Uv ruv) ->
             if Tx.Ref.eq luv ruv
@@ -224,8 +226,8 @@ module Make (K : TS.KINDING) = struct
 
         | (Record lrow, rtyp) -> (match rtyp with
             | Record rrow ->
-                unify ctrs span env lrow rrow
-                |> Option.map (fun co -> T.RecordCo co)
+                let+ row_co = unify ctrs span env lrow rrow in
+                T.RecordCo row_co
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
@@ -236,8 +238,8 @@ module Make (K : TS.KINDING) = struct
 
         | (Proxy lcarrie, rtyp) -> (match rtyp with
             | Proxy rcarrie ->
-                unify ctrs span env lcarrie rcarrie
-                |> Option.map (fun co -> T.ProxyCo co)
+                let+ carrie_co = unify ctrs span env lcarrie rcarrie in
+                ProxyCo carrie_co
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
