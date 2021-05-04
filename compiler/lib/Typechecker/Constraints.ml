@@ -91,11 +91,22 @@ module Make (K : TS.KINDING) = struct
                 todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
                 ^ Util.doc_to_string (T.to_doc super)))
 
-        | (Pair _, super) -> (match super with
+        | (Pair {fst = sub_fst; snd = sub_snd}, super) -> (match super with
             | Uv _ -> None
-            | Pair _ -> (* covariant *)
-                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
-                ^ Util.doc_to_string (T.to_doc super))
+            | Pair {fst = super_fst; snd = super_snd} -> (* covariant *)
+                let fst_co = subtype ctrs span env sub_fst super_fst in
+                let snd_co = subtype ctrs span env sub_snd super_snd in
+
+                Some (match (fst_co, snd_co) with
+                    | (Some fst_co, Some snd_co) -> Some (Coercer.coercer (fun expr ->
+                        E.at span super
+                            (E.pair (Coercer.apply fst_co expr) (Coercer.apply snd_co expr))))
+                    | (Some fst_co, None) -> Some (Coercer.coercer (fun expr ->
+                        E.at span super (E.pair (Coercer.apply fst_co expr) expr)))
+                    | (None, Some snd_co) -> Some (Coercer.coercer (fun expr ->
+                        E.at span super (E.pair expr (Coercer.apply snd_co expr))))
+                    | (None, None) -> None)
+
             | _ ->
                 Env.report_error env {v = Subtype (sub, super); pos = span};
                 None)
