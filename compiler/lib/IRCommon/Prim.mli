@@ -2,7 +2,7 @@ type t =
     | Unit
     | Int | Bool
     | Array | String | Cell
-    | SingleRep (* = *) | Boxed | UnitRep | PairRep
+    | Rep (* = *) | Boxed | UnitRep | PairRep
     | TypeIn | RowOf
 
 val grammar : t Grammar.t

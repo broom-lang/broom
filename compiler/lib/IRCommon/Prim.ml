@@ -2,7 +2,7 @@ type t =
     | Unit
     | Int | Bool
     | Array | String | Cell
-    | SingleRep (* = *) | Boxed | UnitRep | PairRep
+    | Rep (* = *) | Boxed | UnitRep | PairRep
     | TypeIn | RowOf
 
 let grammar =
@@ -13,7 +13,7 @@ let grammar =
     <|> text "array" *> pure Array
     <|> text "string" *> pure String
     <|> text "cell" *> pure Cell
-    <|> text "singleRep" *> pure SingleRep
+    <|> text "rep" *> pure Rep
     <|> text "boxed" *> pure Boxed
     <|> text "unitRep" *> pure UnitRep
     <|> text "pairRep" *> pure PairRep

@@ -285,8 +285,5 @@ module Type = struct
 
     (* __rowOf (__typeIn __boxed) *)
     let aRow = App {callee = Prim RowOf; arg = aType}
-
-    (* __array __singleRep *)
-    let rep = App {callee = Prim Array; arg = Prim SingleRep}
 end
 

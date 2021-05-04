@@ -99,12 +99,17 @@ module Make (K : TS.KINDING) = struct
 
                 Some (match (fst_co, snd_co) with
                     | (Some fst_co, Some snd_co) -> Some (Coercer.coercer (fun expr ->
-                        E.at span super
-                            (E.pair (Coercer.apply fst_co expr) (Coercer.apply snd_co expr))))
+                        E.at span super (E.pair
+                            (Coercer.apply fst_co (E.at span sub_fst (E.fst expr)))
+                            (Coercer.apply snd_co (E.at span sub_snd (E.snd expr))))))
                     | (Some fst_co, None) -> Some (Coercer.coercer (fun expr ->
-                        E.at span super (E.pair (Coercer.apply fst_co expr) expr)))
+                        E.at span super (E.pair
+                            (Coercer.apply fst_co (E.at span sub_fst (E.fst expr)))
+                            (E.at span sub_snd (E.snd expr)))))
                     | (None, Some snd_co) -> Some (Coercer.coercer (fun expr ->
-                        E.at span super (E.pair expr (Coercer.apply snd_co expr))))
+                        E.at span super (E.pair
+                            (E.at span sub_fst (E.fst expr))
+                            (Coercer.apply snd_co (E.at span sub_snd (E.snd expr))))))
                     | (None, None) -> None)
 
             | _ ->

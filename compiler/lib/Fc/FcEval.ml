@@ -60,7 +60,7 @@ let run (ns : Namespace.t) program =
         | Snd arg ->
             let k : cont = function
                 | Pair {fst = _; snd} -> k snd
-                | _ -> bug (Some expr.pos) ~msg: "fst of non-pair at runtime" in
+                | _ -> bug (Some expr.pos) ~msg: "snd of non-pair at runtime" in
             eval env k arg
 
         | Fn {universals = _; param = {name; _}; body} ->
@@ -94,7 +94,7 @@ let run (ns : Namespace.t) program =
                     if Vector.length args = 1
                     then (match Vector.get args 0 with
                         | Pair {fst = _; snd} -> k snd
-                        | _ -> bug (Some expr.pos) ~msg: ".0 on non-pair at runtime")
+                        | _ -> bug (Some expr.pos) ~msg: ".1 on non-pair at runtime")
                     else bug (Some expr.pos) ~msg: "invalid primop arg count"
 
                 | CellNew -> k (Cell (ref None))

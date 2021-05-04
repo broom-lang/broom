@@ -4,6 +4,5 @@ module Type : sig
     val aType : t
     val aKind : t
     val aRow : t
-    val rep : t
 end
 

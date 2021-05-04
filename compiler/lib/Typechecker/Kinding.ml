@@ -20,17 +20,17 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
         | Int | Bool | String -> T.aType
         | Array | Cell -> Pi {universals = Vector.empty; domain = T.aType; eff = EmptyRow
             ; codomain = T.aType}
-        | SingleRep -> T.aType
-        | Boxed -> Prim SingleRep
+        | Rep -> T.aType
+        | Boxed -> Prim Rep
 
-        | UnitRep -> Prim SingleRep
+        | UnitRep -> Prim Rep
         | PairRep -> (* Rep -> Rep -> Rep *)
-            Pi {universals = Vector.empty; domain = T.rep; eff = EmptyRow
-                ; codomain = Pi {universals = Vector.empty; domain = T.rep; eff = EmptyRow
-                    ; codomain = T.rep}}
+            Pi {universals = Vector.empty; domain = Prim Rep; eff = EmptyRow
+                ; codomain = Pi {universals = Vector.empty; domain = Prim Rep; eff = EmptyRow
+                    ; codomain = Prim Rep}}
 
         | TypeIn -> (* Rep -> Type *)
-            Pi {universals = Vector.empty; domain = T.rep; eff = EmptyRow
+            Pi {universals = Vector.empty; domain = Prim Rep; eff = EmptyRow
                 ; codomain = T.aType}
 
         | RowOf -> Pi {universals = Vector.empty; domain = T.aKind; eff = EmptyRow
@@ -41,9 +41,9 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
         | Pi _ | Impli _ | Record _ | Proxy _ -> T.aType
 
         | Pair {fst; snd} -> (* TypeIn (PairRep fst_rep snd_rep) *)
-            let fst_rep = T.Uv (Env.uv env false T.rep) in
+            let fst_rep = T.Uv (Env.uv env false (Prim Rep)) in
             check_F ctrs span env (T.App {callee = Prim TypeIn; arg = fst_rep}) fst;
-            let snd_rep = T.Uv (Env.uv env false T.rep) in
+            let snd_rep = T.Uv (Env.uv env false (Prim Rep)) in
             check_F ctrs span env (T.App {callee = Prim TypeIn; arg = snd_rep}) snd;
             let rep = T.App {callee = App {callee = Prim PairRep; arg = fst_rep}; arg = snd_rep} in
             App {callee = Prim TypeIn; arg = rep}

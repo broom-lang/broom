@@ -40,7 +40,8 @@ let type_fns _ = Vector.empty (* TODO *)
 
 let uv env is_fwd kind = ref (T.Unassigned (is_fwd, Name.fresh (), kind, env.level))
 
-let some_type_kind env is_fwd = T.App {callee = Prim TypeIn; arg = Uv (uv env is_fwd T.rep)}
+let some_type_kind env is_fwd =
+    T.App {callee = Prim TypeIn; arg = Uv (uv env is_fwd (Prim Rep))}
 
 let push_val is_global (env : t) (var : var) =
     if is_global
@@ -68,8 +69,7 @@ let find_val (env : t) span name =
             | None ->
                 report_error env ({v = Unbound name; pos = span});
                 (* FIXME: levels: *)
-                let kind = T.App {callee = Prim TypeIn; arg = Uv (uv env false T.rep)} in
-                let typ = T.Uv (uv env false kind) in
+                let typ = T.Uv (uv env false (some_type_kind env false)) in
                 FExpr.at span typ (FExpr.use (FExpr.var Explicit name typ))) in
     find env.scopes
 
