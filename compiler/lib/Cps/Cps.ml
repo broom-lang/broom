@@ -21,9 +21,7 @@ module Type = struct
 
     type t =
         | Exists of kind Vector1.t * t
-        | Tuple of t Vector.t
-        | PromotedTuple of t Vector.t
-        | PromotedArray of t Vector.t
+        | Pair of {fst : t; snd : t}
         | Pi of {universals : kind Vector.t; domain : t Vector.t}
         | Record of t
         | With of {base : t; label : Name.t; field : t}
@@ -51,17 +49,10 @@ module Type = struct
                         kind_to_doc (Vector1.to_list existentials))
                 (to_doc body)
 
-        | Tuple typs -> surround_separate_map 4 0 (parens colon)
-            (lparen ^^ colon) (comma ^^ break 1) rparen
-            to_doc (Vector.to_list typs)
-
-        | PromotedTuple typs -> surround_separate_map 4 0 (parens empty)
-            lparen (comma ^^ break 1) rparen
-            to_doc (Vector.to_list typs)
-
-        | PromotedArray typs -> surround_separate_map 4 0 (brackets empty)
-            lbracket (comma ^^ break 1) rbracket
-            to_doc (Vector.to_list typs)
+        | Pair {fst; snd} ->
+            surround_separate_map 4 0 (parens colon)
+                (lparen ^^ colon) (comma ^^ break 1) rparen
+                to_doc [fst; snd]
 
         | Pi {universals; domain} ->
             prefix 4 1 (string "pi")
@@ -112,8 +103,6 @@ module Expr = struct
 
     type t' =
         | PrimApp of {op : Primop.t; universals : Type.t Vector.t; args : Id.t Vector.t}
-        | Tuple of Id.t Vector.t
-        | Focus of {focusee : Id.t; index : int}
         | Record of (Name.t * Id.t) Vector.t
         | With of {base : Id.t; label: Name.t; field : Id.t}
         | Where of {base : Id.t; fields : (Name.t * Id.t) Vector.t}
@@ -147,11 +136,6 @@ module Expr = struct
                     lparen (comma ^^ break 1) rparen
                     Id.to_doc (Vector.to_list args))
 
-        | Tuple values ->
-            surround_separate_map 4 0 (parens empty)
-                lparen (comma ^^ break 1) rparen
-                Id.to_doc (Vector.to_list values)
-
         | Record fields ->
             surround_separate_map 4 0 (braces empty)
                 lbrace (comma ^^ break 1) rbrace
@@ -167,8 +151,6 @@ module Expr = struct
                     lbrace (comma ^^ break 1) rbrace
                     field_to_doc (Vector.to_list fields))
 
-        | Focus {focusee; index} ->
-            infix 4 1 dot (Id.to_doc focusee) (string (Int.to_string index))
         | Select {selectee; field} -> 
             infix 4 1 dot (Id.to_doc selectee) (Name.to_doc field)
         | Proxy typ -> brackets (equals ^^ blank 1 ^^ Type.to_doc typ)
@@ -198,17 +180,17 @@ module Expr = struct
 
     let iter_labels' f = function
         | Label label | Param {label; index = _} -> f label
-        | Tuple _ | Focus _ | PrimApp _ | Record _ | With _ | Where _ | Select _ | Proxy _
+        | PrimApp _ | Record _ | With _ | Where _ | Select _ | Proxy _
         | Cast _ | Pack _ | Unpack _ | Const _ -> ()
 
     let iter_labels f expr = iter_labels' f expr.term
 
     let iter_uses' f = function
-        | Tuple args | PrimApp {universals = _; op = _; args} -> Vector.iter f args
+        | PrimApp {universals = _; op = _; args} -> Vector.iter f args
         | Record fields -> Vector.iter (fun (_, use) -> f use) fields
         | Where {base; fields} -> f base; Vector.iter (fun (_, use) -> f use) fields
         | With {base; label = _; field} -> f base; f field
-        | Focus {focusee = use; index = _} | Select {selectee = use; field = _} -> f use
+        | Select {selectee = use; field = _} -> f use
         | Cast {castee; coercion = _} -> f castee
         | Pack {existentials = _; impl} -> f impl
         | Unpack packed -> f packed
@@ -217,12 +199,6 @@ module Expr = struct
     let iter_uses f expr = iter_uses' f expr.term
 
     let map_uses' f term = match term with
-        | Tuple args ->
-            let (noop, args) = Stream.from (Vector.to_source args)
-                |> Stream.map (fun arg -> let arg' = f arg in (arg' == arg, arg'))
-                |> Stream.into (Sink.unzip (Sink.fold (&&) true) (Vector.sink ())) in
-            if noop then term else Tuple args
-
         | PrimApp {universals; op; args} ->
             let (noop, args) = Stream.from (Vector.to_source args)
                 |> Stream.map (fun arg -> let arg' = f arg in (arg' == arg, arg'))
@@ -248,10 +224,6 @@ module Expr = struct
             if base' == base && field' == field
             then term
             else With {base = base'; label; field = field'}
-
-        | Focus {focusee; index} ->
-            let focusee' = f focusee in
-            if focusee' == focusee then term else Focus {focusee = focusee'; index}
 
         | Select {selectee; field} ->
             let selectee' = f selectee in
@@ -488,9 +460,8 @@ module Program = struct
                 else begin
                     let {Expr.pos = _; typ = _; cont = _; term} = expr program id in
                     match term with
-                    | PrimApp {op = _; universals = _; args = children}
-                    | Tuple children -> Vector.fold visit_use counts children
-                    | Focus {focusee = child; index = _}
+                    | PrimApp {op = _; universals = _; args = children} ->
+                        Vector.fold visit_use counts children
                     | Select {selectee = child; field = _}
                     | Cast {castee = child; coercion = _}
                     | Pack {existentials = _; impl = child}
@@ -584,9 +555,17 @@ module Program = struct
         let express builder (e : Expr.t) =
             (* TODO: More 'peephole' optimization (constant folding, GVN etc.): *)
             let folded = match e.term with
-                | Focus {focusee; index} -> (match (expr builder focusee).term with
-                    | Tuple fields -> Some (Vector.get fields index)
+                | PrimApp {op = Fst; universals = _; args} ->
+                    (match (expr builder (Vector.get args 0)).term with
+                    | PrimApp {op = Pair; universals = _; args = fields} ->
+                        Some (Vector.get fields 0)
                     | _ -> None)
+                | PrimApp {op = Snd; universals = _; args} ->
+                    (match (expr builder (Vector.get args 0)).term with
+                    | PrimApp {op = Pair; universals = _; args = fields} ->
+                        Some (Vector.get fields 1)
+                    | _ -> None)
+
                 | _ -> None in
             match folded with
             | Some id -> id

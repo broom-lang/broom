@@ -9,39 +9,35 @@ module type EXPR = sig
 
     type var = {plicity : Util.plicity; name : Name.t; vtyp : Type.t}
 
-    type t =
-        { term : t'
-        ; mutable parent : t option
-        ; typ : Type.t
-        ; pos : Util.span }
+    type t = {term : t'; typ : Type.t; pos : Util.span}
 
     and t' = private
-        | Tuple of t array
-        | Focus of {mutable focusee : t; index : int}
-
-        | Fn of {universals : Type.def Vector.t; param : var; mutable body : t}
-        | App of {mutable callee : t; universals : Type.t Vector.t; mutable arg : t}
-        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t}
-        | PrimBranch of {op : Branchop.t; universals : Type.t Vector.t; mutable arg : t
+        | Fn of {universals : Type.def Vector.t; param : var; body : t}
+        | App of {callee : t; universals : Type.t Vector.t; arg : t}
+        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; args : t Vector.t}
+        | PrimBranch of {op : Branchop.t; universals : Type.t Vector.t; args : t Vector.t
             ; clauses : prim_clause Vector.t}
 
-        | Let of {defs : stmt Array1.t; mutable body : t}
-        | Letrec of {defs : def Array1.t; mutable body : t}
-        | LetType of {typedefs : Type.def Vector1.t; mutable body : t}
-        | Match of {mutable matchee : t; clauses : clause Vector.t}
+        | Let of {defs : stmt Vector1.t; body : t}
+        | Letrec of {defs : def Vector1.t; body : t}
+        | LetType of {typedefs : Type.def Vector1.t; body : t}
+        | Match of { matchee : t; clauses : clause Vector.t}
 
         | Axiom of { axioms : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t
-            ; mutable body : t }
-        | Cast of {mutable castee : t; coercion : Type.t Type.coercion}
+            ; body : t }
+        | Cast of {castee : t; coercion : Type.t Type.coercion}
 
-        | Pack of {existentials : Type.t Vector1.t; mutable impl : t}
-        | Unpack of { existentials : Type.def Vector1.t; var : var; mutable value : t
-            ; mutable body : t }
+        | Pack of {existentials : Type.t Vector1.t; impl : t}
+        | Unpack of { existentials : Type.def Vector1.t; var : var; value : t; body : t }
 
-        | Record of (Name.t * t) array
-        | Where of {mutable base : t; fields : (Name.t * t) Array1.t}
-        | With of {mutable base : t; label : Name.t; mutable field : t}
-        | Select of {mutable selectee : t; label : Name.t}
+        | Pair of {fst : t; snd : t}
+        | Fst of t
+        | Snd of t
+
+        | Record of (Name.t * t) Vector.t
+        | Where of {base : t; fields : (Name.t * t) Vector1.t}
+        | With of {base : t; label : Name.t; field : t}
+        | Select of {selectee : t; label : Name.t}
 
         | Proxy of Type.t
         | Const of Const.t
@@ -50,13 +46,13 @@ module type EXPR = sig
 
         | Convert of coercer Tx.Ref.t * t
 
-    and clause = {pat : pat; mutable body : t}
+    and clause = {pat : pat; body : t}
     and prim_clause = {res : var option; prim_body : t}
 
     and pat = {pterm: pat'; ptyp : Type.t; ppos : Util.span}
     and pat' =
         | View of t * pat
-        | TupleP of pat Vector.t
+        | PairP of {fst : pat; snd : pat}
         | ProxyP of Type.t
         | ConstP of Const.t
         | VarP of var
@@ -72,21 +68,22 @@ module type EXPR = sig
     val at : Util.span -> Type.t -> t' -> t
     val pat_at : Util.span -> Type.t -> pat' -> pat
 
-    val tuple : t Array.t -> t'
-    val focus : t -> int -> t'
     val fn : Type.def Vector.t -> var -> t -> t'
     val app : t -> Type.t Vector.t -> t -> t'
-    val primapp : Primop.t -> Type.t Vector.t -> t -> t'
-    val primbranch : Branchop.t -> Type.t Vector.t -> t -> prim_clause Vector.t -> t'
-    val let' : stmt Array.t -> t -> t'
-    val letrec : def Array.t -> t -> t'
+    val primapp : Primop.t -> Type.t Vector.t -> t Vector.t -> t'
+    val primbranch : Branchop.t -> Type.t Vector.t -> t Vector.t -> prim_clause Vector.t -> t'
+    val let' : stmt Vector.t -> t -> t'
+    val letrec : def Vector.t -> t -> t'
     val axiom : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector.t -> t -> t'
     val match' : t -> clause Vector.t -> t'
     val cast : t -> Type.t Type.coercion -> t'
     val pack : Type.t Vector.t -> t -> t'
     val unpack : Type.def Vector1.t -> var -> t -> t -> t'
-    val record : (Name.t * t) array -> t'
-    val where : t -> (Name.t * t) array -> t'
+    val pair : t -> t -> t'
+    val fst : t -> t'
+    val snd : t -> t'
+    val record : (Name.t * t) Vector.t -> t'
+    val where : t -> (Name.t * t) Vector.t -> t'
     val select : t -> Name.t -> t'
     val proxy : Type.t -> t'
     val const : Const.t -> t'

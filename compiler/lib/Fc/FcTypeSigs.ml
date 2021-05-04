@@ -14,12 +14,10 @@ module type TYPE = sig
         | Exists of {existentials : kind Vector1.t; body : t}
         | Pi of {universals : kind Vector.t; domain : t; eff : t; codomain : t}
         | Impli of {universals : kind Vector.t; domain : t; codomain : t}
+        | Pair of {fst : t; snd : t}
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
-        | Tuple of t Vector.t
-        | PromotedTuple of t Vector.t
-        | PromotedArray of t Vector.t
         | Proxy of t
         | Fn of {param : kind; body : t}
         | App of {callee : t; arg : t}
@@ -48,11 +46,9 @@ module type TYPE = sig
         | Inst of 'typ coercion * 'typ Vector1.t
         | PiCo of {universals : kind Vector.t
             ; domain : 'typ coercion; codomain : 'typ coercion}
+        | PairCo of 'typ coercion * 'typ coercion
         | RecordCo of 'typ coercion
         | WithCo of {base : 'typ coercion; label : Name.t; field : 'typ coercion}
-        | TupleCo of 'typ coercion Vector.t
-        | PromotedTupleCo of 'typ coercion Vector.t
-        | PromotedArrayCo of 'typ coercion Vector.t
         | ProxyCo of 'typ coercion
         | Patchable of 'typ coercion Tx.Ref.t
 

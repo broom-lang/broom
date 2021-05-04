@@ -66,14 +66,16 @@ let expand_program_params program all_params =
         let expand_param index' (index, typ) : int =
             let rec expand_sub_param index (id : Expr.Id.t option) (typ : Type.t) : int =
                 let (term, index') = match typ with
-                    | Tuple typs ->
-                        let elems = Vector.map (fun _ -> Expr.Id.fresh ()) typs in
-                        let index = Stream.from (Source.zip
-                                (Vector.to_source elems) (Vector.to_source typs))
-                            |> Stream.fold (fun index (id', typ) ->
-                                expand_sub_param index (Option.map (Fun.const id') id) typ
-                            ) index in
-                        (Expr.Tuple elems, index)
+                    | Pair {fst = fst_typ; snd = snd_typ} ->
+                        let fst_id = Expr.Id.fresh () in
+                        let index = expand_sub_param index (Option.map (Fun.const fst_id) id) fst_typ in
+                        let snd_id = Expr.Id.fresh () in
+                        let index = expand_sub_param index (Option.map (Fun.const snd_id) id) snd_typ in
+                        ( Expr.PrimApp {op = Pair
+                            ; universals = Vector.of_array_unsafe [|fst_typ; snd_typ|]
+                            ; args = Vector.of_array_unsafe [|fst_id; snd_id|]}
+                        , index )
+
                     | typ ->
                         CCVector.push params' typ;
                         (Param {label; index}, index + 1) in
@@ -83,7 +85,7 @@ let expand_program_params program all_params =
 
             match Params.get all_params label index with
             | Some (id, _ (* TODO(?): expr *)) -> (match typ with
-                | Type.Tuple _ -> expand_sub_param index' (Some id) typ
+                | Type.Pair _ -> expand_sub_param index' (Some id) typ
                 | _ when index' = index -> (* fast path *)
                     CCVector.push params' typ;
                     index' + 1
@@ -109,14 +111,19 @@ let untuple_args program =
         let rec optimize_arg arg =
             let expr = Builder.expr builder arg in
             match expr.typ with
-            | Tuple typs ->
-                Stream.from (Vector.to_source typs)
-                |> Stream.indexed
-                |> Stream.flat_map (fun (index, typ) ->
-                    let arg = Builder.express builder {typ
-                        ; pos = expr.pos; cont = expr.cont
-                        ; term = Focus {focusee = arg; index}} in
-                    optimize_arg arg)
+            | Pair {fst = fst_typ; snd = snd_typ} ->
+                let fst = Builder.express builder {typ = fst_typ
+                    ; pos = expr.pos; cont = expr.cont
+                    ; term = PrimApp {op = Fst; universals = Vector.singleton fst_typ
+                        ; args = Vector.singleton arg}}
+                    |> optimize_arg in
+                let snd = Builder.express builder {typ = snd_typ
+                    ; pos = expr.pos; cont = expr.cont
+                    ; term = PrimApp {op = Snd; universals = Vector.singleton snd_typ
+                        ; args = Vector.singleton arg}}
+                    |> optimize_arg in
+                Stream.concat fst snd
+
             | _ -> Stream.single arg in
 
         Stream.from (Vector.to_source args)
@@ -128,7 +135,6 @@ let untuple_args program =
             | PrimApp {op; universals; args} ->
                 Builder.express builder {expr
                     with term = PrimApp {op; universals; args = optimize_args args}}
-            | Tuple _ | Focus _
             | Record _ | With _ | Where _ | Select _ | Proxy _
             | Label _ | Param _ | Cast _ | Pack _ | Unpack _ | Const _ ->
                 Expr.iter_labels optimize_label expr;

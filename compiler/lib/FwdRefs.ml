@@ -19,19 +19,18 @@ let error_to_doc = function
             ^/^ string "at" ^/^ string (Util.span_to_string pos)
 
 type shape =
-    | Tuple of shape Vector.t
+    | Pair of {fst : shape; snd : shape}
     | Record of shape Name.Map.t
     | Closure of Support.t * shape
     | Scalar
     | Unknown
 
 let rec join pos shape shape' = match shape with
-    | Tuple shapes -> (match shape' with
-        | Tuple shapes' -> Stream.from (Source.zip_with (join pos)
-                (Vector.to_source shapes) (Vector.to_source shapes'))
-            |> Stream.into (Sink.unzip
-                (Vector.sink () |> Sink.map (fun shapes -> Tuple shapes))
-                (Sink.fold (||) false))
+    | Pair {fst; snd} -> (match shape' with
+        | Pair {fst = fst'; snd = snd'} ->
+            let (fst, fst_changed) = join pos fst fst' in
+            let (snd, snd_changed) = join pos snd snd' in
+            (Pair {fst; snd}, fst_changed || snd_changed)
         | Unknown -> (shape, false)
         | _ -> unreachable (Some pos))
 
@@ -70,11 +69,10 @@ let rec join pos shape shape' = match shape with
         | shape' -> (shape', true))
 
 let rec extract_shape_support = function
-    | Tuple shapes -> Stream.from (Vector.to_source shapes)
-        |> Stream.map extract_shape_support
-        |> Stream.into (Sink.unzip
-            (Sink.map (fun shapes -> Tuple shapes) (Vector.sink ()))
-            (Sink.fold Support.union Support.empty))
+    | Pair {fst; snd} ->
+        let (fst, fst_support) = extract_shape_support fst in
+        let (snd, snd_support) = extract_shape_support snd in
+        (Pair {fst; snd}, Support.union fst_support snd_support)
 
     | Record fields -> Stream.from (Source.seq (Name.Map.to_seq fields))
         |> Stream.map (fun (label, shape) ->
@@ -129,7 +127,7 @@ module Env : sig
 
     val empty : t
     val push_fn : t -> ctx -> t
-    val push_letrec : t -> S.def Array1.t -> t
+    val push_letrec : t -> S.def Vector1.t -> t
     val initialize : t -> Name.t -> unit
     val access : t -> Name.t -> access
 end = struct
@@ -143,8 +141,8 @@ end = struct
     let push_fn scopes ctx  = Fn ctx :: scopes
 
     let push_letrec scopes defs =
-        let bindings = Name.Hashtbl.create (Array1.length defs) in
-        defs |> Array1.iter (function
+        let bindings = Name.Hashtbl.create (Vector1.length defs) in
+        defs |> Vector1.iter (function
             | (_, {E.pterm = VarP {name; _}; _}, _) ->
                 Name.Hashtbl.add bindings name Uninitialized
             | (span, _, _) -> unreachable (Some span));
@@ -183,18 +181,22 @@ let analyze expr =
 
     let rec shapeof : Env.t -> ctx -> E.t -> shape * Support.t
     = fun env ctx expr -> match expr.term with
-        | Tuple exprs -> Stream.from (Source.array exprs)
-            |> Stream.map (shapeof env ctx)
-            |> Stream.into (Sink.unzip
-                (Sink.map (fun typs -> Tuple typs) (Vector.sink ()))
-                (Sink.fold Support.union Support.empty))
+        | Pair {fst; snd} ->
+            let (fst, fst_support) = shapeof env ctx fst in
+            let (snd, snd_support) = shapeof env ctx snd in
+            (Pair {fst; snd}, Support.union fst_support snd_support)
 
-        | Focus {focusee; index} ->
-            let (fshape, support) = shapeof env ctx focusee in
-            ( (match fshape with
-              | Tuple shapes -> Vector.get shapes index
-              | _ -> Unknown)
-            , support )
+        | Fst arg ->
+            let (arg_shape, support) = shapeof env ctx arg in
+            (match arg_shape with
+            | Pair {fst; snd = _} -> (fst, support)
+            | _ -> (Unknown, support))
+
+        | Snd arg ->
+            let (arg_shape, support) = shapeof env ctx arg in
+            (match arg_shape with
+            | Pair {fst = _; snd} -> (snd, support)
+            | _ -> (Unknown, support))
 
         | Fn {universals = _; param = _; body} ->
             let env = Env.push_fn env ctx in
@@ -212,12 +214,16 @@ let analyze expr =
               | _ -> Unknown)
             , Support.union callee_support arg_support )
 
-        | PrimApp {op = _; universals = _; arg} ->
-            let (_, support) = shapeof env Escaping arg in
-            (Unknown, support)
+        | PrimApp {op = _; universals = _; args} ->
+            ( Unknown
+            , Stream.from (Vector.to_source args)
+                |> Stream.map (fun arg -> snd (shapeof env Escaping arg))
+                |> Stream.into (Sink.fold Support.union Support.empty) )
 
-        | PrimBranch {op = _; universals = _; arg; clauses} ->
-            let (_, support) = shapeof env Escaping arg in
+        | PrimBranch {op = _; universals = _; args; clauses} ->
+            let support = Stream.from (Vector.to_source args)
+                |> Stream.map (fun arg -> snd (shapeof env Escaping arg))
+                |> Stream.into (Sink.fold Support.union Support.empty) in
             Stream.from (Vector.to_source clauses)
             |> Stream.map (fun ({res = _; prim_body} : E.prim_clause) ->
                 shapeof env ctx prim_body)
@@ -242,7 +248,7 @@ let analyze expr =
                 (Sink.fold Support.union support))
 
         | Let {defs; body} ->
-            let defs_support = Array1.fold_left (fun support -> function
+            let defs_support = Vector1.fold (fun support -> function
                 | S.Def (pos, {pterm = VarP {name; _}; _}, value) ->
                     let (shape, def_support) = shapeof env Naming value in
                     (* Need `let changed'` because `&&` is short-circuiting: *)
@@ -259,7 +265,7 @@ let analyze expr =
 
         | Letrec {defs; body} ->
             let env = Env.push_letrec env defs in
-            let defs_support = Array1.fold_left (fun support -> function
+            let defs_support = Vector1.fold (fun support -> function
                 | (_, {E.pterm = VarP {name; _}; _}, value) ->
                     let (shape, def_support) = shapeof env Naming value in
                     (* Need `let changed'` because `&&` is short-circuiting: *)
@@ -291,7 +297,7 @@ let analyze expr =
             | Naming -> (shape, immediate_support))
 
         | Record fields ->
-            Stream.from (Source.array fields)
+            Stream.from (Vector.to_source fields)
             |> Stream.map (fun (label, expr) ->
                 let (shape, support) = shapeof env ctx expr in
                 ((label, shape), support))
@@ -305,7 +311,7 @@ let analyze expr =
             let base_fields = match base_shape with
                 | Record fields -> fields
                 | _ -> Name.Map.empty in
-            Stream.from (Source.array (Array1.to_array fields))
+            Stream.from (Vector1.to_source fields)
             |> Stream.map (fun (label, expr) ->
                 let (shape, support) = shapeof env ctx expr in
                 ((label, shape), support))
@@ -393,10 +399,10 @@ let emit shapes expr =
 
     let rec emit (expr : E.t) = match expr.term with
         | Letrec {defs; body} ->
-            defs |> Array1.iter (fun (span, pat, _) -> match pat with
+            defs |> Vector1.iter (fun (span, pat, _) -> match pat with
                 | {E.pterm = VarP var; _} -> VarRefs.add vrs var
                 | _ -> unreachable (Some span));
-            let defs = Stream.from (Array1.to_source defs)
+            let defs = Stream.from (Vector1.to_source defs)
                 |> Stream.flat_map (fun (pos, pat, value) -> match pat with
                     | {E.pterm = VarP var; _} ->
                         let value = emit value in
@@ -404,42 +410,39 @@ let emit shapes expr =
                         (match VarRefs.find vrs var with
                         | WasForward {cell} ->
                             Stream.double (S.Def (pos, pat, value))
-                                (Expr (E.at pos (Tuple Vector.empty) (E.primapp CellInit
+                                (Expr (E.at pos (Prim Unit) (E.primapp CellInit
                                     (Vector.singleton value.typ)
-                                    (E.at pos (Tuple (Vector.of_list [cell.vtyp; value.typ]))
-                                        (E.tuple (Array.of_list [
-                                            E.at pos cell.vtyp (E.use cell)
-                                            ; E.at value.pos value.typ (E.use var)]))))))
+                                    (Vector.of_array_unsafe
+                                        [| E.at pos cell.vtyp (E.use cell)
+                                        ; E.at value.pos value.typ (E.use var)|]))))
                         | Backward -> Stream.single (S.Def (pos, pat, value))
                         | Forward _ -> unreachable (Some pos))
                     | _ -> unreachable (Some pos))
-                |> Stream.into Sink.array in
+                |> Stream.into (Vector.sink ()) in
             let body = emit body in
-            let cell_defs = Stream.from (Source.array defs)
+            let cell_defs = Stream.from (Vector.to_source defs)
                 |> Stream.flat_map (function
                     | S.Def (pos, ({pterm = VarP var; _} as pat), _) ->
                         (match VarRefs.find vrs var with
                         | Backward -> Stream.empty
                         | WasForward {cell} ->
-                            let arg = E.at pos (Tuple Vector.empty)
-                                (E.tuple (Array.init 0 (fun _ -> unreachable (Some pos)))) in
-                            let value = E.at pos cell.vtyp (E.primapp CellNew Vector.empty arg) in
+                            let value = E.at pos cell.vtyp (E.primapp CellNew Vector.empty Vector.empty) in
                             Stream.single (S.Def (pos, {pat with pterm = VarP cell}, value))
                         | Forward _ -> unreachable (Some pos))
                     | Def (span, _, _) -> unreachable (Some span)
                     | Expr _ -> Stream.empty)
-                |> Stream.into Sink.array in
-            E.at expr.pos expr.typ (E.let' (Array.append cell_defs defs) body)
+                |> Stream.into (Vector.sink ()) in
+            E.at expr.pos expr.typ (E.let' (Vector.append cell_defs defs) body)
 
         | Use var -> (match VarRefs.find vrs var with
             | Forward {cell} ->
                 E.at expr.pos expr.typ (E.primapp CellGet (Vector.singleton expr.typ)
-                    (E.at expr.pos expr.typ (E.use cell)))
+                    (Vector.singleton (E.at expr.pos expr.typ (E.use cell))))
             | Backward | WasForward _ -> expr)
 
         | LetType _ | Axiom _ | Let _ | Match _
         | Cast _ | Pack _ | Unpack _ | Fn _ | App _ | PrimApp _ | PrimBranch _
-        | Tuple _ | Focus _ | Record _ | Where _ | With _ | Select _ | Proxy _ | Const _ ->
+        | Pair _ | Fst _ | Snd _ | Record _ | Where _ | With _ | Select _ | Proxy _ | Const _ ->
              E.map_children emit expr
 
         | Convert _ -> bug (Some expr.pos) ~msg: "encountered Convert in FwdRefs" in
@@ -453,7 +456,7 @@ let convert ({type_fns; defs; main} : Fc.Program.t) =
         then (let (pos, _, _) = Vector.get defs 0 in pos)
         else main.pos in
     let pos = (fst start_pos, snd main.pos) in
-    let expr = E.at pos main.typ (E.letrec (Vector.to_array defs) main) in
+    let expr = E.at pos main.typ (E.letrec defs main) in
     analyze expr |> Result.map (fun shapes -> (* TODO: get rid of `defs` to begin with?: *)
         {Fc.Program.type_fns; defs = Vector.empty; main = emit shapes expr}
     )

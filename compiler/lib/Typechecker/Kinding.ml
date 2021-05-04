@@ -14,28 +14,40 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
     let check _ _ (typ : AType.t with_pos) = todo (Some typ.pos)
 
     let kindof_prim : Prim.t -> T.kind = function
+        | Unit -> (* TypeIn UnitRep *)
+            App {callee = Prim TypeIn; arg = Prim UnitRep}
+
         | Int | Bool | String -> T.aType
         | Array | Cell -> Pi {universals = Vector.empty; domain = T.aType; eff = EmptyRow
             ; codomain = T.aType}
         | SingleRep -> T.aType
         | Boxed -> Prim SingleRep
-        | TypeIn -> Pi {universals = Vector.empty; domain = T.rep; eff = EmptyRow
-            ; codomain = T.aType}
+
+        | UnitRep -> Prim SingleRep
+        | PairRep -> (* Rep -> Rep -> Rep *)
+            Pi {universals = Vector.empty; domain = T.rep; eff = EmptyRow
+                ; codomain = Pi {universals = Vector.empty; domain = T.rep; eff = EmptyRow
+                    ; codomain = T.rep}}
+
+        | TypeIn -> (* Rep -> Type *)
+            Pi {universals = Vector.empty; domain = T.rep; eff = EmptyRow
+                ; codomain = T.aType}
+
         | RowOf -> Pi {universals = Vector.empty; domain = T.aKind; eff = EmptyRow
             ; codomain = T.aKind}
 
     let rec kindof_F ctrs span env : T.t -> T.kind = function
         | Exists {existentials = _; body} -> kindof_F ctrs span env body
-        | PromotedArray typs ->
-            let el_kind = if Vector.length typs > 0
-                then kindof_F ctrs span env (Vector.get typs 0)
-                else Uv (Env.uv env false T.aKind) in
-            App {callee = Prim Array; arg = el_kind}
-        | PromotedTuple typs -> Tuple (Vector.map (kindof_F ctrs span env) typs)
-        | Tuple typs ->
-            let kinds = Vector.map (kindof_F ctrs span env) typs in
-            App {callee = Prim TypeIn; arg = PromotedArray kinds}
         | Pi _ | Impli _ | Record _ | Proxy _ -> T.aType
+
+        | Pair {fst; snd} -> (* TypeIn (PairRep fst_rep snd_rep) *)
+            let fst_rep = T.Uv (Env.uv env false T.rep) in
+            check_F ctrs span env (T.App {callee = Prim TypeIn; arg = fst_rep}) fst;
+            let snd_rep = T.Uv (Env.uv env false T.rep) in
+            check_F ctrs span env (T.App {callee = Prim TypeIn; arg = snd_rep}) snd;
+            let rep = T.App {callee = App {callee = Prim PairRep; arg = fst_rep}; arg = snd_rep} in
+            App {callee = Prim TypeIn; arg = rep}
+
         | With _ | EmptyRow -> T.aRow
         | Fn {param = domain; body} -> Pi { universals = Vector.empty; domain; eff = EmptyRow
             ; codomain = kindof_F ctrs span env body }
@@ -89,8 +101,7 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
                 | Assigned typ -> eval typ (* OPTIMIZE: path compression *)
                 | Unassigned (false, _, _, _) -> Some (typ, None)
                 | Unassigned (true, _, _, _) -> None)
-            | ( Exists _ | PromotedArray _ | PromotedTuple _
-              | Tuple _ | Pi _ | Impli _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ) as typ ->
+            | ( Exists _ | Pi _ | Impli _ | Pair _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ) as typ ->
                 Some (typ, None)
             | Bv _ -> unreachable (Some span) ~msg: "`Bv` in `eval`"
 
@@ -102,8 +113,7 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
                 (match !uv with
                 | Unassigned _ -> None
                 | Assigned _ -> unreachable (Some span) ~msg: "Assigned in `apply`.")
-            | Exists _ | PromotedArray _ | PromotedTuple _
-            | Tuple _ | Pi _ | Impli _ | Record _ | With _ | EmptyRow | Proxy _ ->
+            | Exists _ | Pi _ | Impli _ | Pair _ | Record _ | With _ | EmptyRow | Proxy _ ->
                 unreachable (Some span) ~msg: "uncallable type in `eval.apply`"
             | Bv _ -> unreachable (Some span) ~msg: "`Bv` in `eval.apply`"
         in eval typ

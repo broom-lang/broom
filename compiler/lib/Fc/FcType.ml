@@ -11,12 +11,10 @@ module Typ = struct
         | Exists of {existentials : kind Vector1.t; body : t}
         | Pi of {universals : kind Vector.t; domain : t; eff : t; codomain : t}
         | Impli of {universals : kind Vector.t; domain : t; codomain : t}
+        | Pair of {fst : t; snd : t}
         | Record of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
-        | Tuple of t Vector.t
-        | PromotedTuple of t Vector.t
-        | PromotedArray of t Vector.t
         | Proxy of t
         | Fn of {param : kind; body : t}
         | App of {callee : t; arg : t}
@@ -45,11 +43,9 @@ module Typ = struct
         | Inst of 'typ coercion * 'typ Vector1.t
         | PiCo of {universals : kind Vector.t
             ; domain : 'typ coercion; codomain : 'typ coercion}
+        | PairCo of 'typ coercion * 'typ coercion
         | RecordCo of 'typ coercion
         | WithCo of {base : 'typ coercion; label : Name.t; field : 'typ coercion}
-        | TupleCo of 'typ coercion Vector.t
-        | PromotedTupleCo of 'typ coercion Vector.t
-        | PromotedArrayCo of 'typ coercion Vector.t
         | ProxyCo of 'typ coercion
         | Patchable of 'typ coercion Tx.Ref.t
 
@@ -109,6 +105,11 @@ module Typ = struct
                 prefix 4 1 (to_doc_prec app_prec callee) (to_doc_prec (app_prec + 1) arg)
                 |> prec_parens (prec > app_prec)
 
+            | Pair {fst; snd} ->
+                surround_separate_map 4 0 (parens colon)
+                    (lparen ^^ colon) (comma ^^ break 1) rparen
+                    to_doc [fst; snd]
+
             | Record row -> braces (to_doc row)
 
             | With {base; label; field} ->
@@ -119,21 +120,6 @@ module Typ = struct
             | EmptyRow -> parens bar
 
             | Proxy carrie -> brackets (prefix 4 1 equals (to_doc carrie))
-
-            | Tuple typs ->
-                surround_separate_map 4 1 (parens colon)
-                    (lparen ^^ colon) (comma ^^ break 1) rparen
-                    to_doc (Vector.to_list typs)
-
-            | PromotedTuple typs ->
-                surround_separate_map 4 1 (parens empty)
-                    lparen (comma ^^ break 1) rparen
-                    to_doc (Vector.to_list typs)
-
-            | PromotedArray typs ->
-                surround_separate_map 4 1 (brackets empty)
-                    lbracket (comma ^^ break 1) rbracket
-                    to_doc (Vector.to_list typs)
 
             | Ov {name; kind = _; level = _} -> Name.to_doc name
 
@@ -191,17 +177,11 @@ module Typ = struct
                         ^^ separate_map (blank 1) kind_to_doc (Vector.to_list universals))
                     body_doc)
 
-            | PromotedArrayCo coercions ->
-                surround_separate_map 4 0 (brackets empty)
-                    lbracket (comma ^^ break 1) rbracket
-                    to_doc (Vector.to_list coercions)
-            | PromotedTupleCo coercions ->
-                surround_separate_map 4 0 (parens empty)
-                    lparen (comma ^^ break 1) rparen
-                    to_doc (Vector.to_list coercions)
-            | TupleCo coercions ->
-                colon ^/^ separate_map (comma ^^ break 1) to_doc (Vector.to_list coercions)
-                |> parens
+            | PairCo (fst, snd) ->
+                surround_separate_map 4 1 (parens colon)
+                    (lparen ^^ colon) (comma ^^ break 1) rparen
+                    to_doc [fst; snd]
+
             | RecordCo row_co -> braces (to_doc row_co)
             | WithCo {base; label; field} ->
                 infix 4 1 (string "with") (base_co_to_doc'  base)
@@ -262,24 +242,17 @@ module Typ = struct
             let row' = f row in
             if row' == row then co else ProxyCo row'
 
+        | PairCo (fst, snd) ->
+            let fst' = f fst in
+            let snd' = f snd in
+            if fst' == fst && snd' == snd then co else PairCo (fst', snd')
+
         | WithCo {base; label; field} ->
             let base' = f base in
             let field' = f field in
             if base' == base && field' == field
             then co
             else WithCo {base = base'; label; field = field'}
-
-        | TupleCo cos ->
-            let cos' = Vector.map_children f cos in
-            if cos' == cos then co else TupleCo cos'
-
-        | PromotedTupleCo cos ->
-            let cos' = Vector.map_children f cos in
-            if cos' == cos then co else PromotedTupleCo cos'
-
-        | PromotedArrayCo cos ->
-            let cos' = Vector.map_children f cos in
-            if cos' == cos then co else PromotedArrayCo cos'
 
         | ProxyCo carrie ->
             let carrie' = f carrie in
@@ -306,11 +279,11 @@ end
 module Type = struct
     include Typ
 
-    (* __typeIn [__boxed] *)
-    let aType = App {callee = Prim TypeIn; arg = PromotedArray (Vector.singleton (Prim Boxed))}
+    (* __typeIn __boxed *)
+    let aType = App {callee = Prim TypeIn; arg = Prim Boxed}
     let aKind = aType
 
-    (* __rowOf (__typeIn [__boxed]) *)
+    (* __rowOf (__typeIn __boxed) *)
     let aRow = App {callee = Prim RowOf; arg = aType}
 
     (* __array __singleRep *)

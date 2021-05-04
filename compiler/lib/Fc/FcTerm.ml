@@ -20,39 +20,35 @@ end = struct
 
     type var = {plicity : Util.plicity; name : Name.t; vtyp : Type.t}
 
-    type t =
-        { term : t'
-        ; mutable parent : t option
-        ; typ : Type.t
-        ; pos : Util.span }
+    type t = {term : t'; typ : Type.t; pos : Util.span}
 
     and t' =
-        | Tuple of t array
-        | Focus of {mutable focusee : t; index : int}
-
-        | Fn of {universals : Type.def Vector.t; param : var; mutable body : t}
-        | App of {mutable callee : t; universals : Type.t Vector.t; mutable arg : t}
-        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; mutable arg : t}
-        | PrimBranch of {op : Branchop.t; universals : Type.t Vector.t; mutable arg : t
+        | Fn of {universals : Type.def Vector.t; param : var; body : t}
+        | App of {callee : t; universals : Type.t Vector.t; arg : t}
+        | PrimApp of {op : Primop.t; universals : Type.t Vector.t; args : t Vector.t}
+        | PrimBranch of {op : Branchop.t; universals : Type.t Vector.t; args : t Vector.t
             ; clauses : prim_clause Vector.t}
 
-        | Let of {defs : stmt Array1.t; mutable body : t}
-        | Letrec of {defs : def Array1.t; mutable body : t}
-        | LetType of {typedefs : Type.def Vector1.t; mutable body : t}
-        | Match of {mutable matchee : t; clauses : clause Vector.t}
+        | Let of {defs : stmt Vector1.t; body : t}
+        | Letrec of {defs : def Vector1.t; body : t}
+        | LetType of {typedefs : Type.def Vector1.t; body : t}
+        | Match of {matchee : t; clauses : clause Vector.t}
 
         | Axiom of { axioms : (Name.t * Type.kind Vector.t * Type.t * Type.t) Vector1.t
-            ; mutable body : t }
-        | Cast of {mutable castee : t; coercion : Type.t Type.coercion}
+            ; body : t }
+        | Cast of {castee : t; coercion : Type.t Type.coercion}
 
-        | Pack of {existentials : Type.t Vector1.t; mutable impl : t}
-        | Unpack of { existentials : Type.def Vector1.t; var : var; mutable value : t
-            ; mutable body : t }
+        | Pack of {existentials : Type.t Vector1.t; impl : t}
+        | Unpack of { existentials : Type.def Vector1.t; var : var; value : t; body : t }
 
-        | Record of (Name.t * t) array
-        | Where of {mutable base : t; fields : (Name.t * t) Array1.t}
-        | With of {mutable base : t; label : Name.t; mutable field : t}
-        | Select of {mutable selectee : t; label : Name.t}
+        | Pair of {fst : t; snd : t}
+        | Fst of t
+        | Snd of t
+
+        | Record of (Name.t * t) Vector.t
+        | Where of {base : t; fields : (Name.t * t) Vector1.t}
+        | With of {base : t; label : Name.t; field : t}
+        | Select of {selectee : t; label : Name.t}
 
         | Proxy of Type.t
         | Const of Const.t
@@ -61,13 +57,13 @@ end = struct
 
         | Convert of coercer Tx.Ref.t * t
 
-    and clause = {pat : pat; mutable body : t}
+    and clause = {pat : pat; body : t}
     and prim_clause = {res : var option; prim_body : t}
 
     and pat = {pterm: pat'; ptyp : Type.t; ppos : Util.span}
     and pat' =
         | View of t * pat
-        | TupleP of pat Vector.t
+        | PairP of {fst : pat; snd : pat}
         | ProxyP of Type.t
         | ConstP of Const.t
         | VarP of var
@@ -100,7 +96,7 @@ end = struct
                     lbrace (semi ^^ break 1) rbrace
                     (fun (label, field) ->
                         infix 4 1 equals (Name.to_doc label) (to_doc field))
-                    (Array1.to_list fields) in
+                    (Vector1.to_list fields) in
                 Postfix {prec = w_prec; arg = base; op = string "where" ^^ blank 1 ^^ fields_doc}
 
             | Cast {castee; coercion} ->
@@ -119,19 +115,23 @@ end = struct
 
             | Convert (_, expr) -> Prefix {prec = app_prec; op = string "?"; arg = expr} 
 
-            | PrimApp {op = pop; universals; arg} ->
-                let op = prefix 4 1 (string "__" ^^ Primop.to_doc pop)
-                    (surround_separate_map 4 0 empty
-                        langle (comma ^^ break 1) rangle
-                        Type.to_doc (Vector.to_list universals)) in
-                Prefix {prec = app_prec; op; arg}
+            | PrimApp {op = pop; universals; args} ->
+                Unary (prefix 4 1
+                    (prefix 4 1 (string "__" ^^ Primop.to_doc pop)
+                        (surround_separate_map 4 0 empty
+                            langle (comma ^^ break 1) rangle
+                            Type.to_doc (Vector.to_list universals)))
+                    (separate_map (break 1)
+                        (to_doc_prec app_prec) (Vector.to_list args)))
 
-            | PrimBranch {op = bop; universals; arg; clauses} ->
-                let op = prefix 4 1 (string "__" ^^ Branchop.to_doc bop)
-                    (surround_separate_map 4 0 empty
-                        (break 1 ^^ langle) (comma ^^ break 1) (rangle ^^ break 1)
-                        (Type.to_doc) (Vector.to_list universals)) in
-                let op = prefix 4 1 op (to_doc_prec app_prec arg) in
+            | PrimBranch {op = bop; universals; args; clauses} ->
+                let op = prefix 4 1
+                    (prefix 4 1 (string "__" ^^ Branchop.to_doc bop)
+                        (surround_separate_map 4 0 empty
+                            langle (comma ^^ break 1) rangle
+                            Type.to_doc (Vector.to_list universals)))
+                    (separate_map (break 1)
+                        (to_doc_prec app_prec) (Vector.to_list args)) in
                 Unary (prefix 4 1 op (surround_separate_map 0 1 (braces bar)
                     lbrace (break 1) rbrace
                     prim_clause_to_doc (Vector.to_list clauses)))
@@ -143,13 +143,12 @@ end = struct
                         (Vector1.to_list (Vector1.map Type.to_doc existentials))) in
                 Prefix {prec = pack_prec; op; arg = impl}
 
+            | Fst arg -> Postfix {prec = dot_prec; arg; op = dot ^^ string "0"}
+            | Snd arg -> Postfix {prec = dot_prec; arg; op = dot ^^ string "1"}
+
             | Select {selectee; label} ->
                 Postfix {prec = dot_prec; arg = selectee
                     ; op = dot ^^ string (Option.get (Name.basename label))}
-
-            | Focus {focusee; index} ->
-                Postfix {prec = dot_prec; arg = focusee
-                    ; op = dot ^^ string (Int.to_string index)}
 
             | Fn {universals; param; body} ->
                 Unary (string "fun"
@@ -162,14 +161,14 @@ end = struct
             | Let {defs; body} ->
                 Unary (surround 4 1 (string "let" ^^ blank 1 ^^ lbrace)
                     (separate_map (semi ^^ hardline)
-                        Stmt.to_doc (Array1.to_list defs)
+                        Stmt.to_doc (Vector1.to_list defs)
                     ^^ semi ^^ hardline ^^ to_doc body)
                     rbrace)
 
             | Letrec {defs; body} ->
                 Unary (surround 4 1 (string "letrec" ^^ blank 1 ^^ lbrace)
                     (separate_map (semi ^^ hardline)
-                        Stmt.def_to_doc (Array1.to_list defs)
+                        Stmt.def_to_doc (Vector1.to_list defs)
                     ^^ semi ^^ hardline ^^ to_doc body)
                     rbrace)
 
@@ -204,18 +203,18 @@ end = struct
                     start (break 1) rbrace
                     clause_to_doc (Vector.to_list clauses))
 
+            | Pair {fst; snd} ->
+                Unary (surround_separate_map 4 0 (parens empty)
+                    lparen (comma ^^ break 1) rparen
+                    to_doc [fst; snd])
+
             | Record fields ->
                 Unary (surround_separate_map 4 0 (braces empty)
                     lbrace (semi ^^ break 1) rbrace
                     (fun (label, field) ->
                         infix 4 1 equals (string (Option.get (Name.basename label)))
                             (to_doc field))
-                    (Array.to_list fields))
-
-            | Tuple exprs ->
-                Unary (surround_separate_map 4 0 (parens empty)
-                    lparen (comma ^^ break 1) rparen
-                    to_doc (Array.to_list exprs))
+                    (Vector.to_list fields))
 
             | Proxy typ -> Unary (brackets (Type.to_doc typ))
 
@@ -261,10 +260,10 @@ end = struct
         let open PPrint in
         match pat.pterm with
         | View (f, pat) -> infix 4 1 (string "<-") (pat_to_doc pat) (to_doc f)
-        | TupleP pats ->
+        | PairP {fst; snd} ->
             surround_separate_map 4 0 (parens empty)
                 lparen (comma ^^ break 1) rparen
-                (pat_to_doc) (Vector.to_list pats)
+                pat_to_doc [fst; snd]
         | ProxyP typ -> brackets (Type.to_doc typ)
         | VarP var -> parens (def_to_doc var)
         | WildP name -> underscore ^^ Name.to_doc name
@@ -274,29 +273,26 @@ end = struct
 
     let fresh_var plicity vtyp = var plicity (Name.fresh ()) vtyp
 
-    let at pos typ term = {term; pos; typ; parent = None}
+    let at pos typ term = {term; pos; typ}
 
     let pat_at ppos ptyp pterm = {pterm; ppos; ptyp}
 
-    let tuple vals = Tuple vals
-
-    let focus focusee index = Focus {focusee; index}
     let fn universals param body = Fn {universals; param; body}
     let app callee universals arg = App {callee; universals; arg}
-    let primapp op universals arg = PrimApp {op; universals; arg}
-    let primbranch op universals arg clauses = PrimBranch {op; universals; arg; clauses}
+    let primapp op universals args = PrimApp {op; universals; args}
+    let primbranch op universals args clauses = PrimBranch {op; universals; args; clauses}
 
-    let let' defs body = match Array1.of_array defs with
+    let let' defs body = match Vector1.of_vector defs with
         | Some defs -> (match body.term with
-            | Let {defs = defs'; body} -> Let {defs = Array1.append defs defs'; body}
+            | Let {defs = defs'; body} -> Let {defs = Vector1.append defs defs'; body}
             | _ -> Let {defs; body})
         | None -> body.term
 
-    let letrec defs body = match Array1.of_array defs with
+    let letrec defs body = match Vector1.of_vector defs with
         | Some defs -> (match body.term with
             | Letrec {defs = defs'; body} ->
                 (* NOTE: expects alphatization, would be unsound otherwise: *)
-                Letrec {defs = Array1.append defs defs'; body}
+                Letrec {defs = Vector1.append defs defs'; body}
             | _ -> Letrec {defs; body})
         | None -> body.term
 
@@ -305,7 +301,6 @@ end = struct
     let axiom axioms body = match Vector1.of_vector axioms with
         | Some axioms -> Axiom {axioms; body}
         | None -> body.term
-
     let cast castee = function
         | Type.Refl _ -> castee.term
         | coercion -> Cast {castee; coercion}
@@ -313,34 +308,29 @@ end = struct
     let pack existentials impl = match Vector1.of_vector existentials with
         | Some existentials -> Pack {existentials; impl}
         | None -> impl.term
-
     let unpack existentials var value body = Unpack {existentials; var; value; body}
-    let record fields = Record fields
 
-    let where base fields = match Array1.of_array fields with
+    let pair fst snd = Pair {fst; snd}
+    let fst arg = Fst arg
+    let snd arg = Snd arg
+
+    let record fields = Record fields
+    let where base fields = match Vector1.of_vector fields with
         | Some fields -> Where {base; fields}
         | None -> base.term
-
     let select selectee label = Select {selectee; label}
+
     let proxy t = Proxy t
+
     let const c = Const c
+
     let use v = Use v
+
     let convert f expr = Convert (f, expr)
 
     let map_children f (expr : t) =
         let term = expr.term in
         let term' = match term with
-            | Tuple vals ->
-                let vals' = Array.map f vals in
-                let noop = Stream.from (Source.zip_with (==)
-                        (Source.array vals') (Source.array vals))
-                    |> Stream.into (Sink.all ~where: Fun.id) in
-                if noop then term else tuple vals'
-
-            | Focus {focusee; index} ->
-                let focusee' = f focusee in
-                if focusee' == focusee then term else focus focusee' index
-
             | Fn {universals; param; body} ->
                 let body' = f body in
                 if body' == body then term else fn universals param body'
@@ -352,24 +342,24 @@ end = struct
                 then term
                 else app callee' universals arg'
 
-            | PrimApp {op; universals; arg} ->
-                let arg' = f arg in
-                if arg' == arg then term else primapp op universals arg'
+            | PrimApp {op; universals; args} ->
+                let args' = Vector.map_children f args in
+                if args' == args then term else primapp op universals args'
 
-            | PrimBranch {op; universals; arg; clauses} ->
-                let arg' = f arg in
+            | PrimBranch {op; universals; args; clauses} ->
+                let args' = Vector.map_children f args in
                 let clauses' = clauses |> Vector.map (fun {res; prim_body} ->
                     {res; prim_body = f prim_body}) in
-                if arg' == arg
+                if args' == args
                     && Stream.from (Source.zip_with (fun clause' clause ->
                             clause'.prim_body == clause.prim_body)
                         (Vector.to_source clauses') (Vector.to_source clauses))
                     |> Stream.into (Sink.all ~where: Fun.id)
                 then term
-                else primbranch op universals arg' clauses'
+                else primbranch op universals args' clauses'
 
             | Let {defs; body} ->
-                let defs' = Array1.map (fun stmt -> match stmt with
+                let defs' = Vector1.map (fun stmt -> match stmt with
                     | Stmt.Def (pos, var, expr) ->
                         let expr' = f expr in
                         if expr' == expr then stmt else Def (pos, var, expr')
@@ -380,23 +370,23 @@ end = struct
                 let body' = f body in
                 if body' == body
                     && Stream.from (Source.zip_with (==)
-                        (Array1.to_source defs') (Array1.to_source defs))
+                        (Vector1.to_source defs') (Vector1.to_source defs))
                     |> Stream.into (Sink.all ~where: Fun.id)
                 then term
-                else let' (Array1.to_array defs') body'
+                else let' (Vector1.to_vector defs') body'
 
             | Letrec {defs; body} ->
-                let defs' = Array1.map (fun ((pos, var, expr) as def) ->
+                let defs' = Vector1.map (fun ((pos, var, expr) as def) ->
                     let expr' = f expr in
                     if expr' == expr then def else (pos, var, expr')
                 ) defs in
                 let body' = f body in
                 if body' == body
                     && Stream.from (Source.zip_with (==)
-                        (Array1.to_source defs') (Array1.to_source defs))
+                        (Vector1.to_source defs') (Vector1.to_source defs))
                     |> Stream.into (Sink.all ~where: Fun.id)
                 then term
-                else letrec (Array1.to_array defs') body'
+                else letrec (Vector1.to_vector defs') body'
 
             | LetType {typedefs; body} ->
                 let body' = f body in
@@ -421,10 +411,22 @@ end = struct
                 then term
                 else unpack existentials var value' body'
 
+            | Pair {fst; snd} ->
+                let fst' = f fst in
+                let snd' = f snd in
+                if fst' == fst && snd' == snd then term else Pair {fst = fst'; snd = snd'}
+
+            | Fst arg ->
+                let arg' = f arg in
+                if arg' == arg then term else Fst arg'
+            | Snd arg ->
+                let arg' = f arg in
+                if arg' == arg then term else Snd arg'
+
             | Record fields ->
-                let fields' = Array.map (fun (label, field) -> (label, f field)) fields in
+                let fields' = Vector.map (fun (label, field) -> (label, f field)) fields in
                 let noop = Stream.from (Source.zip_with (fun (_, expr') (_, expr) -> expr' == expr)
-                        (Source.array fields') (Source.array fields))
+                        (Vector.to_source fields') (Vector.to_source fields))
                     |> Stream.into (Sink.all ~where: Fun.id) in
                 if noop then term else record fields'
 
@@ -435,13 +437,13 @@ end = struct
 
             | Where {base; fields} ->
                 let base' = f base in
-                let fields' = Array1.map (fun (label, field) -> (label, f field)) fields in
+                let fields' = Vector1.map (fun (label, field) -> (label, f field)) fields in
                 if base' == base
                     && Stream.from (Source.zip_with (fun (_, expr') (_, expr) -> expr' == expr)
-                        (Array1.to_source fields') (Array1.to_source fields))
+                        (Vector1.to_source fields') (Vector1.to_source fields))
                     |> Stream.into (Sink.all ~where: Fun.id)
                 then term
-                else where base' (Array1.to_array fields')
+                else where base' (Vector1.to_vector fields')
 
             | Select {selectee; label} ->
                 let selectee' = f selectee in
@@ -471,13 +473,10 @@ end = struct
                 let child' = f child in
                 if child' == child then term else View (g, child')
 
-            | TupleP pats ->
-                let pats' = Vector.map f pats in
-                if Stream.from (Source.zip_with (fun pat pat' -> pat == pat')
-                        (Vector.to_source pats) (Vector.to_source pats'))
-                    |> Stream.into (Sink.all ~where: Fun.id)
-                then term
-                else TupleP pats'
+            | PairP {fst; snd} ->
+                let fst' = f fst in
+                let snd' = f snd in
+                if fst' == fst && snd' == snd then term else PairP {fst = fst'; snd = snd'}
 
             | ProxyP _ | ConstP _ | VarP _ | WildP _ -> term in
         if term' == term then pat else {pat with pterm = term'}
@@ -504,11 +503,11 @@ and Coercer : FcSigs.COERCER with type expr = Expr.t = struct
     let apply f (expr : Expr.t) = match expr.term with
         | Use _ | Const _ -> f expr
         | _ ->
-            let {Expr.term = _; pos; typ; parent = _} = expr in
+            let {Expr.term = _; pos; typ} = expr in
             let var = Expr.fresh_var Explicit typ in
             let pat = Expr.pat_at pos typ (VarP var) in
             let body = f (Expr.at pos typ (Expr.use var)) in
-            Expr.at pos typ (Expr.let' [|Def (pos, pat, expr)|] body)
+            Expr.at pos typ (Expr.let' (Vector.singleton (Stmt.Def (pos, pat, expr))) body)
 
     let apply_opt f expr = match f with
         | Some f -> apply f expr

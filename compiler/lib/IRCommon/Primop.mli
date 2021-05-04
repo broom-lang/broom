@@ -1,4 +1,5 @@
 type t =
+    | Pair | Fst | Snd
     | CellNew | CellInit | CellGet
     | Int | String | Type
     | TypeOf

@@ -63,9 +63,7 @@ let find_val (env : t) span name =
             | Some {vtyp = typ; plicity = _; name = _} ->
                 let namexpr = FExpr.at span (Prim String)
                     (FExpr.const (String (Name.to_string name))) in
-                FExpr.primapp GlobalGet (Vector.singleton typ)
-                    (FExpr.at span (Tuple (Vector.singleton (T.Prim String)))
-                        (FExpr.tuple [|namexpr|]))
+                FExpr.primapp GlobalGet (Vector.singleton typ) (Vector.singleton namexpr)
                 |> FExpr.at span typ
             | None ->
                 report_error env ({v = Unbound name; pos = span});

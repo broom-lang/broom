@@ -59,12 +59,12 @@ let schedule_program program params =
             match parent with
             | Some parent -> (match term with
                 | Param {label; index} -> Builder.add_param builder label index id; id
-                | Focus {focusee; index} ->
+                (*| Focus {focusee; index} ->
                     (* dont' `rename` via recursion, that always uses 0 as index: *)
                     let focusee = emit_use' focusee in
                     let id' = rename focusee index |> Option.get in
                     add_renaming id id';
-                    id'
+                    id'*)
                 | PrimApp {op; universals; args} when not (Primop.is_pure op) ->
                     emit_cont parent;
                     Cps.Expr.iter_labels' emit_cont term;
@@ -73,11 +73,9 @@ let schedule_program program params =
                     let term = Cps.Expr.PrimApp {op; universals
                         ; args = Vector.sub args 1 (Vector.length args - 1)} in
                     let defs = match typ with
-                        | Tuple typs when Vector.length typs = 2 ->
-                            (match Vector.get typs 1 with
-                            | Tuple typs' ->
-                                assert (Vector.length typs' = 0);
-                                Vector.singleton state
+                        | Pair {fst = _; snd} ->
+                            (match snd with
+                            | Prim Unit -> Vector.singleton state
                             | _ -> Vector.of_list [state; id])
                         | _ -> bug (Some pos) ~msg: "invalid impure primop" in
                     add_renamings id defs;

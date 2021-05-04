@@ -22,6 +22,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
     let subtype = Constraints.subtype
 
     let const_typ (c : Const.t) = T.Prim (match c with
+        | Unit -> Unit
         | Int _ -> Int
         | String _ -> String)
 
@@ -33,18 +34,17 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             check_pat ctrs is_global is_fwd env plicity typ pat
 
         | Tuple pats ->
-            let pats' = CCVector.create () in
-            let vars = CCVector.create () in
-            let env = Vector.fold (fun env pat ->
-                let (pat, env, pat_vars) = typeof_pat ctrs is_global is_fwd env plicity pat in
-                CCVector.push pats' pat;
-                Vector.iter (CCVector.push vars) pat_vars;
-                env
-            ) env pats in
-            let pats = Vector.build pats' in
-            let vars = Vector.build vars in
-            let typs = Vector.map (fun (pat : FExpr.pat) -> pat.ptyp) pats in
-            (FExpr.pat_at pat.pos (Tuple typs) (TupleP pats), env, vars)
+            (match Vector.length pats with
+            | 0 -> (FExpr.pat_at pat.pos (Prim Unit) (ConstP Unit), env, Vector.empty)
+            | 2 ->
+                let (fst_pat, env, fst_vars) =
+                    typeof_pat ctrs is_global is_fwd env plicity (Vector.get pats 0) in
+                let (snd_pat, env, snd_vars) =
+                    typeof_pat ctrs is_global is_fwd env plicity (Vector.get pats 1) in
+                ( FExpr.pat_at pat.pos (Pair {fst = fst_pat.ptyp; snd = snd_pat.ptyp})
+                    (PairP {fst = fst_pat; snd = snd_pat})
+                , env, Vector.append fst_vars snd_vars )
+            | _ -> unreachable (Some pat.pos))
 
         | Proxy carrie ->
             let carrie = K.elaborate env {v = carrie; pos = pat.pos} in
@@ -122,20 +122,35 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         | Let (defs, body) ->
             let (defs, env) = check_defs ctrs env (Vector1.to_vector defs) in
             let {TS.term = body; eff} = typeof ctrs env body in
-            {term = FExpr.at expr.pos body.typ (FExpr.letrec (Vector.to_array defs) body); eff}
+            {term = FExpr.at expr.pos body.typ (FExpr.letrec defs body); eff}
 
         | Ann (expr, super) ->
             let super = K.check env (Env.some_type_kind env false) super in
             check ctrs env super expr (* FIXME: handle abstract types, abstract type generation effect *)
 
         | Tuple exprs ->
-            let eff = T.Uv (Env.uv env false T.aRow) in
-            let exprs = exprs |> Vector.map (fun expr ->
-                let {TS.term; eff = eff'} = typeof ctrs env expr in
-                ignore (Constraints.unify ctrs expr.pos env eff' eff);
-                term) in
-            let typ = T.Tuple (Vector.map (fun {FExpr.typ; _} -> typ) exprs) in
-            {term = FExpr.at expr.pos typ (FExpr.tuple (Vector.to_array exprs)); eff}
+            (match Vector.length exprs with
+            | 0 -> {term = FExpr.at expr.pos (Prim Unit) (FExpr.const Unit); eff = EmptyRow}
+            | 2 ->
+                let eff = T.Uv (Env.uv env false T.aRow) in
+                let {TS.term = fst; eff = fst_eff} = typeof ctrs env (Vector.get exprs 0) in
+                ignore (Constraints.unify ctrs expr.pos env fst_eff eff);
+                let {TS.term = snd; eff = snd_eff} = typeof ctrs env (Vector.get exprs 1) in
+                ignore (Constraints.unify ctrs expr.pos env snd_eff eff);
+                { term = FExpr.at expr.pos (Pair {fst = fst.typ; snd = snd.typ}) (FExpr.pair fst snd)
+                ; eff}
+            | _ -> unreachable (Some expr.pos))
+
+        | Focus (focusee, index) ->
+            let fst_typ = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+            let snd_typ = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+            let focusee_typ = T.Pair {fst = fst_typ; snd = snd_typ} in
+            let {TS.term = focusee; eff} = check ctrs env focusee_typ focusee in
+
+            (match index with
+            | 0 -> {term = FExpr.at expr.pos fst_typ (FExpr.fst focusee); eff}
+            | 1 -> {term = FExpr.at expr.pos snd_typ (FExpr.snd focusee); eff}
+            | _ -> unreachable (Some expr.pos))
 
         | Record stmts ->
             let fields = CCVector.create () in
@@ -148,7 +163,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
                     T.With {base; label; field = term.typ}
                 | _ -> bug (Some expr.pos) ~msg: "bad record field reached typechecker"
             ) T.EmptyRow stmts) in
-            {term = FExpr.at expr.pos typ (FExpr.record (CCVector.to_array fields)); eff }
+            {term = FExpr.at expr.pos typ (FExpr.record (Vector.build fields)); eff }
 
         | Select (selectee, label) -> (* TODO: lacks-constraint: *)
             let base = T.Uv (Env.uv env false T.aRow) in
@@ -207,7 +222,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             (fun error -> errors := error :: !errors) in
 
         let (defs, env) = check_defs ctrs env defs in
-        let {TS.term = main; eff} = check ctrs env (T.Tuple Vector.empty) main in
+        let {TS.term = main; eff} = check ctrs env (Prim Unit) main in
 
         {TS.term = {Fc.Program.type_fns = Env.type_fns env; defs; main}; eff}
 
@@ -220,10 +235,9 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             vars |> Vector.iter (fun ({FExpr.vtyp = typ; _} as var) ->
                 let namexpr = FExpr.at span (Prim String)
                     (FExpr.const (String (Name.to_string var.name))) in
-                let global_init = FExpr.at span (Tuple Vector.empty)
+                let global_init = FExpr.at span (Prim Unit)
                     (FExpr.primapp GlobalSet (Vector.singleton typ)
-                        (FExpr.at span (Tuple Vector.empty)
-                        (FExpr.tuple [|namexpr; FExpr.at span typ (FExpr.use var)|]))) in
+                        (Vector.of_array_unsafe [|namexpr; FExpr.at span typ (FExpr.use var)|])) in
                 CCVector.push stmts' (Expr global_init));
             (env', eff)
 
@@ -249,14 +263,14 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             env
         ) env stmts in
 
-        let stmts = CCVector.to_array stmts' in
+        let stmts = Vector.build stmts' in
         let main =
             let (stmts, body) =
-                if Array.length stmts > 0
-                then match Array.get stmts (Array.length stmts - 1) with
-                    | Expr expr -> (Array.sub stmts 0 (Array.length stmts - 1), expr)
-                    | _ -> (stmts, FExpr.at span (Tuple Vector.empty) (FExpr.tuple [||]))
-                else (stmts, FExpr.at span (Tuple Vector.empty) (FExpr.tuple [||])) in
+                if Vector.length stmts > 0
+                then match Vector.get stmts (Vector.length stmts - 1) with
+                    | Expr expr -> (Vector.sub stmts 0 (Vector.length stmts - 1), expr)
+                    | _ -> (stmts, FExpr.at span (Prim Unit) (FExpr.const Unit))
+                else (stmts, FExpr.at span (Prim Unit) (FExpr.const Unit)) in
             FExpr.at span body.typ (FExpr.let' stmts body) in
         ( { TS.term = { Fc.Program.type_fns = Vector.empty (* FIXME *)
                        ; defs = Vector.empty; main }

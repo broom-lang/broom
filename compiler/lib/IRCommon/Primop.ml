@@ -1,4 +1,5 @@
 type t =
+    | Pair | Fst | Snd
     | CellNew | CellInit | CellGet
     | Int | String | Type
     | TypeOf (* TODO: get rid of this? *)
@@ -6,6 +7,9 @@ type t =
     | GlobalSet | GlobalGet
 
 let of_string = function
+    | "pair" -> Some Pair
+    | "fst" -> Some Fst
+    | "snd" -> Some Snd
     | "cellNew" -> Some CellNew
     | "cellInit" -> Some CellInit
     | "cellGet" -> Some CellGet
@@ -19,6 +23,9 @@ let of_string = function
     | _ -> None
 
 let to_string = function
+    | Pair -> "pair"
+    | Fst -> "fst"
+    | Snd -> "snd"
     | CellNew -> "cellNew"
     | CellInit -> "cellInit"
     | CellGet -> "cellGet"
@@ -32,7 +39,10 @@ let to_string = function
 
 let grammar =
     let open Grammar in let open Grammar.Infix in
-    text "cellNew" *> pure CellNew
+    text "pair" *> pure Pair
+    <|> text "fst" *> pure Fst
+    <|> text "snd" *> pure Snd
+    <|> text "cellNew" *> pure CellNew
     <|> text "cellInit" *> pure CellInit
     <|> text "cellGet" *> pure CellGet
     <|> text "int" *> pure Int
@@ -46,6 +56,7 @@ let grammar =
 let to_doc = PPrinter.of_grammar grammar
 
 let is_pure = function
+    | Pair | Fst | Snd
     | CellNew | Int | String | Type | TypeOf -> true
     | CellInit | CellGet | Import (* ? *) | GlobalSet | GlobalGet -> false
 

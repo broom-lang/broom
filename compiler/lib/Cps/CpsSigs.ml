@@ -9,9 +9,7 @@ module type TYPE = sig
 
     type t =
         | Exists of kind Vector1.t * t
-        | Tuple of t Vector.t
-        | PromotedTuple of t Vector.t
-        | PromotedArray of t Vector.t
+        | Pair of {fst : t; snd : t}
         | Pi of {universals : kind Vector.t; domain : t Vector.t}
         | Record of t
         | With of {base : t; label : Name.t; field : t}
@@ -38,8 +36,6 @@ module type EXPR = sig
 
     type t' =
         | PrimApp of {op : Primop.t; universals : Type.t Vector.t; args : Id.t Vector.t}
-        | Tuple of Id.t Vector.t
-        | Focus of {focusee : Id.t; index : int}
         | Record of (Name.t * Id.t) Vector.t
         | With of {base : Id.t; label: Name.t; field : Id.t}
         | Where of {base : Id.t; fields : (Name.t * Id.t) Vector.t}

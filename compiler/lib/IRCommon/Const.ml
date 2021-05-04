@@ -1,4 +1,5 @@
 type t =
+    | Unit
     | Int of int
     | String of string
 
@@ -19,7 +20,8 @@ let grammar =
             (fun cs -> Some (List.to_seq cs |> String.of_seq))
             (fun s -> Some (String.to_seq s |> List.of_seq)) in
         token '"' *> (f <$> cs) <* token '"' in
-    int <$> Grammar.int
+    Grammar.(parens (pure Unit))
+    <|> (int <$> Grammar.int)
     <|> (string <$> strings)
 
 let to_doc = PPrinter.of_grammar grammar

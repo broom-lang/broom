@@ -18,11 +18,9 @@ module Make (K : TS.KINDING) = struct
     let check_uv_assignee span env uv level max_uv_level typ =
         let rec check : T.t -> unit = function
             | Exists {existentials = _; body} -> check body
-            | PromotedArray typs -> Vector.iter check typs
-            | PromotedTuple typs -> Vector.iter check typs
-            | Tuple typs -> Vector.iter check typs
             | Pi {universals = _; domain; eff; codomain} -> check domain; check eff; check codomain
             | Impli {universals = _; domain; codomain} -> check domain; check codomain
+            | Pair {fst; snd} -> check fst; check snd
             | Record row -> check row
             | With {base; label = _; field} -> check base; check field
             | EmptyRow -> ()
@@ -93,9 +91,9 @@ module Make (K : TS.KINDING) = struct
                 todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
                 ^ Util.doc_to_string (T.to_doc super)))
 
-        | (Tuple _, super) -> (match super with
+        | (Pair _, super) -> (match super with
             | Uv _ -> None
-            | Tuple _ -> (* covariant *)
+            | Pair _ -> (* covariant *)
                 todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
                 ^ Util.doc_to_string (T.to_doc super))
             | _ ->
@@ -116,12 +114,6 @@ module Make (K : TS.KINDING) = struct
         | (EmptyRow, super) ->
             ignore (solve_unify_whnf ctrs span env sub super);
             Some (Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "EmptyRow coercion called")))
-        | (PromotedArray _, super) ->
-            ignore (solve_unify_whnf ctrs span env sub super);
-            Some (Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "PromotedArray coercion called")))
-        | (PromotedTuple _, super) ->
-            ignore (solve_unify_whnf ctrs span env sub super);
-            Some (Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "PromotedTuple coercion called")))
         | (Fn _, super) ->
             ignore (solve_unify_whnf ctrs span env sub super);
             Some (Some (Coercer.coercer (fun _ -> bug (Some span) ~msg: "Fn coercion called")))
@@ -204,22 +196,16 @@ module Make (K : TS.KINDING) = struct
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
 
-        | (Tuple ltyps, rtyp) -> (match rtyp with
-            | Tuple rtyps ->
-                if Vector.length ltyps = Vector.length rtyps then begin
-                    let coercions = CCVector.create () in
-                    let noop = Vector.fold2 (fun noop ltyp rtyp ->
-                        let coercion = unify ctrs span env ltyp rtyp in
-                        CCVector.push coercions coercion;
-                        noop && Option.is_none coercion
-                    ) true ltyps rtyps in
-                    if not noop
-                    then Some (TupleCo (coercions |> CCVector.mapi (fun i -> function
-                        | Some coercion -> coercion
-                        | None -> T.Refl (Vector.get rtyps i)
-                    ) |> Vector.build))
-                    else None
-                end else failwith "~ tuple lengths"
+        | (Pair {fst = lfst; snd = lsnd}, rtyp) -> (match rtyp with
+            | Pair {fst = rfst; snd = rsnd} ->
+                let fst_co = unify ctrs span env lfst rfst in
+                let snd_co = unify ctrs span env lsnd rsnd in
+
+                (match (fst_co, snd_co) with
+                | (Some fst_co, Some snd_co) -> Some (PairCo (fst_co, snd_co))
+                | (Some fst_co, None) -> Some (PairCo (fst_co, Refl rsnd))
+                | (None, Some snd_co) -> Some (PairCo (Refl rfst, snd_co))
+                | (None, None) -> None)
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
@@ -240,46 +226,6 @@ module Make (K : TS.KINDING) = struct
             | Proxy rcarrie ->
                 let+ carrie_co = unify ctrs span env lcarrie rcarrie in
                 ProxyCo carrie_co
-            | _ ->
-                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
-                None)
-
-        | (PromotedArray ltyps, rtyp) -> (match rtyp with
-            | PromotedArray rtyps ->
-                if Vector.length ltyps = Vector.length rtyps then begin
-                    let coercions = CCVector.create () in
-                    let noop = Vector.fold2 (fun noop ltyp rtyp ->
-                        let coercion = unify ctrs span env ltyp rtyp in
-                        CCVector.push coercions coercion;
-                        noop && Option.is_none coercion
-                    ) true ltyps rtyps in
-                    if not noop
-                    then Some (T.PromotedArrayCo (coercions |> CCVector.mapi (fun i -> function
-                        | Some coercion -> coercion
-                        | None -> T.Refl (Vector.get rtyps i)
-                    ) |> Vector.build))
-                    else None
-                end else failwith "~ promoted array lengths"
-            | _ ->
-                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
-                None)
-
-        | (PromotedTuple ltyps, rtyp) -> (match rtyp with
-            | PromotedTuple rtyps ->
-                if Vector.length ltyps = Vector.length rtyps then begin
-                    let coercions = CCVector.create () in
-                    let noop = Vector.fold2 (fun noop ltyp rtyp ->
-                        let coercion = unify ctrs span env ltyp rtyp in
-                        CCVector.push coercions coercion;
-                        noop && Option.is_none coercion
-                    ) true ltyps rtyps in
-                    if not noop
-                    then Some (PromotedTupleCo (coercions |> CCVector.mapi (fun i -> function
-                        | Some coercion -> coercion
-                        | None -> T.Refl (Vector.get rtyps i)
-                    ) |> Vector.build))
-                    else None
-                end else failwith "~ promoted values lengths"
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)

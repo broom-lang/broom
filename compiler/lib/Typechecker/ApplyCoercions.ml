@@ -31,7 +31,7 @@ let rec apply_pat_cos pat =
     let apply_co : Expr.pat -> Expr.pat = fun pat -> match pat.pterm with
         | View (f, arg) -> {pat with pterm = View (apply_expr_cos f, arg)}
 
-        | TupleP _ | ProxyP _
+        | PairP _ | ProxyP _
         | ConstP _
         | VarP _ | WildP _ -> Expr.map_pat_children apply_pat_cos pat in
 

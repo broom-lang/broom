@@ -248,7 +248,8 @@ let to_js program =
 
     let emit_const : Const.t -> Js.expr = function
         | Int n -> Js.Int n
-        | String s -> Js.String s in
+        | String s -> Js.String s
+        | Unit -> unreachable None ~msg: "() in Cfg" in
 
     let rec emit_transfer parent stmts (transfer : Transfer.t) =
         let emit_expr pos : Expr.t -> Js.expr = function
@@ -308,9 +309,7 @@ let to_js program =
             | Pack {existentials = _; impl} -> emit_use impl
             | Unpack packed -> emit_use packed
 
-            | Param _ -> bug (Some pos) ~msg: "Param in Cfg"
-            | Tuple _ -> bug (Some pos) ~msg: "Tuple in Cfg"
-            | Focus _ -> bug (Some pos) ~msg: "Focus in Cfg" in
+            | Param _ -> bug (Some pos) ~msg: "Param in Cfg" in
 
         let emit_clause ({pat; dest} : Transfer.clause) =
             let emit_pat : Transfer.Pattern.t -> Js.expr option = function

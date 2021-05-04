@@ -45,23 +45,23 @@ let exit = Fun.id
 let run (ns : Namespace.t) program =
     let rec eval : Env.t -> cont -> expr -> Value.t
     = fun env k expr -> match expr.term with
-        | Tuple exprs -> (match Array.length exprs with
-            | 0 -> k (Tuple Vector.empty)
-            | len ->
-                let rec eval_values i vs v =
-                    let i = i + 1 in
-                    let vals = Vector.append vs (Vector.singleton v) in
-                    if i < len
-                    then eval env (eval_values i vals) (Array.get exprs i)
-                    else k (Tuple vals) in
-                eval env (eval_values 0 Vector.empty) (Array.get exprs 0))
+        | Pair {fst; snd} ->
+            let k fst =
+                let k snd = k (Pair {fst; snd}) in
+                eval env k snd in
+            eval env k fst
 
-        | Focus {focusee; index} ->
+        | Fst arg ->
             let k : cont = function
-                | Tuple vs when index < Vector.length vs -> k (Vector.get vs index)
-                | Tuple _ -> bug (Some expr.pos) ~msg: "tuple index out of bounds"
-                | _ -> bug (Some expr.pos) ~msg: "tuple-indexing non-tuple at runtime" in
-            eval env k focusee
+                | Pair {fst; snd = _} -> k fst
+                | _ -> bug (Some expr.pos) ~msg: "fst of non-pair at runtime" in
+            eval env k arg
+
+        | Snd arg ->
+            let k : cont = function
+                | Pair {fst = _; snd} -> k snd
+                | _ -> bug (Some expr.pos) ~msg: "fst of non-pair at runtime" in
+            eval env k arg
 
         | Fn {universals = _; param = {name; _}; body} ->
             k (Fn (fun k v ->
@@ -76,41 +76,65 @@ let run (ns : Namespace.t) program =
                 | _ -> bug (Some expr.pos) ~msg: "tried to call non-fn at runtime" in
             eval env eval_arg callee
 
-        | PrimApp {op; universals = _; arg} ->
-            let apply_op (arg : Value.t) : Value.t = match op with
+        | PrimApp {op; universals = _; args} ->
+            let apply_op (args : Value.t Vector.t) : Value.t = match op with
+                | Pair ->
+                    if Vector.length args = 2
+                    then Pair {fst = Vector.get args 0; snd = Vector.get args 1}
+                    else bug (Some expr.pos) ~msg: "invalid primop arg count"
+
+                | Fst ->
+                    if Vector.length args = 1
+                    then (match Vector.get args 0 with
+                        | Pair {fst; snd = _} -> k fst
+                        | _ -> bug (Some expr.pos) ~msg: ".0 on non-pair at runtime")
+                    else bug (Some expr.pos) ~msg: "invalid primop arg count"
+
+                | Snd ->
+                    if Vector.length args = 1
+                    then (match Vector.get args 0 with
+                        | Pair {fst = _; snd} -> k snd
+                        | _ -> bug (Some expr.pos) ~msg: ".0 on non-pair at runtime")
+                    else bug (Some expr.pos) ~msg: "invalid primop arg count"
+
                 | CellNew -> k (Cell (ref None))
-                | CellInit -> (match arg with
-                    | Tuple args when Vector.length args = 2 ->
+
+                | CellInit ->
+                    if Vector.length args = 2 then
                         (match (Vector.get args 0, Vector.get args 1) with
                         | (Cell cell, v) -> (match !cell with
-                            | None -> cell := Some v; k (Tuple Vector.empty)
+                            | None -> cell := Some v; k Unit
                             | Some _ ->
                                 bug (Some expr.pos) ~msg: "cellInit on initialized cell at runtime")
                         | _ -> bug (Some expr.pos) ~msg: "cellInit on non-cell at runtime")
-                    | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
-                | CellGet -> (match arg with
-                    | Tuple args when Vector.length args = 1 ->
+                    else bug (Some expr.pos) ~msg: "invalid primop arg count"
+
+                | CellGet ->
+                    if Vector.length args = 1 then
                         (match Vector.get args 0 with
                         | Cell cell -> (match !cell with
                             | Some v -> k v
                             | None ->
                                 bug (Some expr.pos) ~msg: "cellGet on uninitialized cell at runtime")
                         | _ -> bug (Some expr.pos) ~msg: "cellGet on non-cell at runtime")
-                    | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
+                    else bug (Some expr.pos) ~msg: "invalid primop arg count"
+
                 | Int | String | Type | TypeOf -> k Proxy
-                | GlobalSet -> (match arg with
-                    | Tuple args when Vector.length args = 2 ->
+
+                | GlobalSet ->
+                    if Vector.length args = 2 then
                         (match Vector.get args 0 with
                         | String name ->
                             (match Option.bind (Name.parse name) (Namespace.find ns) with
                             | Some var ->
                                 var := Some (Vector.get args 1);
-                                k (Tuple Vector.empty)
+                                k Unit
                             | None -> bug (Some expr.pos) ~msg: ("global " ^ name ^ " not found at runtime"))
                         | _ -> bug (Some expr.pos) ~msg: "globalSet name not a string at runtime")
-                    | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
-                | GlobalGet -> (match arg with
-                    | Tuple args when Vector.length args = 1 ->
+                    else bug (Some expr.pos) ~msg: "invalid primop arg count"
+
+                | GlobalGet ->
+                    if Vector.length args = 1 then
                         (match Vector.get args 0 with
                         | String name ->
                             (match Option.bind (Name.parse name) (Namespace.find ns) with
@@ -122,14 +146,24 @@ let run (ns : Namespace.t) program =
                                         ~msg: ("tried to read uninitialized global " ^ name ^ " at runtime"))
                             | None -> bug (Some expr.pos) ~msg: ("global " ^ name ^ " not found at runtime"))
                         | _ -> bug (Some expr.pos) ~msg: "globalGet name not a string at runtime")
-                    | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
-                | Import -> todo (Some expr.pos) ~msg: "foreign import in interpreter" in
-            eval env apply_op arg
+                    else bug (Some expr.pos) ~msg: "invalid primop arg count"
 
-        | PrimBranch {op; universals = _; arg; clauses = _} -> (* FIXME: use `clauses` *)
-            let apply_op (arg : Value.t) = match op with
-                | IAdd | ISub | IMul | IDiv -> (match arg with
-                    | Tuple args when Vector.length args = 2 ->
+                | Import -> todo (Some expr.pos) ~msg: "foreign import in interpreter" in
+            (match Vector.length args with
+            | 0 -> apply_op Vector.empty
+            | len ->
+                let rec eval_args i vs v =
+                    let i = i + 1 in
+                    let vals = Vector.append vs (Vector.singleton v) in
+                    if i < len
+                    then eval env (eval_args i vals) (Vector.get args i)
+                    else apply_op vals in
+                eval env (eval_args 0 Vector.empty) (Vector.get args 0))
+
+        | PrimBranch {op; universals = _; args; clauses = _} -> (* FIXME: use `clauses` *)
+            let apply_op (args : Value.t Vector.t) = match op with
+                | IAdd | ISub | IMul | IDiv ->
+                    if Vector.length args = 2 then
                         (match (Vector.get args 0, Vector.get args 1) with
                         | (Int a, Int b) -> k (Int (match op with
                             | IAdd -> a + b
@@ -138,9 +172,10 @@ let run (ns : Namespace.t) program =
                             | IDiv -> a / b
                             | _ -> unreachable (Some expr.pos)))
                         | _ -> bug (Some expr.pos) ~msg: "invalid primop args")
-                    | _ -> bug (Some expr.pos) ~msg: "invalid primop arg")
-                | ILt | ILe | IGt | IGe | IEq -> (match arg with
-                    | Tuple args when Vector.length args = 2 ->
+                    else bug (Some expr.pos) ~msg: "invalid primop arg"
+
+                | ILt | ILe | IGt | IGe | IEq ->
+                    if Vector.length args = 2 then
                         (match (Vector.get args 0, Vector.get args 1) with
                         | (Int a, Int b) -> k (Bool (match op with
                             | ILt -> a < b
@@ -150,8 +185,17 @@ let run (ns : Namespace.t) program =
                             | IEq -> Int.equal a b
                             | _ -> unreachable (Some expr.pos)))
                         | _ -> bug (Some expr.pos) ~msg: "invalid primop args")
-                    | _ -> bug (Some expr.pos) ~msg: "invalid primop arg") in
-            eval env apply_op arg
+                    else bug (Some expr.pos) ~msg: "invalid primop arg" in
+            (match Vector.length args with
+            | 0 -> apply_op Vector.empty
+            | len ->
+                let rec eval_args i vs v =
+                    let i = i + 1 in
+                    let vals = Vector.append vs (Vector.singleton v) in
+                    if i < len
+                    then eval env (eval_args i vals) (Vector.get args i)
+                    else apply_op vals in
+                eval env (eval_args 0 Vector.empty) (Vector.get args 0))
 
         | Match {matchee; clauses} -> (match Vector.length clauses with
             | 0 -> match_failure expr.pos
@@ -177,7 +221,7 @@ let run (ns : Namespace.t) program =
         | Let {defs; body} ->
             let env = Env.push env in
             let rec define i =
-                if i < Array1.length defs then match Array1.get defs i with
+                if i < Vector1.length defs then match Vector1.get defs i with
                     | Def (pos, pat, vexpr) -> (match pat with
                         | {pterm = VarP {name; _}; _} ->
                             let k v =
@@ -197,7 +241,7 @@ let run (ns : Namespace.t) program =
 
         | Use {name; _} -> k (Env.find expr.pos env name)
 
-        | Record fields -> (match Array.length fields with
+        | Record fields -> (match Vector.length fields with
             | 0 -> k (Record Name.Map.empty)
             | len ->
                 let rec eval_fields i r label v =
@@ -205,27 +249,27 @@ let run (ns : Namespace.t) program =
                         let i = i + 1 in
                         let r = Name.Map.add label v r in
                         if i < len then begin
-                            let (label, expr) = Array.get fields i in
+                            let (label, expr) = Vector.get fields i in
                             eval env (eval_fields i r label) expr
                         end else k (Record r)
                     end else bug (Some expr.pos) ~msg: "duplicate record fields" in
-                let (label, expr) = Array.get fields 0 in
+                let (label, expr) = Vector.get fields 0 in
                 eval env (eval_fields 0 Name.Map.empty label) expr)
 
         | Where {base; fields} ->
-            let len = Array1.length fields in
+            let len = Vector1.length fields in
             let rec eval_fields i base label v =
                 if Name.Map.mem label base then begin
                     let i = i + 1 in
                     let base = Name.Map.add label v base in
                     if i < len then begin
-                        let (label, expr) = Array1.get fields i in
+                        let (label, expr) = Vector1.get fields i in
                         eval env (eval_fields i base label) expr
                     end else k (Record base)
                 end else bug (Some expr.pos) ~msg: "`where` a new label" in
             let k : cont = function
                 | Record base ->
-                    let (label, expr) = Array1.get fields 0 in
+                    let (label, expr) = Vector1.get fields 0 in
                     eval env (eval_fields 0 base label) expr
                 | _ -> bug (Some expr.pos) ~msg: "`where` to a non-record" in
             eval env k base
@@ -248,8 +292,9 @@ let run (ns : Namespace.t) program =
             eval env k selectee
 
         | Proxy _ -> k Proxy
-        | Const (Int n) -> k (Value.Int n)
-        | Const (String s) -> k (Value.String s)
+        | Const Unit -> k Unit
+        | Const (Int n) -> k (Int n)
+        | Const (String s) -> k (String s)
 
         | Convert _ -> bug (Some expr.pos) ~msg: "uncountered Convert expr node at runtime"
         | Letrec _ -> bug (Some expr.pos) ~msg: "encountered `letrec` at runtime"
@@ -259,13 +304,20 @@ let run (ns : Namespace.t) program =
         | View (_, _) -> todo (Some pat.ppos)
         | VarP {name; _} -> Env.add pat.ppos env name v; then_k ()
         | WildP _ -> then_k ()
+
+        | ConstP Unit -> (match v with
+            | Unit -> then_k ()
+            | _ -> else_k ())
+
         | ConstP (Int n) -> (match v with
             | Int n' when n' = n -> then_k ()
             | _ -> else_k ())
+
         | ConstP (String s) -> (match v with
             | String s' when s' = s -> then_k ()
             | _ -> else_k ())
-        | TupleP _ | ProxyP _ -> unreachable (Some pat.ppos) in
+
+        | PairP _ | ProxyP _ -> unreachable (Some pat.ppos) in
 
     let {type_fns = _; defs; main} : Fc.Program.t = program in
     let pos =
@@ -273,7 +325,7 @@ let run (ns : Namespace.t) program =
           then (let (pos, _, _) = Vector.get defs 0 in fst pos)
           else fst main.pos)
         , snd main.pos ) in
-    let defs = defs |> Vector.to_array |> Array.map (fun def -> Stmt.Def def) in
+    let defs = defs |> Vector.map (fun def -> Stmt.Def def) in
     let expr = Expr.at pos main.typ (Expr.let' defs main) in
     eval Env.empty exit expr
 

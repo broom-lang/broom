@@ -1,4 +1,5 @@
 type t =
+    | Unit
     | Int of int
     | String of string
 

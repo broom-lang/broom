@@ -1,7 +1,8 @@
 type t =
+    | Unit
     | Int | Bool
     | Array | String | Cell
-    | SingleRep (* = *) | Boxed
+    | SingleRep (* = *) | Boxed | UnitRep | PairRep
     | TypeIn | RowOf
 
 val grammar : t Grammar.t
