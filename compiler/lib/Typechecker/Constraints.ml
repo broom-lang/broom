@@ -65,13 +65,6 @@ module Make (K : TS.KINDING) = struct
                 todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
                 ^ Util.doc_to_string (T.to_doc super)))
 
-        | (sub, Pi {universals = super_universals; domain = _; eff = _; codomain = _})
-          when Vector.length super_universals > 0 -> (match sub with
-            | Uv _ -> None
-            | _ ->
-                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
-                ^ Util.doc_to_string (T.to_doc super)))
-
         | (sub, Exists _) -> (match sub with
             | Uv _ -> None
             | _ ->
@@ -84,15 +77,56 @@ module Make (K : TS.KINDING) = struct
                 todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
                 ^ Util.doc_to_string (T.to_doc super)))
 
-        | (Pi {universals = sub_universals; domain = _; eff = _; codomain = _}, super)
-          when Vector.length sub_universals > 0 -> (match super with
-            | Uv _ -> None
-            | _ ->
-                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
-                ^ Util.doc_to_string (T.to_doc super)))
+        | ( Pi {universals = sub_universals; domain = sub_domain; eff = sub_eff
+                ; codomain = sub_codomain}
+          , Pi {universals = super_universals; domain = super_domain; eff = super_eff
+                ; codomain = super_codomain} )
+          when Vector.length sub_universals > 0 || Vector.length super_universals > 0 ->
+            let (env, super_universals, super_domain, super_eff, super_codomain) =
+                Env.push_arrow_skolems env super_universals super_domain super_eff super_codomain in
+            let (uvs, sub_domain, sub_eff, sub_codomain) =
+                Env.instantiate_arrow env sub_universals sub_domain sub_eff sub_codomain in
+
+            let coerce_domain = subtype ctrs span env super_domain sub_domain in
+            (* TODO: row opening à la Koka: *)
+            ignore (unify ctrs span env sub_eff super_eff);
+            let coerce_codomain = subtype ctrs span env sub_codomain super_codomain in
+
+            let sub_universals = Vector.map (fun uv -> T.Uv uv) uvs in
+            let super_universals =
+                Vector.map (fun {T.name; kind; _} -> (name, kind)) super_universals in
+            Some (match (coerce_domain, coerce_codomain) with
+            | (Some coerce_domain, Some coerce_codomain) -> Some (Coercer.coercer (fun expr ->
+                let param = E.fresh_var Explicit super_domain in
+                let arg = Coercer.apply coerce_domain (E.at span super_domain (E.use param)) in
+                let body = E.at span sub_codomain (E.app expr sub_universals arg) in
+                let body = Coercer.apply coerce_codomain body in
+                E.at span super (E.fn super_universals param body)))
+            | (Some coerce_domain, None) -> Some (Coercer.coercer (fun expr ->
+                let param = E.fresh_var Explicit super_domain in
+                let arg = Coercer.apply coerce_domain (E.at span super_domain (E.use param)) in
+                let body = E.at span sub_codomain (E.app expr sub_universals arg) in
+                E.at span super (E.fn super_universals param body)))
+            | (None, Some coerce_codomain) -> Some (Coercer.coercer (fun expr ->
+                let param = E.fresh_var Explicit super_domain in
+                let arg = E.at span super_domain (E.use param) in
+                let body = E.at span sub_codomain (E.app expr sub_universals arg) in
+                let body = Coercer.apply coerce_codomain body in
+                E.at span super (E.fn super_universals param body)))
+            | (None, None) -> None)
+
+        | ( (Pi {universals; domain = _; eff = _; codomain = _}, Uv _)
+          | (Uv _, Pi {universals; domain = _; eff = _; codomain = _}) )
+          when Vector.length universals > 0 -> None
+
+        | (Uv _, _) | (_, Uv _)
+        | (Pi _, _) | (Record _, _) | (Proxy _, _) | (App _, _)
+        | (Bv _, _) | (Ov _, _) | (Prim _, _) ->
+            (* Nothing to instantiate, delegate to unification: *)
+            Some (let+ co = solve_unify_whnf ctrs span env sub super in
+                  Coercer.coercer (fun v -> E.at span super (E.cast v co)))
 
         | (Pair {fst = sub_fst; snd = sub_snd}, super) -> (match super with
-            | Uv _ -> None
             | Pair {fst = super_fst; snd = super_snd} -> (* covariant *)
                 let fst_co = subtype ctrs span env sub_fst super_fst in
                 let snd_co = subtype ctrs span env sub_snd super_snd in
@@ -115,13 +149,6 @@ module Make (K : TS.KINDING) = struct
             | _ ->
                 Env.report_error env {v = Subtype (sub, super); pos = span};
                 None)
-
-        | (Uv _, _) | (_, Uv _)
-        | (Pi _, _) | (Record _, _) | (Proxy _, _) | (App _, _)
-        | (Bv _, _) | (Ov _, _) | (Prim _, _) ->
-            (* Nothing to instantiate, delegate to unification: *)
-            Some (let+ co = solve_unify_whnf ctrs span env sub super in
-                  Coercer.coercer (fun v -> E.at span super (E.cast v co)))
 
         (* TODO: Should these be outright unreachable?: *)
         | (With _, super) ->

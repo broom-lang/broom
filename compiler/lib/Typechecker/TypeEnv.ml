@@ -11,6 +11,7 @@ type error_handler = TypeError.t -> unit
 
 type scope =
     | Hoisting of T.ov list Tx.Ref.t * T.level
+    | Rigid of T.ov Vector.t
     | Vals of var Name.Map.t
 
 type t =
@@ -60,7 +61,7 @@ let find_val (env : t) span name =
         | Vals kvs :: scopes -> (match Name.Map.find_opt name kvs with
             | Some var -> FExpr.at span var.vtyp (FExpr.use var)
             | None -> find scopes)
-        | Hoisting _ :: scopes -> find scopes
+        | (Rigid _ | Hoisting _) :: scopes -> find scopes
         | [] ->
             (match Option.bind env.namespace (Fun.flip Namespace.find_typ name) with
             | Some {vtyp = typ; plicity = _; name = _} ->
@@ -98,4 +99,26 @@ let reabstract env : T.t -> T.ov Vector.t * T.t = function
         let substitution = Vector.map (fun ov -> T.Ov ov) existentials in
         (existentials, T.expose substitution body)
     | typ -> (Vector.empty, typ)
+
+let push_skolems (env : t) kinds =
+    let level = env.level + 1 in
+    let skolems = Vector.map (fun kind -> {T.name = Name.fresh (); kind; level}) kinds in
+    ( {env with scopes = Rigid skolems :: env.scopes; level}
+    , skolems )
+
+let push_arrow_skolems env universals domain eff codomain =
+    let (env, skolems) = push_skolems env universals in
+    let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
+    ( env, skolems
+    , T.expose substitution domain
+    , T.expose substitution eff
+    , T.expose substitution codomain )
+
+let instantiate_arrow env universals domain eff codomain =
+    let uvs = Vector.map (uv env false) universals in
+    let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
+    ( uvs
+    , T.expose substitution domain
+    , T.expose substitution eff
+    , T.expose substitution codomain )
 
