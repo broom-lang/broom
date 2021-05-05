@@ -267,16 +267,36 @@ module Make (K : TS.KINDING) = struct
         | (Pi {universals = luniversals; domain = ldomain; eff = leff; codomain = lcodomain}, rtyp) ->
             (match rtyp with
             | Pi {universals = runiversals; domain = rdomain; eff = reff; codomain = rcodomain} ->
-                if Vector.length luniversals = 0 && Vector.length runiversals = 0
-                then begin
-                    let domain_co = unify ctrs span env ldomain rdomain in
-                    let eff_co = unify ctrs span env leff reff in
-                    let codomain_co = unify ctrs span env lcodomain rcodomain in
+                let (env, skolems, rdomain, reff, rcodomain) =
+                    Env.push_arrow_skolems env runiversals rdomain reff rcodomain in
+                let (uvs, ldomain, leff, lcodomain) =
+                    Env.instantiate_arrow env luniversals ldomain leff lcodomain in
 
-                    match (domain_co, eff_co, codomain_co) with
-                    | (None, None, None) -> None
-                    | _ -> todo (Some span)
-                end else todo (Some span)
+                let domain_co = unify ctrs span env rdomain ldomain in
+                let _ = unify ctrs span env leff reff in
+                let codomain_co = unify ctrs span env lcodomain rcodomain in
+
+                (let seen = T.OvHashSet.create 0 in
+                uvs |> Vector.iter (fun uv -> match !uv with
+                    | T.Assigned (Ov ov) when Vector.exists ((=) ov) skolems ->
+                        if not (T.OvHashSet.mem seen ov)
+                        then T.OvHashSet.insert seen ov
+                        else failwith ("insufficiently polymorphic lhs at " ^ Util.span_to_string span)
+                    | Assigned _ -> failwith ("insufficiently polymorphic rhs at " ^ Util.span_to_string span)
+                    | Unassigned _ -> ()
+                ));
+
+                let subst = Vector.foldi (fun subst i {T.name; _} ->
+                    Name.Map.add name i subst
+                ) Name.Map.empty skolems in
+                Some (PiCo {universals = runiversals
+                    ; domain = (match domain_co with
+                        | Some domain_co -> T.close_coercion subst domain_co
+                        | None -> Refl rdomain)
+                    ; codomain = (match codomain_co with
+                        | Some codomain_co -> T.close_coercion subst codomain_co
+                        | None -> Refl rdomain)})
+
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
