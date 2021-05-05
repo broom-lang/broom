@@ -9,9 +9,12 @@ open Transactional.Ref
 type 'a with_pos = 'a Util.with_pos
 
 module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
-    let elaborate _ (typ : AType.t with_pos) = todo (Some typ.pos)
+    let elaborate _ _ (typ : AType.t with_pos) = todo (Some typ.pos)
 
-    let check _ _ (typ : AType.t with_pos) = todo (Some typ.pos)
+    let check ctrs env kind (({pos = span; _} as typ) : AType.t with_pos) =
+        let {TS.typ; kind = kind'} = elaborate ctrs env typ in
+        ignore (Constraints.unify ctrs span env kind' kind);
+        typ
 
     let kindof_prim : Prim.t -> T.kind = function
         | Unit -> (* TypeIn UnitRep *)

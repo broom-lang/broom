@@ -10,6 +10,7 @@ module Env = TypeEnv
 module Tx = Transactional
 
 type 'a typing = {term : 'a; eff : T.t}
+type 'a kinding = {typ : 'a; kind : T.kind}
 
 module type TYPING = sig
     val typeof : Constraint.queue -> Env.t -> AExpr.t with_pos -> FExpr.t typing
@@ -20,8 +21,8 @@ module type TYPING = sig
 end
 
 module type KINDING = sig
-    val elaborate : Env.t -> AType.t with_pos -> T.t
-    val check : Env.t -> T.kind -> AType.t with_pos -> T.t
+    val elaborate : Constraint.queue -> Env.t -> AType.t with_pos -> T.t
+    val check : Constraint.queue -> Env.t -> T.kind -> AType.t with_pos -> T.t
     val kindof_F : Constraint.queue -> span -> Env.t -> T.t -> T.kind
     val eval : span -> Env.t -> T.t -> (T.t * T.t T.coercion option) option
 end

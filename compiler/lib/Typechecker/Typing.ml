@@ -29,7 +29,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
     let rec typeof_pat ctrs is_global is_fwd env (plicity : plicity) (pat : AExpr.t with_pos) =
         match pat.v with
         | Ann (pat, typ) ->
-            let typ = K.check env (Env.some_type_kind env false) typ in
+            let typ = K.check ctrs env (Env.some_type_kind env false) typ in
             (* TODO: let (_, typ) = Env.reabstract env typ in*)
             check_pat ctrs is_global is_fwd env plicity typ pat
 
@@ -47,7 +47,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             | _ -> unreachable (Some pat.pos))
 
         | Proxy carrie ->
-            let carrie = K.elaborate env {v = carrie; pos = pat.pos} in
+            let carrie = K.elaborate ctrs env {v = carrie; pos = pat.pos} in
             (FExpr.pat_at pat.pos (Proxy carrie) (ProxyP carrie), env, Vector.empty)
 
         | Var name ->
@@ -125,7 +125,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             {term = FExpr.at expr.pos body.typ (FExpr.letrec defs body); eff}
 
         | Ann (expr, super) ->
-            let super = K.check env (Env.some_type_kind env false) super in
+            let super = K.check ctrs env (Env.some_type_kind env false) super in
             check ctrs env super expr (* FIXME: handle abstract types, abstract type generation effect *)
 
         | Tuple exprs ->
@@ -173,7 +173,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             {term = FExpr.at expr.pos typ (FExpr.select selectee label); eff}
 
         | Proxy carrie ->
-            let carrie = K.elaborate env {v = carrie; pos = expr.pos} in
+            let carrie = K.elaborate ctrs env {v = carrie; pos = expr.pos} in
             {term = FExpr.at expr.pos (Proxy carrie) (FExpr.proxy carrie); eff = EmptyRow}
 
         | Var name -> {term = Env.find_val env expr.pos name; eff = EmptyRow}
