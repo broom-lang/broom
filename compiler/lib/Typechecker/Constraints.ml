@@ -53,11 +53,21 @@ module Make (K : TS.KINDING) = struct
         let (let+) = Fun.flip Option.map in
 
         match (sub, super) with
-        | (T.Exists _, super) -> (match super with
+        | (T.Exists {existentials; body}, super) -> (match super with
             | Uv _ -> None
             | _ ->
-                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
-                ^ Util.doc_to_string (T.to_doc super)))
+                let (env, skolems, typ) = Env.push_abs_skolems env existentials body in
+                let coerce = subtype ctrs span env typ super in
+                let skolems = Vector1.map (fun {T.name; kind; _} -> (name, kind)) skolems in
+                Some (match coerce with
+                | Some coerce -> Some (Coercer.coercer (fun expr ->
+                    let var = E.fresh_var Explicit typ in
+                    let use = E.at span var.vtyp (E.use var) in
+                    E.at span super (E.unpack skolems var expr (Coercer.apply coerce use))))
+                | None -> Some (Coercer.coercer (fun expr ->
+                    let var = E.fresh_var Explicit typ in
+                    let use = E.at span var.vtyp (E.use var) in
+                    E.at span super (E.unpack skolems var expr use)))))
 
         | (sub, T.Impli {universals = _; domain = _; codomain = _}) -> (match sub with
             | Uv _ -> None
@@ -65,11 +75,17 @@ module Make (K : TS.KINDING) = struct
                 todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
                 ^ Util.doc_to_string (T.to_doc super)))
 
-        | (sub, Exists _) -> (match sub with
+        | (sub, Exists {existentials; body}) -> (match sub with
             | Uv _ -> None
             | _ ->
-                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
-                ^ Util.doc_to_string (T.to_doc super)))
+                let (uvs, super) = Env.instantiate_abs env existentials body in
+                let coerce = subtype ctrs span env sub super in
+                let existentials = Vector1.map (fun uv -> T.Uv uv) uvs |> Vector1.to_vector in
+                Some (match coerce with
+                | Some coerce -> Some (Coercer.coercer (fun expr ->
+                    E.at span super (E.pack existentials (Coercer.apply coerce expr))))
+                | None -> Some (Coercer.coercer (fun expr ->
+                    E.at span super (E.pack existentials expr)))))
 
         | (Impli {universals = _; domain = _; codomain = _}, super) -> (match super with
             | Uv _ -> None

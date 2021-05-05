@@ -106,6 +106,16 @@ let push_skolems (env : t) kinds =
     ( {env with scopes = Rigid skolems :: env.scopes; level}
     , skolems )
 
+let push_abs_skolems env existentials body =
+    let (env, skolems) = push_skolems env (Vector1.to_vector existentials) in
+    let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
+    (env, Option.get (Vector1.of_vector skolems), T.expose substitution body)
+
+let instantiate_abs env existentials body =
+    let uvs = Vector1.map (uv env false) existentials in
+    let substitution = uvs |> Vector1.to_vector |> Vector.map (fun uv -> T.Uv uv) in
+    (uvs, T.expose substitution body)
+
 let push_arrow_skolems env universals domain eff codomain =
     let (env, skolems) = push_skolems env universals in
     let substitution = Vector.map (fun ov -> T.Ov ov) skolems in

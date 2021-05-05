@@ -22,6 +22,9 @@ val push_existential : t -> t * T.ov list Transactional.Ref.t
 val generate : t -> T.def -> T.ov
 val reabstract : t -> T.t -> T.ov Vector.t * T.t
 
+val push_abs_skolems : t -> T.kind Vector1.t -> T.t -> t * T.ov Vector1.t * T.t
+val instantiate_abs : t -> T.kind Vector1.t -> T.t -> T.uv Vector1.t * T.t
+
 val push_arrow_skolems : t -> T.kind Vector.t -> T.t -> T.t -> T.t
     -> t * T.ov Vector.t * T.t * T.t * T.t
 val instantiate_arrow : t -> T.kind Vector.t -> T.t -> T.t -> T.t
