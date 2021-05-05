@@ -65,8 +65,12 @@ module type TYPE = sig
     val close : int Name.Map.t -> t -> t
     val expose : t Vector.t -> t -> t
 
+    val close_coercion : int Name.Map.t -> t coercion -> t coercion
+
     val map_coercion_children : ('typ coercion -> 'typ coercion) -> 'typ coercion -> 'typ coercion
 
     val ov_eq : ov -> ov -> bool
+
+    module OvHashSet : CCHashSet.S with type elt = ov
 end
 

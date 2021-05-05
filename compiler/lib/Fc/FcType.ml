@@ -310,6 +310,42 @@ module Typ = struct
     let close = close' 0
 
     (* OPTIMIZE: map_children: *)
+    let rec close_coercion' depth substitution : t coercion -> t coercion = function
+        | ExistsCo (params, body) ->
+            let depth = depth + 1 in
+            ExistsCo (params, close_coercion' depth substitution body)
+        | PiCo {universals; domain; codomain} ->
+            let depth = depth + 1 in
+            PiCo { universals
+               ; domain = close_coercion' depth substitution domain
+               ; codomain = close_coercion' depth substitution codomain }
+        | PairCo (fst, snd) -> PairCo (close_coercion' depth substitution fst
+            , close_coercion' depth substitution snd)
+        | RecordCo row -> RecordCo (close_coercion' depth substitution row)
+        | WithCo {base; label; field} ->
+            WithCo {base = close_coercion' depth substitution base
+                ; label; field = close_coercion' depth substitution field}
+        | ProxyCo co -> ProxyCo (close_coercion' depth substitution co)
+        | Refl typ -> Refl (close' depth substitution typ)
+        | Symm co -> Symm (close_coercion' depth substitution co)
+        | Trans (co, co') -> Trans (close_coercion' depth substitution co
+            , close_coercion' depth substitution co')
+        | Comp (co, cos) -> Comp (close_coercion' depth substitution co
+            , Vector1.map (close_coercion' depth substitution) cos)
+        | Inst (co, typs) -> Inst (close_coercion' depth substitution co
+            , Vector1.map (close' depth substitution) typs)
+        | AUse _ as co -> co
+        | Axiom (universals, l, r) ->
+            let depth = depth + 1 in
+            Axiom (universals, close' depth substitution l
+                , close' depth substitution r)
+        | Patchable r as co ->
+            r := (close_coercion' depth substitution !r);
+            co
+
+    let close_coercion = close_coercion' 0
+
+    (* OPTIMIZE: map_children: *)
     let rec expose' depth substitution : t -> t = function
         | Exists {existentials; body} ->
             let depth = depth + 1 in
@@ -349,6 +385,12 @@ module Typ = struct
     let expose = expose' 0
 
     let ov_eq {name; _} {name = name'; _} = Name.equal name name'
+
+    module OvHashSet = CCHashSet.Make (struct
+        type t = ov
+        let hash {name; _} = Name.hash name
+        let equal = ov_eq
+    end)
 end
 
 (* HACK: OCaml these constants are 'unsafe' for OCaml recursive modules,

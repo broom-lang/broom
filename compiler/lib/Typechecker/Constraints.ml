@@ -230,9 +230,35 @@ module Make (K : TS.KINDING) = struct
                 unreachable (Some span) ~msg: "Forward declared uv in `solve_unify_whnf`"
             | Assigned _ -> unreachable (Some span) ~msg: "Assigned `typ` in `solve_unify_whnf`")
 
-        | (Exists _, _) ->
-            todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
-            ^ Util.doc_to_string (T.to_doc rtyp))
+        | (Exists {existentials = lexistentials; body = lbody}, rtyp) ->
+            (match rtyp with
+            | Exists {existentials = rexistentials; body = rbody} ->
+                let (env, skolems, lbody) = Env.push_abs_skolems env lexistentials lbody in
+                let (uvs, rbody) = Env.instantiate_abs env rexistentials rbody in
+
+                let body_co = unify ctrs span env lbody rbody in
+
+                (let seen = T.OvHashSet.create 0 in
+                uvs |> Vector1.iter (fun uv -> match !uv with
+                    | T.Assigned (Ov ov) when Vector1.exists ((=) ov) skolems ->
+                        if not (T.OvHashSet.mem seen ov)
+                        then T.OvHashSet.insert seen ov
+                        else failwith ("insufficiently abstract rhs at " ^ Util.span_to_string span)
+                    | Assigned _ -> failwith ("insufficiently abstract lhs at " ^ Util.span_to_string span)
+                    | Unassigned _ -> ()
+                ));
+
+                let subst = Vector1.foldi (fun subst i {T.name; _} ->
+                    Name.Map.add name i subst
+                ) Name.Map.empty skolems in
+                let body_co : T.t T.coercion = match body_co with
+                    | Some body_co -> T.close_coercion subst body_co
+                    | None -> Refl rbody in
+                Some (ExistsCo (rexistentials, body_co))
+
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
 
         | (Impli _, _) ->
             todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
