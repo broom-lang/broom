@@ -309,6 +309,45 @@ module Typ = struct
  
     let close = close' 0
 
+    (* OPTIMIZE: map_children: *)
+    let rec expose' depth substitution : t -> t = function
+        | Exists {existentials; body} ->
+            let depth = depth + 1 in
+            Exists {existentials; body = expose' depth substitution body}
+        | Pi {universals; domain; eff; codomain} ->
+            let depth = depth + 1 in
+            Pi { universals
+                ; domain = expose' depth substitution domain
+                ; eff = expose' depth substitution eff
+                ; codomain = expose' depth substitution codomain }
+        | Impli {universals; domain; codomain} ->
+            let depth = depth + 1 in
+            Impli { universals
+                    ; domain = expose' depth substitution domain
+                    ; codomain = expose' depth substitution codomain }
+        | Pair {fst; snd} -> Pair {fst = expose' depth substitution fst
+            ; snd = expose' depth substitution snd}
+        | Record row -> Record (expose' depth substitution row)
+        | With {base; label; field} ->
+            With {base = expose' depth substitution base; label
+                ; field = expose' depth substitution field}
+        | EmptyRow -> EmptyRow
+        | Proxy typ -> Proxy (expose' depth substitution typ)
+        | Fn {param; body} -> Fn {param; body = expose' (depth + 1) substitution body}
+        | App {callee; arg} -> App {callee = expose' depth substitution arg
+            ; arg = expose' depth substitution callee}
+        | Bv {depth = depth'; sibli; bkind = _} as typ ->
+            if depth' = depth
+            then Vector.get substitution sibli
+            else typ
+        | Uv uv as typ ->
+            (match !uv with
+            | Assigned typ -> expose' depth substitution typ
+            | Unassigned _ -> typ)
+        | (Ov _ | Prim _) as typ -> typ
+
+    let expose = expose' 0
+
     let ov_eq {name; _} {name = name'; _} = Name.equal name name'
 end
 

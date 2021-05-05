@@ -81,3 +81,21 @@ let push_existential (env : t) =
     ( {env with scopes = Hoisting (bindings, level) :: env.scopes; level}
     , bindings )
 
+let generate env (name, kind) =
+    let rec generate = function
+        | Hoisting (bindings, level) :: _ ->
+            let ov = {T.name; kind; level} in
+            bindings := (ov :: !bindings);
+            ov
+        | _ :: scopes' -> generate scopes'
+        | [] -> unreachable None in
+    generate env.scopes
+
+let reabstract env : T.t -> T.ov Vector.t * T.t = function
+    | Exists {existentials; body} ->
+        let existentials = Vector1.to_vector existentials in
+        let existentials = Vector.map (fun kind -> generate env (Name.fresh (), kind)) existentials in
+        let substitution = Vector.map (fun ov -> T.Ov ov) existentials in
+        (existentials, T.expose substitution body)
+    | typ -> (Vector.empty, typ)
+

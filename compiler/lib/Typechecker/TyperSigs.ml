@@ -14,6 +14,12 @@ type 'a kinding = {typ : 'a; kind : T.kind}
 
 module type TYPING = sig
     val typeof : Constraint.queue -> Env.t -> AExpr.t with_pos -> FExpr.t typing
+    val check : Constraint.queue -> Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
+
+    (* HACK: *)
+    val typeof_pat : Constraint.queue -> bool -> bool -> Env.t -> Util.plicity -> AExpr.t with_pos
+        -> FExpr.pat * Env.t * FExpr.var Vector.t
+
     val check_program : TypeError.t list Tx.Ref.t -> Constraint.queue
         -> AStmt.def Vector.t -> AExpr.t with_pos -> Fc.Program.t typing
     val check_interactive_stmts : Namespace.t -> TypeError.t list Tx.Ref.t

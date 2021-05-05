@@ -19,6 +19,8 @@ val push_val : bool -> t -> var -> t
 val find_val : t -> Util.span -> Name.t -> expr
 
 val push_existential : t -> t * T.ov list Transactional.Ref.t
+val generate : t -> T.def -> T.ov
+val reabstract : t -> T.t -> T.ov Vector.t * T.t
 
 val uv : t -> bool -> T.kind -> T.uv
 val some_type_kind : t -> bool -> T.t
