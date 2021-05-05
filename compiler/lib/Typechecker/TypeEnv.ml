@@ -132,3 +132,17 @@ let instantiate_arrow env universals domain eff codomain =
     , T.expose substitution eff
     , T.expose substitution codomain )
 
+let push_impli_skolems env universals domain codomain =
+    let (env, skolems) = push_skolems env universals in
+    let substitution = Vector.map (fun ov -> T.Ov ov) skolems in
+    ( env, skolems
+    , T.expose substitution domain
+    , T.expose substitution codomain )
+
+let instantiate_impli env universals domain codomain =
+    let uvs = Vector.map (uv env false) universals in
+    let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
+    ( uvs
+    , T.expose substitution domain
+    , T.expose substitution codomain )
+

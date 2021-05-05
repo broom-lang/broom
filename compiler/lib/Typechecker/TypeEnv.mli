@@ -30,6 +30,11 @@ val push_arrow_skolems : t -> T.kind Vector.t -> T.t -> T.t -> T.t
 val instantiate_arrow : t -> T.kind Vector.t -> T.t -> T.t -> T.t
     -> T.uv Vector.t * T.t * T.t * T.t
 
+val push_impli_skolems : t -> T.kind Vector.t -> T.t -> T.t
+    -> t * T.ov Vector.t * T.t * T.t
+val instantiate_impli : t -> T.kind Vector.t -> T.t -> T.t
+    -> T.uv Vector.t * T.t * T.t
+
 val uv : t -> bool -> T.kind -> T.uv
 val some_type_kind : t -> bool -> T.t
 

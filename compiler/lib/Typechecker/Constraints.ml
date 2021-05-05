@@ -260,9 +260,41 @@ module Make (K : TS.KINDING) = struct
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
 
-        | (Impli _, _) ->
-            todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
-            ^ Util.doc_to_string (T.to_doc rtyp))
+        | (Impli {universals = luniversals; domain = ldomain; codomain = lcodomain}, _) ->
+            (match rtyp with
+            | Impli {universals = runiversals; domain = rdomain; codomain = rcodomain} ->
+                let (env, skolems, rdomain, rcodomain) =
+                    Env.push_impli_skolems env runiversals rdomain rcodomain in
+                let (uvs, ldomain, lcodomain) =
+                    Env.instantiate_impli env luniversals ldomain lcodomain in
+
+                let domain_co = unify ctrs span env rdomain ldomain in
+                let codomain_co = unify ctrs span env lcodomain rcodomain in
+
+                (let seen = T.OvHashSet.create 0 in
+                uvs |> Vector.iter (fun uv -> match !uv with
+                    | T.Assigned (Ov ov) when Vector.exists ((=) ov) skolems ->
+                        if not (T.OvHashSet.mem seen ov)
+                        then T.OvHashSet.insert seen ov
+                        else failwith ("insufficiently polymorphic lhs at " ^ Util.span_to_string span)
+                    | Assigned _ -> failwith ("insufficiently polymorphic rhs at " ^ Util.span_to_string span)
+                    | Unassigned _ -> ()
+                ));
+
+                let subst = Vector.foldi (fun subst i {T.name; _} ->
+                    Name.Map.add name i subst
+                ) Name.Map.empty skolems in
+                Some (PiCo {universals = runiversals
+                    ; domain = (match domain_co with
+                        | Some domain_co -> T.close_coercion subst domain_co
+                        | None -> Refl rdomain)
+                    ; codomain = (match codomain_co with
+                        | Some codomain_co -> T.close_coercion subst codomain_co
+                        | None -> Refl rdomain)})
+
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
 
         | (Pi {universals = luniversals; domain = ldomain; eff = leff; codomain = lcodomain}, rtyp) ->
             (match rtyp with
