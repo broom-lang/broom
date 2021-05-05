@@ -47,7 +47,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             | _ -> unreachable (Some pat.pos))
 
         | Proxy carrie ->
-            let carrie = K.elaborate ctrs env {v = carrie; pos = pat.pos} in
+            let {TS.typ = carrie; kind = _} = K.elaborate ctrs env {v = carrie; pos = pat.pos} in
             (FExpr.pat_at pat.pos (Proxy carrie) (ProxyP carrie), env, Vector.empty)
 
         | Var name ->
@@ -173,7 +173,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             {term = FExpr.at expr.pos typ (FExpr.select selectee label); eff}
 
         | Proxy carrie ->
-            let carrie = K.elaborate ctrs env {v = carrie; pos = expr.pos} in
+            let {TS.typ = carrie; kind = _} = K.elaborate ctrs env {v = carrie; pos = expr.pos} in
             {term = FExpr.at expr.pos (Proxy carrie) (FExpr.proxy carrie); eff = EmptyRow}
 
         | Var name -> {term = Env.find_val env expr.pos name; eff = EmptyRow}

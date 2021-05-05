@@ -10,6 +10,7 @@ open Tx.Ref
 type error_handler = TypeError.t -> unit
 
 type scope =
+    | Hoisting of T.ov list Tx.Ref.t * T.level
     | Vals of var Name.Map.t
 
 type t =
@@ -59,6 +60,7 @@ let find_val (env : t) span name =
         | Vals kvs :: scopes -> (match Name.Map.find_opt name kvs with
             | Some var -> FExpr.at span var.vtyp (FExpr.use var)
             | None -> find scopes)
+        | Hoisting _ :: scopes -> find scopes
         | [] ->
             (match Option.bind env.namespace (Fun.flip Namespace.find_typ name) with
             | Some {vtyp = typ; plicity = _; name = _} ->
@@ -72,4 +74,10 @@ let find_val (env : t) span name =
                 let typ = T.Uv (uv env false (some_type_kind env false)) in
                 FExpr.at span typ (FExpr.use (FExpr.var Explicit name typ))) in
     find env.scopes
+
+let push_existential (env : t) =
+    let bindings = ref [] in
+    let level = env.level + 1 in
+    ( {env with scopes = Hoisting (bindings, level) :: env.scopes; level}
+    , bindings )
 

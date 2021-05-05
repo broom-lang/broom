@@ -7,9 +7,44 @@ module Env = TypeEnv
 open Transactional.Ref
 
 type 'a with_pos = 'a Util.with_pos
+type 'a kinding = 'a TS.kinding
 
 module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
-    let elaborate _ _ (typ : AType.t with_pos) = todo (Some typ.pos)
+    let elaborate ctrs env (typ : AType.t with_pos) =
+        let rec elab env (typ : AType.t with_pos) : T.t kinding =
+            match typ.v with
+            | Tuple typs ->
+                (match Vector.length typs with
+                | 0 -> {typ = Prim Unit; kind = App {callee = Prim TypeIn; arg = Prim UnitRep}}
+
+                | 2 ->
+                    let fst_rep = T.Uv (Env.uv env false (Prim Rep)) in
+                    let fst = check env (T.App {callee = Prim TypeIn; arg = fst_rep}) (Vector.get typs 0) in
+                    let snd_rep = T.Uv (Env.uv env false (Prim Rep)) in
+                    let snd = check env (App {callee = Prim TypeIn; arg = snd_rep}) (Vector.get typs 1) in
+                    let rep = T.App {callee = App {callee = Prim PairRep; arg = fst_rep}; arg = snd_rep} in
+                    {TS.typ = Pair {fst; snd}; kind = App {callee = Prim TypeIn; arg = rep}}
+
+                | _ -> unreachable (Some typ.pos))
+
+            | _ -> todo (Some typ.pos)
+
+        and check env kind ({Util.pos = span; _} as typ) =
+            let {TS.typ; kind = kind'} = elab env typ in
+            ignore (Constraints.unify ctrs span env kind' kind);
+            typ in
+
+        let (env, existentials) = Env.push_existential env in
+        let {TS.typ; kind} = elab env typ in
+        let typ : T.t = match Vector1.of_list !existentials with
+            | Some existentials ->
+                let (_, substitution) = Vector1.fold (fun (i, substitution) {T.name; _} ->
+                    (i + 1, Name.Map.add name i substitution)
+                ) (0, Name.Map.empty) existentials in
+                Exists {existentials = existentials |> Vector1.map (fun {T.kind; _} -> kind)
+                    ; body = T.close substitution typ}
+            | None -> typ in
+        {TS.typ; kind}
 
     let check ctrs env kind (({pos = span; _} as typ) : AType.t with_pos) =
         let {TS.typ; kind = kind'} = elaborate ctrs env typ in

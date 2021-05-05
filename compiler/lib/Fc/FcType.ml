@@ -271,6 +271,44 @@ module Typ = struct
 
         | Patchable rco -> Patchable (ref (f !rco))
 
+    (* OPTIMIZE: map_children: *)
+    let rec close' depth substitution : t -> t = function
+        | Exists {existentials; body} ->
+            let depth = depth + 1 in
+            Exists {existentials; body = close' depth substitution body}
+        | Pi {universals; domain; eff; codomain} ->
+            let depth = depth + 1 in
+            Pi { universals
+               ; domain = close' depth substitution domain
+               ; eff = close' depth substitution eff
+               ; codomain = close' depth substitution codomain }
+        | Impli {universals; domain; codomain} ->
+            let depth = depth + 1 in
+            Impli { universals
+                   ; domain = close' depth substitution domain
+                   ; codomain = close' depth substitution codomain }
+        | Pair {fst; snd} -> Pair {fst = close' depth substitution fst
+            ; snd = close' depth substitution snd}
+        | Record row -> Record (close' depth substitution row)
+        | With {base; label; field} ->
+            With {base = close' depth substitution base; label
+                ; field = close' depth substitution field}
+        | EmptyRow -> EmptyRow
+        | Proxy typ -> Proxy (close' depth substitution typ)
+        | Fn {param; body} -> Fn {param; body = close' (depth + 1) substitution body}
+        | App {callee; arg} -> App {callee = close' depth substitution callee
+            ; arg = close' depth substitution arg}
+        | (Ov {name; kind; _}) as path ->
+            Name.Map.find_opt name substitution
+                |> Option.fold ~some: (fun sibli -> Bv {depth; sibli; bkind = kind}) ~none: path
+        | Uv uv as typ ->
+            (match !uv with
+            | Assigned typ -> close' depth substitution typ
+            | Unassigned _ -> typ)
+        | (Bv _ | Prim _) as typ -> typ
+ 
+    let close = close' 0
+
     let ov_eq {name; _} {name = name'; _} = Name.equal name name'
 end
 
