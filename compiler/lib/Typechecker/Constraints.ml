@@ -48,8 +48,52 @@ module Make (K : TS.KINDING) = struct
             | Bv _ | Prim _ -> () in
         check typ
 
+    let rec eval_with_label ctrs span env typ label =
+        let (let+) = Fun.flip Option.map in
+
+        let rec eval_with_label typ =
+            match K.eval span env typ with
+            | Some (With {base; label = label'; field}, co) ->
+                if Name.equal label' label
+                then Some (base, field, co)
+                else begin
+                    let+ (base, field', base_co) = eval_with_label base in
+                    ( T.With {base; label = label'; field}, field'
+                    , match (co, base_co) with
+                      | (Some co, Some base_co) ->
+                          Some (T.Trans (co, WithCo {base = base_co; label; field = Refl field}))
+                      | (Some _ as co, None) -> co
+                      | (None, Some base_co) ->
+                          Some (WithCo {base = base_co; label; field = Refl field})
+                      | (None, None) -> None )
+                end
+
+            | Some (Uv uv, co) -> (* FIXME: 'scopedlabels' termination check: *)
+                (match !uv with
+                | Unassigned (false, _, kind, level) ->
+                    let base = T.Uv (Env.uv env false T.aRow) in
+                    let field = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+                    let typ' = T.With {base; label; field} in
+                    check_uv_assignee span env uv level Int.max_int typ';
+                    ignore (unify ctrs span env T.aRow kind);
+                    uv := Assigned typ';
+                    Some (base, field, co)
+
+                | Unassigned (true, _, _, _) -> None
+                | Assigned _ -> unreachable (Some span))
+
+            | Some (typ, co) ->
+                let base = T.Uv (Env.uv env false T.aRow) in
+                let field = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+                let typ' = T.With {base; label; field} in
+                Env.report_error env {v = Unify (typ', typ); pos = span};
+                Some (base, field, co)
+
+            | None -> None in
+        eval_with_label typ
+
     (* FIXME: prevent nontermination from impredicative instantiation: *)
-    let rec solve_subtype_whnf ctrs span env sub super =
+    and solve_subtype_whnf ctrs span env sub super =
         let (let+) = Fun.flip Option.map in
 
         match (sub, super) with
@@ -139,28 +183,30 @@ module Make (K : TS.KINDING) = struct
         | (Pi _, _) | (Record _, _) | (Proxy _, _) | (App _, _)
         | (Bv _, _) | (Ov _, _) | (Prim _, _) ->
             (* Nothing to instantiate, delegate to unification: *)
-            Some (let+ co = solve_unify_whnf ctrs span env sub super in
-                  Coercer.coercer (fun v -> E.at span super (E.cast v co)))
+            let+ co = solve_unify_whnf ctrs span env sub super in
+            (match co with
+            | Some co -> Some (Coercer.coercer (fun v -> E.at span super (E.cast v co)))
+            | None -> None)
 
-        | (Pair {fst = sub_fst; snd = sub_snd}, super) -> (match super with
+        | (Pair {fst = sub_fst; snd = sub_snd}, super) -> Some (match super with
             | Pair {fst = super_fst; snd = super_snd} -> (* covariant *)
                 let fst_co = subtype ctrs span env sub_fst super_fst in
                 let snd_co = subtype ctrs span env sub_snd super_snd in
 
-                Some (match (fst_co, snd_co) with
-                    | (Some fst_co, Some snd_co) -> Some (Coercer.coercer (fun expr ->
-                        E.at span super (E.pair
-                            (Coercer.apply fst_co (E.at span sub_fst (E.fst expr)))
-                            (Coercer.apply snd_co (E.at span sub_snd (E.snd expr))))))
-                    | (Some fst_co, None) -> Some (Coercer.coercer (fun expr ->
-                        E.at span super (E.pair
-                            (Coercer.apply fst_co (E.at span sub_fst (E.fst expr)))
-                            (E.at span sub_snd (E.snd expr)))))
-                    | (None, Some snd_co) -> Some (Coercer.coercer (fun expr ->
-                        E.at span super (E.pair
-                            (E.at span sub_fst (E.fst expr))
-                            (Coercer.apply snd_co (E.at span sub_snd (E.snd expr))))))
-                    | (None, None) -> None)
+                (match (fst_co, snd_co) with
+                | (Some fst_co, Some snd_co) -> Some (Coercer.coercer (fun expr ->
+                    E.at span super (E.pair
+                        (Coercer.apply fst_co (E.at span sub_fst (E.fst expr)))
+                        (Coercer.apply snd_co (E.at span sub_snd (E.snd expr))))))
+                | (Some fst_co, None) -> Some (Coercer.coercer (fun expr ->
+                    E.at span super (E.pair
+                        (Coercer.apply fst_co (E.at span sub_fst (E.fst expr)))
+                        (E.at span sub_snd (E.snd expr)))))
+                | (None, Some snd_co) -> Some (Coercer.coercer (fun expr ->
+                    E.at span super (E.pair
+                        (E.at span sub_fst (E.fst expr))
+                        (Coercer.apply snd_co (E.at span sub_snd (E.snd expr))))))
+                | (None, None) -> None)
 
             | _ ->
                 Env.report_error env {v = Subtype (sub, super); pos = span};
@@ -206,32 +252,32 @@ module Make (K : TS.KINDING) = struct
 
         match (ltyp, rtyp) with
         | (T.Uv luv, T.Uv ruv) ->
-            if Tx.Ref.eq luv ruv
-            then None
-            else (match (!luv, !ruv) with (* OPTIMIZE: Union-Find ranking: *)
-                | (Unassigned (false, _, lkind, llevel), Unassigned (false, _, rkind, rlevel)) ->
-                    ignore (unify ctrs span env lkind rkind);
-                    if rlevel < llevel
-                    then luv := Assigned rtyp
-                    else ruv := Assigned ltyp;
-                    None
-                | (Unassigned (true, _, _, _), _) | (_, Unassigned (true, _, _, _)) ->
-                    unreachable (Some span) ~msg: "Forward declared uv in `solve_unify_whnf`"
-                | (Assigned _, _) | (_, Assigned _) ->
-                    unreachable (Some span) ~msg: "Assigned uv in `solve_unify_whnf`")
+            Some (if Tx.Ref.eq luv ruv
+                then None
+                else (match (!luv, !ruv) with (* OPTIMIZE: Union-Find ranking: *)
+                    | (Unassigned (false, _, lkind, llevel), Unassigned (false, _, rkind, rlevel)) ->
+                        ignore (unify ctrs span env lkind rkind);
+                        if rlevel < llevel
+                        then luv := Assigned rtyp
+                        else ruv := Assigned ltyp;
+                        None
+                    | (Unassigned (true, _, _, _), _) | (_, Unassigned (true, _, _, _)) ->
+                        unreachable (Some span) ~msg: "Forward declared uv in `solve_unify_whnf`"
+                    | (Assigned _, _) | (_, Assigned _) ->
+                        unreachable (Some span) ~msg: "Assigned uv in `solve_unify_whnf`"))
         | (Uv uv, typ') | (typ', Uv uv) ->
-            (match !uv with
-            | Unassigned (false, _, kind, level) ->
-                check_uv_assignee span env uv level Int.max_int typ';
-                ignore (unify ctrs span env (K.kindof_F ctrs span env typ') kind);
-                uv := Assigned typ';
-                None
-            | Unassigned (true, _, _, _) ->
-                unreachable (Some span) ~msg: "Forward declared uv in `solve_unify_whnf`"
-            | Assigned _ -> unreachable (Some span) ~msg: "Assigned `typ` in `solve_unify_whnf`")
+            Some (match !uv with
+                | Unassigned (false, _, kind, level) ->
+                    check_uv_assignee span env uv level Int.max_int typ';
+                    ignore (unify ctrs span env (K.kindof_F ctrs span env typ') kind);
+                    uv := Assigned typ';
+                    None
+                | Unassigned (true, _, _, _) ->
+                    unreachable (Some span) ~msg: "Forward declared uv in `solve_unify_whnf`"
+                | Assigned _ -> unreachable (Some span) ~msg: "Assigned `typ` in `solve_unify_whnf`")
 
         | (Exists {existentials = lexistentials; body = lbody}, rtyp) ->
-            (match rtyp with
+            Some (match rtyp with
             | Exists {existentials = rexistentials; body = rbody} ->
                 let (env, skolems, lbody) = Env.push_abs_skolems env lexistentials lbody in
                 let (uvs, rbody) = Env.instantiate_abs env rexistentials rbody in
@@ -261,7 +307,7 @@ module Make (K : TS.KINDING) = struct
                 None)
 
         | (Impli {universals = luniversals; domain = ldomain; codomain = lcodomain}, _) ->
-            (match rtyp with
+            Some (match rtyp with
             | Impli {universals = runiversals; domain = rdomain; codomain = rcodomain} ->
                 let (env, skolems, rdomain, rcodomain) =
                     Env.push_impli_skolems env runiversals rdomain rcodomain in
@@ -297,7 +343,7 @@ module Make (K : TS.KINDING) = struct
                 None)
 
         | (Pi {universals = luniversals; domain = ldomain; eff = leff; codomain = lcodomain}, rtyp) ->
-            (match rtyp with
+            Some (match rtyp with
             | Pi {universals = runiversals; domain = rdomain; eff = reff; codomain = rcodomain} ->
                 let (env, skolems, rdomain, reff, rcodomain) =
                     Env.push_arrow_skolems env runiversals rdomain reff rcodomain in
@@ -333,7 +379,7 @@ module Make (K : TS.KINDING) = struct
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
 
-        | (Pair {fst = lfst; snd = lsnd}, rtyp) -> (match rtyp with
+        | (Pair {fst = lfst; snd = lsnd}, rtyp) -> Some (match rtyp with
             | Pair {fst = rfst; snd = rsnd} ->
                 let fst_co = unify ctrs span env lfst rfst in
                 let snd_co = unify ctrs span env lsnd rsnd in
@@ -343,11 +389,12 @@ module Make (K : TS.KINDING) = struct
                 | (Some fst_co, None) -> Some (PairCo (fst_co, Refl rsnd))
                 | (None, Some snd_co) -> Some (PairCo (Refl rfst, snd_co))
                 | (None, None) -> None)
+
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
 
-        | (Record lrow, rtyp) -> (match rtyp with
+        | (Record lrow, rtyp) -> Some (match rtyp with
             | Record rrow ->
                 let+ row_co = unify ctrs span env lrow rrow in
                 T.RecordCo row_co
@@ -355,11 +402,45 @@ module Make (K : TS.KINDING) = struct
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
 
-        | (With _, _) ->
-            todo (Some span) ~msg: (Util.doc_to_string (T.to_doc ltyp) ^ " ~ "
-            ^ Util.doc_to_string (T.to_doc rtyp))
+        | (With {base = lbase; label = llabel; field = lfield}, rtyp) -> (match rtyp with
+            | With {base = rbase; label = rlabel; field = rfield} ->
+                (if Name.equal llabel rlabel
+                then Some (lbase, lfield, None)
+                else begin
+                    eval_with_label ctrs span env lbase rlabel
+                    |> Option.map (fun (lbase', lfield', base_co) ->
+                        ( T.With {base = lbase'; label = llabel; field = lfield}, lfield'
+                        , match base_co with
+                          | Some base_co ->
+                              Some (T.WithCo {base = base_co; label = llabel; field = Refl lfield})
+                          | None -> None ))
+                end)
+                |> Option.map (fun (lbase, lfield, lco) ->
 
-        | (Proxy lcarrie, rtyp) -> (match rtyp with
+                    let base_co = unify ctrs span env lbase rbase in
+                    let field_co = unify ctrs span env lfield rfield in
+
+                    (match (lco, base_co, field_co) with
+                    | (Some lco, Some base_co, Some field_co) ->
+                        Some (T.Trans (lco, WithCo {base = base_co; label = rlabel; field = field_co}))
+                    | (Some lco, Some base_co, None) ->
+                        Some (T.Trans (lco, WithCo {base = base_co; label = rlabel; field = Refl rfield}))
+                    | (Some lco, None, Some field_co) ->
+                        Some (T.Trans (lco, WithCo {base = Refl rbase; label = rlabel; field = field_co}))
+                    | (Some _ as lco, None, None) -> lco
+                    | (None, Some base_co, Some field_co) ->
+                        Some (WithCo {base = base_co; label = rlabel; field = field_co})
+                    | (None, Some base_co, None) ->
+                        Some (WithCo {base = base_co; label = rlabel; field = Refl rfield})
+                    | (None, None, Some field_co) ->
+                        Some (WithCo {base = Refl rbase; label = rlabel; field = field_co})
+                    | (None, None, None) -> None))
+
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                Some None)
+
+        | (Proxy lcarrie, rtyp) -> Some (match rtyp with
             | Proxy rcarrie ->
                 let+ carrie_co = unify ctrs span env lcarrie rcarrie in
                 ProxyCo carrie_co
@@ -370,30 +451,31 @@ module Make (K : TS.KINDING) = struct
         | (App {callee; arg}, rtyp) -> (match rtyp with
             | App {callee = callee'; arg = arg'} ->
                 (* NOTE: Callees must already be in WHNF because of the Krivine-style `K.eval`: *)
-                let callee_co = solve_unify_whnf ctrs span env callee callee' in
-                let arg_co = unify ctrs span env arg arg' in
-                (match (callee_co, arg_co) with
-                | (Some callee_co, Some arg_co) -> Some (Comp (callee_co, Vector1.singleton arg_co))
-                | (Some callee_co, None) -> Some (Comp (callee_co, Vector1.singleton (T.Refl arg')))
-                | (None, Some arg_co) -> Some (Comp (Refl callee', Vector1.singleton arg_co))
-                | (None, None) -> None)
+                solve_unify_whnf ctrs span env callee callee' |> Option.map (fun callee_co ->
+                    let arg_co = unify ctrs span env arg arg' in
+                    (match (callee_co, arg_co) with
+                    | (Some callee_co, Some arg_co) -> Some (T.Comp (callee_co, Vector1.singleton arg_co))
+                    | (Some callee_co, None) -> Some (Comp (callee_co, Vector1.singleton (T.Refl arg')))
+                    | (None, Some arg_co) -> Some (Comp (Refl callee', Vector1.singleton arg_co))
+                    | (None, None) -> None))
+
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
-                None)
+                Some None)
 
-        | (EmptyRow, rtyp) -> (match rtyp with
+        | (EmptyRow, rtyp) -> Some (match rtyp with
             | EmptyRow -> None
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
 
-        | (Ov lov, rtyp) -> (match rtyp with
+        | (Ov lov, rtyp) -> Some (match rtyp with
             | Ov rov when T.ov_eq lov rov -> None
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)
 
-        | (Prim pt, rtyp) -> (match rtyp with
+        | (Prim pt, rtyp) -> Some (match rtyp with
             | Prim pt' when Prim.eq pt pt'-> None
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
@@ -407,8 +489,8 @@ module Make (K : TS.KINDING) = struct
         let (let+) = Fun.flip Option.map in
 
         let* (ltyp, co) = K.eval span env ltyp in
-        let+ (rtyp, co'') = K.eval span env rtyp in
-        let co' = solve_unify_whnf ctrs span env ltyp rtyp in
+        let* (rtyp, co'') = K.eval span env rtyp in
+        let+ co' = solve_unify_whnf ctrs span env ltyp rtyp in
         match (co, co', co'') with
         | (Some co, Some co', Some co'') -> Some (T.Trans (Trans (co, co'), Symm co''))
         | (Some co, Some co', None) -> Some (Trans (co, co'))
