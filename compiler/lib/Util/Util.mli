@@ -1,3 +1,5 @@
+open Streaming
+
 type document = PPrint.document
 
 type plicity = Explicit | Implicit
@@ -9,6 +11,8 @@ type span = Lexing.position * Lexing.position
 val span_to_string : span -> string
 
 type 'a with_pos = {v : 'a; pos: span}
+
+val ccvector_to_source : ('a, 'mut) CCVector.t -> 'a Source.t
 
 type 'a docs_op =
     | InfixL of {prec : int; l : 'a; op : document; r : 'a}

@@ -1,15 +1,14 @@
 open Asserts
 
+open Constraint
 module TS = TyperSigs
 module T = FcType.Type
 module E = Fc.Term.Expr
 module Coercer = Fc.Term.Coercer
 module Tx = Transactional
-open Constraint
 open Tx.Ref
 
 module Make (K : TS.KINDING) = struct
-    type queue = Constraint.queue
 
 (* # Solvers *)
 

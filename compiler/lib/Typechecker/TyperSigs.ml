@@ -6,39 +6,38 @@ module AStmt = Ast.Term.Stmt
 module FExpr = Fc.Term.Expr
 module AType = Ast.Type
 module T = FcType.Type
-module Env = TypeEnv
 module Tx = Transactional
+type ctrs = Constraint.queue
+type env = TypeEnv.t
 
 type 'a typing = {term : 'a; eff : T.t}
 type 'a kinding = {typ : 'a; kind : T.kind}
 
 module type TYPING = sig
-    val typeof : Constraint.queue -> Env.t -> AExpr.t with_pos -> FExpr.t typing
-    val check : Constraint.queue -> Env.t -> T.t -> AExpr.t with_pos -> FExpr.t typing
+    val typeof : ctrs -> env -> AExpr.t with_pos -> FExpr.t typing
+    val check : ctrs -> env -> T.t -> AExpr.t with_pos -> FExpr.t typing
 
     (* HACK: *)
-    val typeof_pat : Constraint.queue -> bool -> bool -> Env.t -> Util.plicity -> AExpr.t with_pos
-        -> FExpr.pat * Env.t * FExpr.var Vector.t
+    val typeof_pat : ctrs -> bool -> bool -> env -> Util.plicity -> AExpr.t with_pos
+        -> FExpr.pat * env * FExpr.var Vector.t
 
-    val check_program : TypeError.t list Tx.Ref.t -> Constraint.queue
+    val check_program : TypeError.t list Tx.Ref.t -> ctrs
         -> AStmt.def Vector.t -> AExpr.t with_pos -> Fc.Program.t typing
     val check_interactive_stmts : Namespace.t -> TypeError.t list Tx.Ref.t
-        -> Constraint.queue -> AStmt.t Vector1.t -> Fc.Program.t typing * Namespace.t
+        -> ctrs -> AStmt.t Vector1.t -> Fc.Program.t typing * Namespace.t
 end
 
 module type KINDING = sig
-    val elaborate : Constraint.queue -> Env.t -> AType.t with_pos -> T.t kinding
-    val check : Constraint.queue -> Env.t -> T.kind -> AType.t with_pos -> T.t
-    val kindof_F : Constraint.queue -> span -> Env.t -> T.t -> T.kind
-    val eval : span -> Env.t -> T.t -> (T.t * T.t T.coercion option) option
+    val elaborate : ctrs -> env -> AType.t with_pos -> T.t kinding
+    val check : ctrs -> env -> T.kind -> AType.t with_pos -> T.t
+    val kindof_F : ctrs -> span -> env -> T.t -> T.kind
+    val eval : span -> env -> T.t -> (T.t * T.t T.coercion option) option
 end
 
 module type CONSTRAINTS = sig
-    type queue = Constraint.queue
+    val unify : ctrs -> span -> env -> T.t -> T.t -> T.t T.coercion option
+    val subtype : ctrs -> span -> env -> T.t -> T.t -> Fc.Term.Coercer.t option
 
-    val unify : queue -> span -> Env.t -> T.t -> T.t -> T.t T.coercion option
-    val subtype : queue -> span -> Env.t -> T.t -> T.t -> Fc.Term.Coercer.t option
-
-    val solve : queue -> unit
+    val solve : ctrs -> unit
 end
 

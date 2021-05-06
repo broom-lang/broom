@@ -1,4 +1,7 @@
 module TS = TyperSigs
 
-module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) : TS.KINDING
+module Make
+    (Constraints : TS.CONSTRAINTS)
+    (Typing : TS.TYPING)
+: TS.KINDING
 

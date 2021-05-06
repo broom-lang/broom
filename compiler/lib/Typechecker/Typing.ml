@@ -17,10 +17,10 @@ type 'a typing = 'a TyperSigs.typing
 type ctrs = Constraint.queue
 open Transactional.Ref
 
-module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
-    let unify = Constraints.unify
-    let subtype = Constraints.subtype
-
+module Make
+    (Constraints : TS.CONSTRAINTS)
+    (Kinding : TS.KINDING)
+= struct
     let const_typ (c : Const.t) = T.Prim (match c with
         | Unit -> Unit
         | Int _ -> Int
@@ -29,7 +29,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
     let rec typeof_pat ctrs is_global is_fwd env (plicity : plicity) (pat : AExpr.t with_pos) =
         match pat.v with
         | Ann (pat, typ) ->
-            let typ = K.check ctrs env (Env.some_type_kind env false) typ in
+            let typ = Kinding.check ctrs env (Env.some_type_kind env false) typ in
             (* TODO: let (_, typ) = Env.reabstract env typ in*)
             check_pat ctrs is_global is_fwd env plicity typ pat
 
@@ -47,7 +47,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             | _ -> unreachable (Some pat.pos))
 
         | Proxy carrie ->
-            let {TS.typ = carrie; kind = _} = K.elaborate ctrs env {v = carrie; pos = pat.pos} in
+            let {TS.typ = carrie; kind = _} = Kinding.elaborate ctrs env {v = carrie; pos = pat.pos} in
             (FExpr.pat_at pat.pos (Proxy carrie) (ProxyP carrie), env, Vector.empty)
 
         | Var name ->
@@ -125,7 +125,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             {term = FExpr.at expr.pos body.typ (FExpr.letrec defs body); eff}
 
         | Ann (expr, super) ->
-            let super = K.check ctrs env (Env.some_type_kind env false) super in
+            let super = Kinding.check ctrs env (Env.some_type_kind env false) super in
             check ctrs env super expr (* FIXME: handle abstract types, abstract type generation effect *)
 
         | Tuple exprs ->
@@ -173,10 +173,16 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
             {term = FExpr.at expr.pos typ (FExpr.select selectee label); eff}
 
         | Proxy carrie ->
-            let {TS.typ = carrie; kind = _} = K.elaborate ctrs env {v = carrie; pos = expr.pos} in
+            let {TS.typ = carrie; kind = _} = Kinding.elaborate ctrs env {v = carrie; pos = expr.pos} in
             {term = FExpr.at expr.pos (Proxy carrie) (FExpr.proxy carrie); eff = EmptyRow}
 
-        | Var name -> {term = Env.find_val env expr.pos name; eff = EmptyRow}
+        | Var name ->
+            let term = Env.find_val (fun env typ ->
+                    let {TS.typ; kind} = Kinding.elaborate ctrs env typ in
+                    (typ, kind))
+                (fun span env sub super -> ignore (Constraints.subtype ctrs span env sub super))
+                env expr.pos name in
+            {term; eff = EmptyRow}
 
         | Const c ->
             let typ = const_typ c in
@@ -189,7 +195,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
 
     and check ctrs env super expr =
         let {TS.term = expr; eff} = typeof ctrs env expr in
-        let coerce = subtype ctrs expr.pos env expr.typ super in
+        let coerce = Constraints.subtype ctrs expr.pos env expr.typ super in
         {TS.term = Coercer.apply_opt coerce expr; eff}
 
     and check_clause ctrs env plicity ~domain ~eff ~codomain {params; body} =
@@ -259,7 +265,7 @@ module Make (K : TS.KINDING) (Constraints : TS.CONSTRAINTS) = struct
         let eff = T.Uv (Env.uv env false T.aRow) in
         let env = Vector1.fold (fun env stmt ->
             let (env, stmt_eff) = check_interactive_stmt ctrs env stmts' stmt in
-            ignore (unify ctrs span env stmt_eff eff);
+            ignore (Constraints.unify ctrs span env stmt_eff eff);
             env
         ) env stmts in
 

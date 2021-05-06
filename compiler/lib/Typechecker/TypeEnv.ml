@@ -3,16 +3,25 @@ open Asserts
 module T = Fc.Type
 module FExpr = Fc.Term.Expr
 type var = FExpr.var
-type expr = Fc.Term.Expr.t
+type span = Util.span
+type 'a with_pos = 'a Util.with_pos
 module Tx = Transactional
 open Tx.Ref
 
+type 'a kinding = {typ : 'a; kind : T.kind} (* HACK *)
+
 type error_handler = TypeError.t -> unit
+
+type row_binding =
+    | WhiteT of T.t * Ast.Type.t with_pos
+    | GreyT
+    | BlackT of T.t kinding
 
 type scope =
     | Hoisting of T.ov list Tx.Ref.t * T.level
     | Rigid of T.ov Vector.t
     | Vals of var Name.Map.t
+    | Row of (var * row_binding Tx.Ref.t) Name.Map.t
 
 type t =
     { namespace : Namespace.t option
@@ -45,37 +54,6 @@ let uv env is_fwd kind = ref (T.Unassigned (is_fwd, Name.fresh (), kind, env.lev
 let some_type_kind env is_fwd =
     T.App {callee = Prim TypeIn; arg = Uv (uv env is_fwd (Prim Rep))}
 
-let push_val is_global (env : t) (var : var) =
-    if is_global
-    then match env.namespace with
-        | Some ns -> {env with namespace = Some (Namespace.add ns var)}
-        | None -> unreachable None
-    else match env.scopes with
-        | Vals bindings :: scopes' ->
-            {env with scopes = Vals (Name.Map.add var.name var bindings) :: scopes'}
-        | scopes ->
-            {env with scopes = Vals (Name.Map.singleton var.name var) :: scopes}
-
-let find_val (env : t) span name =
-    let rec find = function
-        | Vals kvs :: scopes -> (match Name.Map.find_opt name kvs with
-            | Some var -> FExpr.at span var.vtyp (FExpr.use var)
-            | None -> find scopes)
-        | (Rigid _ | Hoisting _) :: scopes -> find scopes
-        | [] ->
-            (match Option.bind env.namespace (Fun.flip Namespace.find_typ name) with
-            | Some {vtyp = typ; plicity = _; name = _} ->
-                let namexpr = FExpr.at span (Prim String)
-                    (FExpr.const (String (Name.to_string name))) in
-                FExpr.primapp GlobalGet (Vector.singleton typ) (Vector.singleton namexpr)
-                |> FExpr.at span typ
-            | None ->
-                report_error env ({v = Unbound name; pos = span});
-                (* FIXME: levels: *)
-                let typ = T.Uv (uv env false (some_type_kind env false)) in
-                FExpr.at span typ (FExpr.use (FExpr.var Explicit name typ))) in
-    find env.scopes
-
 let push_existential (env : t) =
     let bindings = ref [] in
     let level = env.level + 1 in
@@ -99,6 +77,90 @@ let reabstract env : T.t -> T.ov Vector.t * T.t = function
         let substitution = Vector.map (fun ov -> T.Ov ov) existentials in
         (existentials, T.expose substitution body)
     | typ -> (Vector.empty, typ)
+
+let push_val is_global (env : t) (var : var) =
+    if is_global
+    then match env.namespace with
+        | Some ns -> {env with namespace = Some (Namespace.add ns var)}
+        | None -> unreachable None
+    else match env.scopes with
+        | Vals bindings :: scopes' ->
+            {env with scopes = Vals (Name.Map.add var.name var bindings) :: scopes'}
+        | scopes ->
+            {env with scopes = Vals (Name.Map.singleton var.name var) :: scopes}
+
+let push_row env decls =
+    let bindings = CCVector.fold (fun bindings (vars, lhs, rhs) ->
+        Vector.fold (fun bindings (var : FExpr.var) ->
+            Name.Map.add var.name (var, ref (WhiteT (lhs, rhs))) bindings
+        ) bindings vars
+    ) Name.Map.empty decls in
+    {env with scopes = Row bindings :: env.scopes}
+
+let find_val elaborate subtype (env : t) span name =
+    let rec find = function
+        | Vals kvs :: scopes -> (match Name.Map.find_opt name kvs with
+            | Some var -> FExpr.at span var.vtyp (FExpr.use var)
+            | None -> find scopes)
+
+        | (Row bindings :: scopes') as scopes ->
+            (match Name.Map.find_opt name bindings with
+            | Some (var, binding) ->
+                (match !binding with
+                | WhiteT (lhs, rhs) ->
+                    let env = {env with scopes} in
+                    binding := GreyT;
+                    let (rhs, kind) = elaborate env rhs in
+                    let (_, rhs) = reabstract env rhs in
+                    subtype span env rhs lhs;
+                    binding := BlackT {typ = rhs; kind}
+                | GreyT -> () (* TODO: really? *)
+                | BlackT _ -> ());
+                FExpr.at span var.vtyp (FExpr.use var)
+            | None -> find scopes')
+
+        | (Rigid _ | Hoisting _) :: scopes -> find scopes
+
+        | [] ->
+            (match Option.bind env.namespace (Fun.flip Namespace.find_typ name) with
+            | Some {vtyp = typ; plicity = _; name = _} ->
+                let namexpr = FExpr.at span (Prim String)
+                    (FExpr.const (String (Name.to_string name))) in
+                FExpr.primapp GlobalGet (Vector.singleton typ) (Vector.singleton namexpr)
+                |> FExpr.at span typ
+            | None ->
+                report_error env ({v = Unbound name; pos = span});
+                (* FIXME: levels: *)
+                let typ = T.Uv (uv env false (some_type_kind env false)) in
+                FExpr.at span typ (FExpr.use (FExpr.var Explicit name typ))) in
+    find env.scopes
+
+let force_typ elaborate subtype (env : t) span name =
+    let rec find scopes = match scopes with
+        | Vals bindings :: scopes -> (match Name.Map.find_opt name bindings with
+            | Some _ -> bug (Some span) ~msg: "`Env.find_rhs` found `Vals` scope"
+            | None -> find scopes)
+
+        | Row bindings :: scopes' ->
+            (match Name.Map.find_opt name bindings with
+            | Some (_, binding) ->
+                (match !binding with
+                | WhiteT (lhs, rhs) ->
+                    let env = {env with scopes} in
+                    binding := GreyT;
+                    let (rhs, kind) = elaborate env rhs in
+                    let (_, rhs) = reabstract env rhs in
+                    subtype span env rhs lhs;
+                    binding := BlackT {typ = rhs; kind};
+                    ()
+                | GreyT -> bug (Some span) ~msg: "`Env.find_rhst` found `GreyT` binding"
+                | BlackT _ -> ())
+            | None -> find scopes')
+
+        | (Hoisting _ | Rigid _) :: scopes -> find scopes
+
+        | [] -> report_error env ({v = Unbound name; pos = span}) in
+    find env.scopes
 
 let push_skolems (env : t) kinds =
     let level = env.level + 1 in

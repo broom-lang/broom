@@ -1,9 +1,8 @@
 module Sigs = TyperSigs
 module T = Fc.Type
-module Env = TypeEnv
+module MakeConstraints = Constraints.Make
 module MakeKinding = Kinding.Make
 module MakeTyping = Typing.Make
-module MakeConstraints = Constraints.Make
 module Tx = Transactional
 open Tx.Ref
 
@@ -12,9 +11,9 @@ type 'a typing = 'a Sigs.typing
 
 module Error = TypeError
 
-module rec Kinding : Sigs.KINDING = MakeKinding (Typing) (Constraints)
-and Typing : Sigs.TYPING = MakeTyping (Kinding) (Constraints)
-and Constraints : Sigs.CONSTRAINTS = MakeConstraints (Kinding)
+module rec Constraints : Sigs.CONSTRAINTS = MakeConstraints (Kinding)
+and Kinding : Sigs.KINDING = MakeKinding (Constraints) (Typing)
+and Typing : Sigs.TYPING = MakeTyping (Constraints) (Kinding)
 
 let check_program defs main =
     let errors = ref [] in

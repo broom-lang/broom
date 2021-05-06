@@ -1,16 +1,21 @@
+open Streaming
 open Asserts
 
 module TS = TyperSigs
+module Env = TypeEnv
 module AType = Ast.Type
+module AExpr = Ast.Term.Expr
 module T = Fc.Type
 module FExpr = Fc.Term.Expr
-module Env = TypeEnv
 open Transactional.Ref
 
 type 'a with_pos = 'a Util.with_pos
 type 'a kinding = 'a TS.kinding
 
-module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
+module Make
+    (Constraints : TS.CONSTRAINTS)
+    (Typing : TS.TYPING)
+= struct
     let kindof_prim : Prim.t -> T.kind = function
         | Unit -> (* TypeIn UnitRep *)
             App {callee = Prim TypeIn; arg = Prim UnitRep}
@@ -153,22 +158,20 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
                      ; codomain = T.close substitution codomain }
                 ; kind = T.aType }
 
-            (*| Declare (decls, body) ->
+            | Declare (decls, body) ->
                 let bindings = CCVector.create () in
                 let _ = Vector1.fold (fun env decl ->
-                    let (_, semiabs, defs', rhs) = analyze_decl env decl in
-                    CCVector.push bindings (defs', semiabs, rhs);
-                    Vector.fold (Env.push_val false) env defs'
+                    let ((pat : FExpr.pat), env, vars, rhs) = analyze_decl env decl in
+                    CCVector.push bindings (vars, pat.ptyp, rhs);
+                    env
                 ) env decls in
-                (* OPTIMIZE: Fields accumulator is not needed here, as `_` shows: *)
-                (* FIXME: fields accumulator was used to put fields in dependency order! *)
-                let (env, _) = Env.push_row env (CCVector.freeze bindings) in
+                let env = Env.push_row env (CCVector.freeze bindings) in
 
-                Vector1.iter2 (elaborate_decl env)
-                    (Vector.build bindings |> Vector1.of_vector |> Option.get)
-                    decls;
+                Stream.from (Source.zip_with (elaborate_decl env)
+                    (Util.ccvector_to_source bindings) (Vector1.to_source decls))
+                |> Stream.drain;
 
-                elab env body*)
+                elab env body
 
             | Record decls ->
                 let {TS.typ = row; kind = _} = elab_row env typ.pos decls in
@@ -192,8 +195,6 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
 
             | Prim pt -> {typ = Prim pt; kind = kindof_prim pt}
 
-            | _ -> todo (Some typ.pos)
-
         and elab_domain env (domain : Ast.Term.Expr.t with_pos) =
             let ((pat : FExpr.pat), env, _) =
                 Typing.typeof_pat ctrs false false env Explicit domain in
@@ -208,26 +209,28 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
             ) EmptyRow decls in
             {typ = row; kind = kindof_F ctrs pos env row}
 
-        (*and analyze_decl env = function
-            | AType.Def (_, pat, expr) ->
-                let (pat, semiabs, defs') = C.elaborate_pat env pat in
-                let expr' = AExpr.PrimApp (TypeOf, None, expr) in
-                (pat, semiabs, defs', {expr with v = AType.Path expr'})
+        and analyze_decl env = function
             | Decl (_, pat, typ) ->
-                let (pat, semiabs, defs') = C.elaborate_pat env pat in
-                (pat, semiabs, defs', typ)
+                let (pat, env, vars) = Typing.typeof_pat ctrs false false env Explicit pat in
+                (pat, env, vars, typ)
 
-        and elaborate_decl env (defs, (_, lhs), rhs) decl =
-            let pos = AType.Decl.pos decl in
-            ignore (
-                if Vector.length defs > 0
-                then Env.find_rhst env pos (Vector.get defs 0).FExpr.name
-                else begin
-                    let {TS.typ = rhs; kind = _} as kinding = elaborate ctrs env rhs in
-                    let (_, rhs) = reabstract env rhs in
-                    ignore (Constraints.subtype ctrs pos env rhs lhs);
-                    kinding
-                end)*)
+            | Def (_, pat, expr) ->
+                let (pat, env, vars) = Typing.typeof_pat ctrs false false env Explicit pat in
+                let expr' = AExpr.PrimApp (TypeOf, None, expr) in
+                (pat, env, vars, {expr with v = AType.Path expr'})
+
+        and elaborate_decl env (vars, lhs, rhs) decl =
+            let span = AType.Decl.pos decl in
+            if Vector.length vars > 0
+            then Env.force_typ (fun env typ ->
+                    let {TS.typ; kind} = elab env typ in
+                    (typ, kind))
+                (fun span env sub super -> ignore (Constraints.subtype ctrs span env sub super))
+                env span (Vector.get vars 0).FExpr.name
+            else begin
+                let {TS.typ = rhs; kind = _} = elab env rhs in
+                ignore (Constraints.subtype ctrs span env rhs lhs)
+            end
 
         and check env kind ({Util.pos = span; _} as typ) =
             let {TS.typ; kind = kind'} = elab env typ in

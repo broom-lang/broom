@@ -1,6 +1,7 @@
 module T = Fc.Type
-type var = Fc.Term.Expr.var
-type expr = Fc.Term.Expr.t
+module FExpr = Fc.Term.Expr
+type span = Util.span
+type 'a with_pos = 'a Util.with_pos
 
 type t
 
@@ -15,8 +16,15 @@ type error_handler = TypeError.t -> unit
 val report_error : t -> error_handler
 val with_error_handler : t -> error_handler -> t
 
-val push_val : bool -> t -> var -> t
-val find_val : t -> Util.span -> Name.t -> expr
+val push_val : bool -> t -> FExpr.var -> t
+val find_val : (t -> Ast.Type.t with_pos -> T.t * T.kind)
+    -> (span -> t -> T.t -> T.t -> unit)
+    -> t -> span -> Name.t -> FExpr.t
+
+val push_row : t -> (FExpr.var Vector.t * T.t * Ast.Type.t Util.with_pos) CCVector.ro_vector -> t
+val force_typ : (t -> Ast.Type.t with_pos -> T.t * T.kind)
+    -> (span -> t -> T.t -> T.t -> unit)
+    -> t -> span -> Name.t -> unit
 
 val push_existential : t -> t * T.ov list Transactional.Ref.t
 val generate : t -> T.def -> T.ov

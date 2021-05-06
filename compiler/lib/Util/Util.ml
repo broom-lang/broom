@@ -1,3 +1,5 @@
+open Streaming
+
 type document = PPrint.document
 
 type plicity = Explicit | Implicit
@@ -13,6 +15,8 @@ let pos_to_string ({pos_lnum = line; pos_bol = bol; pos_cnum = offset; pos_fname
 let span_to_string (pos, pos') = pos_to_string pos ^ "-" ^ pos_to_string pos'
 
 type 'a with_pos = {v : 'a; pos: span}
+
+let ccvector_to_source vec = Source.seq (CCVector.to_seq vec)
 
 type 'a docs_op =
     | InfixL of {prec : int; l : 'a; op : document; r : 'a}
