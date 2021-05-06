@@ -26,7 +26,7 @@ module Make
         | Int _ -> Int
         | String _ -> String)
 
-    (*let primop_typ : Primop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t =
+    let primop_typ : Primop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t =
         let open Primop in
         function
         | Pair -> (* forall a b . (a, b) -> Pair a b *)
@@ -84,7 +84,7 @@ module Make
             , Vector.singleton (T.Prim String)
             , EmptyRow, Bv {depth = 0; sibli = 0; bkind = T.aType} )
 
-    let branchop_typ : Branchop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t Vector.t =
+    (*let branchop_typ : Branchop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t Vector.t =
         let open Branchop in
         function
         | IAdd | ISub | IMul | IDiv ->
@@ -186,6 +186,33 @@ module Make
 
             (* FIXME: Existential result opening *)
             {term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg); eff}
+
+        | PrimApp (op, iargs, args) ->
+            let (universals, domain, eff, codomain) = primop_typ op in
+            let (universals, domain, eff, codomain) =
+                Env.instantiate_primop env universals domain eff codomain in
+            let universals = Vector.map (fun uv -> T.Uv uv) universals in
+            if Vector.length args = Vector.length domain
+            then begin
+                if Vector.length iargs > 0 then begin
+                    if Vector.length iargs = Vector.length universals
+                    then Stream.from (Source.zip_with (fun uv (iarg : AExpr.t with_pos) ->
+                            let typ = T.Proxy uv in
+                            let {TS.term = iarg; eff = arg_eff} = check ctrs env typ iarg in
+                            ignore (Constraints.unify ctrs iarg.pos env arg_eff eff);
+                            iarg
+                        ) (Vector.to_source universals) (Vector.to_source iargs))
+                        |> Stream.drain
+                    else todo (Some expr.pos)
+                end;
+                let args = Stream.from (Source.zip_with (fun typ (arg : AExpr.t with_pos) ->
+                        let {TS.term = arg; eff = arg_eff} = check ctrs env typ arg in
+                        ignore (Constraints.unify ctrs arg.pos env arg_eff eff);
+                        arg
+                    ) (Vector.to_source domain) (Vector.to_source args))
+                    |> Stream.into (Vector.sink ()) in
+                {term = FExpr.at expr.pos codomain (FExpr.primapp op universals args); eff}
+            end else todo (Some expr.pos)
 
         | Let (defs, body) ->
             let (defs, env) = check_defs ctrs env (Vector1.to_vector defs) in
