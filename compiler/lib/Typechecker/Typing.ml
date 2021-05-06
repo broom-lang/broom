@@ -26,6 +26,74 @@ module Make
         | Int _ -> Int
         | String _ -> String)
 
+    (*let primop_typ : Primop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t =
+        let open Primop in
+        function
+        | Pair -> (* forall a b . (a, b) -> Pair a b *)
+            ( Vector.of_array_unsafe [|T.aType; T.aType|]
+            , Vector.of_array_unsafe [|T.Bv {depth = 0; sibli = 0; bkind = T.aType}
+                ; Bv {depth = 0; sibli = 1; bkind = T.aType}|]
+            , T.EmptyRow
+            , Pair {fst = Bv {depth = 0; sibli = 0; bkind = T.aType}
+                ; snd = Bv {depth = 0; sibli = 1; bkind = T.aType}} )
+        | Fst -> (* forall a b . Pair a b -> a *)
+            ( Vector.of_array_unsafe [|T.aType; T.aType|]
+            , Vector.singleton (T.Pair {fst = Bv {depth = 0; sibli = 0; bkind = T.aType}
+                ; snd = Bv {depth = 0; sibli = 1; bkind = T.aType}})
+            , T.EmptyRow
+            , Bv {depth = 0; sibli = 0; bkind = T.aType} )
+        | Snd -> (* forall a b . Pair a b -> b *)
+            ( Vector.of_array_unsafe [|T.aType; T.aType|]
+            , Vector.singleton (T.Pair {fst = Bv {depth = 0; sibli = 0; bkind = T.aType}
+                ; snd = Bv {depth = 0; sibli = 1; bkind = T.aType}})
+            , T.EmptyRow
+            , Bv {depth = 0; sibli = 1; bkind = T.aType} )
+        | CellNew -> (* forall a . () -> __cell a *)
+            ( Vector.singleton T.aType, Vector.empty
+            , T.EmptyRow
+            , T.App {callee = Prim Cell; arg = Bv {depth = 0; sibli = 0; bkind = T.aType}} )
+        | CellInit -> (* forall a . (__cell a, a) -> () *)
+            ( Vector.singleton T.aType
+            , Vector.of_list [ T.App {callee = Prim Cell; arg = Bv {depth = 0; sibli = 0; bkind = T.aType}}
+                ; Bv {depth = 0; sibli = 0; bkind = T.aType} ]
+            , T.EmptyRow, Prim Unit )
+        | CellGet -> (* forall a . __cell a -> a *)
+            ( Vector.singleton T.aType
+            , Vector.singleton (T.App {callee = Prim Cell; arg = Bv {depth = 0; sibli = 0; bkind = T.aType}})
+            , T.EmptyRow, T.Bv {depth = 0; sibli = 0; bkind = T.aType} )
+        | Int -> (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim Int))
+        | String -> (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim String))
+        | Type ->
+            ( Vector.empty, Vector.empty, T.EmptyRow
+            , T.Proxy (T.Exists {existentials = Vector1.singleton T.aType
+                ; body = Proxy (Bv {depth = 0; sibli = 0; bkind = T.aType})}) )
+        | TypeOf -> (* FIXME: Enforce argument purity *)
+            ( Vector.singleton T.aType
+            , Vector.singleton (T.Bv {depth = 0; sibli = 0; bkind = T.aType})
+            , EmptyRow, Proxy (Bv {depth = 0; sibli = 0; bkind = T.aType}) )
+        | Import ->
+            ( Vector.singleton T.aType
+            , Vector.of_list [T.Proxy (Bv {depth = 0; sibli = 0; bkind = T.aType}); Prim String]
+            , EmptyRow, Bv {depth = 0; sibli = 0; bkind = T.aType} )
+        | GlobalSet ->
+            ( Vector.singleton T.aType
+            , Vector.of_list [T.Prim String; Bv {depth = 0; sibli = 0; bkind = T.aType}]
+            , EmptyRow, Prim Unit )
+        | GlobalGet ->
+            ( Vector.singleton T.aType
+            , Vector.singleton (T.Prim String)
+            , EmptyRow, Bv {depth = 0; sibli = 0; bkind = T.aType} )
+
+    let branchop_typ : Branchop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t Vector.t =
+        let open Branchop in
+        function
+        | IAdd | ISub | IMul | IDiv ->
+            ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
+            , T.EmptyRow, Vector.of_list [T.Prim Int; Prim Unit] )
+        | ILt | ILe | IGt | IGe | IEq ->
+            ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
+            , T.EmptyRow, Vector.of_list [T.Prim Unit; Prim Unit] )*)
+
     let rec typeof_pat ctrs is_global is_fwd env (plicity : plicity) (pat : AExpr.t with_pos) =
         match pat.v with
         | Ann (pat, typ) ->
