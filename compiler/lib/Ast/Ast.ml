@@ -17,8 +17,8 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
             | Fn of Util.plicity * clause Vector.t
             | App of t with_pos * Util.plicity * t with_pos
             | AppSequence of t with_pos Vector1.t
-            | PrimApp of Primop.t * t with_pos option * t with_pos
-            | PrimBranch of Branchop.t * t with_pos option * t with_pos * clause Vector.t
+            | PrimApp of Primop.t * t with_pos Vector.t * t with_pos Vector.t
+            | PrimBranch of Branchop.t * t with_pos Vector.t * t with_pos Vector.t * clause Vector.t
             | Let of def Vector1.t * t with_pos
             | Record of stmt Vector.t
             | Select of t with_pos * Name.t
@@ -161,26 +161,37 @@ module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
                 | AppSequence exprs ->
                     separate_map (break 1) (to_doc (app_prec + 1)) (Vector1.to_list exprs)
                     |> prec_parens (prec > app_prec)
-                | PrimApp (op, Some iargs, args) ->
-                    infix 4 1 (string "@")
-                        (prefix 4 1 (string "__" ^^ Primop.to_doc op) (to_doc (app_prec + 1) iargs))
-                        (to_doc (app_prec + 1) args)
+
+                | PrimApp (op, iargs, args) ->
+                    if Vector.length iargs = 0
+                    then prefix 4 1 (string "__" ^^ Primop.to_doc op)
+                        (separate_map (break 1) (to_doc (app_prec + 1))
+                            (Vector.to_list args))
                     |> prec_parens (prec > app_prec)
-                | PrimApp (op, None, args) ->
-                    prefix 4 1 (string "__" ^^ Primop.to_doc op) (to_doc (app_prec + 1) args)
+                    else infix 4 1 (string "@")
+                        (prefix 4 1 (string "__" ^^ Primop.to_doc op)
+                            (separate_map (break 1) (to_doc (app_prec + 1))
+                                (Vector.to_list iargs)))
+                            (separate_map (break 1) (to_doc (app_prec + 1))
+                                (Vector.to_list args))
                     |> prec_parens (prec > app_prec)
-                | PrimBranch (op, Some iargs, args, clauses) ->
-                    infix 4 1 (string "@")
+
+                | PrimBranch (op, iargs, args, clauses) ->
+                    if Vector.length iargs = 0
+                    then infix 4 1 (string "@")
                         (prefix 4 1 (string "__" ^^ Branchop.to_doc op)
-                         (to_doc (app_prec + 1) args))
-                        ((to_doc (app_prec + 1) iargs) ^^ blank 1
-                         ^^ to_doc (app_prec + 1) {expr with v = Fn (Explicit, clauses)})
-                    |> prec_parens (prec > app_prec)
-                | PrimBranch (op, None, args, clauses) ->
-                    prefix 4 1 (string "__" ^^ Branchop.to_doc op)
-                        ((to_doc (app_prec + 1) args) ^^ blank 1
-                        ^^ to_doc (app_prec + 1) {expr with v = Fn (Explicit, clauses)})
-                    |> prec_parens (prec > app_prec)
+                            (separate_map (break 1) (to_doc (app_prec + 1))
+                                (Vector.to_list args)))
+                            (separate_map (break 1) (to_doc (app_prec + 1))
+                                (Vector.to_list iargs) ^^ blank 1
+                             ^^ to_doc (app_prec + 1) {expr with v = Fn (Explicit, clauses)})
+                        |> prec_parens (prec > app_prec)
+                    else prefix 4 1 (string "__" ^^ Branchop.to_doc op)
+                            (separate_map (break 1) (to_doc (app_prec + 1))
+                                (Vector.to_list args) ^^ blank 1
+                            ^^ to_doc (app_prec + 1) {expr with v = Fn (Explicit, clauses)})
+                        |> prec_parens (prec > app_prec)
+
                 | Let (defs, body) ->
                     string "__let" ^^ blank 1
                     ^^ surround_separate 4 0 (braces empty)

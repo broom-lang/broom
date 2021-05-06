@@ -202,7 +202,7 @@ and expand_decl_pat define_toplevel report_def env = function
     | Decl (pos, pat, typ) ->
         let report_def = function
             | Stmt.Def (pos, pat, expr) ->
-                let path = Expr.PrimApp (TypeOf, None, expr) in
+                let path = Expr.PrimApp (TypeOf, Vector.empty, Vector.singleton expr) in
                 report_def (Type.Decl (pos, pat, {pos; v = Path path}))
             | stmt -> unreachable (Some (Stmt.pos stmt)) in
         let (pat, env) = expand_pat define_toplevel report_def env pat in
@@ -252,11 +252,11 @@ and expand define_toplevel env expr : expr with_pos = match expr.v with
         {expr with v = App (expand define_toplevel env callee
             , plicity, expand define_toplevel env args)}
     | PrimApp (op, iargs, args) ->
-        {expr with v = PrimApp (op, Option.map (expand define_toplevel env) iargs
-            , expand define_toplevel env args)}
+        {expr with v = PrimApp (op, Vector.map (expand define_toplevel env) iargs
+            , Vector.map (expand define_toplevel env) args)}
     | PrimBranch (op, iargs, args, clauses) ->
-        {expr with v = PrimBranch (op, Option.map (expand define_toplevel env) iargs
-            , expand define_toplevel env args
+        {expr with v = PrimBranch (op, Vector.map (expand define_toplevel env) iargs
+            , Vector.map (expand define_toplevel env) args
             , Vector.map (expand_clause define_toplevel env) clauses)}
     | Ann (expr, typ) ->
         {expr with v = Ann (expand define_toplevel env expr

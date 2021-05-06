@@ -12,8 +12,8 @@ module type EXPR = sig
         | Fn of Util.plicity * clause Vector.t
         | App of t with_pos * Util.plicity * t with_pos
         | AppSequence of t with_pos Vector1.t
-        | PrimApp of Primop.t * t with_pos option * t with_pos
-        | PrimBranch of Branchop.t * t with_pos option * t with_pos * clause Vector.t
+        | PrimApp of Primop.t * t with_pos Vector.t * t with_pos Vector.t
+        | PrimBranch of Branchop.t * t with_pos Vector.t * t with_pos Vector.t * clause Vector.t
         | Let of def Vector1.t * t with_pos
         | Record of stmt Vector.t
         | Select of t with_pos * Name.t

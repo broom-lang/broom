@@ -120,10 +120,8 @@ app :
         let op = $1 in
         match $2 with
         | Left _ -> failwith "primop missing explicit args"
-        | Right eargs -> {v = PrimApp (op, None, (parenthesized eargs $loc($2))); pos = $loc}
-        | Both (iargs, eargs) ->
-            {v = PrimApp (op, Some (parenthesized iargs $loc($2))
-                , parenthesized eargs $loc($2)); pos = $loc}
+        | Right eargs -> {v = PrimApp (op, Vector.empty, eargs); pos = $loc}
+        | Both (iargs, eargs) -> {v = PrimApp (op, iargs, eargs); pos = $loc}
     }
     | BRANCHOP args {
         let op = $1 in
@@ -135,15 +133,14 @@ app :
             let clauses = match (Vector.get eargs (Vector.length args)).v with
                 | Fn (Explicit, clauses) -> clauses
                 | _ -> failwith "branchop missing clauses" in
-            {v = PrimBranch (op, None, parenthesized args $loc($2), clauses); pos = $loc}
+            {v = PrimBranch (op, Vector.empty, args, clauses); pos = $loc}
         | Both (iargs, eargs) ->
             assert (Vector.length eargs >= 2);
             let args = Vector.sub eargs 0 (Vector.length eargs - 1) in
             let clauses = match (Vector.get eargs (Vector.length args)).v with
                 | Fn (Explicit, clauses) -> clauses
                 | _ -> failwith "branchop missing clauses" in
-            {v = PrimBranch (op, Some (parenthesized iargs $loc($2))
-                , parenthesized args $loc($2), clauses); pos = $loc}
+            {v = PrimBranch (op, iargs, args, clauses); pos = $loc}
     }
     | select args { match $2 with
         | Left iargs -> {v = App ($1, Implicit, parenthesized iargs $loc($2)); pos = $loc}

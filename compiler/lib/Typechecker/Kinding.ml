@@ -216,7 +216,7 @@ module Make
 
             | Def (_, pat, expr) ->
                 let (pat, env, vars) = Typing.typeof_pat ctrs false false env Explicit pat in
-                let expr' = AExpr.PrimApp (TypeOf, None, expr) in
+                let expr' = AExpr.PrimApp (TypeOf, Vector.empty, Vector.singleton expr) in
                 (pat, env, vars, {expr with v = AType.Path expr'})
 
         and elaborate_decl env (vars, lhs, rhs) decl =
