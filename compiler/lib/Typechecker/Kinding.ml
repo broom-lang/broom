@@ -168,14 +168,13 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
                     (Vector.build bindings |> Vector1.of_vector |> Option.get)
                     decls;
 
-                elab env body
+                elab env body*)
 
             | Record decls ->
                 let {TS.typ = row; kind = _} = elab_row env typ.pos decls in
-                let typ' = T.Record row in
-                {typ = typ'; kind = kindof_F ctrs typ.pos env typ'}
+                {typ = Record row; kind = T.aType}
 
-            | Row decls -> elab_row env typ.pos decls*)
+            | Row decls -> elab_row env typ.pos decls
 
             | Path expr ->
                 let carrie =
@@ -200,7 +199,7 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
                 Typing.typeof_pat ctrs false false env Explicit domain in
             (pat.ptyp, env)
 
-        (*and elab_row env pos decls =
+        and elab_row env pos decls =
             let row = Vector.fold_right (fun base -> function
                 | AType.Decl (_, {v = Var label; _}, typ) ->
                     let {TS.typ = field; kind = _} = elab env typ in
@@ -209,7 +208,7 @@ module Make (Typing : TS.TYPING) (Constraints : TS.CONSTRAINTS) = struct
             ) EmptyRow decls in
             {typ = row; kind = kindof_F ctrs pos env row}
 
-        and analyze_decl env = function
+        (*and analyze_decl env = function
             | AType.Def (_, pat, expr) ->
                 let (pat, semiabs, defs') = C.elaborate_pat env pat in
                 let expr' = AExpr.PrimApp (TypeOf, None, expr) in
