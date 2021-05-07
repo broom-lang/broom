@@ -173,14 +173,18 @@ module Make
             let typ = T.Pi {universals; domain; eff; codomain} in
             {term = FExpr.at expr.pos typ (FExpr.fn universals param body); eff = EmptyRow}
 
-        | App (callee, Explicit, arg) ->
+        | App (callee, plicity, arg) ->
             (* TODO: Effect opening à la Koka *)
             (* OPTIMIZE: eta-expands universal callees: *)
             let domain = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
-            let eff = T.Uv (Env.uv env false T.aRow) in
+            let eff = match plicity with
+                | Explicit -> T.Uv (Env.uv env false T.aRow)
+                | Implicit -> EmptyRow in
             let codomain = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
 
-            let callee_super = T.Pi {universals = Vector.empty; domain; eff; codomain} in
+            let callee_super = match plicity with
+                | Explicit -> T.Pi {universals = Vector.empty; domain; eff; codomain}
+                | Implicit -> T.Impli {universals = Vector.empty; domain; codomain} in
             let {TS.term = callee; eff = callee_eff} = check ctrs env callee_super callee in
             ignore (Constraints.unify ctrs callee.FExpr.pos env callee_eff eff);
 
@@ -356,8 +360,6 @@ module Make
 
         | Wild _ -> bug (Some expr.pos) ~msg: "_-expression reached typechecker"
         | AppSequence _ -> bug (Some expr.pos) ~msg: "AppSequence expression reached typechecker"
-
-        | _ -> todo (Some expr.pos)
 
     and check ctrs env super expr =
         let {TS.term = expr; eff} = typeof ctrs env expr in
