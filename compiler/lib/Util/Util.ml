@@ -4,6 +4,10 @@ type document = PPrint.document
 
 type plicity = Explicit | Implicit
 
+let is_implicit = function
+    | Explicit -> false
+    | Implicit -> true
+
 let plicity_arrow = function
     | Explicit -> PPrint.string "->"
     | Implicit -> PPrint.string "=>"

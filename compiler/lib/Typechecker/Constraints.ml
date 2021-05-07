@@ -1,9 +1,11 @@
+open Streaming
 open Asserts
 
 open Constraint
 module TS = TyperSigs
 module T = FcType.Type
 module E = Fc.Term.Expr
+module Stmt = Fc.Term.Stmt
 module Coercer = Fc.Term.Coercer
 module Tx = Transactional
 open Tx.Ref
@@ -98,7 +100,7 @@ module Make (K : TS.KINDING) = struct
         match (sub, super) with
         | (T.Exists {existentials; body}, super) -> (match super with
             | Uv _ -> None
-            | _ ->
+            | super ->
                 let (env, skolems, typ) = Env.push_abs_skolems env existentials body in
                 let coerce = subtype ctrs span env typ super in
                 let skolems = Vector1.map (fun {T.name; kind; _} -> (name, kind)) skolems in
@@ -112,15 +114,30 @@ module Make (K : TS.KINDING) = struct
                     let use = E.at span var.vtyp (E.use var) in
                     E.at span super (E.unpack skolems var expr use)))))
 
-        | (sub, T.Impli {universals = _; domain = _; codomain = _}) -> (match sub with
+        | (sub, T.Impli {universals; domain; codomain}) -> (match sub with
             | Uv _ -> None
-            | _ ->
-                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
-                ^ Util.doc_to_string (T.to_doc super)))
+            | sub ->
+                let (env, skolems, domain, codomain) =
+                    Env.push_impli_skolems env universals domain codomain in
+                let param = E.fresh_var Implicit domain in
+                let env = Env.push_val false env param in
+                let coerce_codomain = subtype ctrs span env sub codomain in
+                let universals = Vector.map (fun {T.name; kind; _} -> (name, kind)) skolems in
+                Some (match coerce_codomain with
+                    | Some coerce_codomain -> Some (Coercer.coercer (fun expr ->
+                        let value = Coercer.apply coerce_codomain expr in
+                        let var = E.fresh_var Explicit codomain in
+                        let pat = E.pat_at span codomain (VarP var) in
+                        let body = E.at span codomain (E.use var) in
+                        E.at span super (E.let'
+                            (Vector.singleton (Stmt.Def (span, pat, value)))
+                            (E.at span super (E.fn universals param body)))))
+                    | None -> Some (Coercer.coercer (fun expr ->
+                        E.at span super (E.fn universals param expr)))))
 
         | (sub, Exists {existentials; body}) -> (match sub with
             | Uv _ -> None
-            | _ ->
+            | sub ->
                 let (uvs, super) = Env.instantiate_abs env existentials body in
                 let coerce = subtype ctrs span env sub super in
                 let existentials = Vector1.map (fun uv -> T.Uv uv) uvs |> Vector1.to_vector in
@@ -130,11 +147,19 @@ module Make (K : TS.KINDING) = struct
                 | None -> Some (Coercer.coercer (fun expr ->
                     E.at span super (E.pack existentials expr)))))
 
-        | (Impli {universals = _; domain = _; codomain = _}, super) -> (match super with
+        | (Impli {universals; domain; codomain}, super) -> (match super with
             | Uv _ -> None
-            | _ ->
-                todo (Some span) ~msg: (Util.doc_to_string (T.to_doc sub) ^ " <: "
-                ^ Util.doc_to_string (T.to_doc super)))
+            | super ->
+                let (uvs, domain, codomain) =
+                    Env.instantiate_impli env universals domain codomain in
+                let coerce_codomain = subtype ctrs span env codomain super in
+                let arg = resolve ctrs span env domain in
+                let uvs = Vector.map (fun uv -> T.Uv uv) uvs in
+                Some (match coerce_codomain with
+                | Some coerce_codomain -> Some (Coercer.coercer (fun expr ->
+                    Coercer.apply coerce_codomain (E.at span super (E.app expr uvs arg))))
+                | None -> Some (Coercer.coercer (fun expr ->
+                    E.at span super (E.app expr uvs arg)))))
 
         | ( Pi {universals = sub_universals; domain = sub_domain; eff = sub_eff
                 ; codomain = sub_codomain}
@@ -543,5 +568,27 @@ module Make (K : TS.KINDING) = struct
             let coerce = Tx.Ref.ref Coercer.id in
             Tx.Queue.push ctrs (Subtype {span; env; sub; super; coerce});
             Some (Coercer.coercer (fun expr -> E.at span super (E.convert coerce expr)))
+
+    and resolve ctrs span env super =
+        let results = Env.implicits env
+            |> Stream.map (fun ({E.vtyp; name = _; plicity = _} as var) ->
+                Tx.transaction (fun () ->
+                    let errors = ref [] in
+                    let coerce =
+                        let env = Env.with_error_handler Env.empty
+                            (fun error -> errors := error :: !errors) in
+                        subtype ctrs span env vtyp super in
+                    match !errors with
+                    | [] -> Some (var, coerce)
+                    | _ :: _ -> None))
+            |> Stream.flat_map (fun ores -> ores |> Option.to_seq |> Source.seq |> Stream.from)
+            |> Stream.into (Vector.sink ()) in
+        match Vector.length results with
+        | 1 ->
+            let (var, coercion) = Vector.get results 0 in
+            Coercer.apply_opt coercion (E.at span var.E.vtyp (E.use var))
+
+        | 0 -> todo (Some span) ~msg: "resolution did not find"
+        | _ -> todo (Some span) ~msg: "ambiguous resolution"
 end
 

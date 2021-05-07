@@ -1,4 +1,4 @@
-val transaction : (unit -> 'a) -> 'a
+val transaction : (unit -> 'a option) -> 'a option
 
 module Ref : sig
     type 'a t

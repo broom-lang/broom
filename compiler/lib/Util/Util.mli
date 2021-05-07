@@ -4,6 +4,7 @@ type document = PPrint.document
 
 type plicity = Explicit | Implicit
 
+val is_implicit : plicity -> bool
 val plicity_arrow : plicity -> document
 
 type span = Lexing.position * Lexing.position

@@ -1,3 +1,4 @@
+open Streaming
 open Asserts
 
 module T = Fc.Type
@@ -161,6 +162,20 @@ let force_typ elaborate subtype (env : t) span name =
 
         | [] -> report_error env ({v = Unbound name; pos = span}) in
     find env.scopes
+
+let scope_vars = function
+    | Vals bindings ->
+        Stream.from (Source.seq (Name.Map.to_seq bindings))
+        |> Stream.map snd
+    | Row bindings ->
+        Stream.from (Source.seq (Name.Map.to_seq bindings))
+        |> Stream.map (fun (_, (var, _)) -> var)
+    | Hoisting _ | Rigid _ -> Stream.empty
+
+let implicits (env : t) =
+    Stream.from (Source.list env.scopes)
+    |> Stream.flat_map scope_vars
+    |> Stream.filter (fun {FExpr.plicity; _} -> Util.is_implicit plicity)
 
 let push_skolems (env : t) kinds =
     let level = env.level + 1 in

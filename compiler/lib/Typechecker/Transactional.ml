@@ -41,15 +41,14 @@ module Log = struct
 
     let transaction log body =
         let mem = memento log in
-        try
-            log.nesting <- log.nesting + 1;
-            let res = body () in
-            commit log mem;
-            res
-        with
-        | exn ->
-            abort log mem;
-            raise exn
+        log.nesting <- log.nesting + 1;
+
+        let res = body () in
+
+        (match res with
+        | Some _ -> commit log mem
+        | None -> abort log mem);
+        res
 end
 
 let log = Log.log ()

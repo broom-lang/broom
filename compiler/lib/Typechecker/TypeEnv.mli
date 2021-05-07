@@ -20,6 +20,7 @@ val push_val : bool -> t -> FExpr.var -> t
 val find_val : (t -> Ast.Type.t with_pos -> T.t * T.kind)
     -> (span -> t -> T.t -> T.t -> unit)
     -> t -> span -> Name.t -> FExpr.t
+val implicits : t -> FExpr.var Streaming.Stream.t
 
 val push_row : t -> (FExpr.var Vector.t * T.t * Ast.Type.t Util.with_pos) CCVector.ro_vector -> t
 val force_typ : (t -> Ast.Type.t with_pos -> T.t * T.kind)
