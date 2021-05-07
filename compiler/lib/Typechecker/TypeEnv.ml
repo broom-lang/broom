@@ -216,3 +216,11 @@ let instantiate_primop env universals domain app_eff codomain =
     , T.expose substitution app_eff
     , T.expose substitution codomain )
 
+let instantiate_branch env universals domain app_eff codomain =
+    let uvs = Vector.map (uv env false) universals in
+    let substitution = Vector.map (fun uv -> T.Uv uv) uvs in
+    ( uvs
+    , Vector.map (T.expose substitution) domain
+    , T.expose substitution app_eff
+    , Vector.map (T.expose substitution) codomain )
+

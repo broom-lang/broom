@@ -87,7 +87,7 @@ module Make
             , Vector.singleton (T.Prim String)
             , EmptyRow, Bv {depth = 0; sibli = 0; bkind = T.aType} )
 
-    (*let branchop_typ : Branchop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t Vector.t =
+    let branchop_typ : Branchop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t Vector.t =
         let open Branchop in
         function
         | IAdd | ISub | IMul | IDiv ->
@@ -95,7 +95,7 @@ module Make
             , T.EmptyRow, Vector.of_list [T.Prim Int; Prim Unit] )
         | ILt | ILe | IGt | IGe | IEq ->
             ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
-            , T.EmptyRow, Vector.of_list [T.Prim Unit; Prim Unit] )*)
+            , T.EmptyRow, Vector.of_list [T.Prim Unit; Prim Unit] )
 
     let rec typeof_pat ctrs is_global is_fwd env (plicity : plicity) (pat : AExpr.t with_pos) =
         match pat.v with
@@ -191,6 +191,7 @@ module Make
             {term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg); eff}
 
         | PrimApp (op, iargs, args) ->
+            (* TODO: Effect opening à la Koka: *)
             let (universals, domain, eff, codomain) = primop_typ op in
             let (universals, domain, eff, codomain) =
                 Env.instantiate_primop env universals domain eff codomain in
@@ -224,6 +225,64 @@ module Make
             end else begin
                 Env.report_error env {v = PrimAppArgc {op; expected; actual}; pos = expr.pos};
                 {term = FExpr.at expr.pos codomain (FExpr.primapp op universals Vector.empty); eff}
+            end
+
+        | PrimBranch (op, iargs, args, clauses) -> (* TODO: DRY: *)
+            (* TODO: Effect opening à la Koka: *)
+            let (universals, domain, eff, codomain) = branchop_typ op in
+            let (universals, domain, eff, codomain) =
+                Env.instantiate_branch env universals domain eff codomain in
+            let universals = Vector.map (fun uv -> T.Uv uv) universals in
+            let typ = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+
+            let expected = Vector.length domain in
+            let actual = Vector.length args in
+            if actual = expected then begin
+                if Vector.length iargs > 0 then begin
+                    let expected = Vector.length universals in
+                    let actual = Vector.length iargs in
+                    if actual = expected
+                    then Stream.from (Source.zip_with (fun uv (iarg : AExpr.t with_pos) ->
+                            let typ = T.Proxy uv in
+                            let {TS.term = iarg; eff = arg_eff} = check ctrs env typ iarg in
+                            ignore (Constraints.unify ctrs iarg.pos env arg_eff eff);
+                            iarg
+                        ) (Vector.to_source universals) (Vector.to_source iargs))
+                        |> Stream.drain
+                    else Env.report_error env {v = BranchopIArgc {op; expected; actual}; pos = expr.pos}
+                end;
+                (* else type arguments are inferred *)
+
+                let args = Stream.from (Source.zip_with (fun typ (arg : AExpr.t with_pos) ->
+                        let {TS.term = arg; eff = arg_eff} = check ctrs env typ arg in
+                        ignore (Constraints.unify ctrs arg.pos env arg_eff eff);
+                        arg
+                    ) (Vector.to_source domain) (Vector.to_source args))
+                    |> Stream.into (Vector.sink ()) in
+
+                let expected = Vector.length codomain in
+                let actual = Vector.length clauses in
+                if actual = expected then begin
+                    let clauses = Stream.from (Source.zip (Vector.to_source codomain) (Vector.to_source clauses))
+                        |> Stream.map (fun (codomain, {AExpr.params; body}) ->
+                            let (pat, env, _) = check_pat ctrs false false env Explicit codomain params in
+                            let pat = match pat.pterm with
+                                | VarP var -> Some var
+                                | ConstP Unit -> None
+                                | _ -> failwith "complex PrimBranch pattern" in
+                            let {TS.term = prim_body; eff = body_eff} = check ctrs env typ body in
+                            ignore (Constraints.unify ctrs body.pos env body_eff eff);
+                            {FExpr.res = pat; prim_body})
+                        |> Stream.into (Vector.sink ()) in
+
+                    {term = FExpr.at expr.pos typ (FExpr.primbranch op universals args clauses); eff}
+                end else begin
+                    Env.report_error env {v = BranchopClausec {op; expected; actual}; pos = expr.pos};
+                    {term = FExpr.at expr.pos typ (FExpr.primbranch op universals args Vector.empty); eff}
+                end
+            end else begin
+                Env.report_error env {v = BranchopArgc {op; expected; actual}; pos = expr.pos};
+                {term = FExpr.at expr.pos typ (FExpr.primbranch op universals Vector.empty Vector.empty); eff}
             end
 
         | Let (defs, body) ->

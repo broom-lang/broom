@@ -9,6 +9,9 @@ type t' =
     | NonPattern of AExpr.t with_pos
     | PrimAppArgc of {op : Primop.t; expected : int; actual : int}
     | PrimAppIArgc of {op : Primop.t; expected : int; actual : int}
+    | BranchopArgc of {op : Branchop.t; expected : int; actual : int}
+    | BranchopIArgc of {op : Branchop.t; expected : int; actual : int}
+    | BranchopClausec of {op : Branchop.t; expected : int; actual : int}
     | Subtype of T.t * T.t
     | Unify of T.t * T.t
     | Unbound of Name.t
@@ -33,6 +36,21 @@ let to_doc (err : t) =
     | PrimAppIArgc {op; expected; actual} ->
         string "wrong" ^/^ string "number" ^/^ string "of" ^/^ string "type" ^/^ string "arguments"
         ^/^ string "to" ^/^ string "__" ^^ Primop.to_doc op ^^ semi
+        ^/^ string "expected" ^^ blank 1 ^^ string (Int.to_string expected) ^^ comma
+        ^/^ string "got" ^^ blank 1 ^^ string (Int.to_string actual)
+    | BranchopArgc {op; expected; actual} ->
+        string "wrong" ^/^ string "number" ^/^ string "of" ^/^ string "arguments"
+        ^/^ string "to" ^/^ string "__" ^^ Branchop.to_doc op ^^ semi
+        ^/^ string "expected" ^^ blank 1 ^^ string (Int.to_string expected) ^^ comma
+        ^/^ string "got" ^^ blank 1 ^^ string (Int.to_string actual)
+    | BranchopIArgc {op; expected; actual} ->
+        string "wrong" ^/^ string "number" ^/^ string "of" ^/^ string "type" ^/^ string "arguments"
+        ^/^ string "to" ^/^ string "__" ^^ Branchop.to_doc op ^^ semi
+        ^/^ string "expected" ^^ blank 1 ^^ string (Int.to_string expected) ^^ comma
+        ^/^ string "got" ^^ blank 1 ^^ string (Int.to_string actual)
+    | BranchopClausec {op; expected; actual} ->
+        string "wrong" ^/^ string "number" ^/^ string "of" ^/^ string "clauses"
+        ^/^ string "to" ^/^ string "__" ^^ Branchop.to_doc op ^^ semi
         ^/^ string "expected" ^^ blank 1 ^^ string (Int.to_string expected) ^^ comma
         ^/^ string "got" ^^ blank 1 ^^ string (Int.to_string actual)
 
