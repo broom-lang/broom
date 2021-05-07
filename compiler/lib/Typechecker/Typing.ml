@@ -61,12 +61,15 @@ module Make
             ( Vector.singleton T.aType
             , Vector.singleton (T.App {callee = Prim Cell; arg = Bv {depth = 0; sibli = 0; bkind = T.aType}})
             , T.EmptyRow, T.Bv {depth = 0; sibli = 0; bkind = T.aType} )
-        | Int -> (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim Int))
-        | String -> (Vector.empty, Vector.empty, T.EmptyRow, T.Proxy (Prim String))
+
+        | Int -> (Vector.empty, Vector.singleton (T.Prim Unit), T.EmptyRow, T.Proxy (Prim Int))
+        | String -> (Vector.empty, Vector.singleton (T.Prim Unit), T.EmptyRow, T.Proxy (Prim String))
+
         | Type ->
-            ( Vector.empty, Vector.empty, T.EmptyRow
+            ( Vector.empty, Vector.singleton (T.Prim Unit), T.EmptyRow
             , T.Proxy (T.Exists {existentials = Vector1.singleton T.aType
                 ; body = Proxy (Bv {depth = 0; sibli = 0; bkind = T.aType})}) )
+
         | TypeOf -> (* FIXME: Enforce argument purity *)
             ( Vector.singleton T.aType
             , Vector.singleton (T.Bv {depth = 0; sibli = 0; bkind = T.aType})
