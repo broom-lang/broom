@@ -1,6 +1,0 @@
-(library
-  (name test)
-  (inline_tests)
-  (libraries broom_lib)
-  (preprocess (pps ppx_inline_test)))
-
