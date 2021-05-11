@@ -66,8 +66,8 @@ Expressions
     app &\rightarrow app \; projection \\
         &\quad | \; \mathrm{INTRINSIC} \; projection^+ \\
         &\quad | \; projection \\
-    projection &\rightarrow aexpr \; (\textbf{.} \; \mathrm{IDENTIFIER})^+ \\
-        &\quad | \; aexpr \; (\textbf{.} \; \mathrm{UINT})^+ \\
+    projection &\rightarrow projection \; \textbf{.} \; \mathrm{IDENTIFIER} \\
+        &\quad | \; projection \; \textbf{.} \; \mathrm{UINT} \\
         &\quad | \; aexpr
 
 .. math::
