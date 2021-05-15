@@ -46,6 +46,8 @@ let parenthesized' args =
 
 %%
 
+(* # Notation *)
+
 tail(separator, item, terminator) :
     | separator item tail(separator, item, terminator) { $2 :: $3 }
     | separator? terminator { [] }
@@ -56,24 +58,28 @@ trail(separator, item, terminator) :
 
 trailer(init, separator, item, terminator) : init trail(separator, item, terminator) { $2 }
 
-(* # Entry Points *)
+(* # Compilation Units *)
 
-program : def_semi* expr ";"? EOF { {Ast.Program.span = $loc; defs = Vector.of_list $1; body = $2} }
+(* (def ";")* expr ";"? EOF *)
+program : parse_program {
+    let (defs, body) = $1 in
+    {Ast.Program.span = $loc; defs = Vector.of_list defs; body}
+}
+
+parse_program :
+    | def ";" parse_program {
+        let (defs, body) = $3 in
+        ($1 :: defs, body)
+    }
+    | expr ";"? EOF { ([], $1) }
 
 modul : expr EOF { $1 }
 
 stmts : trail(";", stmt, EOF) { $1 }
 
-(* # Definitions & Statements *)
+(* # Terms *)
 
-def : expr "=" expr { ($loc, $1, $3) }
-def_semi : def ";" { $1 }
-
-stmt :
-    | def { Def $1 }
-    | expr { Expr $1 }
-
-(* # Expressions *)
+(* ## Expressions *)
 
 expr : typ { {$1 with v = proxy $1.v} }
 
@@ -208,6 +214,17 @@ args : select+ iargs? { match $2 with
     }
 
 iargs : "@" select* { $2 }
+
+(* ## Definitions *)
+
+def : expr "=" expr { ($loc, $1, $3) }
+def_semi : def ";" { $1 }
+
+(* ## Statements *)
+
+stmt :
+    | def { Def $1 }
+    | expr { Expr $1 }
 
 (* # Types *)
 
