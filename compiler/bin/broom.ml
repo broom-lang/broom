@@ -19,18 +19,17 @@ let build path debug check_only filename outfile =
         let input = Sedlexing.Utf8.from_channel input in
 
         match (
-            let* defs = Parse.parse_defs filename input |> Result.map_error parse_err in
+            let* program = Parse.program filename input |> Result.map_error parse_err in
             if debug then begin
                 print_newline ();
                 Util.debug_heading "Parsed AST";
-                let doc = group (separate_map (semi ^^ break 1) Ast.Term.Stmt.def_to_doc
-                    (Vector.to_list defs)) in
+                let doc = Ast.Program.to_doc program in
                 Util.pprint (doc ^^ twice hardline);
             end;
 
             if check_only
-            then Result.map ignore (Compiler.check_program ~debug ~path ~filename defs)
-            else Compiler.compile_program ~debug ~path ~filename ~output defs
+            then Result.map ignore (Compiler.check_program ~debug ~path program)
+            else Compiler.compile_program ~debug ~path ~output program
         ) with
         | Ok () -> ()
         | Error err ->

@@ -445,7 +445,7 @@ and expand_stmts' define_toplevel report_def env stmts =
 and expand_stmts define_toplevel report_def env stmts =
     fst (expand_stmts' define_toplevel report_def env stmts)
 
-let expand_program env defs entry =
+let expand_program env {Ast.Program.span; defs; body} =
     let defs' = CCVector.create () in
     let env = Vector.fold (fun env def ->
         let (def', env) = expand_def_pat (CCVector.push defs') ignore env def in
@@ -456,8 +456,8 @@ let expand_program env defs entry =
     defs |> CCVector.iter (fun def ->
         CCVector.push defs' (expand_def (CCVector.push defs') env def)
     );
-    let entry = expand (CCVector.push defs') env entry in
-    (Vector.build defs', entry)
+    let body = expand (CCVector.push defs') env body in
+    {Ast.Program.span; defs = Vector.build defs'; body}
 
 let expand_interactive_stmt env stmt =
     let defs = CCVector.create () in

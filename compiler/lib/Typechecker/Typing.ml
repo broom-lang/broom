@@ -391,12 +391,12 @@ module Make
             |> Stream.from |> Stream.into (Vector.sink ()) in
         (defs, env)
 
-    let check_program errors ctrs defs main =
+    let check_program errors ctrs {Ast.Program.span = _; defs; body} =
         let env = Env.with_error_handler Env.empty
             (fun error -> errors := error :: !errors) in
 
         let (defs, env) = check_defs ctrs env defs in
-        let {TS.term = main; eff} = check ctrs env (Prim Unit) main in
+        let {TS.term = main; eff} = check ctrs env (Prim Unit) body in
 
         {TS.term = {Fc.Program.type_fns = Env.type_fns env; defs; main}; eff}
 

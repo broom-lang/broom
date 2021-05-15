@@ -9,8 +9,7 @@ module Kinding : Sigs.KINDING
 
 module Typing : Sigs.TYPING
 
-val check_program : Ast.Term.Stmt.def Vector.t -> Ast.Term.Expr.t with_pos
-    -> (Fc.Program.t typing, TypeError.t list) result
+val check_program : Ast.Program.t -> (Fc.Program.t typing, TypeError.t list) result
 
 val check_interactive_stmts : Namespace.t -> Ast.Term.Stmt.t Vector1.t
     -> (Fc.Program.t typing * Namespace.t, TypeError.t list) result

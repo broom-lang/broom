@@ -7,3 +7,7 @@ and Type : (AstSigs.TYPE
     with type pat = Term.Expr.pat
     with type def = Term.Stmt.def)
 
+module Program : AstSigs.PROGRAM
+    with module Stmt = Term.Stmt
+    with module Expr = Term.Expr
+

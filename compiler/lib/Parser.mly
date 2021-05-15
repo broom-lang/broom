@@ -39,9 +39,9 @@ let parenthesized' args =
 %token <string> STRING
 %token <int> INT
 
-%start modul defs stmts
+%start program modul stmts
+%type <Ast.Program.t> program
 %type <Ast.Term.Expr.t with_pos> modul
-%type <Ast.Term.Stmt.def Vector.t> defs
 %type <Ast.Term.Stmt.t Vector.t> stmts
 
 %%
@@ -58,15 +58,16 @@ trailer(init, separator, item, terminator) : init trail(separator, item, termina
 
 (* # Entry Points *)
 
-modul : expr EOF { $1 }
+program : def_semi* expr ";"? EOF { {Ast.Program.span = $loc; defs = Vector.of_list $1; body = $2} }
 
-defs : trail(";", def, EOF) { $1 }
+modul : expr EOF { $1 }
 
 stmts : trail(";", stmt, EOF) { $1 }
 
 (* # Definitions & Statements *)
 
 def : expr "=" expr { ($loc, $1, $3) }
+def_semi : def ";" { $1 }
 
 stmt :
     | def { Def $1 }

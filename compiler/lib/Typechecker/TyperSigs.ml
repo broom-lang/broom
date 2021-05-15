@@ -21,8 +21,8 @@ module type TYPING = sig
     val typeof_pat : ctrs -> bool -> bool -> env -> Util.plicity -> AExpr.t with_pos
         -> FExpr.pat * env * FExpr.var Vector.t
 
-    val check_program : TypeError.t list Tx.Ref.t -> ctrs
-        -> AStmt.def Vector.t -> AExpr.t with_pos -> Fc.Program.t typing
+    val check_program : TypeError.t list Tx.Ref.t -> ctrs -> Ast.Program.t
+        -> Fc.Program.t typing
     val check_interactive_stmts : Namespace.t -> TypeError.t list Tx.Ref.t
         -> ctrs -> AStmt.t Vector1.t -> Fc.Program.t typing * Namespace.t
 end

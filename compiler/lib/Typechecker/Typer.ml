@@ -15,11 +15,11 @@ module rec Constraints : Sigs.CONSTRAINTS = MakeConstraints (Kinding)
 and Kinding : Sigs.KINDING = MakeKinding (Constraints) (Typing)
 and Typing : Sigs.TYPING = MakeTyping (Constraints) (Kinding)
 
-let check_program defs main =
+let check_program program =
     let errors = ref [] in
     let ctrs = Tx.Queue.create () in
 
-    let typing = Typing.check_program errors ctrs defs main in
+    let typing = Typing.check_program errors ctrs program in
     Constraints.solve ctrs;
 
     match !errors with

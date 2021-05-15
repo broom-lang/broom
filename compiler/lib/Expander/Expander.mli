@@ -14,8 +14,7 @@ module Make (StringHashtbl : Hashtbl.S with type key = string) : sig
         val empty : broompath -> t
     end
 
-    val expand_program : Bindings.t -> def Vector.t -> expr with_pos
-        -> def Vector.t * expr with_pos
+    val expand_program : Bindings.t -> Ast.Program.t -> Ast.Program.t
     val expand_interactive_stmt : Bindings.t -> stmt -> Bindings.t * stmt Vector1.t
 end
 

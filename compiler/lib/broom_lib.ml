@@ -11,11 +11,11 @@ end
 module SedlexMenhir = SedlexMenhir
 
 module Parse = struct
-    let parse_defs filename input =
+    let program filename input =
         try
             SedlexMenhir.create_lexbuf filename input
-            |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.defs
-            |> fun defs -> Ok defs
+            |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.program
+            |> fun program -> Ok program
         with SedlexMenhir.ParseError err -> Error err
 
     let parse_stmts filename input =
@@ -54,32 +54,18 @@ module Namespace = Namespace
 module Compiler = struct
     open PPrint
 
-    let check_program ~debug ~path ~filename defs =
+    let check_program ~debug ~path program =
         let (let*) = Result.bind in
         let (let+) = Fun.flip Result.map in
 
-        let program =
-            let pos = match Vector1.of_vector defs with
-                | Some defs ->
-                    let ((start, _), _, _) = Vector1.get defs 0 in
-                    let ((_, stop), _, _) = Vector1.get defs (Vector1.length defs - 1) in
-                    (start, stop)
-                | None ->
-                    let pos = {Lexing.pos_fname = filename; pos_lnum = 1; pos_bol = 0; pos_cnum = 0} in
-                    (pos, pos) in
-            let entry = {Util.pos; v = Ast.Term.Expr.App ( {pos; v = Var (Name.of_string "main")}
-                , Explicit, {pos; v = Tuple Vector.empty} )} in
-            let (defs, entry) = Expander.expand_program (Expander.Bindings.empty path) defs entry in
-            match Vector1.of_vector defs with
-            | Some defs -> {Util.pos; v = Ast.Term.Expr.Let (defs, entry)}
-            | None -> Asserts.bug (Some pos) ~msg: "program expansion succeeded without main function" in
+        let program = Expander.expand_program (Expander.Bindings.empty path) program in
         if debug then begin
             Util.debug_heading "Expanded AST";
-            Util.pprint (Ast.Term.Expr.to_doc program ^^ hardline);
+            Util.pprint (Ast.Program.to_doc program ^^ hardline);
         end;
 
         let* {term = program; eff = _} =
-            Typer.check_program Vector.empty program |> Result.map_error type_err in
+            Typer.check_program program |> Result.map_error type_err in
         if debug then begin
             Util.debug_heading "FC from Typechecker";
             Util.pprint (Fc.Program.to_doc program ^^ hardline)
@@ -119,10 +105,10 @@ module Compiler = struct
 
         (eenv, ns, {TyperSigs.term = program; eff})
 
-    let compile_program ~debug ~path ~filename ~output defs =
+    let compile_program ~debug ~path ~output defs =
         let (let+) = Fun.flip Result.map in
 
-        let+ program = check_program ~debug ~path ~filename defs in
+        let+ program = check_program ~debug ~path defs in
         let program = MiddleEnd.to_cfg ~debug program in
         Util.pwrite output (ToJs.emit program)
 end

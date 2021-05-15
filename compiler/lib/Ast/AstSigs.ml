@@ -1,3 +1,4 @@
+type span = Util.span
 type 'a with_pos = 'a Util.with_pos
 
 module type EXPR = sig
@@ -81,5 +82,14 @@ module type TYPE = sig
         val to_doc : t -> PPrint.document
         val pos : t -> Util.span
     end
+end
+
+module type PROGRAM = sig
+    module Stmt : STMT
+    module Expr : EXPR
+
+    type t = {span : span; defs : Stmt.def Vector.t; body : Expr.t with_pos}
+
+    val to_doc : t -> PPrint.document
 end
 

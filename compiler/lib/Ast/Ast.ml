@@ -1,5 +1,6 @@
 module PP = PPrint
 
+type span = Util.span
 type 'a with_pos = 'a Util.with_pos
 
 module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
@@ -321,5 +322,19 @@ and Type : AstSigs.TYPE
             | Def (pos, _, _) -> pos
             | Decl (pos, _, _) -> pos
     end
+end
+
+module Program = struct
+    module Stmt = Term.Stmt
+    module Expr = Term.Expr
+
+    type t = {span : span; defs : Stmt.def Vector.t; body : Expr.t with_pos}
+
+    let to_doc {span = _; defs; body} =
+        let open PPrint in
+
+        separate_map (semi ^^ twice hardline) Stmt.def_to_doc (Vector.to_list defs)
+        ^^ semi ^^ twice hardline
+        ^^ Expr.to_doc body
 end
 
