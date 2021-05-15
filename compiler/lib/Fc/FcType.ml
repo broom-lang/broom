@@ -13,6 +13,7 @@ module Typ = struct
         | Impli of {universals : kind Vector.t; domain : t; codomain : t}
         | Pair of {fst : t; snd : t}
         | Record of t
+        | Variant of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
         | Proxy of t
@@ -45,6 +46,7 @@ module Typ = struct
             ; domain : 'typ coercion; codomain : 'typ coercion}
         | PairCo of 'typ coercion * 'typ coercion
         | RecordCo of 'typ coercion
+        | VariantCo of 'typ coercion
         | WithCo of {base : 'typ coercion; label : Name.t; field : 'typ coercion}
         | ProxyCo of 'typ coercion
         | Patchable of 'typ coercion Tx.Ref.t
@@ -111,6 +113,8 @@ module Typ = struct
                     to_doc [fst; snd]
 
             | Record row -> braces (to_doc row)
+
+            | Variant row -> parens (prefix 4 1 sharp (to_doc row))
 
             | With {base; label; field} ->
                 infix 4 1 (string "with" ^^ blank 1 ^^ Name.to_doc label ^^ blank 1 ^^ equals)
@@ -183,6 +187,9 @@ module Typ = struct
                     to_doc [fst; snd]
 
             | RecordCo row_co -> braces (to_doc row_co)
+            
+            | VariantCo row_co -> parens (prefix 4 1 sharp (to_doc row_co))
+
             | WithCo {base; label; field} ->
                 infix 4 1 (string "with") (base_co_to_doc'  base)
                     (infix 4 1 colon (Name.to_doc label)
@@ -240,7 +247,11 @@ module Typ = struct
 
         | RecordCo row ->
             let row' = f row in
-            if row' == row then co else ProxyCo row'
+            if row' == row then co else RecordCo row'
+
+        | VariantCo row ->
+            let row' = f row in
+            if row' == row then co else VariantCo row'
 
         | PairCo (fst, snd) ->
             let fst' = f fst in
@@ -290,6 +301,7 @@ module Typ = struct
         | Pair {fst; snd} -> Pair {fst = close' depth substitution fst
             ; snd = close' depth substitution snd}
         | Record row -> Record (close' depth substitution row)
+        | Variant row -> Variant (close' depth substitution row)
         | With {base; label; field} ->
             With {base = close' depth substitution base; label
                 ; field = close' depth substitution field}
@@ -322,6 +334,7 @@ module Typ = struct
         | PairCo (fst, snd) -> PairCo (close_coercion' depth substitution fst
             , close_coercion' depth substitution snd)
         | RecordCo row -> RecordCo (close_coercion' depth substitution row)
+        | VariantCo row -> VariantCo (close_coercion' depth substitution row)
         | WithCo {base; label; field} ->
             WithCo {base = close_coercion' depth substitution base
                 ; label; field = close_coercion' depth substitution field}
@@ -364,6 +377,7 @@ module Typ = struct
         | Pair {fst; snd} -> Pair {fst = expose' depth substitution fst
             ; snd = expose' depth substitution snd}
         | Record row -> Record (expose' depth substitution row)
+        | Variant row -> Variant (expose' depth substitution row)
         | With {base; label; field} ->
             With {base = expose' depth substitution base; label
                 ; field = expose' depth substitution field}

@@ -41,7 +41,7 @@ module Make
 
     let rec kindof_F ctrs span env : T.t -> T.kind = function
         | Exists {existentials = _; body} -> kindof_F ctrs span env body
-        | Pi _ | Impli _ | Record _ | Proxy _ -> T.aType
+        | Pi _ | Impli _ | Record _ | Variant _ | Proxy _ -> T.aType
 
         | Pair {fst; snd} -> (* TypeIn (PairRep fst_rep snd_rep) *)
             let fst_rep = T.Uv (Env.uv env false (Prim Rep)) in
@@ -177,6 +177,10 @@ module Make
                 let {TS.typ = row; kind = _} = elab_row env typ.pos decls in
                 {typ = Record row; kind = T.aType}
 
+            | Variant decls ->
+                let {TS.typ = row; kind = _} = elab_row env typ.pos decls in
+                {typ = Variant row; kind = T.aType}
+
             | Row decls -> elab_row env typ.pos decls
 
             | Path expr ->
@@ -218,6 +222,8 @@ module Make
                 let (pat, env, vars) = Typing.typeof_pat ctrs false false env Explicit pat in
                 let expr' = AExpr.PrimApp (TypeOf, Vector.empty, Vector.singleton expr) in
                 (pat, env, vars, {expr with v = AType.Path expr'})
+
+            | Type typ -> todo (Some typ.pos)
 
         and elaborate_decl env (vars, lhs, rhs) decl =
             let span = AType.Decl.pos decl in
@@ -285,7 +291,7 @@ module Make
                 | Assigned typ -> eval typ (* OPTIMIZE: path compression *)
                 | Unassigned (false, _, _, _) -> Some (typ, None)
                 | Unassigned (true, _, _, _) -> None)
-            | ( Exists _ | Pi _ | Impli _ | Pair _ | Record _ | With _ | EmptyRow | Proxy _ | Prim _ ) as typ ->
+            | (Exists _ | Pi _ | Impli _ | Pair _ | Record _ | Variant _ | With _ | EmptyRow | Proxy _ | Prim _) as typ ->
                 Some (typ, None)
             | Bv _ -> unreachable (Some span) ~msg: "`Bv` in `eval`"
 
@@ -297,7 +303,7 @@ module Make
                 (match !uv with
                 | Unassigned _ -> None
                 | Assigned _ -> unreachable (Some span) ~msg: "Assigned in `apply`.")
-            | Exists _ | Pi _ | Impli _ | Pair _ | Record _ | With _ | EmptyRow | Proxy _ ->
+            | Exists _ | Pi _ | Impli _ | Pair _ | Record _ | Variant _ | With _ | EmptyRow | Proxy _ ->
                 unreachable (Some span) ~msg: "uncallable type in `eval.apply`"
             | Bv _ -> unreachable (Some span) ~msg: "`Bv` in `eval.apply`"
         in eval typ

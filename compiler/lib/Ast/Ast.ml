@@ -266,6 +266,7 @@ and Type : AstSigs.TYPE
         | Impli of {domain : pat with_pos; codomain : t with_pos}
         | Declare of decl Vector1.t * t with_pos
         | Record of decl Vector.t
+        | Variant of decl Vector.t
         | Row of decl Vector.t
         | Path of expr
         | Prim of Prim.t
@@ -273,6 +274,7 @@ and Type : AstSigs.TYPE
     and decl =
         | Def of def
         | Decl of Util.span * pat with_pos * t with_pos
+        | Type of t with_pos
 
     let rec to_doc (typ : t with_pos) =
         let open PPrint in
@@ -297,14 +299,21 @@ and Type : AstSigs.TYPE
                 (Vector1.to_list (Vector1.map decl_to_doc decls)
                 @ [to_doc body])
 
-        | Record stmts ->
+        | Record decls ->
             surround_separate_map 4 0 (braces colon)
                 (lbrace ^^ colon) (semi ^^ break 1) rbrace
-                decl_to_doc (Vector.to_list stmts)
-        | Row stmts ->
+                decl_to_doc (Vector.to_list decls)
+
+        | Variant decls ->
+            surround_separate_map 4 0 (braces sharp)
+                (lbrace ^^ sharp) (semi ^^ break 1) rbrace
+                decl_to_doc (Vector.to_list decls)
+
+        | Row decls ->
             surround_separate_map 4 0 (parens bar)
-                (lparen ^^ bar) (break 1 ^^ bar ^^ break 1) rparen
-                decl_to_doc (Vector.to_list stmts)
+                (lparen ^^ bar) (semi ^^ break 1) rparen
+                decl_to_doc (Vector.to_list decls)
+
         | Path expr -> Term.Expr.to_doc {typ with v = expr}
         | Prim pt -> Prim.to_doc pt
 
@@ -312,6 +321,7 @@ and Type : AstSigs.TYPE
         | Def def -> Term.Stmt.def_to_doc def
         | Decl (_, pat, typ) ->
             PPrint.(infix 4 1 colon (Term.Expr.to_doc pat) (to_doc typ))
+        | Type typ -> to_doc typ
 
     module Decl = struct
         type t = decl
@@ -321,6 +331,7 @@ and Type : AstSigs.TYPE
         let pos = function
             | Def (pos, _, _) -> pos
             | Decl (pos, _, _) -> pos
+            | Type typ -> typ.pos
     end
 end
 

@@ -16,6 +16,7 @@ module type TYPE = sig
         | Impli of {universals : kind Vector.t; domain : t; codomain : t}
         | Pair of {fst : t; snd : t}
         | Record of t
+        | Variant of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
         | Proxy of t
@@ -48,6 +49,7 @@ module type TYPE = sig
             ; domain : 'typ coercion; codomain : 'typ coercion}
         | PairCo of 'typ coercion * 'typ coercion
         | RecordCo of 'typ coercion
+        | VariantCo of 'typ coercion
         | WithCo of {base : 'typ coercion; label : Name.t; field : 'typ coercion}
         | ProxyCo of 'typ coercion
         | Patchable of 'typ coercion Tx.Ref.t

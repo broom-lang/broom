@@ -12,6 +12,7 @@ module type TYPE = sig
         | Pair of {fst : t; snd : t}
         | Pi of {universals : kind Vector.t; domain : t Vector.t}
         | Record of t
+        | Variant of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
         | Proxy of t

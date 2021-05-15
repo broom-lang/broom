@@ -24,6 +24,7 @@ module Type = struct
         | Pair of {fst : t; snd : t}
         | Pi of {universals : kind Vector.t; domain : t Vector.t}
         | Record of t
+        | Variant of t
         | With of {base : t; label : Name.t; field : t}
         | EmptyRow
         | Proxy of t
@@ -64,6 +65,8 @@ module Type = struct
                     to_doc (Vector.to_list domain))
 
         | Record row -> braces (to_doc row)
+
+        | Variant row -> parens (prefix 4 1 sharp (to_doc row))
 
         | With {base; label; field} ->
             infix 4 1 (string "with") (to_doc base)

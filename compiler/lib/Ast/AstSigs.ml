@@ -66,6 +66,7 @@ module type TYPE = sig
         | Impli of {domain : pat with_pos; codomain : t with_pos}
         | Declare of decl Vector1.t * t with_pos
         | Record of decl Vector.t
+        | Variant of decl Vector.t
         | Row of decl Vector.t
         | Path of expr
         | Prim of Prim.t
@@ -73,6 +74,7 @@ module type TYPE = sig
     and decl =
         | Def of def
         | Decl of Util.span * pat with_pos * t with_pos
+        | Type of t with_pos
 
     val to_doc : t with_pos -> PPrint.document
 

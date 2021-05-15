@@ -19,17 +19,12 @@ let parenthesized args pos =
     then Vector.get args 0
     else {v = Tuple args; pos}
 
-let parenthesized' args =
-    if Vector.length args = 1
-    then (Vector.get args 0).v
-    else Tuple args
-
 %}
 
 %token
     EFFOW "-!" ARROW "->" LARROW "<-" DARROW "=>" EQ "="
     DOT "." COLON ":" COMMA "," SEMI ";"
-    BAR "|" BANG "!" QMARK "?" AT "@" BACKSLASH
+    HASH "#" BAR "|" BANG "!" QMARK "?" AT "@" BACKSLASH
     LPAREN "(" RPAREN ")" LBRACKET "[" RBRACKET "]" LBRACE "{" RBRACE "}"
     EOF
 %token <string> DISJUNCTION "||" CONJUNCTION "&&" COMPARISON ADDITIVE MULTIPLICATIVE
@@ -48,14 +43,17 @@ let parenthesized' args =
 
 (* # Notation *)
 
+(* (separator item)* separator? terminator *)
 tail(separator, item, terminator) :
     | separator item tail(separator, item, terminator) { $2 :: $3 }
     | separator? terminator { [] }
 
+(* (item (separator item)* )? separator? terminator *)
 trail(separator, item, terminator) :
     | item tail(separator, item, terminator) { Vector.of_list ($1 :: $2) }
     | terminator { Vector.empty }
 
+(* init (item (separator item)* )? separator? terminator *)
 trailer(init, separator, item, terminator) : init trail(separator, item, terminator) { $2 }
 
 (* # Compilation Units *)
@@ -81,42 +79,42 @@ stmts : trail(";", stmt, EOF) { $1 }
 
 (* ## Expressions *)
 
-expr : typ { {$1 with v = proxy $1.v} }
+expr : annotated { $1 }
 
-ann_expr :
-    | binapp ":" typ { {v = Ann ($1, $3); pos = $loc} } (* NOTE: ~ right-associative *)
-    | binapp { $1 }
+annotated :
+    | disjunction ":" typ { {v = Ann ($1, $3); pos = $loc} } (* NOTE: ~ right-associative *)
+    | disjunction { $1 }
 
-binapp :
-    | binapp "||" binapp2 {
+disjunction :
+    | disjunction "||" conjunction {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Explicit, {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
-    | binapp2 { $1 }
+    | conjunction { $1 }
 
-binapp2 :
-    | binapp2 "&&" binapp3 {
+conjunction :
+    | conjunction "&&" comparison {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Explicit, {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
-    | binapp3 { $1 }
+    | comparison { $1 }
 
-binapp3 : (* TODO: Python-style chaining? *)
-    | binapp4 COMPARISON binapp4 { (* NOTE: nonassociative *)
+comparison :
+    | additive COMPARISON additive { (* NOTE: nonassociative *)
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Explicit, {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
-    | binapp4 { $1 }
+    | additive { $1 }
 
-binapp4 :
-    | binapp4 ADDITIVE binapp5 {
+additive :
+    | additive ADDITIVE multiplicative {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Explicit, {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
-    | binapp5 { $1 }
+    | multiplicative { $1 }
 
-binapp5 :
-    | binapp5 MULTIPLICATIVE app {
+multiplicative :
+    | multiplicative MULTIPLICATIVE app {
         let operator = {v = Var (Name.of_string $2); pos = $loc($2)} in
         {v = App (operator, Explicit, {v = Tuple (Vector.of_list [$1; $3]); pos = $loc}); pos = $loc}
     }
@@ -160,36 +158,50 @@ app :
     }
     | select { $1 }
 
+args : select+ iargs? { match $2 with
+        | None -> Ior.Right (Vector.of_list $1)
+        | Some [] -> Left (Vector.of_list $1)
+        | Some iargs -> Both (Vector.of_list $1, Vector.of_list iargs)
+    }
+
+iargs : "@" select* { $2 }
+
 select :
     | select "." ID { {v = Select ($1, Name.of_string $3); pos = $loc} }
     | select "." INT { {v = Focus ($1, $3); pos = $loc} }
-    | nestable { $1 }
+    | aexpr { $1 }
 
-nestable : nestable_without_pos { {v = $1; pos = $sloc} }
+aexpr : aexpr_without_pos { {v = $1; pos = $sloc} }
 
-nestable_without_pos :
-    | trailer("{", ";", stmt, "}") { Record $1 }
-    | "{" clauses "}" { Fn (fst $2, Vector.of_list (snd $2)) }
-    | "{" "|" "->" stmt tail(";", stmt, "}") {
+aexpr_without_pos :
+    | "[" "|" "]" { Fn (Explicit, Vector.empty) }
+    | "[" clauses "]" { Fn (fst $2, Vector.of_list (snd $2)) }
+    | "[" stmts "]" {
         let body = App ( {v = Var (Name.of_string "do"); pos = $loc}, Explicit
-            , {v = Record (Vector.of_list ($4 :: $5)); pos = $loc} ) in
+            , {v = Record $2; pos = $loc} ) in
         Fn (Explicit, Vector.singleton
-            { params = {v = Tuple Vector.empty; pos = $loc($3)}
+            { params = {v = Tuple Vector.empty; pos = $loc($1)}
             ; body = {v = body; pos = $loc} })
     }
-    | "{" "|" "}" { Fn (Explicit, Vector.empty) }
-    | trailer("(", ",", expr, ")") { parenthesized' $1 }
+    | fn_typ { proxy $1 }
+
+    | trailer("{", ";", stmt, "}") { Record $1 }
+    | "{" ":" trail(";", decl, "}") { proxy (Record $3) }
+
+    | tuple { Tuple $1 }
+    | "(" ":" trail(",", typ, ")") { proxy (Tuple $3) }
+
+    | "(" "#" trail(";", decl, ")") { proxy (Variant $3) }
+
+    | "(" "|" trail(";", decl, ")") { proxy (Row $3) }
+
+    | "(" expr ")" { $2.v }
     | "(" "||" ")" { Var (Name.of_string $2) }
     | "(" "&&" ")" { Var (Name.of_string $2) }
     | "(" COMPARISON ")" { Var (Name.of_string $2) }
     | "(" ADDITIVE ")" { Var (Name.of_string $2) }
     | "(" MULTIPLICATIVE ")" { Var (Name.of_string $2) }
-    | "(" "|" decl tail("|", decl, ")") { proxy (Row (Vector.of_list ($3 :: $4))) }
-    | "(" "|" ")" { proxy (Row Vector.empty) }
-    | "{" ":" decl tail(";", decl, "}") { proxy (Record (Vector.of_list ($3 :: $4))) }
-    | "{" ":" "}" { proxy (Record Vector.empty) }
-    | "(" ":" typ tail(",", typ, ")") { proxy (Ast.Type.Tuple (Vector.of_list ($3 :: $4))) }
-    | "(" ":" ")" { proxy (Ast.Type.Tuple Vector.empty) }
+
     | ID { Var (Name.of_string $1) }
     | "_" { Wild (Name.of_string $1) }
     | INT { Const (Int $1) }
@@ -199,26 +211,37 @@ clauses :
     | explicit_clause+ { (Explicit, $1) }
     | implicit_clause+ { (Implicit, $1) }
 
-explicit_clause : "|" binapp tail(",", binapp, "->") expr {
+explicit_clause : "|" disjunction tail(",", disjunction, "->") expr {
         {params = parenthesized (Vector.of_list ($2 :: $3)) $loc($3); body = $4}
     }
 
-implicit_clause : "|" binapp tail(",", binapp, "=>") expr {
+implicit_clause : "|" disjunction tail(",", disjunction, "=>") expr {
         {params = parenthesized (Vector.of_list ($2 :: $3)) $loc($3); body = $4}
     }
 
-args : select+ iargs? { match $2 with
-        | None -> Ior.Right (Vector.of_list $1)
-        | Some [] -> Left (Vector.of_list $1)
-        | Some iargs -> Both (Vector.of_list $1, Vector.of_list iargs)
+tuple :
+    | "(" ","? ")" { Vector.empty }
+    | "(" expr "," ")" { Vector.singleton $2 }
+    | "(" expr "," expr tail(",", expr, ")") { Vector.of_list ($2 :: $4 :: $5) }
+
+fn_typ :
+    | "[" pat "-!" typ "->" typ "]" {
+        Pi {domain = $2; eff = Some $4; codomain = $6}
+    }
+    | "[" pat "->" typ "]" {
+        Pi {domain = $2; eff = None; codomain = $4}
+    }
+    | "[" pat "=>" annotated "]" {
+        Impli {domain = $2; codomain = {$4 with v = path $4.v}}
     }
 
-iargs : "@" select* { $2 }
+(* ## Patterns *)
+
+pat : expr { $1 }
 
 (* ## Definitions *)
 
-def : expr "=" expr { ($loc, $1, $3) }
-def_semi : def ";" { $1 }
+def : pat "=" expr { ($loc, $1, $3) }
 
 (* ## Statements *)
 
@@ -228,23 +251,12 @@ stmt :
 
 (* # Types *)
 
-typ : typ_without_pos { {v = $1; pos = $sloc} }
-
-typ_without_pos :
-    | binapp "-!" binapp "->" typ {
-        Pi {domain = $1; eff = Some {$3 with v = path $3.v}; codomain = $5}
-    }
-    | binapp "->" typ {
-        Pi {domain = $1; eff = None; codomain = $3}
-    }
-    | binapp "=>" ann_expr {
-        Impli {domain = $1; codomain = {$3 with v = path $3.v}}
-    }
-    | ann_expr { path $1.v }
+typ : expr { {v = path $1.v; pos = $1.pos} }
 
 (* ## Declarations *)
 
 decl :
     | def { Def $1 }
-    | binapp ":" typ { Decl ($loc, $1, $3) }
+    | disjunction ":" typ { Decl ($loc, $1, $3) }
+    | disjunction { Type {v = path $1.v; pos = $1.pos} }
 

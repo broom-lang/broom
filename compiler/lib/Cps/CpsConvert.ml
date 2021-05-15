@@ -59,6 +59,7 @@ let convert_typ state_typ _ pos =
                 ; domain ]}
 
         | Record row -> Record (convert row)
+        | Variant row -> Variant (convert row)
         | With {base; label; field} -> With {base = convert base; label; field = convert field}
         | EmptyRow -> EmptyRow
         | Proxy typ -> Proxy (convert typ)
@@ -79,6 +80,7 @@ let convert_co state_typ env pos =
             PiCo {universals; domain = convert domain; codomain = convert codomain}
         | PairCo (fst, snd) -> PairCo (convert fst, convert snd)
         | RecordCo row_co -> RecordCo (convert row_co)
+        | VariantCo row_co -> VariantCo (convert row_co)
         | WithCo {base; label; field} ->
             WithCo {base = convert base; label; field = convert field}
         | ProxyCo co -> ProxyCo (convert co)

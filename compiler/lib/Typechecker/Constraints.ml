@@ -23,6 +23,7 @@ module Make (K : TS.KINDING) = struct
             | Impli {universals = _; domain; codomain} -> check domain; check codomain
             | Pair {fst; snd} -> check fst; check snd
             | Record row -> check row
+            | Variant row -> check row
             | With {base; label = _; field} -> check base; check field
             | EmptyRow -> ()
             | Proxy carrie -> check carrie
@@ -204,7 +205,7 @@ module Make (K : TS.KINDING) = struct
           when Vector.length universals > 0 -> None
 
         | (Uv _, _) | (_, Uv _)
-        | (Pi _, _) | (Record _, _) | (Proxy _, _) | (App _, _)
+        | (Pi _, _) | (Record _, _) | (Variant _, _) | (Proxy _, _) | (App _, _)
         | (Bv _, _) | (Ov _, _) | (Prim _, _) ->
             (* Nothing to instantiate, delegate to unification: *)
             let+ co = solve_unify_whnf ctrs span env sub super in
@@ -422,6 +423,14 @@ module Make (K : TS.KINDING) = struct
             | Record rrow ->
                 let+ row_co = unify ctrs span env lrow rrow in
                 T.RecordCo row_co
+            | _ ->
+                Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
+                None)
+
+        | (Variant lrow, rtyp) -> Some (match rtyp with
+            | Variant rrow ->
+                let+ row_co = unify ctrs span env lrow rrow in
+                VariantCo row_co
             | _ ->
                 Env.report_error env {v = Unify (ltyp, rtyp); pos = span};
                 None)

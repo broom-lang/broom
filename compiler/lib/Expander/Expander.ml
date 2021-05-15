@@ -177,11 +177,12 @@ let rec expand_typ define_toplevel env (typ : typ with_pos) : typ with_pos =
             ; pos = (fst typ.pos, end_pos)}
         ) {v = Tuple Vector.empty; pos = (end_pos, end_pos)}
 
-    | Record decls | Row decls ->
+    | Record decls | Variant decls | Row decls ->
         let vars = CCVector.create () in
         let decls = expand_decls define_toplevel (CCVector.push vars) env decls in
         let body : typ with_pos = match typ.v with
             | Record _ -> {typ with v = Record (Vector.build vars)}
+            | Variant _ -> {typ with v = Variant (Vector.build vars)}
             | Row _ -> {typ with v = Row (Vector.build vars)}
             | _ -> unreachable (Some typ.pos) in
         (match Vector1.of_vector decls with
@@ -207,10 +208,12 @@ and expand_decl_pat define_toplevel report_def env = function
             | stmt -> unreachable (Some (Stmt.pos stmt)) in
         let (pat, env) = expand_pat define_toplevel report_def env pat in
         (Decl (pos, pat, typ), env)
+    | Type _ as decl -> (decl, env)
 
 and expand_decl define_toplevel env = function
     | Type.Def def -> Type.Def (expand_def define_toplevel env def)
     | Decl (pos, pat, typ) -> Decl (pos, pat, expand_typ define_toplevel env typ)
+    | Type typ -> Type (expand_typ define_toplevel env typ)
 
 and expand_decls' define_toplevel report_def env decls =
     let decls' = CCVector.create () in

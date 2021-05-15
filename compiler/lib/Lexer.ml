@@ -38,6 +38,8 @@ let rec token ({SedlexMenhir.stream; _} as lexbuf) =
     | '.'  -> L.update lexbuf; DOT
     | ','  -> L.update lexbuf; COMMA
     | ';'  -> L.update lexbuf; SEMI
+
+    | '#'  -> L.update lexbuf; HASH
     | '!'  -> L.update lexbuf; BANG
     | '|'  -> L.update lexbuf; BAR
     | '@'  -> L.update lexbuf; AT
