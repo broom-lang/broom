@@ -57,7 +57,7 @@ let rep debug envs filename input =
         let* stmts = Parse.parse_stmts filename input |> Result.map_error parse_err in
         if debug then begin
             Util.debug_heading "\nParsed AST";
-            let doc = group (separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc
+            let doc = group (separate_map (semi ^^ break 1) Ast.Stmt.to_doc
                 (Vector.to_list stmts)) in
             Util.pprint (doc ^^ twice hardline)
         end;

@@ -79,14 +79,14 @@ module Compiler = struct
 
         program
 
-    let check_interactive_stmt ~debug eenv ns (stmt : Ast.Term.Stmt.t) =
+    let check_interactive_stmt ~debug eenv ns (stmt : Ast.Stmt.t) =
         let (let*) = Result.bind in
         let (let+) = Fun.flip Result.map in
 
         let (eenv, stmts) = Expander.expand_interactive_stmt eenv stmt in
         if debug then begin
             Util.debug_heading "Expanded AST";
-            let doc = separate_map (semi ^^ break 1) Ast.Term.Stmt.to_doc (Vector1.to_list stmts) in
+            let doc = separate_map (semi ^^ break 1) Ast.Stmt.to_doc (Vector1.to_list stmts) in
             Util.pprint (doc ^^ hardline);
         end;
 

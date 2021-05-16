@@ -3,348 +3,184 @@ module PP = PPrint
 type span = Util.span
 type 'a with_pos = 'a Util.with_pos
 
-module rec Term : AstSigs.TERM with type Expr.typ = Type.t = struct
-    module Expr = struct
-        module Stmt = Term.Stmt
+module rec Expr : (AstSigs.EXPR
+    with type stmt = Stmt.t
+    with type decl = Decl.t)
+= struct
+    type stmt = Stmt.t
+    type decl = Decl.t
 
-        type typ = Type.t
-        type stmt = Stmt.t
-        type def = Stmt.def
+    type t' =
+        | Fn of clause Vector.t
+        | ImpliFn of clause Vector.t
+        | App of t Vector.t
+        | PrimApp of Primop.t * t Vector.t
+        | PiT of {domain : t; eff : t option; codomain : t}
+        | ImpliT of {domain : t; codomain : t}
 
-        type t =
-            | Tuple of t with_pos Vector.t
-            | Focus of t with_pos * int
-            | Ann of t with_pos * typ with_pos
-            | Fn of Util.plicity * clause Vector.t
-            | App of t with_pos * Util.plicity * t with_pos
-            | AppSequence of t with_pos Vector1.t
-            | PrimApp of Primop.t * t with_pos Vector.t * t with_pos Vector.t
-            | PrimBranch of Branchop.t * t with_pos Vector.t * t with_pos Vector.t * clause Vector.t
-            | Let of def Vector1.t * t with_pos
-            | Record of stmt Vector.t
-            | Select of t with_pos * Name.t
-            | Proxy of typ
-            | Var of Name.t
-            | Wild of Name.t
-            | Const of Const.t
+        | Ann of t * t
 
-        and clause = {params : pat with_pos; body : t with_pos}
+        | Tuple of t Vector.t
+        | Focus of t * int
+        | TupleT of t Vector.t
 
-        and pat = t
+        | Record of stmt Vector.t
+        | Select of t * Name.t
+        | RecordT of decl Vector.t
 
-        (*
-        (* FIXME: Printing syntax differs from parsed syntax, so use Grammar: *)
+        | VariantT of decl Vector.t
 
-        let tuple = PIso.prism (fun exprs -> Tuple exprs) (function
-            | Tuple exprs -> Some exprs
-            | _ -> None)
+        | RowT of decl Vector.t
 
-        let focus = PIso.prism (fun (tup, i) -> Focus (tup, i)) (function
-            | Focus (tup, i) -> Some (tup, i)
-            | _ -> None)
+        | Var of Name.t
+        | Wild of Name.t
+        | Const of Const.t
+        | PrimT of Prim.t
 
-        let ann = PIso.prism (fun (expr, typ) -> Ann (expr, typ)) (function
-            | Ann (expr, typ) -> Some (expr, typ)
-            | _ -> None)
+    and t = t' with_pos
 
-        let fn = PIso.prism (fun (param, body) -> Fn (param, body)) (function
-            | Fn (param, body) -> Some (param, body)
-            | _ -> None)
+    and clause = {params : t; body : t}
 
-        let app = PIso.prism (fun (callee, plicity, arg) -> App (callee, plicity, arg)) (function
-            | App (callee, plicity, arg) -> Some (callee, plicity, arg)
-            | _ -> None)
+    let colon_prec = 1
+    let app_prec = 2
+    let dot_prec = 3
 
-        let app_seq = PIso.prism (fun exprs -> AppSequence exprs) (function
-            | AppSequence exprs -> Some exprs
-            | _ -> None)
+    let prec_parens show_parens doc = if show_parens then PP.parens doc else doc
 
-        let primapp = PIso.prism (fun (op, iarg, arg) -> PrimApp (op, iarg, arg)) (function
-            | PrimApp (op, iarg, arg) -> Some (op, iarg, arg)
-            | _ -> None)
+    let rec to_doc (expr : t) =
+        let open PPrint in
+        let rec to_doc prec (expr : t) = match expr.v with
+            | Ann (expr, typ) ->
+                infix 4 1 colon (to_doc (colon_prec + 1) expr) (to_doc 0 typ)
+                |> prec_parens (prec > colon_prec)
 
-        let primbranch = PIso.prism (fun (op, iarg, arg, clauses) -> PrimBranch (op, iarg, arg, clauses))
-            (function
-            | PrimBranch (op, iarg, arg, clauses) -> Some (op, iarg, arg, clauses)
-            | _ -> None)
+            | App exprs ->
+                separate_map (break 1) (to_doc (app_prec + 1)) (Vector.to_list exprs)
+                |> prec_parens (prec > app_prec)
+            | PrimApp (op, args) ->
+                prefix 4 1 (string "__" ^^ Primop.to_doc op)
+                    (separate_map (break 1) (to_doc (app_prec + 1))
+                        (Vector.to_list args))
+                |> prec_parens (prec > app_prec)
+           
+            | Focus (focusee, i) ->
+                prefix 4 0 (to_doc (dot_prec + 1) focusee) (dot ^^ string (Int.to_string i))
+                |> prec_parens (prec > dot_prec) 
+            | Select (selectee, label) ->
+                prefix 4 0 (to_doc (dot_prec + 1) selectee)
+                    (dot ^^ string (Option.get (Name.basename label)))
+                |> prec_parens (prec > dot_prec) 
 
-        let let' = PIso.prism (fun (defs, body) -> Let (defs, body)) (function
-            | Let (defs, body) -> Some (defs, body)
-            | _ -> None)
+            | Fn clauses ->
+                surround_separate_map 4 0 (braces bar) lbrace (break 1) rbrace
+                    (clause_to_doc (string "->"))
+                    (Vector.to_list clauses)
+            | ImpliFn clauses ->
+                surround_separate_map 4 0 (braces bar) lbrace (break 1) rbrace
+                    (clause_to_doc (string "=>"))
+                    (Vector.to_list clauses)
+            | PiT {domain; eff; codomain} ->
+                surround 4 1 lbracket
+                    (prefix 4 1 (Expr.to_doc domain)
+                        (let codoc = string "->" ^^ blank 1 ^^ to_doc 0 codomain in
+                        match eff with
+                        | Some eff -> prefix 4 1 (string "-!" ^^ blank 1 ^^ to_doc 0 eff) codoc
+                        | None -> codoc))
+                    rbracket
+            | ImpliT {domain; codomain} ->
+                prefix 4 1 (Expr.to_doc domain ^^ blank 1)
+                    (string "=>" ^^ to_doc 0 codomain)
 
-        let record = PIso.prism (fun stmts -> Record stmts) (function
-            | Record stmts -> Some stmts
-            | _ -> None)
+            | Tuple exprs ->
+                surround_separate_map 4 0 (parens empty) lparen (comma ^^ break 1) rparen
+                    (to_doc 0) (Vector.to_list exprs)
+            | TupleT typs ->
+                surround_separate_map 4 0 (parens colon)
+                    (lparen ^^ colon) (comma ^^ break 1) rparen
+                    (to_doc 0) (Vector.to_list typs)
 
-        let select = PIso.prism (fun (r, label) -> Select (r, label)) (function
-            | Select (r, label) -> Some (r, label)
-            | _ -> None)
+            | Record stmts ->
+                surround_separate_map 4 0 (braces empty) lbrace (semi ^^ break 1) rbrace
+                    Stmt.to_doc (Vector.to_list stmts)
+            | RecordT decls ->
+                surround_separate_map 4 0 (braces colon)
+                    (lbrace ^^ colon) (semi ^^ break 1) rbrace
+                    Decl.to_doc (Vector.to_list decls)
 
-        let proxy = PIso.prism (fun typ -> Proxy typ) (function
-            | Proxy typ -> Some typ
-            | _ -> None)
+            | VariantT decls ->
+                surround_separate_map 4 0 (braces sharp)
+                    (lbrace ^^ sharp) (semi ^^ break 1) rbrace
+                    Decl.to_doc (Vector.to_list decls)
 
-        let var = PIso.prism (fun var -> Var var) (function
-            | Var var -> Some var
-            | _ -> None)
+            | RowT decls ->
+                surround_separate_map 4 0 (parens bar)
+                    (lparen ^^ bar) (semi ^^ break 1) rparen
+                    Decl.to_doc (Vector.to_list decls)
 
-        let wild = PIso.prism (fun name -> Wild name) (function
-            | Wild name -> Some name
-            | _ -> None)
+            | Var name -> Name.to_doc name
+            | Wild name -> underscore ^^ Name.to_doc name
+            | Const v -> Const.to_doc v
+            | PrimT p -> string "__" ^^ Prim.to_doc p in
+        to_doc 0 expr
 
-        let const = PIso.prism (fun c -> Const c) (function
-            | Const c -> Some c
-            | _ -> None)
-
-        let positioned = PIso.iso (fun _ -> Asserts.todo None)
-            (fun {Util.v; pos = _} -> v)
-
-        let grammar =
-            let open Grammar in let open Grammar.Infix in
-
-            fix (fun expr ->
-                let atom = positioned <$> (var <$> Name.grammar
-                    <|> (wild <$> (token '_' *> Name.grammar))
-                    <|> (const <$> Const.grammar)) in
-
-                let tuple = surround_separate 4 0 (parens (pure Vector.empty))
-                    lparen (comma *> break 1) rparen expr
-                    |> map tuple in
-
-                let surrounded = positioned <$> tuple in
-
-                let nestable = surrounded <|> atom in
-
-                let access =
-                    let adapt = PIso.iso (function
-                            | (focusee, Some is) -> (focusee, is)
-                            | (focusee, None) -> (focusee, []))
-                        (function
-                        | (focusee, []) -> (focusee, None)
-                        | (focusee, is) -> (focusee, Some is)) in
-                    let f = PIso.comp (PIso.fold_left (PIso.comp positioned focus)) adapt in
-                    f <$> (nestable <*> opt (break 1 *> (many1 (dot *> break 1 *> int)))) in
-
-                let app =
-                    let adapt = PIso.iso (fun _ -> todo None) (function
-                        | (callee, Util.Explicit, arg) -> (match callee.Util.v with
-                            | App (callee, Implicit, iarg) -> ((callee, [arg]), Some [iarg])
-                            | _ -> ((callee, [arg]), None))
-                        | (callee, Implicit, iarg) -> ((callee, [iarg]), Some [])) in
-                    PIso.comp positioned (PIso.comp app adapt)
-                        <$> (access <*> many (break 1 *> access)
-                            <*> opt (break 1 *> token '@' *> many (break 1 *> access))) in
-
-                app)*)
-
-        let colon_prec = 1
-        let app_prec = 9
-        let dot_prec = 10
-
-        let prec_parens show_parens doc = if show_parens then PP.parens doc else doc
-
-        let rec to_doc (expr : t with_pos) =
-            let open PPrint in
-            let rec to_doc prec (expr : t with_pos) = match expr.v with
-                | Proxy typ -> Type.to_doc {expr with v = typ}
-
-                | Ann (expr, typ) ->
-                    infix 4 1 colon (to_doc (colon_prec + 1) expr) (Type.to_doc typ)
-                    |> prec_parens (prec > colon_prec)
-
-                | App (callee, Explicit, args) ->
-                    prefix 4 1 (to_doc (app_prec + 1) callee) (to_doc (app_prec + 1) args)
-                    |> prec_parens (prec > app_prec)
-                | App (callee, Implicit, args) ->
-                    prefix 4 1 (to_doc (app_prec + 1) callee)
-                        (to_doc (app_prec + 1) args ^^ blank 1 ^^ string "@")
-                    |> prec_parens (prec > app_prec)
-                | AppSequence exprs ->
-                    separate_map (break 1) (to_doc (app_prec + 1)) (Vector1.to_list exprs)
-                    |> prec_parens (prec > app_prec)
-
-                | PrimApp (op, iargs, args) ->
-                    if Vector.length iargs = 0
-                    then prefix 4 1 (string "__" ^^ Primop.to_doc op)
-                        (separate_map (break 1) (to_doc (app_prec + 1))
-                            (Vector.to_list args))
-                    |> prec_parens (prec > app_prec)
-                    else infix 4 1 (string "@")
-                        (prefix 4 1 (string "__" ^^ Primop.to_doc op)
-                            (separate_map (break 1) (to_doc (app_prec + 1))
-                                (Vector.to_list iargs)))
-                            (separate_map (break 1) (to_doc (app_prec + 1))
-                                (Vector.to_list args))
-                    |> prec_parens (prec > app_prec)
-
-                | PrimBranch (op, iargs, args, clauses) ->
-                    if Vector.length iargs = 0
-                    then infix 4 1 (string "@")
-                        (prefix 4 1 (string "__" ^^ Branchop.to_doc op)
-                            (separate_map (break 1) (to_doc (app_prec + 1))
-                                (Vector.to_list args)))
-                            (separate_map (break 1) (to_doc (app_prec + 1))
-                                (Vector.to_list iargs) ^^ blank 1
-                             ^^ to_doc (app_prec + 1) {expr with v = Fn (Explicit, clauses)})
-                        |> prec_parens (prec > app_prec)
-                    else prefix 4 1 (string "__" ^^ Branchop.to_doc op)
-                            (separate_map (break 1) (to_doc (app_prec + 1))
-                                (Vector.to_list args) ^^ blank 1
-                            ^^ to_doc (app_prec + 1) {expr with v = Fn (Explicit, clauses)})
-                        |> prec_parens (prec > app_prec)
-
-                | Let (defs, body) ->
-                    string "__let" ^^ blank 1
-                    ^^ surround_separate 4 0 (braces empty)
-                        lbrace (semi ^^ break 1) rbrace
-                        (Vector1.to_list (Vector1.map Stmt.def_to_doc defs)
-                        @ [to_doc 0 body])
-                    |> prec_parens (prec > app_prec)
-
-                | Focus (focusee, i) ->
-                    prefix 4 0 (to_doc (dot_prec + 1) focusee) (dot ^^ string (Int.to_string i))
-                    |> prec_parens (prec > dot_prec) 
-                | Select (selectee, label) ->
-                    prefix 4 0 (to_doc (dot_prec + 1) selectee)
-                        (dot ^^ string (Option.get (Name.basename label)))
-                    |> prec_parens (prec > dot_prec) 
-
-                | Tuple exprs ->
-                    surround_separate_map 4 0 (parens empty) lparen (comma ^^ break 1) rparen
-                        (to_doc 0) (Vector.to_list exprs)
-                | Record stmts ->
-                    surround_separate_map 4 0 (braces empty) lbrace (semi ^^ break 1) rbrace
-                        Stmt.to_doc (Vector.to_list stmts)
-                | Fn (plicity, clauses) ->
-                    surround_separate_map 4 0 (braces bar) lbrace (break 1) rbrace
-                        (clause_to_doc (Util.plicity_arrow plicity))
-                        (Vector.to_list clauses)
-                | Var name -> Name.to_doc name
-                | Wild name -> underscore ^^ Name.to_doc name
-                | Const v -> Const.to_doc v in
-            to_doc 0 expr
-
-        and clause_to_doc arrow {params; body} =
-            PPrint.(infix 4 1 arrow (bar ^^ blank 1 ^^ to_doc params) (to_doc body))
-    end
-
-    module Stmt = struct
-        type expr = Expr.t
-        type pat = Expr.pat
-
-        type def = Util.span * pat with_pos * expr with_pos
-
-        type t =
-            | Def of def
-            | Expr of expr with_pos
-
-        let pos = function
-            | Def (pos, _, _) -> pos
-            | Expr expr -> expr.pos
-
-        let def_to_doc ((_, pat, expr) : def) =
-            PP.infix 4 1 PP.equals (Expr.to_doc pat) (Expr.to_doc expr)
-
-        let to_doc = function
-            | Def def -> def_to_doc def
-            | Expr expr -> Expr.to_doc expr
-    end
+    and clause_to_doc arrow {params; body} =
+        PPrint.(infix 4 1 arrow (bar ^^ blank 1 ^^ to_doc params) (to_doc body))
 end
 
-and Type : AstSigs.TYPE
-    with type expr = Term.Expr.t
-    with type pat = Term.Expr.pat
-    with type def = Term.Stmt.def
-= struct
-    type expr = Term.Expr.t
-    type pat = Term.Expr.pat
-    type def = Term.Stmt.def
+and Stmt : (AstSigs.STMT with type expr = Expr.t) = struct
+    type expr = Expr.t
+
+    type def = Util.span * expr * expr
 
     type t =
-        | Tuple of t with_pos Vector.t
-        | Pi of {domain : pat with_pos; eff : t with_pos option; codomain : t with_pos}
-        | Impli of {domain : pat with_pos; codomain : t with_pos}
-        | Declare of decl Vector1.t * t with_pos
-        | Record of decl Vector.t
-        | Variant of decl Vector.t
-        | Row of decl Vector.t
-        | Path of expr
-        | Prim of Prim.t
+        | Def of Util.span * expr * expr
+        | Expr of expr
 
-    and decl =
-        | Def of def
-        | Decl of Util.span * pat with_pos * t with_pos
-        | Type of t with_pos
+    let pos = function
+        | Def (pos, _, _) -> pos
+        | Expr expr -> expr.pos
 
-    let rec to_doc (typ : t with_pos) =
+    let to_doc =
         let open PPrint in
-        match typ.v with
-        | Tuple typs ->
-            surround_separate_map 4 0 (parens colon)
-                (lparen ^^ colon) (comma ^^ break 1) rparen
-                to_doc (Vector.to_list typs)
-        | Pi {domain; eff; codomain} ->
-            prefix 4 1 (Term.Expr.to_doc domain)
-                (let codoc = string "->" ^^ blank 1 ^^ to_doc codomain in
-                match eff with
-                | Some eff -> prefix 4 1 (string "-!" ^^ blank 1 ^^ to_doc eff) codoc
-                | None -> codoc)
-        | Impli {domain; codomain} ->
-            prefix 4 1 (Term.Expr.to_doc domain ^^ blank 1)
-                (string "=>" ^^ to_doc codomain)
-        | Declare (decls, body) ->
-            string "__declare" ^^ blank 1
-            ^^ surround_separate 4 0 (braces empty)
-                lbrace (semi ^^ break 1) rbrace
-                (Vector1.to_list (Vector1.map decl_to_doc decls)
-                @ [to_doc body])
 
-        | Record decls ->
-            surround_separate_map 4 0 (braces colon)
-                (lbrace ^^ colon) (semi ^^ break 1) rbrace
-                decl_to_doc (Vector.to_list decls)
+        function
+        | Def (_, pat, expr) -> infix 4 1 equals (Expr.to_doc pat) (Expr.to_doc expr)
+        | Expr expr -> Expr.to_doc expr
+end
 
-        | Variant decls ->
-            surround_separate_map 4 0 (braces sharp)
-                (lbrace ^^ sharp) (semi ^^ break 1) rbrace
-                decl_to_doc (Vector.to_list decls)
+and Decl : (AstSigs.DECL with type expr = Expr.t) = struct
+    type expr = Expr.t
 
-        | Row decls ->
-            surround_separate_map 4 0 (parens bar)
-                (lparen ^^ bar) (semi ^^ break 1) rparen
-                decl_to_doc (Vector.to_list decls)
+    type t =
+        | Def of Util.span * expr * expr
+        | Decl of Util.span * expr * expr
+        | Type of expr
 
-        | Path expr -> Term.Expr.to_doc {typ with v = expr}
-        | Prim pt -> Prim.to_doc pt
+    let to_doc =
+        let open PPrint in
+        function
+        | Def (_, pat, expr) -> infix 4 1 equals (Expr.to_doc pat) (Expr.to_doc expr)
+        | Decl (_, pat, typ) -> infix 4 1 colon (Expr.to_doc pat) (Expr.to_doc typ)
+        | Type typ -> Expr.to_doc typ
 
-    and decl_to_doc = function
-        | Def def -> Term.Stmt.def_to_doc def
-        | Decl (_, pat, typ) ->
-            PPrint.(infix 4 1 colon (Term.Expr.to_doc pat) (to_doc typ))
-        | Type typ -> to_doc typ
-
-    module Decl = struct
-        type t = decl
-
-        let to_doc = decl_to_doc
-
-        let pos = function
-            | Def (pos, _, _) -> pos
-            | Decl (pos, _, _) -> pos
-            | Type typ -> typ.pos
-    end
+    let pos = function
+        | Def (pos, _, _) -> pos
+        | Decl (pos, _, _) -> pos
+        | Type typ -> typ.pos
 end
 
 module Program = struct
-    module Stmt = Term.Stmt
-    module Expr = Term.Expr
+    module Stmt = Stmt
+    module Expr = Expr
 
-    type t = {span : span; defs : Stmt.def Vector.t; body : Expr.t with_pos}
+    type t = {span : span; defs : Stmt.def Vector.t; body : Expr.t}
+
+    let def_to_doc (_, pat, expr) = PPrint.(infix 4 1 equals (Expr.to_doc pat) (Expr.to_doc expr))
 
     let to_doc {span = _; defs; body} =
         let open PPrint in
 
-        separate_map (semi ^^ twice hardline) Stmt.def_to_doc (Vector.to_list defs)
+        separate_map (semi ^^ twice hardline) def_to_doc (Vector.to_list defs)
         ^^ semi ^^ twice hardline
         ^^ Expr.to_doc body
 end

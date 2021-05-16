@@ -14,7 +14,7 @@ type 'a kinding = {typ : 'a; kind : T.kind} (* HACK *)
 type error_handler = TypeError.t -> unit
 
 type row_binding =
-    | WhiteT of T.t * Ast.Type.t with_pos
+    | WhiteT of T.t * Ast.Expr.t with_pos
     | GreyT
     | BlackT of T.t kinding
 

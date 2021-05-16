@@ -1,13 +1,16 @@
 type 'a with_pos = 'a Util.with_pos
 
-module rec Term : (AstSigs.TERM with type Expr.typ = Type.t)
+module rec Expr : (AstSigs.EXPR
+    with type stmt = Stmt.t
+    with type decl = Decl.t)
 
-and Type : (AstSigs.TYPE
-    with type expr = Term.Expr.t
-    with type pat = Term.Expr.pat
-    with type def = Term.Stmt.def)
+and Stmt : (AstSigs.STMT
+    with type expr = Expr.t)
+
+and Decl : (AstSigs.DECL
+    with type expr = Expr.t)
 
 module Program : AstSigs.PROGRAM
-    with module Stmt = Term.Stmt
-    with module Expr = Term.Expr
+    with module Stmt = Stmt
+    with module Expr = Expr
 

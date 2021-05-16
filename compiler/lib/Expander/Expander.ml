@@ -5,11 +5,11 @@ type 'a with_pos = 'a Util.with_pos
 
 module Type = Ast.Type
 type typ = Type.t
-module Expr = Ast.Term.Expr
+module Expr = Ast.Expr
 type expr = Expr.t
 type pat = Expr.pat
 type clause = Expr.clause
-module Stmt = Ast.Term.Stmt
+module Stmt = Ast.Stmt
 type def = Stmt.def
 type stmt = Stmt.t
 type broompath = string list

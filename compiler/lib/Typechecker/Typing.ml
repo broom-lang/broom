@@ -5,8 +5,8 @@ type 'a with_pos = 'a Util.with_pos
 type plicity = Util.plicity
 
 module TS = TyperSigs
-module AExpr = Ast.Term.Expr
-module AStmt = Ast.Term.Stmt
+module AExpr = Ast.Expr
+module AStmt = Ast.Stmt
 module T = Fc.Type
 module FStmt = Fc.Term.Stmt
 module FExpr = Fc.Term.Expr

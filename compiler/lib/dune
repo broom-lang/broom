@@ -17,5 +17,7 @@
 (copy_files# (files Js/*))
 (copy_files# (files Eval/*))
 
-(menhir (modules Parser))
+(menhir
+  (modules Parser)
+  (flags --explain))
 

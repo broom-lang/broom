@@ -1,12 +1,12 @@
 open Asserts
 
 module T = Fc.Type
-module AExpr = Ast.Term.Expr
+module AExpr = Ast.Expr
 open Transactional.Ref
 type 'a with_pos = 'a Util.with_pos
 
 type t' =
-    | NonPattern of AExpr.t with_pos
+    | NonPattern of AExpr.t
     | PrimAppArgc of {op : Primop.t; expected : int; actual : int}
     | PrimAppIArgc of {op : Primop.t; expected : int; actual : int}
     | BranchopArgc of {op : Branchop.t; expected : int; actual : int}

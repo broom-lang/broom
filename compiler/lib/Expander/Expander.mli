@@ -2,9 +2,9 @@
  * Hygienic macroexpansion also causes alphatization. *)
 
 type 'a with_pos = 'a Util.with_pos
-type def = Ast.Term.Stmt.def
-type stmt = Ast.Term.Stmt.t
-type expr = Ast.Term.Expr.t
+type def = Ast.Stmt.def
+type stmt = Ast.Stmt.t
+type expr = Ast.Expr.t
 type broompath = string list
 
 module Make (StringHashtbl : Hashtbl.S with type key = string) : sig

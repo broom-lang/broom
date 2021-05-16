@@ -1,10 +1,10 @@
 type 'a with_pos = 'a Util.with_pos
 type span = Util.span
 
-module AExpr = Ast.Term.Expr
-module AStmt = Ast.Term.Stmt
+module AExpr = Ast.Expr
+module AStmt = Ast.Stmt
 module FExpr = Fc.Term.Expr
-module AType = Ast.Type
+module AType = Ast.Expr
 module T = FcType.Type
 module Tx = Transactional
 type ctrs = Constraint.queue

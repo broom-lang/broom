@@ -2,95 +2,75 @@ type span = Util.span
 type 'a with_pos = 'a Util.with_pos
 
 module type EXPR = sig
-    type typ
     type stmt
-    type def
+    type decl
 
-    type t =
-        | Tuple of t with_pos Vector.t
-        | Focus of t with_pos * int
-        | Ann of t with_pos * typ with_pos
-        | Fn of Util.plicity * clause Vector.t
-        | App of t with_pos * Util.plicity * t with_pos
-        | AppSequence of t with_pos Vector1.t
-        | PrimApp of Primop.t * t with_pos Vector.t * t with_pos Vector.t
-        | PrimBranch of Branchop.t * t with_pos Vector.t * t with_pos Vector.t * clause Vector.t
-        | Let of def Vector1.t * t with_pos
+    type t' =
+        | Fn of clause Vector.t
+        | ImpliFn of clause Vector.t
+        | App of t Vector.t
+        | PrimApp of Primop.t * t Vector.t
+        | PiT of {domain : t; eff : t option; codomain : t}
+        | ImpliT of {domain : t; codomain : t}
+
+        | Ann of t * t
+
+        | Tuple of t Vector.t
+        | Focus of t * int
+        | TupleT of t Vector.t
+
         | Record of stmt Vector.t
-        | Select of t with_pos * Name.t
-        | Proxy of typ
+        | Select of t * Name.t
+        | RecordT of decl Vector.t
+
+        | VariantT of decl Vector.t
+
+        | RowT of decl Vector.t
+
         | Var of Name.t
         | Wild of Name.t
         | Const of Const.t
+        | PrimT of Prim.t
 
-    and clause = {params : pat with_pos; body : t with_pos}
+    and t = t' with_pos
 
-    and pat = t
+    and clause = {params : t; body : t}
 
-    val to_doc : t with_pos -> PPrint.document
+    val to_doc : t -> PPrint.document
 end
 
 module type STMT = sig
     type expr
-    type pat
 
-    type def = Util.span * pat with_pos * expr with_pos
+    type def = Util.span * expr * expr
 
     type t =
-        | Def of def
-        | Expr of expr with_pos
+        | Def of Util.span * expr * expr
+        | Expr of expr
 
     val pos : t -> Util.span
 
-    val def_to_doc : def -> PPrint.document
     val to_doc : t -> PPrint.document
 end
 
-module type TERM = sig
-    module rec Expr : (EXPR
-        with type stmt = Stmt.t
-        with type def = Stmt.def)
-    and Stmt : (STMT
-        with type expr = Expr.t
-        with type pat = Expr.pat)
-end
-
-module type TYPE = sig
+module type DECL = sig
     type expr
-    type def
-    type pat
 
     type t =
-        | Tuple of t with_pos Vector.t
-        | Pi of {domain : pat with_pos; eff : t with_pos option; codomain : t with_pos}
-        | Impli of {domain : pat with_pos; codomain : t with_pos}
-        | Declare of decl Vector1.t * t with_pos
-        | Record of decl Vector.t
-        | Variant of decl Vector.t
-        | Row of decl Vector.t
-        | Path of expr
-        | Prim of Prim.t
+        | Def of Util.span * expr * expr
+        | Decl of Util.span * expr * expr
+        | Type of expr
 
-    and decl =
-        | Def of def
-        | Decl of Util.span * pat with_pos * t with_pos
-        | Type of t with_pos
+    val to_doc : t -> PPrint.document
 
-    val to_doc : t with_pos -> PPrint.document
-
-    module Decl : sig
-        type t = decl
-
-        val to_doc : t -> PPrint.document
-        val pos : t -> Util.span
-    end
+    val pos : t -> Util.span
 end
 
 module type PROGRAM = sig
     module Stmt : STMT
     module Expr : EXPR
 
-    type t = {span : span; defs : Stmt.def Vector.t; body : Expr.t with_pos}
+    type t = {span : span; defs : Stmt.def Vector.t; body : Expr.t}
 
     val to_doc : t -> PPrint.document
 end

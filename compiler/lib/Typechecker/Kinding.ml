@@ -4,7 +4,7 @@ open Asserts
 module TS = TyperSigs
 module Env = TypeEnv
 module AType = Ast.Type
-module AExpr = Ast.Term.Expr
+module AExpr = Ast.Expr
 module T = Fc.Type
 module FExpr = Fc.Term.Expr
 open Transactional.Ref
@@ -199,7 +199,7 @@ module Make
 
             | Prim pt -> {typ = Prim pt; kind = kindof_prim pt}
 
-        and elab_domain env (domain : Ast.Term.Expr.t with_pos) =
+        and elab_domain env (domain : Ast.Expr.t with_pos) =
             let ((pat : FExpr.pat), env, _) =
                 Typing.typeof_pat ctrs false false env Explicit domain in
             (pat.ptyp, env)

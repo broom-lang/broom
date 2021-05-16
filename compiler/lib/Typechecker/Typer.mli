@@ -11,6 +11,6 @@ module Typing : Sigs.TYPING
 
 val check_program : Ast.Program.t -> (Fc.Program.t typing, TypeError.t list) result
 
-val check_interactive_stmts : Namespace.t -> Ast.Term.Stmt.t Vector1.t
+val check_interactive_stmts : Namespace.t -> Ast.Stmt.t Vector1.t
     -> (Fc.Program.t typing * Namespace.t, TypeError.t list) result
 
