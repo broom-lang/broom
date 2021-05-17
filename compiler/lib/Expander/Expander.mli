@@ -1,7 +1,6 @@
 (* Macroexpansion, infix operator "reparsing" and partial application handling.
  * Hygienic macroexpansion also causes alphatization. *)
 
-type 'a with_pos = 'a Util.with_pos
 type def = Ast.Stmt.def
 type stmt = Ast.Stmt.t
 type expr = Ast.Expr.t
