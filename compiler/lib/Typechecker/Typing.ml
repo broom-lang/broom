@@ -1,7 +1,6 @@
 open Streaming
 
 open Asserts
-type 'a with_pos = 'a Util.with_pos
 type plicity = Util.plicity
 
 module TS = TyperSigs
@@ -97,7 +96,7 @@ module Make
             ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
             , T.EmptyRow, Vector.of_list [T.Prim Unit; Prim Unit] )
 
-    let rec typeof_pat ctrs is_global is_fwd env (plicity : plicity) (pat : AExpr.t with_pos) =
+    let rec typeof_pat ctrs is_global is_fwd env (plicity : plicity) (pat : AExpr.t) =
         match pat.v with
         | Ann (pat, typ) ->
             let typ = Kinding.check ctrs env (Env.some_type_kind env false) typ in
@@ -105,21 +104,20 @@ module Make
             check_pat ctrs is_global is_fwd env plicity typ pat
 
         | Tuple pats ->
-            (match Vector.length pats with
-            | 0 -> (FExpr.pat_at pat.pos (Prim Unit) (ConstP Unit), env, Vector.empty)
-            | 2 ->
-                let (fst_pat, env, fst_vars) =
-                    typeof_pat ctrs is_global is_fwd env plicity (Vector.get pats 0) in
-                let (snd_pat, env, snd_vars) =
-                    typeof_pat ctrs is_global is_fwd env plicity (Vector.get pats 1) in
-                ( FExpr.pat_at pat.pos (Pair {fst = fst_pat.ptyp; snd = snd_pat.ptyp})
-                    (PairP {fst = fst_pat; snd = snd_pat})
-                , env, Vector.append fst_vars snd_vars )
-            | _ -> unreachable (Some pat.pos))
-
-        | Proxy carrie ->
-            let {TS.typ = carrie; kind = _} = Kinding.elaborate ctrs env {v = carrie; pos = pat.pos} in
-            (FExpr.pat_at pat.pos (Proxy carrie) (ProxyP carrie), env, Vector.empty)
+            let pats' = CCVector.create () in
+            let (env, vars) = pats |> Vector.fold (fun (env, vars) pat ->
+                let (pat, env, vars') = typeof_pat ctrs is_global is_fwd env plicity pat in
+                CCVector.push pats' pat;
+                (env, Vector.append vars vars')
+            ) (env, Vector.empty) in
+            let pats = Vector.build pats' in (* OPTIMIZE *)
+            let end_pos = snd pat.pos in
+            let pat = pats |> Vector.fold_right (fun (acc : FExpr.pat) (pat : FExpr.pat) ->
+                let span = (fst pat.ppos, end_pos) in
+                FExpr.pat_at span (Pair {fst = pat.ptyp; snd = acc.ptyp})
+                    (PairP {fst = pat; snd = acc})
+            ) (FExpr.pat_at (end_pos, end_pos) (Prim Unit) (ConstP Unit)) in
+            (pat, env, vars)
 
         | Var name ->
             let typ = T.Uv (Env.uv env is_fwd (Env.some_type_kind env false)) in
@@ -136,17 +134,19 @@ module Make
             let typ = const_typ c in
             (FExpr.pat_at pat.pos typ (ConstP c), env, Vector.empty)
 
-        | Fn _ ->
+        | PiT _ | ImpliT _ | TupleT _ | RecordT _ | VariantT _ | RowT _ | PrimT _ ->
+            let {TS.typ = carrie; kind = _} = Kinding.elaborate ctrs env pat in
+            (FExpr.pat_at pat.pos (Proxy carrie) (ProxyP carrie), env, Vector.empty)
+
+        | Fn _ | ImpliFn _ ->
             Env.report_error env {v = NonPattern pat; pos = pat.pos};
             let typ = T.Uv (Env.uv env is_fwd (Env.some_type_kind env false)) in
             (FExpr.pat_at pat.pos typ (WildP (Name.of_string "")), env, Vector.empty)
 
-        | AppSequence _ -> bug (Some pat.pos) ~msg: "typechecker encountered AppSequence pattern"
-
-        | Focus _ | Let _ | App _ | PrimApp _ | PrimBranch _ | Select _ | Record _ ->
+        | Focus _ | App _ | PrimApp _ | Select _ | Record _ ->
             todo (Some pat.pos) ~msg: "in check_pat"
 
-    and check_pat ctrs is_global is_fwd env plicity sub (pat : AExpr.t with_pos) =
+    and check_pat ctrs is_global is_fwd env plicity sub (pat : AExpr.t) =
         let (pat, env, vars) = typeof_pat ctrs is_global is_fwd env plicity pat in
         let super = pat.ptyp in
         match Constraints.subtype ctrs pat.ppos env sub super with
@@ -155,8 +155,12 @@ module Make
             (FExpr.pat_at pat.ppos super (View (f_expr, pat)), env, vars)
         | None -> (pat, env, vars)
 
-    let rec typeof ctrs env (expr : AExpr.t with_pos) : FExpr.t typing = match expr.v with
-        | Fn (plicity, clauses) ->
+    let rec typeof ctrs env (expr : AExpr.t) : FExpr.t typing = match expr.v with
+        | Fn clauses | ImpliFn clauses ->
+            let plicity = match expr.v with
+                | Fn _ -> Util.Explicit
+                | ImpliFn _ -> Implicit
+                | _ -> unreachable (Some expr.pos) in
             let domain = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
             let eff = match plicity with
                 | Explicit -> T.Uv (Env.uv env false T.aRow)
@@ -173,7 +177,7 @@ module Make
             let typ = T.Pi {universals; domain; eff; codomain} in
             {term = FExpr.at expr.pos typ (FExpr.fn universals param body); eff = EmptyRow}
 
-        | App (callee, plicity, arg) ->
+        | App exprs ->
             (* TODO: Effect opening à la Koka *)
             (* OPTIMIZE: eta-expands universal callees: *)
             let domain = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
@@ -194,7 +198,7 @@ module Make
             (* FIXME: Existential result opening *)
             {term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg); eff}
 
-        | PrimApp (op, iargs, args) ->
+        | PrimApp (op, args) ->
             (* TODO: Effect opening à la Koka: *)
             let (universals, domain, eff, codomain) = primop_typ op in
             let (universals, domain, eff, codomain) =
@@ -208,7 +212,7 @@ module Make
                     let expected = Vector.length universals in
                     let actual = Vector.length iargs in
                     if actual = expected
-                    then Stream.from (Source.zip_with (fun uv (iarg : AExpr.t with_pos) ->
+                    then Stream.from (Source.zip_with (fun uv (iarg : AExpr.t) ->
                             let typ = T.Proxy uv in
                             let {TS.term = iarg; eff = arg_eff} = check ctrs env typ iarg in
                             ignore (Constraints.unify ctrs iarg.pos env arg_eff eff);
@@ -219,7 +223,7 @@ module Make
                 end;
                 (* else type arguments are inferred *)
 
-                let args = Stream.from (Source.zip_with (fun typ (arg : AExpr.t with_pos) ->
+                let args = Stream.from (Source.zip_with (fun typ (arg : AExpr.t) ->
                         let {TS.term = arg; eff = arg_eff} = check ctrs env typ arg in
                         ignore (Constraints.unify ctrs arg.pos env arg_eff eff);
                         arg
@@ -231,7 +235,7 @@ module Make
                 {term = FExpr.at expr.pos codomain (FExpr.primapp op universals Vector.empty); eff}
             end
 
-        | PrimBranch (op, iargs, args, clauses) -> (* TODO: DRY: *)
+        (*| PrimBranch (op, iargs, args, clauses) -> (* TODO: DRY: *)
             (* TODO: Effect opening à la Koka: *)
             let (universals, domain, eff, codomain) = branchop_typ op in
             let (universals, domain, eff, codomain) =
@@ -246,7 +250,7 @@ module Make
                     let expected = Vector.length universals in
                     let actual = Vector.length iargs in
                     if actual = expected
-                    then Stream.from (Source.zip_with (fun uv (iarg : AExpr.t with_pos) ->
+                    then Stream.from (Source.zip_with (fun uv (iarg : AExpr.t) ->
                             let typ = T.Proxy uv in
                             let {TS.term = iarg; eff = arg_eff} = check ctrs env typ iarg in
                             ignore (Constraints.unify ctrs iarg.pos env arg_eff eff);
@@ -257,7 +261,7 @@ module Make
                 end;
                 (* else type arguments are inferred *)
 
-                let args = Stream.from (Source.zip_with (fun typ (arg : AExpr.t with_pos) ->
+                let args = Stream.from (Source.zip_with (fun typ (arg : AExpr.t) ->
                         let {TS.term = arg; eff = arg_eff} = check ctrs env typ arg in
                         ignore (Constraints.unify ctrs arg.pos env arg_eff eff);
                         arg
@@ -287,29 +291,30 @@ module Make
             end else begin
                 Env.report_error env {v = BranchopArgc {op; expected; actual}; pos = expr.pos};
                 {term = FExpr.at expr.pos typ (FExpr.primbranch op universals Vector.empty Vector.empty); eff}
-            end
+            end*)
 
-        | Let (defs, body) ->
+        (*| Let (defs, body) ->
             let (defs, env) = check_defs ctrs env (Vector1.to_vector defs) in
             let {TS.term = body; eff} = typeof ctrs env body in
-            {term = FExpr.at expr.pos body.typ (FExpr.letrec defs body); eff}
+            {term = FExpr.at expr.pos body.typ (FExpr.letrec defs body); eff}*)
 
         | Ann (expr, super) ->
             let super = Kinding.check ctrs env (Env.some_type_kind env false) super in
             check ctrs env super expr (* FIXME: handle abstract types, abstract type generation effect *)
 
         | Tuple exprs ->
-            (match Vector.length exprs with
-            | 0 -> {term = FExpr.at expr.pos (Prim Unit) (FExpr.const Unit); eff = EmptyRow}
-            | 2 ->
-                let eff = T.Uv (Env.uv env false T.aRow) in
-                let {TS.term = fst; eff = fst_eff} = typeof ctrs env (Vector.get exprs 0) in
-                ignore (Constraints.unify ctrs expr.pos env fst_eff eff);
-                let {TS.term = snd; eff = snd_eff} = typeof ctrs env (Vector.get exprs 1) in
-                ignore (Constraints.unify ctrs expr.pos env snd_eff eff);
-                { term = FExpr.at expr.pos (Pair {fst = fst.typ; snd = snd.typ}) (FExpr.pair fst snd)
-                ; eff}
-            | _ -> unreachable (Some expr.pos))
+            let eff = T.Uv (Env.uv env false T.aRow) in
+            let exprs = exprs |> Vector.map (fun expr ->
+                let {TS.term = expr; eff = expr_eff} = typeof ctrs env expr in
+                ignore (Constraints.unify ctrs expr.pos env expr_eff eff);
+                expr) in
+
+            let end_pos = snd expr.pos in
+            let term = exprs |> Vector.fold_right (fun (acc : FExpr.t) (expr : FExpr.t) ->
+                FExpr.at (fst expr.pos, end_pos) (Pair {fst = expr.typ; snd = acc.typ})
+                    (FExpr.pair expr acc)
+            ) (FExpr.at expr.pos (Prim Unit) (FExpr.const Unit)) in
+            {term; eff}
 
         | Focus (focusee, index) ->
             let fst_typ = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
@@ -317,10 +322,12 @@ module Make
             let focusee_typ = T.Pair {fst = fst_typ; snd = snd_typ} in
             let {TS.term = focusee; eff} = check ctrs env focusee_typ focusee in
 
-            (match index with
-            | 0 -> {term = FExpr.at expr.pos fst_typ (FExpr.fst focusee); eff}
-            | 1 -> {term = FExpr.at expr.pos snd_typ (FExpr.snd focusee); eff}
-            | _ -> unreachable (Some expr.pos))
+            let rec get focusee = function
+                | 0 -> FExpr.at expr.pos fst_typ (FExpr.fst focusee)
+                | index ->
+                    let focusee = FExpr.at expr.pos snd_typ (FExpr.snd focusee) in
+                    get focusee (index - 1) in
+            {term = get focusee index; eff}
 
         | Record stmts ->
             let fields = CCVector.create () in
@@ -342,10 +349,6 @@ module Make
             let {TS.term = selectee; eff} = check ctrs env selectee_typ selectee in
             {term = FExpr.at expr.pos typ (FExpr.select selectee label); eff}
 
-        | Proxy carrie ->
-            let {TS.typ = carrie; kind = _} = Kinding.elaborate ctrs env {v = carrie; pos = expr.pos} in
-            {term = FExpr.at expr.pos (Proxy carrie) (FExpr.proxy carrie); eff = EmptyRow}
-
         | Var name ->
             let term = Env.find_val (fun env typ ->
                     let {TS.typ; kind} = Kinding.elaborate ctrs env typ in
@@ -358,8 +361,11 @@ module Make
             let typ = const_typ c in
             {term = FExpr.at expr.pos typ (FExpr.const c); eff = EmptyRow}
 
+        (*| Proxy carrie ->
+            let {TS.typ = carrie; kind = _} = Kinding.elaborate ctrs env {v = carrie; pos = expr.pos} in
+            {term = FExpr.at expr.pos (Proxy carrie) (FExpr.proxy carrie); eff = EmptyRow}*)
+
         | Wild _ -> bug (Some expr.pos) ~msg: "_-expression reached typechecker"
-        | AppSequence _ -> bug (Some expr.pos) ~msg: "AppSequence expression reached typechecker"
 
     and check ctrs env super expr =
         let {TS.term = expr; eff} = typeof ctrs env expr in

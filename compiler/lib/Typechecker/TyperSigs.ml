@@ -1,4 +1,3 @@
-type 'a with_pos = 'a Util.with_pos
 type span = Util.span
 
 module AExpr = Ast.Expr
@@ -14,11 +13,11 @@ type 'a typing = {term : 'a; eff : T.t}
 type 'a kinding = {typ : 'a; kind : T.kind}
 
 module type TYPING = sig
-    val typeof : ctrs -> env -> AExpr.t with_pos -> FExpr.t typing
-    val check : ctrs -> env -> T.t -> AExpr.t with_pos -> FExpr.t typing
+    val typeof : ctrs -> env -> AExpr.t -> FExpr.t typing
+    val check : ctrs -> env -> T.t -> AExpr.t -> FExpr.t typing
 
     (* HACK: *)
-    val typeof_pat : ctrs -> bool -> bool -> env -> Util.plicity -> AExpr.t with_pos
+    val typeof_pat : ctrs -> bool -> bool -> env -> Util.plicity -> AExpr.t
         -> FExpr.pat * env * FExpr.var Vector.t
 
     val check_program : TypeError.t list Tx.Ref.t -> ctrs -> Ast.Program.t
@@ -28,8 +27,8 @@ module type TYPING = sig
 end
 
 module type KINDING = sig
-    val elaborate : ctrs -> env -> AType.t with_pos -> T.t kinding
-    val check : ctrs -> env -> T.kind -> AType.t with_pos -> T.t
+    val elaborate : ctrs -> env -> AType.t -> T.t kinding
+    val check : ctrs -> env -> T.kind -> AType.t -> T.t
     val kindof_F : ctrs -> span -> env -> T.t -> T.kind
     val eval : span -> env -> T.t -> (T.t * T.t T.coercion option) option
 end

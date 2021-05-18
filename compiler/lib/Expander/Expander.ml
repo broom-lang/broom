@@ -199,33 +199,6 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
         let codomain = expand define_toplevel env codomain in
         {expr with v = ImpliT {domain; codomain}}
 
-    (*| Tuple exprs ->
-        {expr with v = Tuple (Vector.map (expand define_toplevel env) exprs)}
-        let end_pos = snd expr.pos in
-        exprs |> Vector.fold_right (fun acc expr ->
-            { Util.v = Expr.Tuple (Vector.of_array_unsafe [|expr; acc|])
-            ; pos = (fst expr.pos, end_pos) }
-        ) {v = Tuple Vector.empty; pos = (end_pos, end_pos)}*)
-
-    (*| Focus (focusee, index) ->
-        let focusee = expand define_toplevel env focusee in
-        {expr with v = Focus (focusee, index)}
-        let span = expr.pos in
-        let rec get focusee = function
-            | 0 -> {Util.v = Expr.Focus (focusee, 0); pos = span}
-            | index ->
-                let focusee = {Util.v = Expr.Focus (focusee, 1); pos = span} in
-                get focusee (index - 1) in
-        get (expand define_toplevel env focusee) index*)
-
-    (*| TupleT typs ->
-        {expr with v = Tuple (Vector.map (expand define_toplevel env) typs)}
-        let end_pos = snd typ.pos in
-        typs |> Vector.fold_right (fun acc (typ : expr) ->
-            { Util.v = TupleT (Vector.of_array_unsafe [|typ; acc|])
-            ; pos = (fst typ.pos, end_pos)}
-        ) {v = TupleT Vector.empty; pos = (end_pos, end_pos)}*)
-
     | Record stmts ->
         (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
         let vars = CCVector.create () in

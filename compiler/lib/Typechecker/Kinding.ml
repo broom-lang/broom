@@ -3,13 +3,12 @@ open Asserts
 
 module TS = TyperSigs
 module Env = TypeEnv
-module AType = Ast.Type
 module AExpr = Ast.Expr
+module ADecl = Ast.Decl
 module T = Fc.Type
 module FExpr = Fc.Term.Expr
 open Transactional.Ref
 
-type 'a with_pos = 'a Util.with_pos
 type 'a kinding = 'a TS.kinding
 
 module Make
@@ -73,24 +72,14 @@ module Make
         let kind' = kindof_F ctrs span env typ in
         ignore (Constraints.unify ctrs span env kind' kind)
 
-    let elaborate ctrs env (typ : AType.t with_pos) =
-        let rec elab env (typ : AType.t with_pos) : T.t kinding =
+    let repof_F ctrs span env typ = match kindof_F ctrs span env typ with
+        | App {callee = Prim TypeIn; arg = rep} -> rep
+        | _ -> todo (Some span)
+
+    let elaborate ctrs env (typ : AExpr.t) =
+        let rec elab env (typ : AExpr.t) : T.t kinding =
             match typ.v with
-            | Tuple typs ->
-                (match Vector.length typs with
-                | 0 -> {typ = Prim Unit; kind = App {callee = Prim TypeIn; arg = Prim UnitRep}}
-
-                | 2 ->
-                    let fst_rep = T.Uv (Env.uv env false (Prim Rep)) in
-                    let fst = check env (T.App {callee = Prim TypeIn; arg = fst_rep}) (Vector.get typs 0) in
-                    let snd_rep = T.Uv (Env.uv env false (Prim Rep)) in
-                    let snd = check env (App {callee = Prim TypeIn; arg = snd_rep}) (Vector.get typs 1) in
-                    let rep = T.App {callee = App {callee = Prim PairRep; arg = fst_rep}; arg = snd_rep} in
-                    {TS.typ = Pair {fst; snd}; kind = App {callee = Prim TypeIn; arg = rep}}
-
-                | _ -> unreachable (Some typ.pos))
-
-            | Pi {domain; eff; codomain} ->
+            | PiT {domain; eff; codomain} ->
                 let env0 = env in
                 let (env, universals) = Env.push_existential env0 in
                 let (domain, env) = elab_domain env domain in
@@ -126,7 +115,7 @@ module Make
                      ; codomain = T.close substitution codomain }
                 ; kind = T.aType }
 
-            | Impli {domain; codomain} ->
+            | ImpliT {domain; codomain} ->
                 let env0 = env in
                 let (env, universals) = Env.push_existential env0 in
                 let (domain, env) = elab_domain env domain in
@@ -158,55 +147,49 @@ module Make
                      ; codomain = T.close substitution codomain }
                 ; kind = T.aType }
 
-            | Declare (decls, body) ->
-                let bindings = CCVector.create () in
-                let _ = Vector1.fold (fun env decl ->
-                    let ((pat : FExpr.pat), env, vars, rhs) = analyze_decl env decl in
-                    CCVector.push bindings (vars, pat.ptyp, rhs);
-                    env
-                ) env decls in
-                let env = Env.push_row env (CCVector.freeze bindings) in
+            | Tuple typs ->
+                let typings = Vector.map (elab env) typs in
+                typings |> Vector.fold_right (fun {TS.typ = snd; kind = _} {TS.typ = fst; kind = _} ->
+                    let fst_rep = repof_F ctrs typ.pos env fst in
+                    let snd_rep = repof_F ctrs typ.pos env snd in
+                    let rep = T.App {callee = App {callee = Prim PairRep; arg = fst_rep}; arg = snd_rep} in
+                    {TS.typ = T.Pair {fst; snd}; kind = App {callee = Prim TypeIn; arg = rep} }
+                ) {TS.typ = Prim Unit; kind = App {callee = Prim TypeIn; arg = Prim UnitRep}}
 
-                Stream.from (Source.zip_with (elaborate_decl env)
-                    (Util.ccvector_to_source bindings) (Vector1.to_source decls))
-                |> Stream.drain;
-
-                elab env body
-
-            | Record decls ->
+            | RecordT decls ->
                 let {TS.typ = row; kind = _} = elab_row env typ.pos decls in
                 {typ = Record row; kind = T.aType}
 
-            | Variant decls ->
+            | VariantT decls ->
                 let {TS.typ = row; kind = _} = elab_row env typ.pos decls in
                 {typ = Variant row; kind = T.aType}
 
-            | Row decls -> elab_row env typ.pos decls
-
-            | Path expr ->
-                let carrie =
-                    let kind = T.Uv (Env.uv env false T.aType) in
-                    T.Uv (Env.uv env false kind) in
-                let {TS.term = _; eff} = Typing.check ctrs env (T.Proxy carrie) {typ with v = expr} in
-                ignore (Constraints.unify ctrs typ.pos env eff EmptyRow);
-                let (_, carrie) = Env.reabstract env carrie in
-                {typ = carrie; kind = kindof_F ctrs typ.pos env carrie}
+            | RowT decls -> elab_row env typ.pos decls
 
             (*| AType.Singleton expr ->
                 (match C.typeof env expr with
                 | {term = _; typ; eff = Pure} -> (Hole, typ)
                 | _ -> Env.reportError env typ.pos (ImpureType expr.v))*)
 
-            | Prim pt -> {typ = Prim pt; kind = kindof_prim pt}
+            | PrimT pt -> {typ = Prim pt; kind = kindof_prim pt}
 
-        and elab_domain env (domain : Ast.Expr.t with_pos) =
+            | Const _ ->
+                let carrie =
+                    let kind = T.Uv (Env.uv env false T.aType) in
+                    T.Uv (Env.uv env false kind) in
+                let {TS.term = _; eff} = Typing.check ctrs env (T.Proxy carrie) typ in
+                ignore (Constraints.unify ctrs typ.pos env eff EmptyRow);
+                let (_, carrie) = Env.reabstract env carrie in
+                {typ = carrie; kind = kindof_F ctrs typ.pos env carrie}
+
+        and elab_domain env (domain : AExpr.t) =
             let ((pat : FExpr.pat), env, _) =
                 Typing.typeof_pat ctrs false false env Explicit domain in
             (pat.ptyp, env)
 
         and elab_row env pos decls =
             let row = Vector.fold_right (fun base -> function
-                | AType.Decl (_, {v = Var label; _}, typ) ->
+                | ADecl.Decl (_, {v = Var label; _}, typ) ->
                     let {TS.typ = field; kind = _} = elab env typ in
                     T.With {base; label; field}
                 | _ -> bug (Some pos) ~msg: "bad record type field reached typechecker"
@@ -214,19 +197,19 @@ module Make
             {typ = row; kind = kindof_F ctrs pos env row}
 
         and analyze_decl env = function
-            | Decl (_, pat, typ) ->
+            | ADecl.Decl (_, pat, typ) ->
                 let (pat, env, vars) = Typing.typeof_pat ctrs false false env Explicit pat in
                 (pat, env, vars, typ)
 
             | Def (_, pat, expr) ->
                 let (pat, env, vars) = Typing.typeof_pat ctrs false false env Explicit pat in
-                let expr' = AExpr.PrimApp (TypeOf, Vector.empty, Vector.singleton expr) in
-                (pat, env, vars, {expr with v = AType.Path expr'})
+                let expr' = AExpr.PrimApp (TypeOf, Vector.singleton expr) in
+                (pat, env, vars, {expr with v = expr'})
 
             | Type typ -> todo (Some typ.pos)
 
         and elaborate_decl env (vars, lhs, rhs) decl =
-            let span = AType.Decl.pos decl in
+            let span = ADecl.pos decl in
             if Vector.length vars > 0
             then Env.force_typ (fun env typ ->
                     let {TS.typ; kind} = elab env typ in
@@ -255,7 +238,7 @@ module Make
             | None -> typ in
         {TS.typ; kind}
 
-    let check ctrs env kind (({pos = span; _} as typ) : AType.t with_pos) =
+    let check ctrs env kind (({pos = span; _} as typ) : AExpr.t) =
         let {TS.typ; kind = kind'} = elaborate ctrs env typ in
         ignore (Constraints.unify ctrs span env kind' kind);
         typ
