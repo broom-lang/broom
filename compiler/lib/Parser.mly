@@ -18,12 +18,11 @@ let parenthesized args pos =
 %token
     EFFOW "-!" ARROW "->" LARROW "<-" DARROW "=>" EQ "="
     DOT "." COLON ":" COMMA "," SEMI ";"
-    HASH "#" BAR "|" BANG "!" QMARK "?" AT "@" BACKSLASH
+    HASH "#" BAR "|" ET "&" BANG "!" QMARK "?" AT "@" BACKSLASH
     LPAREN "(" RPAREN ")" LBRACKET "[" RBRACKET "]" LBRACE "{" RBRACE "}"
     EOF
 %token <string> DISJUNCTION "||" CONJUNCTION "&&" COMPARISON ADDITIVE MULTIPLICATIVE
-%token <Primop.t> PRIMOP
-%token <Branchop.t> BRANCHOP
+%token <Ast.Primop.t> PRIMOP
 %token <string> WILD "_" ID OP
 %token <string> STRING
 %token <int> INT
