@@ -153,7 +153,6 @@ let parse_appseq env exprs =
 
 (* # Expressions *)
 
-(* OPTIMIZE: Expr.map_children (which does not exist yet): *)
 let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
     (*| Let (defs, body) ->
         let (defs, env) = expand_defs' define_toplevel env (Vector1.to_vector defs) in
@@ -162,7 +161,7 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
         | Some defs -> {expr with v = Let (defs, body)}
         | None -> body)*)
     | Fn clauses ->
-        {expr with v = Fn (Vector.map (expand_clause define_toplevel env) clauses)}
+        {expr with v = Expr.Fn (Vector.map (expand_clause define_toplevel env) clauses)}
     | ImpliFn clauses ->
         {expr with v = ImpliFn (Vector.map (expand_clause define_toplevel env) clauses)}
 
@@ -181,15 +180,14 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
     | App (callee, plicity, args) ->
         {expr with v = App (expand define_toplevel env callee
             , plicity, expand define_toplevel env args)}*)
-    | PrimApp (Include, args) -> expand_include env args
-    | PrimApp (Require, args) -> expand_require define_toplevel env expr.pos args
-    | PrimApp (op, args) ->
-        let args = Vector.map (expand define_toplevel env) args in
-        {expr with v = PrimApp (op, args)}
-    (*| PrimBranch (op, iargs, args, clauses) ->
-        {expr with v = PrimBranch (op, Vector.map (expand define_toplevel env) iargs
-            , Vector.map (expand define_toplevel env) args
-            , Vector.map (expand_clause define_toplevel env) clauses)}*)
+
+    | PrimApp (Include, args) ->
+        expand_include env args
+        |> expand define_toplevel env
+    | PrimApp (Require, args) ->
+        expand_require define_toplevel env expr.pos args
+        |> expand define_toplevel env
+    | PrimApp ((Let | Module | Interface), _) -> todo (Some expr.pos)
 
     | PiT {domain; eff; codomain} ->
         let (domain, env) = expand_pat define_toplevel ignore env domain in
@@ -201,23 +199,18 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
         let codomain = expand define_toplevel env codomain in
         {expr with v = ImpliT {domain; codomain}}
 
-    | Ann (expr, typ) ->
-        let expr = expand define_toplevel env expr in
-        let typ = expand define_toplevel env typ in
-        {expr with v = Ann (expr, typ)}
-
-    | Tuple exprs ->
+    (*| Tuple exprs ->
         {expr with v = Tuple (Vector.map (expand define_toplevel env) exprs)}
-        (*let end_pos = snd expr.pos in
+        let end_pos = snd expr.pos in
         exprs |> Vector.fold_right (fun acc expr ->
             { Util.v = Expr.Tuple (Vector.of_array_unsafe [|expr; acc|])
             ; pos = (fst expr.pos, end_pos) }
         ) {v = Tuple Vector.empty; pos = (end_pos, end_pos)}*)
 
-    | Focus (focusee, index) ->
+    (*| Focus (focusee, index) ->
         let focusee = expand define_toplevel env focusee in
         {expr with v = Focus (focusee, index)}
-        (*let span = expr.pos in
+        let span = expr.pos in
         let rec get focusee = function
             | 0 -> {Util.v = Expr.Focus (focusee, 0); pos = span}
             | index ->
@@ -225,9 +218,9 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
                 get focusee (index - 1) in
         get (expand define_toplevel env focusee) index*)
 
-    | TupleT typs ->
+    (*| TupleT typs ->
         {expr with v = Tuple (Vector.map (expand define_toplevel env) typs)}
-        (*let end_pos = snd typ.pos in
+        let end_pos = snd typ.pos in
         typs |> Vector.fold_right (fun acc (typ : expr) ->
             { Util.v = TupleT (Vector.of_array_unsafe [|typ; acc|])
             ; pos = (fst typ.pos, end_pos)}
@@ -246,9 +239,6 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
         | Some defs -> {expr with v = Let (defs, body)}
         | None -> body)*)
 
-    | Select (selectee, label) ->
-        {expr with v = Select (expand define_toplevel env selectee, label)}
-
     | RecordT decls | VariantT decls | RowT decls ->
         let vars = CCVector.create () in
         let decls = expand_decls define_toplevel (CCVector.push vars) env decls in
@@ -266,23 +256,20 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
         | Some decls -> {typ with v = Declare (decls, body)}
         | None -> body)*)
 
-    (*| Declare (decls, body) ->
-        let (decls, env) = expand_decls' define_toplevel ignore env (Vector1.to_vector decls) in
-        let body = expand_typ define_toplevel env body in
-        (match Vector1.of_vector decls with
-        | Some decls -> {typ with v = Declare (decls, body)}
-        | None -> body)*)
-
     | Var name -> (match Env.find (snd (Bindings.find env name)) with
         | Some (Var id) -> id
         | Some _ -> todo (Some expr.pos)
         | None -> failwith ("unbound: " ^ Name.to_string name
             ^ " at " ^ Util.span_to_string expr.pos))
 
-    | Const _ | PrimT _ -> expr
+    | PrimApp _
+    | Ann _
+    | Tuple _ | Focus _ | TupleT _
+    | Select _
+    | Const _ | PrimT _ ->
+        Expr.map_children (expand define_toplevel env) expr
 
     | Wild _ -> failwith "stray `_`"
-
 
 (* # Special Forms *)
 

@@ -210,6 +210,86 @@ module rec Expr : (AstSigs.EXPR
 
     and clause_to_doc arrow {params; body} =
         PPrint.(infix 4 1 arrow (bar ^^ blank 1 ^^ to_doc params) (to_doc body))
+
+    let map_clause_exprs f ({params; body} as clause) =
+        let params' = f params in
+        let body' = f body in
+        if params' == params && body' == body then clause else {params = params'; body = body'}
+
+    let map_children f (expr : t) =
+        let term = expr.v in
+        let term' = match term with
+            | Fn clauses ->
+                let clauses' = Vector.map_children (map_clause_exprs f) clauses in
+                if clauses' == clauses then term else Fn clauses'
+
+            | ImpliFn clauses ->
+                let clauses' = Vector.map_children (map_clause_exprs f) clauses in
+                if clauses' == clauses then term else ImpliFn clauses'
+
+            | App exprs ->
+                let exprs' = Vector.map_children f exprs in
+                if exprs' == exprs then term else App exprs'
+
+            | PrimApp (op, exprs) ->
+                let exprs' = Vector.map_children f exprs in
+                if exprs' == exprs then term else PrimApp (op, exprs')
+
+            | PiT {domain; eff; codomain} ->
+                let domain' = f domain in
+                let eff' = Option.map f eff in
+                let codomain' = f codomain in
+                if domain' == domain && eff' == eff && codomain' == codomain
+                then term
+                else PiT {domain = domain'; eff = eff'; codomain = codomain'}
+
+            | ImpliT {domain; codomain} ->
+                let domain' = f domain in
+                let codomain' = f codomain in
+                if domain' == domain && codomain' == codomain
+                then term
+                else ImpliT {domain = domain'; codomain = codomain'}
+
+            | Ann (expr, typ) ->
+                let expr' = f expr in
+                let typ' = f typ in
+                if expr' == expr && typ' == typ then term else Ann (expr', typ')
+
+            | Tuple exprs ->
+                let exprs' = Vector.map_children f exprs in
+                if exprs' == exprs then term else Tuple exprs'
+
+            | Focus (focusee, index) ->
+                let focusee' = f focusee in
+                if focusee' == focusee then term else Focus (focusee', index)
+
+            | TupleT typs ->
+                let typs' = Vector.map_children f typs in
+                if typs' == typs then term else TupleT typs'
+
+            | Record stmts ->
+                let stmts' = Vector.map_children (Stmt.map_child_exprs f) stmts in
+                if stmts' == stmts then term else Record stmts'
+
+            | Select (selectee, label) ->
+                let selectee' = f selectee in
+                if selectee' == selectee then term else Select (selectee', label)
+
+            | RecordT decls ->
+                let decls' = Vector.map_children (Decl.map_child_exprs f) decls in
+                if decls' == decls then term else RecordT decls'
+
+            | VariantT decls ->
+                let decls' = Vector.map_children (Decl.map_child_exprs f) decls in
+                if decls' == decls then term else VariantT decls'
+
+            | RowT decls ->
+                let decls' = Vector.map_children (Decl.map_child_exprs f) decls in
+                if decls' == decls then term else RowT decls'
+
+            | Var _ | Wild _ | Const _ | PrimT _ -> term in
+
+        if term' == term then expr else {expr with v = term}
 end
 
 and Stmt : (AstSigs.STMT with type expr = Expr.t) = struct
@@ -231,6 +311,16 @@ and Stmt : (AstSigs.STMT with type expr = Expr.t) = struct
         function
         | Def (_, pat, expr) -> infix 4 1 equals (Expr.to_doc pat) (Expr.to_doc expr)
         | Expr expr -> Expr.to_doc expr
+
+    let map_child_exprs f stmt = match stmt with
+        | Def (span, pat, expr) ->
+            let pat' = f pat in
+            let expr' = f expr in
+            if pat' == pat && expr' == expr then stmt else Def (span, pat', expr')
+
+        | Expr expr ->
+            let expr' = f expr in
+            if expr' == expr then stmt else Expr expr'
 end
 
 and Decl : (AstSigs.DECL with type expr = Expr.t) = struct
@@ -252,6 +342,21 @@ and Decl : (AstSigs.DECL with type expr = Expr.t) = struct
         | Def (pos, _, _) -> pos
         | Decl (pos, _, _) -> pos
         | Type typ -> typ.pos
+
+    let map_child_exprs f stmt = match stmt with
+        | Def (span, pat, expr) ->
+            let pat' = f pat in
+            let expr' = f expr in
+            if pat' == pat && expr' == expr then stmt else Def (span, pat', expr')
+
+        | Decl (span, pat, expr) ->
+            let pat' = f pat in
+            let expr' = f expr in
+            if pat' == pat && expr' == expr then stmt else Decl (span, pat', expr')
+
+        | Type expr ->
+            let expr' = f expr in
+            if expr' == expr then stmt else Type expr'
 end
 
 module Program = struct

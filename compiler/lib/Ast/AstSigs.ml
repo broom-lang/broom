@@ -57,6 +57,8 @@ module type EXPR = sig
     and clause = {params : t; body : t}
 
     val to_doc : t -> PPrint.document
+
+    val map_children : (t -> t) -> t -> t
 end
 
 module type STMT = sig
@@ -71,6 +73,8 @@ module type STMT = sig
     val pos : t -> Util.span
 
     val to_doc : t -> PPrint.document
+
+    val map_child_exprs : (expr -> expr) -> t -> t
 end
 
 module type DECL = sig
@@ -84,6 +88,8 @@ module type DECL = sig
     val to_doc : t -> PPrint.document
 
     val pos : t -> Util.span
+
+    val map_child_exprs : (expr -> expr) -> t -> t
 end
 
 module type PROGRAM = sig
