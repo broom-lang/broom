@@ -181,6 +181,8 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
     | App (callee, plicity, args) ->
         {expr with v = App (expand define_toplevel env callee
             , plicity, expand define_toplevel env args)}*)
+    | PrimApp (Include, args) -> expand_include env args
+    | PrimApp (Require, args) -> expand_require define_toplevel env expr.pos args
     | PrimApp (op, args) ->
         let args = Vector.map (expand define_toplevel env) args in
         {expr with v = PrimApp (op, args)}
@@ -302,50 +304,60 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
                 | None -> body)
             | _ -> failwith "dangling stmts in `let`"
         else todo (Some pos)
-    | _ -> failwith "non-record `let` arg"
+    | _ -> failwith "non-record `let` arg"*)
 
-and expand_include env (arg : expr) = match arg.v with
-    | Const (String filename) -> (* FIXME: error handling: *)
-        let path = match Env.find (snd (Bindings.find env (Name.of_string "__BROOMPATH"))) with
-            | Some (BroomPath path) -> path
-            | Some _ -> bug (Some arg.pos) ~msg: "__BROOMPATH has wrong type"
-            | None -> bug (Some arg.pos) ~msg: "__BROOMPATH unbound" in
-        let filename = path |> List.find_map (fun dir ->
-            let filename = Filename.concat dir filename ^ ".brm" in
-            if Sys.file_exists filename
-            then Some filename
-            else None) in
-        let filename = Option.get filename in
-        let input = open_in filename in
-        Fun.protect (fun () ->
-            input
-            |> Sedlexing.Utf8.from_channel
-            |> SedlexMenhir.create_lexbuf filename
-            |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.modul
-        ) ~finally: (fun () -> close_in input)
-    | _ -> failwith "non-string-literal `include` arg"
+and expand_include env args =
+    match Vector.length args with
+    | 1 ->
+        let arg = Vector.get args 0 in
+        (match arg.v with
+        | Const (String filename) -> (* FIXME: error handling: *)
+            let path = match Env.find (snd (Bindings.find env (Name.of_string "__BROOMPATH"))) with
+                | Some (BroomPath path) -> path
+                | Some _ -> bug (Some arg.pos) ~msg: "__BROOMPATH has wrong type"
+                | None -> bug (Some arg.pos) ~msg: "__BROOMPATH unbound" in
+            let filename = path |> List.find_map (fun dir ->
+                let filename = Filename.concat dir filename ^ ".brm" in
+                if Sys.file_exists filename
+                then Some filename
+                else None) in
+            let filename = Option.get filename in
+            let input = open_in filename in
+            Fun.protect (fun () ->
+                input
+                |> Sedlexing.Utf8.from_channel
+                |> SedlexMenhir.create_lexbuf filename
+                |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.modul
+            ) ~finally: (fun () -> close_in input)
+        | _ -> failwith "non-string-literal `include` arg")
+    | _ -> todo None
 
 (* TODO: canonicalize (?) filename: *)
-and expand_require define_toplevel env pos (arg : expr) = match arg.v with
-    | Const (String filename) ->
-        let name = 
-            match Env.find (snd (Bindings.find env (Name.of_string "__requireCache"))) with
-            | Some (RequireCache requireds) -> (match StringHashtbl.find_opt requireds filename with
-                | Some name -> name
-                | None ->
-                    let name = Name.fresh () in
-                    StringHashtbl.add requireds filename name;
-                    let var : expr = {pos; v = Var name} in
-                    let incl : expr = {pos; v = Var (Name.of_string "include")} in
-                    let load = expand define_toplevel env {pos
-                        ; v = App (Vector.of_array_unsafe [|incl; arg|])} in
-                    let def : def = (pos, var, load) in
-                    define_toplevel def;
-                    name)
-            | Some _ -> bug (Some pos) ~msg: "__requireCache has wrong type"
-            | None -> bug (Some pos) ~msg: "__requireCache is unbound" in
-        {Util.pos; v = Expr.Var name}
-    | _ -> failwith "non-string-literal `include` arg"*)
+and expand_require define_toplevel env pos args =
+    match Vector.length args with
+    | 1 ->
+        let arg = Vector.get args 0 in
+        (match arg.v with
+        | Const (String filename) ->
+            let name = 
+                match Env.find (snd (Bindings.find env (Name.of_string "__requireCache"))) with
+                | Some (RequireCache requireds) -> (match StringHashtbl.find_opt requireds filename with
+                    | Some name -> name
+                    | None ->
+                        let name = Name.fresh () in
+                        StringHashtbl.add requireds filename name;
+                        let var : expr = {pos; v = Var name} in
+                        let incl : expr = {pos; v = Var (Name.of_string "include")} in
+                        let load = expand define_toplevel env {pos
+                            ; v = App (Vector.of_array_unsafe [|incl; arg|])} in
+                        let def : def = (pos, var, load) in
+                        define_toplevel def;
+                        name)
+                | Some _ -> bug (Some pos) ~msg: "__requireCache has wrong type"
+                | None -> bug (Some pos) ~msg: "__requireCache is unbound" in
+            {Util.pos; v = Expr.Var name}
+        | _ -> failwith "non-string-literal `include` arg")
+    | _ -> todo None
 
 (* # Patterns *)
 
