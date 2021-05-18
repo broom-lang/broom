@@ -1,6 +1,9 @@
 type 'a with_pos = 'a Util.with_pos
 
+module Primop : AstSigs.PRIMOP
+
 module rec Expr : (AstSigs.EXPR
+    with type primop = Primop.t
     with type stmt = Stmt.t
     with type decl = Decl.t)
 

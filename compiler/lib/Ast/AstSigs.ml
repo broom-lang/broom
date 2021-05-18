@@ -1,7 +1,27 @@
 type span = Util.span
 type 'a with_pos = 'a Util.with_pos
 
+module type PRIMOP = sig
+    type t =
+        | Include | Require
+        | Let | Module | Interface
+
+        | Pair | Fst | Snd
+        | CellNew | CellInit | CellGet
+        | Int | String | Type
+        | TypeOf
+        | Import
+        | GlobalSet | GlobalGet
+
+        | IAdd | ISub | IMul | IDiv
+        | ILt | ILe | IGt | IGe | IEq
+
+    val of_string : string -> t option
+    val to_doc : t -> PPrint.document
+end
+
 module type EXPR = sig
+    type primop
     type stmt
     type decl
 
@@ -9,7 +29,7 @@ module type EXPR = sig
         | Fn of clause Vector.t
         | ImpliFn of clause Vector.t
         | App of t Vector.t
-        | PrimApp of Primop.t * t Vector.t
+        | PrimApp of primop * t Vector.t
         | PiT of {domain : t; eff : t option; codomain : t}
         | ImpliT of {domain : t; codomain : t}
 

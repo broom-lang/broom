@@ -3,10 +3,95 @@ module PP = PPrint
 type span = Util.span
 type 'a with_pos = 'a Util.with_pos
 
+module Primop = struct
+    type t =
+        | Include | Require
+        | Let | Module | Interface
+
+        | Pair | Fst | Snd
+        | CellNew | CellInit | CellGet
+        | Int | String | Type
+        | TypeOf
+        | Import
+        | GlobalSet | GlobalGet
+
+        | IAdd | ISub | IMul | IDiv
+        | ILt | ILe | IGt | IGe | IEq
+
+    let grammar =
+        let open Grammar in let open Grammar.Infix in
+        text "include" *> pure Include
+        <|> text "require" *> pure Require
+        <|> text "let" *> pure Let
+        <|> text "module" *> pure Module
+        <|> text "interface" *> pure Interface
+
+        <|> text "pair" *> pure Pair
+        <|> text "fst" *> pure Fst
+        <|> text "snd" *> pure Snd
+        <|> text "cellNew" *> pure CellNew
+        <|> text "cellInit" *> pure CellInit
+        <|> text "cellGet" *> pure CellGet
+        <|> text "int" *> pure Int
+        <|> text "string" *> pure String
+        <|> text "type" *> pure Type
+        <|> text "typeof" *> pure TypeOf
+        <|> text "import" *> pure Import
+        <|> text "globalSet" *> pure GlobalSet
+        <|> text "globalGet" *> pure GlobalGet
+
+        <|> text "iadd" *> pure IAdd
+        <|> text "isub" *> pure ISub
+        <|> text "imul" *> pure IMul
+        <|> text "idiv" *> pure IDiv
+        <|> text "ilt" *> pure ILt
+        <|> text "ile" *> pure ILe
+        <|> text "igt" *> pure IGt
+        <|> text "ige" *> pure IGe
+        <|> text "ieq" *> pure IEq
+
+    let to_doc = PPrinter.of_grammar grammar
+
+    let of_string = function
+        | "include" -> Some Include
+        | "require" -> Some Require
+        | "let" -> Some Let
+        | "module" -> Some Module
+        | "interface" -> Some Interface
+
+        | "pair" -> Some Pair
+        | "fst" -> Some Fst
+        | "snd" -> Some Snd
+        | "cellNew" -> Some CellNew
+        | "cellInit" -> Some CellInit
+        | "cellGet" -> Some CellGet
+        | "int" -> Some Int
+        | "string" -> Some String
+        | "type" -> Some Type
+        | "typeof" -> Some TypeOf
+        | "import" -> Some Import
+        | "globalSet" -> Some GlobalSet
+        | "globalGet" -> Some GlobalGet
+
+        | "iadd" -> Some IAdd
+        | "isub" -> Some ISub
+        | "imul" -> Some IMul
+        | "idiv" -> Some IDiv
+        | "ilt" -> Some ILt
+        | "ile" -> Some ILe
+        | "igt" -> Some IGt
+        | "ige" -> Some IGe
+        | "ieq" -> Some IEq
+
+        | _ -> None
+end
+
 module rec Expr : (AstSigs.EXPR
+    with type primop = Primop.t
     with type stmt = Stmt.t
     with type decl = Decl.t)
 = struct
+    type primop = Primop.t
     type stmt = Stmt.t
     type decl = Decl.t
 
@@ -14,7 +99,7 @@ module rec Expr : (AstSigs.EXPR
         | Fn of clause Vector.t
         | ImpliFn of clause Vector.t
         | App of t Vector.t
-        | PrimApp of Primop.t * t Vector.t
+        | PrimApp of primop * t Vector.t
         | PiT of {domain : t; eff : t option; codomain : t}
         | ImpliT of {domain : t; codomain : t}
 
