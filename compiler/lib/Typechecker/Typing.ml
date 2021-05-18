@@ -198,6 +198,10 @@ module Make
             (* FIXME: Existential result opening *)
             {term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg); eff}
 
+        | PrimApp (Explicitly, _) -> todo (Some expr.pos)
+        | PrimApp ((Include | Require), _) -> todo (Some expr.pos)
+        | PrimApp ((Let | Module | Interface), _) -> todo (Some expr.pos)
+
         | PrimApp (op, args) ->
             (* TODO: Effect opening à la Koka: *)
             let (universals, domain, eff, codomain) = primop_typ op in

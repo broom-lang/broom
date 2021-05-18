@@ -7,6 +7,7 @@ module Primop = struct
     type t =
         | Include | Require
         | Let | Module | Interface
+        | Explicitly
 
         | Pair | Fst | Snd
         | CellNew | CellInit | CellGet
@@ -25,6 +26,7 @@ module Primop = struct
         <|> text "let" *> pure Let
         <|> text "module" *> pure Module
         <|> text "interface" *> pure Interface
+        <|> text "explicitly" *> pure Explicitly
 
         <|> text "pair" *> pure Pair
         <|> text "fst" *> pure Fst
@@ -58,6 +60,7 @@ module Primop = struct
         | "let" -> Some Let
         | "module" -> Some Module
         | "interface" -> Some Interface
+        | "explicitly" -> Some Explicitly
 
         | "pair" -> Some Pair
         | "fst" -> Some Fst

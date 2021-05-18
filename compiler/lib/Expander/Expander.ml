@@ -187,7 +187,7 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
     | PrimApp (Require, args) ->
         expand_require define_toplevel env expr.pos args
         |> expand define_toplevel env
-    | PrimApp ((Let | Module | Interface), _) -> todo (Some expr.pos)
+    | PrimApp ((Let | Module | Interface | Explicitly), _) -> todo (Some expr.pos)
 
     | PiT {domain; eff; codomain} ->
         let (domain, env) = expand_pat define_toplevel ignore env domain in

@@ -5,6 +5,7 @@ module type PRIMOP = sig
     type t =
         | Include | Require
         | Let | Module | Interface
+        | Explicitly
 
         | Pair | Fst | Snd
         | CellNew | CellInit | CellGet
