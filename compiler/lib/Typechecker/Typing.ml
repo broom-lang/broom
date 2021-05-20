@@ -178,25 +178,30 @@ module Make
             {term = FExpr.at expr.pos typ (FExpr.fn universals param body); eff = EmptyRow}
 
         | App exprs ->
-            (* TODO: Effect opening à la Koka *)
-            (* OPTIMIZE: eta-expands universal callees: *)
-            let domain = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
-            let eff = match plicity with
-                | Explicit -> T.Uv (Env.uv env false T.aRow)
-                | Implicit -> EmptyRow in
-            let codomain = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+            let len = Vector.length exprs in
+            if len >= 2
+            then begin
+                let callee = Vector.get exprs 0 in
+                let arg =
+                    if len = 2
+                    then Vector.get exprs 1
+                    else {expr with v = AExpr.Tuple (Vector.sub exprs 1 (len - 1))} in
+                (* TODO: Effect opening à la Koka *)
+                (* OPTIMIZE: eta-expands universal callees: *)
+                let domain = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+                let eff = T.Uv (Env.uv env false T.aRow) in
+                let codomain = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
 
-            let callee_super = match plicity with
-                | Explicit -> T.Pi {universals = Vector.empty; domain; eff; codomain}
-                | Implicit -> T.Impli {universals = Vector.empty; domain; codomain} in
-            let {TS.term = callee; eff = callee_eff} = check ctrs env callee_super callee in
-            ignore (Constraints.unify ctrs callee.FExpr.pos env callee_eff eff);
+                let callee_super = T.Pi {universals = Vector.empty; domain; eff; codomain} in
+                let {TS.term = callee; eff = callee_eff} = check ctrs env callee_super callee in
+                ignore (Constraints.unify ctrs callee.FExpr.pos env callee_eff eff);
 
-            let {TS.term = arg; eff = arg_eff} = check ctrs env domain arg in
-            ignore (Constraints.unify ctrs arg.pos env arg_eff eff);
+                let {TS.term = arg; eff = arg_eff} = check ctrs env domain arg in
+                ignore (Constraints.unify ctrs arg.pos env arg_eff eff);
 
-            (* FIXME: Existential result opening *)
-            {term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg); eff}
+                (* FIXME: Existential result opening *)
+                {term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg); eff}
+            end else todo (Some expr.pos) ~msg: "add error message"
 
         | PrimApp (Explicitly, _) -> todo (Some expr.pos)
         | PrimApp ((Include | Require), _) -> todo (Some expr.pos)

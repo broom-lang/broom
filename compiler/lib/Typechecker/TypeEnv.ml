@@ -5,7 +5,6 @@ module T = Fc.Type
 module FExpr = Fc.Term.Expr
 type var = FExpr.var
 type span = Util.span
-type 'a with_pos = 'a Util.with_pos
 module Tx = Transactional
 open Tx.Ref
 
@@ -14,7 +13,7 @@ type 'a kinding = {typ : 'a; kind : T.kind} (* HACK *)
 type error_handler = TypeError.t -> unit
 
 type row_binding =
-    | WhiteT of T.t * Ast.Expr.t with_pos
+    | WhiteT of T.t * Ast.Expr.t
     | GreyT
     | BlackT of T.t kinding
 
