@@ -147,7 +147,7 @@ module Make
                      ; codomain = T.close substitution codomain }
                 ; kind = T.aType }
 
-            | Tuple typs ->
+            | TupleT typs ->
                 let typings = Vector.map (elab env) typs in
                 typings |> Vector.fold_right (fun {TS.typ = snd; kind = _} {TS.typ = fst; kind = _} ->
                     let fst_rep = repof_F ctrs typ.pos env fst in
@@ -173,7 +173,10 @@ module Make
 
             | PrimT pt -> {typ = Prim pt; kind = kindof_prim pt}
 
-            | Const _ ->
+            | Fn _ | ImpliFn _ | App _ | PrimApp _
+            | Ann _
+            | Tuple _ | Focus _ | Record _ | Select _
+            | Var _ | Wild _ | Const _ ->
                 let carrie =
                     let kind = T.Uv (Env.uv env false T.aType) in
                     T.Uv (Env.uv env false kind) in
