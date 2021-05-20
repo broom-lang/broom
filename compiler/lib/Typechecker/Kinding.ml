@@ -1,4 +1,3 @@
-open Streaming
 open Asserts
 
 module TS = TyperSigs
@@ -199,7 +198,7 @@ module Make
             ) EmptyRow decls in
             {typ = row; kind = kindof_F ctrs pos env row}
 
-        and analyze_decl env = function
+        (*and analyze_decl env = function
             | ADecl.Decl (_, pat, typ) ->
                 let (pat, env, vars) = Typing.typeof_pat ctrs false false env Explicit pat in
                 (pat, env, vars, typ)
@@ -222,7 +221,7 @@ module Make
             else begin
                 let {TS.typ = rhs; kind = _} = elab env rhs in
                 ignore (Constraints.subtype ctrs span env rhs lhs)
-            end
+            end*)
 
         and check env kind ({Util.pos = span; _} as typ) =
             let {TS.typ; kind = kind'} = elab env typ in
