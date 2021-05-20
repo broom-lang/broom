@@ -25,76 +25,125 @@ module Make
         | Int _ -> Int
         | String _ -> String)
 
-    let primop_typ : Primop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t =
-        let open Primop in
-        function
-        | Pair -> (* forall a b . (a, b) -> Pair a b *)
-            ( Vector.of_array_unsafe [|T.aType; T.aType|]
-            , Vector.of_array_unsafe [|T.Bv {depth = 0; sibli = 0; bkind = T.aType}
-                ; Bv {depth = 0; sibli = 1; bkind = T.aType}|]
-            , T.EmptyRow
-            , Pair {fst = Bv {depth = 0; sibli = 0; bkind = T.aType}
-                ; snd = Bv {depth = 0; sibli = 1; bkind = T.aType}} )
-        | Fst -> (* forall a b . Pair a b -> a *)
-            ( Vector.of_array_unsafe [|T.aType; T.aType|]
-            , Vector.singleton (T.Pair {fst = Bv {depth = 0; sibli = 0; bkind = T.aType}
-                ; snd = Bv {depth = 0; sibli = 1; bkind = T.aType}})
-            , T.EmptyRow
-            , Bv {depth = 0; sibli = 0; bkind = T.aType} )
-        | Snd -> (* forall a b . Pair a b -> b *)
-            ( Vector.of_array_unsafe [|T.aType; T.aType|]
-            , Vector.singleton (T.Pair {fst = Bv {depth = 0; sibli = 0; bkind = T.aType}
-                ; snd = Bv {depth = 0; sibli = 1; bkind = T.aType}})
-            , T.EmptyRow
-            , Bv {depth = 0; sibli = 1; bkind = T.aType} )
-        | CellNew -> (* forall a . () -> __cell a *)
-            ( Vector.singleton T.aType, Vector.empty
-            , T.EmptyRow
-            , T.App {callee = Prim Cell; arg = Bv {depth = 0; sibli = 0; bkind = T.aType}} )
-        | CellInit -> (* forall a . (__cell a, a) -> () *)
-            ( Vector.singleton T.aType
-            , Vector.of_list [ T.App {callee = Prim Cell; arg = Bv {depth = 0; sibli = 0; bkind = T.aType}}
-                ; Bv {depth = 0; sibli = 0; bkind = T.aType} ]
-            , T.EmptyRow, Prim Unit )
-        | CellGet -> (* forall a . __cell a -> a *)
-            ( Vector.singleton T.aType
-            , Vector.singleton (T.App {callee = Prim Cell; arg = Bv {depth = 0; sibli = 0; bkind = T.aType}})
-            , T.EmptyRow, T.Bv {depth = 0; sibli = 0; bkind = T.aType} )
+    type op_typ =
+        | Primop of Primop.t * T.t Vector.t * T.t Vector.t * T.t * T.t
+        | Branchop of Branchop.t * T.t Vector.t * T.t Vector.t * T.t * T.t Vector.t
 
-        | Int -> (Vector.empty, Vector.singleton (T.Prim Unit), T.EmptyRow, T.Proxy (Prim Int))
-        | String -> (Vector.empty, Vector.singleton (T.Prim Unit), T.EmptyRow, T.Proxy (Prim String))
+    let primop_typ : Ast.Primop.t -> op_typ = function
+        | Include | Require
+        | Let | Module | Interface | Explicitly -> bug None
+
+        | Pair -> (* forall a b . (a, b) -> Pair a b *)
+            Primop ( Pair
+                , Vector.of_array_unsafe [|T.aType; T.aType|]
+                , Vector.of_array_unsafe [|T.Bv {depth = 0; sibli = 0; bkind = T.aType}
+                    ; Bv {depth = 0; sibli = 1; bkind = T.aType}|]
+                , T.EmptyRow
+                , Pair {fst = Bv {depth = 0; sibli = 0; bkind = T.aType}
+                    ; snd = Bv {depth = 0; sibli = 1; bkind = T.aType}} )
+        | Fst -> (* forall a b . Pair a b -> a *)
+            Primop ( Fst
+                , Vector.of_array_unsafe [|T.aType; T.aType|]
+                , Vector.singleton (T.Pair {fst = Bv {depth = 0; sibli = 0; bkind = T.aType}
+                    ; snd = Bv {depth = 0; sibli = 1; bkind = T.aType}})
+                , T.EmptyRow
+                , Bv {depth = 0; sibli = 0; bkind = T.aType} )
+        | Snd -> (* forall a b . Pair a b -> b *)
+            Primop ( Snd
+                , Vector.of_array_unsafe [|T.aType; T.aType|]
+                , Vector.singleton (T.Pair {fst = Bv {depth = 0; sibli = 0; bkind = T.aType}
+                    ; snd = Bv {depth = 0; sibli = 1; bkind = T.aType}})
+                , T.EmptyRow
+                , Bv {depth = 0; sibli = 1; bkind = T.aType} )
+        | CellNew -> (* forall a . () -> __cell a *)
+            Primop ( CellNew
+                , Vector.singleton T.aType, Vector.empty
+                , T.EmptyRow
+                , App {callee = Prim Cell; arg = Bv {depth = 0; sibli = 0; bkind = T.aType}} )
+        | CellInit -> (* forall a . (__cell a, a) -> () *)
+            Primop ( CellInit
+                , Vector.singleton T.aType
+                , Vector.of_list [ T.App {callee = Prim Cell; arg = Bv {depth = 0; sibli = 0; bkind = T.aType}}
+                    ; Bv {depth = 0; sibli = 0; bkind = T.aType} ]
+                , T.EmptyRow, Prim Unit )
+        | CellGet -> (* forall a . __cell a -> a *)
+            Primop ( CellGet
+                , Vector.singleton T.aType
+                , Vector.singleton (T.App {callee = Prim Cell; arg = Bv {depth = 0; sibli = 0; bkind = T.aType}})
+                , T.EmptyRow
+                , Bv {depth = 0; sibli = 0; bkind = T.aType} )
+
+        | Int ->
+            Primop (Int, Vector.empty, Vector.singleton (T.Prim Unit), T.EmptyRow, Proxy (Prim Int))
+        | String ->
+            Primop (String, Vector.empty, Vector.singleton (T.Prim Unit), T.EmptyRow, Proxy (Prim String))
 
         | Type ->
-            ( Vector.empty, Vector.singleton (T.Prim Unit), T.EmptyRow
-            , T.Proxy (T.Exists {existentials = Vector1.singleton T.aType
-                ; body = Proxy (Bv {depth = 0; sibli = 0; bkind = T.aType})}) )
+            Primop ( Type
+                , Vector.empty, Vector.singleton (T.Prim Unit), T.EmptyRow
+                , T.Proxy (T.Exists {existentials = Vector1.singleton T.aType
+                    ; body = Proxy (Bv {depth = 0; sibli = 0; bkind = T.aType})}) )
 
         | TypeOf -> (* FIXME: Enforce argument purity *)
-            ( Vector.singleton T.aType
-            , Vector.singleton (T.Bv {depth = 0; sibli = 0; bkind = T.aType})
-            , EmptyRow, Proxy (Bv {depth = 0; sibli = 0; bkind = T.aType}) )
+            Primop ( TypeOf
+                , Vector.singleton T.aType
+                , Vector.singleton (T.Bv {depth = 0; sibli = 0; bkind = T.aType})
+                , EmptyRow
+                , Proxy (Bv {depth = 0; sibli = 0; bkind = T.aType}) )
         | Import ->
-            ( Vector.singleton T.aType
-            , Vector.of_list [T.Proxy (Bv {depth = 0; sibli = 0; bkind = T.aType}); Prim String]
-            , EmptyRow, Bv {depth = 0; sibli = 0; bkind = T.aType} )
+            Primop ( Import
+                , Vector.singleton T.aType
+                , Vector.of_list [T.Proxy (Bv {depth = 0; sibli = 0; bkind = T.aType}); Prim String]
+                , EmptyRow
+                , Bv {depth = 0; sibli = 0; bkind = T.aType} )
         | GlobalSet ->
-            ( Vector.singleton T.aType
-            , Vector.of_list [T.Prim String; Bv {depth = 0; sibli = 0; bkind = T.aType}]
-            , EmptyRow, Prim Unit )
+            Primop ( GlobalSet
+                , Vector.singleton T.aType
+                , Vector.of_list [T.Prim String; Bv {depth = 0; sibli = 0; bkind = T.aType}]
+                , EmptyRow, Prim Unit )
         | GlobalGet ->
-            ( Vector.singleton T.aType
-            , Vector.singleton (T.Prim String)
-            , EmptyRow, Bv {depth = 0; sibli = 0; bkind = T.aType} )
+            Primop ( GlobalGet
+                , Vector.singleton T.aType
+                , Vector.singleton (T.Prim String)
+                , EmptyRow, Bv {depth = 0; sibli = 0; bkind = T.aType} )
 
-    let branchop_typ : Branchop.t -> T.t Vector.t * T.t Vector.t * T.t * T.t Vector.t =
-        let open Branchop in
-        function
-        | IAdd | ISub | IMul | IDiv ->
-            ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
-            , T.EmptyRow, Vector.of_list [T.Prim Int; Prim Unit] )
-        | ILt | ILe | IGt | IGe | IEq ->
-            ( Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
-            , T.EmptyRow, Vector.of_list [T.Prim Unit; Prim Unit] )
+        | IAdd ->
+            Branchop ( IAdd
+                , Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
+                , T.EmptyRow, Vector.of_list [T.Prim Int; Prim Unit] )
+        | ISub ->
+            Branchop ( ISub
+                , Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
+                , T.EmptyRow, Vector.of_list [T.Prim Int; Prim Unit] )
+        | IMul ->
+            Branchop ( IMul
+                , Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
+                , T.EmptyRow, Vector.of_list [T.Prim Int; Prim Unit] )
+        | IDiv ->
+            Branchop ( IDiv
+                , Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
+                , T.EmptyRow, Vector.of_list [T.Prim Int; Prim Unit] )
+
+        | ILt ->
+            Branchop ( ILt
+                , Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
+                , T.EmptyRow, Vector.of_list [T.Prim Unit; Prim Unit] )
+        | ILe ->
+            Branchop ( ILe
+                , Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
+                , T.EmptyRow, Vector.of_list [T.Prim Unit; Prim Unit] )
+        | IGt ->
+            Branchop ( IGt
+                , Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
+                , T.EmptyRow, Vector.of_list [T.Prim Unit; Prim Unit] )
+        | IGe ->
+            Branchop ( IGe
+                , Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
+                , T.EmptyRow, Vector.of_list [T.Prim Unit; Prim Unit] )
+        | IEq ->
+            Branchop ( IEq
+                , Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
+                , T.EmptyRow, Vector.of_list [T.Prim Unit; Prim Unit] )
 
     let rec typeof_pat ctrs is_global is_fwd env (plicity : plicity) (pat : AExpr.t) =
         match pat.v with
@@ -208,99 +257,90 @@ module Make
         | PrimApp ((Let | Module | Interface), _) -> todo (Some expr.pos)
 
         | PrimApp (op, args) ->
+            let check_iargs universals eff iargs =
+                Stream.from (Source.zip_with (fun uv (iarg : AExpr.t) ->
+                    let typ = T.Proxy uv in
+                    let {TS.term = iarg; eff = arg_eff} = check ctrs env typ iarg in
+                    ignore (Constraints.unify ctrs iarg.pos env arg_eff eff);
+                    iarg
+                ) (Vector.to_source universals) (Vector.to_source iargs))
+                |> Stream.drain in
+
+            let check_args domain eff args =
+                Stream.from (Source.zip_with (fun typ (arg : AExpr.t) ->
+                    let {TS.term = arg; eff = arg_eff} = check ctrs env typ arg in
+                    ignore (Constraints.unify ctrs arg.pos env arg_eff eff);
+                    arg
+                ) (Vector.to_source domain) (Vector.to_source args))
+                |> Stream.into (Vector.sink ()) in
+
             (* TODO: Effect opening à la Koka: *)
-            let (universals, domain, eff, codomain) = primop_typ op in
-            let (universals, domain, eff, codomain) =
-                Env.instantiate_primop env universals domain eff codomain in
-            let universals = Vector.map (fun uv -> T.Uv uv) universals in
+            (match primop_typ op with
+            | Primop (op, universals, domain, eff, codomain) ->
+                let (universals, domain, eff, codomain) =
+                    Env.instantiate_primop env universals domain eff codomain in
+                let universals = Vector.map (fun uv -> T.Uv uv) universals in
+                let typs_arity = Vector.length universals in
+                let vals_arity = Vector.length domain in
 
-            let expected = Vector.length domain in
-            let actual = Vector.length args in
-            if actual = expected then begin
-                if Vector.length iargs > 0 then begin
-                    let expected = Vector.length universals in
-                    let actual = Vector.length iargs in
-                    if actual = expected
-                    then Stream.from (Source.zip_with (fun uv (iarg : AExpr.t) ->
-                            let typ = T.Proxy uv in
-                            let {TS.term = iarg; eff = arg_eff} = check ctrs env typ iarg in
-                            ignore (Constraints.unify ctrs iarg.pos env arg_eff eff);
-                            iarg
-                        ) (Vector.to_source universals) (Vector.to_source iargs))
-                        |> Stream.drain
-                    else Env.report_error env {v = PrimAppIArgc {op; expected; actual}; pos = expr.pos}
-                end;
-                (* else type arguments are inferred *)
+                let argc = Vector.length args in
+                if argc = typs_arity + vals_arity then begin
+                    check_iargs universals eff (Vector.sub args 0 typs_arity);
+                    let args = check_args domain eff (Vector.sub args typs_arity vals_arity) in
+                    {term = FExpr.at expr.pos codomain (FExpr.primapp op universals args); eff}
+                end else if argc = vals_arity then begin
+                    let args = check_args domain eff args in
+                    {term = FExpr.at expr.pos codomain (FExpr.primapp op universals args); eff}
+                end else begin
+                    Env.report_error env {v = PrimAppArgc {op; expected = vals_arity; actual = argc}
+                        ; pos = expr.pos};
+                    {term = FExpr.at expr.pos codomain (FExpr.primapp op universals Vector.empty); eff}
+                end
 
-                let args = Stream.from (Source.zip_with (fun typ (arg : AExpr.t) ->
-                        let {TS.term = arg; eff = arg_eff} = check ctrs env typ arg in
-                        ignore (Constraints.unify ctrs arg.pos env arg_eff eff);
-                        arg
-                    ) (Vector.to_source domain) (Vector.to_source args))
-                    |> Stream.into (Vector.sink ()) in
-                {term = FExpr.at expr.pos codomain (FExpr.primapp op universals args); eff}
-            end else begin
-                Env.report_error env {v = PrimAppArgc {op; expected; actual}; pos = expr.pos};
-                {term = FExpr.at expr.pos codomain (FExpr.primapp op universals Vector.empty); eff}
-            end
+            | Branchop (op, universals, domain, eff, codomain) ->
+                let check_clauses codomain eff typ (clauses_expr : AExpr.t) = (match clauses_expr.v with
+                    | Fn clauses ->
+                        if Vector.length clauses = Vector.length codomain then
+                            Stream.from (Source.zip (Vector.to_source codomain) (Vector.to_source clauses))
+                                |> Stream.map (fun (codomain, {AExpr.params; body}) ->
+                                    let (pat, env, _) = check_pat ctrs false false env Explicit codomain params in
+                                    let pat = match pat.pterm with
+                                        | VarP var -> Some var
+                                        | ConstP Unit -> None
+                                        | _ -> failwith "complex PrimBranch pattern" in
+                                    let {TS.term = prim_body; eff = body_eff} = check ctrs env typ body in
+                                    ignore (Constraints.unify ctrs body.pos env body_eff eff);
+                                    {FExpr.res = pat; prim_body})
+                                |> Stream.into (Vector.sink ())
+                        else todo (Some clauses_expr.pos) ~msg: "add error message"
 
-        (*| PrimBranch (op, iargs, args, clauses) -> (* TODO: DRY: *)
-            (* TODO: Effect opening à la Koka: *)
-            let (universals, domain, eff, codomain) = branchop_typ op in
-            let (universals, domain, eff, codomain) =
-                Env.instantiate_branch env universals domain eff codomain in
-            let universals = Vector.map (fun uv -> T.Uv uv) universals in
-            let typ = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+                    | _ -> todo (Some clauses_expr.pos) ~msg: "add error message") in
 
-            let expected = Vector.length domain in
-            let actual = Vector.length args in
-            if actual = expected then begin
-                if Vector.length iargs > 0 then begin
-                    let expected = Vector.length universals in
-                    let actual = Vector.length iargs in
-                    if actual = expected
-                    then Stream.from (Source.zip_with (fun uv (iarg : AExpr.t) ->
-                            let typ = T.Proxy uv in
-                            let {TS.term = iarg; eff = arg_eff} = check ctrs env typ iarg in
-                            ignore (Constraints.unify ctrs iarg.pos env arg_eff eff);
-                            iarg
-                        ) (Vector.to_source universals) (Vector.to_source iargs))
-                        |> Stream.drain
-                    else Env.report_error env {v = BranchopIArgc {op; expected; actual}; pos = expr.pos}
-                end;
-                (* else type arguments are inferred *)
+                let (universals, domain, eff, codomain) =
+                    Env.instantiate_branch env universals domain eff codomain in
+                let universals = Vector.map (fun uv -> T.Uv uv) universals in
+                let typs_arity = Vector.length universals in
+                let vals_arity = Vector.length domain in
 
-                let args = Stream.from (Source.zip_with (fun typ (arg : AExpr.t) ->
-                        let {TS.term = arg; eff = arg_eff} = check ctrs env typ arg in
-                        ignore (Constraints.unify ctrs arg.pos env arg_eff eff);
-                        arg
-                    ) (Vector.to_source domain) (Vector.to_source args))
-                    |> Stream.into (Vector.sink ()) in
+                let typ = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
 
-                let expected = Vector.length codomain in
-                let actual = Vector.length clauses in
-                if actual = expected then begin
-                    let clauses = Stream.from (Source.zip (Vector.to_source codomain) (Vector.to_source clauses))
-                        |> Stream.map (fun (codomain, {AExpr.params; body}) ->
-                            let (pat, env, _) = check_pat ctrs false false env Explicit codomain params in
-                            let pat = match pat.pterm with
-                                | VarP var -> Some var
-                                | ConstP Unit -> None
-                                | _ -> failwith "complex PrimBranch pattern" in
-                            let {TS.term = prim_body; eff = body_eff} = check ctrs env typ body in
-                            ignore (Constraints.unify ctrs body.pos env body_eff eff);
-                            {FExpr.res = pat; prim_body})
-                        |> Stream.into (Vector.sink ()) in
-
+                let argc = Vector.length args in
+                if argc = typs_arity + vals_arity + 1 then begin
+                    check_iargs universals eff (Vector.sub args 0 typs_arity);
+                    let clauses = Vector.get args (argc - 1) in
+                    let args = check_args domain eff (Vector.sub args typs_arity vals_arity) in
+                    let clauses = check_clauses codomain eff typ clauses in
+                    {term = FExpr.at expr.pos typ (FExpr.primbranch op universals args clauses); eff}
+                end else if argc = vals_arity + 1 then begin
+                    let clauses = Vector.get args (argc - 1) in
+                    let args = check_args domain eff args in
+                    let clauses = check_clauses codomain eff typ clauses in
                     {term = FExpr.at expr.pos typ (FExpr.primbranch op universals args clauses); eff}
                 end else begin
-                    Env.report_error env {v = BranchopClausec {op; expected; actual}; pos = expr.pos};
-                    {term = FExpr.at expr.pos typ (FExpr.primbranch op universals args Vector.empty); eff}
-                end
-            end else begin
-                Env.report_error env {v = BranchopArgc {op; expected; actual}; pos = expr.pos};
-                {term = FExpr.at expr.pos typ (FExpr.primbranch op universals Vector.empty Vector.empty); eff}
-            end*)
+                    Env.report_error env {v = BranchopArgc {op; expected = vals_arity + 1; actual = argc}
+                        ; pos = expr.pos};
+                    {term = FExpr.at expr.pos typ (FExpr.primbranch op universals Vector.empty Vector.empty); eff}
+                end)
 
         (*| Let (defs, body) ->
             let (defs, env) = check_defs ctrs env (Vector1.to_vector defs) in

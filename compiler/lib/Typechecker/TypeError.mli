@@ -5,9 +5,7 @@ type 'a with_pos = 'a Util.with_pos
 type t' =
     | NonPattern of AExpr.t
     | PrimAppArgc of {op : Primop.t; expected : int; actual : int}
-    | PrimAppIArgc of {op : Primop.t; expected : int; actual : int}
     | BranchopArgc of {op : Branchop.t; expected : int; actual : int}
-    | BranchopIArgc of {op : Branchop.t; expected : int; actual : int}
     | BranchopClausec of {op : Branchop.t; expected : int; actual : int}
     | Subtype of T.t * T.t
     | Unify of T.t * T.t
