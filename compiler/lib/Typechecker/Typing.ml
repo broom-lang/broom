@@ -410,9 +410,9 @@ module Make
             let typ = const_typ c in
             {term = FExpr.at expr.pos typ (FExpr.const c); eff = EmptyRow}
 
-        (*| Proxy carrie ->
-            let {TS.typ = carrie; kind = _} = Kinding.elaborate ctrs env {v = carrie; pos = expr.pos} in
-            {term = FExpr.at expr.pos (Proxy carrie) (FExpr.proxy carrie); eff = EmptyRow}*)
+        | PiT _ | ImpliT _ | TupleT _ | RecordT _ | VariantT _ | RowT _ | PrimT _ ->
+            let {TS.typ = carrie; kind = _} = Kinding.elaborate ctrs env expr in
+            {term = FExpr.at expr.pos (Proxy carrie) (FExpr.proxy carrie); eff = EmptyRow}
 
         | Wild _ -> bug (Some expr.pos) ~msg: "_-expression reached typechecker"
 
