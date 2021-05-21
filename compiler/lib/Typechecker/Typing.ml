@@ -260,10 +260,29 @@ module Make
                 (* FIXME: Existential result opening *)
                 {term = FExpr.at expr.pos codomain (FExpr.app callee Vector.empty arg); eff}
             end else todo (Some expr.pos) ~msg: "add error message"
-
         | PrimApp (Explicitly, _) -> todo (Some expr.pos)
-        | PrimApp ((Include | Require), _) -> todo (Some expr.pos)
-        | PrimApp ((Let | Module), _) -> todo (Some expr.pos)
+
+        | PrimApp ((Include | Require), _) -> todo (Some expr.pos) ~msg: "add error message"
+
+        | PrimApp (Let, args) ->
+            if Vector.length args = 1 then begin
+                match (Vector.get args 0).v with
+                | Record stmts ->
+                    let (defs, body) =
+                        let len = Vector.length stmts in
+                        if len > 0 then begin
+                            match Vector.get stmts (len - 1) with
+                            | Expr expr -> (Vector.sub stmts 0 (len - 1), expr)
+                            | Def _ -> (stmts, {expr with v = Tuple Vector.empty})
+                        end else (stmts, {expr with v = Tuple Vector.empty}) in
+                    let (defs, env) = check_rec ctrs env defs in
+                    let {TS.term = body; eff} = typeof ctrs env body in
+                    {term = FExpr.at expr.pos body.typ (FExpr.letrec defs body); eff}
+
+                | _ -> todo (Some expr.pos) ~msg: "add error message"
+            end else todo (Some expr.pos) ~msg: "add error message"
+        | PrimApp (Module, _) -> todo (Some expr.pos)
+
         | PrimApp (Interface, _) -> typeof_proxy ctrs env expr
 
         | PrimApp (op, args) ->
@@ -352,11 +371,6 @@ module Make
                     {term = FExpr.at expr.pos typ (FExpr.primbranch op universals Vector.empty Vector.empty); eff}
                 end)
 
-        (*| Let (defs, body) ->
-            let (defs, env) = check_defs ctrs env (Vector1.to_vector defs) in
-            let {TS.term = body; eff} = typeof ctrs env body in
-            {term = FExpr.at expr.pos body.typ (FExpr.letrec defs body); eff}*)
-
         | Ann (expr, super) ->
             let super = Kinding.check ctrs env (Env.some_type_kind env false) super in
             check ctrs env super expr (* FIXME: handle abstract types, abstract type generation effect *)
@@ -444,21 +458,55 @@ module Make
 
 (* # Definitions *)
 
+    and analyze_def ctrs env pat =
+        let (pat, env, _) = typeof_pat ctrs false true env Explicit pat in
+        (pat, env)
+
+    (* FIXME: generate abstract types, abstract type generation effect: *)
+    and check_def ctrs env (pat : FExpr.pat) span expr =
+        let {TS.term = expr; eff} = check ctrs env pat.ptyp expr in
+        ignore (Constraints.unify ctrs expr.pos env eff T.EmptyRow);
+        (span, pat, expr)
+
     and check_defs ctrs env defs =
+        (* Type patters and push scope: *)
         let pats = CCVector.create () in
         let env = Vector.fold (fun env (_, pat, _) ->
-            let (pat, env, _) = typeof_pat ctrs false true env Explicit pat in
+            let (pat, env) = analyze_def ctrs env pat in
             CCVector.push pats pat;
             env
         ) env defs in
-        let pats = Vector.build pats in
-        let defs = Source.zip_with (fun (pat : FExpr.pat) (span, _, expr) ->
-                (* FIXME: generate abstract types, abstract type generaiton effect: *)
-                let {TS.term = expr; eff} = check ctrs env pat.ptyp expr in
-                ignore (Constraints.unify ctrs expr.pos env eff T.EmptyRow);
-                (span, pat, expr)
+
+        (* Check expressions and their effects: *)
+        let pats = Vector.build pats in (* OPTIMIZE *)
+        let defs = Source.zip_with (fun pat (span, _, expr) ->
+                check_def ctrs env pat span expr
             ) (Vector.to_source pats) (Vector.to_source defs)
             |> Stream.from |> Stream.into (Vector.sink ()) in
+
+        (defs, env)
+
+(* # Statements *)
+
+    and check_rec ctrs env (stmts : AStmt.t Vector.t) =
+        (* Type patters and push scope: *)
+        let pats = CCVector.create () in
+        let env = Vector.fold (fun env -> function 
+            | AStmt.Def (_, pat, _) ->
+                let (pat, env) = analyze_def ctrs env pat in
+                CCVector.push pats pat;
+                env
+            | Expr expr -> todo (Some expr.pos) ~msg: "add error message"
+        ) env stmts in
+
+        (* Check expressions and their effects: *)
+        let pats = Vector.build pats in (* OPTIMIZE *)
+        let defs = Source.zip_with (fun (pat : FExpr.pat) -> function
+                | AStmt.Def (span, _, expr) -> check_def ctrs env pat span expr
+                | Expr expr -> unreachable (Some expr.pos)
+            ) (Vector.to_source pats) (Vector.to_source stmts)
+            |> Stream.from |> Stream.into (Vector.sink ()) in
+
         (defs, env)
 
 (* # Top-level APIs *)
