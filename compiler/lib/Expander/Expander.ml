@@ -188,7 +188,8 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
         expand_require define_toplevel env expr.pos args
         |> expand define_toplevel env
     | PrimApp (Let, args) -> expand_let define_toplevel env expr.pos args
-    | PrimApp ((Do | Module | Interface | Explicitly), _) -> todo (Some expr.pos)
+    | PrimApp (Module, args) -> expand_module define_toplevel env expr.pos args
+    | PrimApp ((Do | Interface | Explicitly), _) -> todo (Some expr.pos)
 
     | PiT {domain; eff; codomain} ->
         let (domain, env) = expand_pat define_toplevel ignore env domain in
@@ -205,13 +206,6 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
         let vars = CCVector.create () in
         let stmts = expand_stmts define_toplevel (CCVector.push vars) env stmts in
         {expr with v = Record stmts}
-        (*let defs = stmts |> Vector.map (function
-            | Stmt.Def (span, pat, expr) -> (span, pat, expr)
-            | Expr _ -> failwith "non-def stmt in Record") in
-        let body : expr = {expr with v = Record (Vector.build vars)} in
-        (match Vector1.of_vector defs with
-        | Some defs -> {expr with v = Let (defs, body)}
-        | None -> body)*)
 
     | RecordT decls | VariantT decls | RowT decls ->
         let vars = CCVector.create () in
@@ -271,6 +265,23 @@ and expand_let define_toplevel env pos args =
             else todo (Some pos)
         | _ -> failwith "non-record `let` arg"
     end else todo (Some pos) ~msg: "error message"
+
+and expand_module define_toplevel env span (args : Expr.t Vector.t) =
+    if Vector.length args = 1 then begin
+        match (Vector.get args 0).v with
+        | Record stmts ->
+            let vars = CCVector.create () in
+            let stmts = expand_stmts define_toplevel (CCVector.push vars) env stmts in
+            let defs = stmts |> Vector.map (function
+                | Stmt.Def (span, pat, expr) -> Stmt.Def (span, pat, expr)
+                | Expr _ -> failwith "non-def stmt in Record") in
+
+            let body : expr = {pos = span; v = Record (Vector.build vars)} in
+            let stmts = Vector.append defs (Vector.singleton (Stmt.Expr body)) in
+            let arg = {Util.pos = span; v = Expr.Record stmts} in
+            {Util.pos = span; v = Expr.PrimApp (Let, Vector.singleton arg)}
+        | _ -> todo (Some span)
+    end else todo (Some span)
 
 and expand_include env args =
     match Vector.length args with
