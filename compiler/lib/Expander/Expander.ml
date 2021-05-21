@@ -187,10 +187,10 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
     | PrimApp (Require, args) ->
         expand_require define_toplevel env expr.pos args
         |> expand define_toplevel env
+    | PrimApp (Do, args) -> expand_do define_toplevel env expr.pos args
     | PrimApp (Let, args) -> expand_let define_toplevel env expr.pos args
     | PrimApp (Module, args) -> expand_module define_toplevel env expr.pos args
     | PrimApp (Interface, args) -> expand_interface define_toplevel env expr.pos args
-    | PrimApp ((Do | Explicitly), _) -> todo (Some expr.pos)
 
     | PiT {domain; eff; codomain} ->
         let (domain, env) = expand_pat define_toplevel ignore env domain in
@@ -233,6 +233,27 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
     | Wild _ -> failwith "stray `_`"
 
 (* # Special Forms *)
+
+and expand_do define_toplevel env pos args =
+    if Vector.length args = 1 then begin
+        match (Vector.get args 0).v with
+        | Record stmts ->
+            let len = Vector.length stmts in
+            let (defs, body) =
+                if len > 0
+                then (match Vector.get stmts 0 with
+                    | Stmt.Expr body -> (Vector.sub stmts 0 (len - 1), body)
+                    | _ -> (stmts, {pos; v = Tuple Vector.empty}))
+                else (stmts, {pos; v = Tuple Vector.empty}) in
+
+            let (defs, env) = expand_stmts' define_toplevel ignore env defs in
+            let body = expand define_toplevel env body in
+
+            let stmts = Vector.append defs (Vector.singleton (Stmt.Expr body)) in
+            let arg = {Util.pos; v = Expr.Record stmts} in
+            {pos; v = PrimApp (Let, Vector.singleton arg)}
+        | _ -> failwith "non-record `let` arg"
+    end else todo (Some pos) ~msg: "error message"
 
 and expand_let define_toplevel env pos args =
     if Vector.length args = 1 then begin
