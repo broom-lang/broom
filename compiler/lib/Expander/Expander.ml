@@ -165,21 +165,27 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
     | ImpliFn clauses ->
         {expr with v = ImpliFn (Vector.map (expand_clause define_toplevel env) clauses)}
 
-    | App exprs -> expand define_toplevel env (parse_appseq env exprs)
-    (*| App ({v = Var cname; pos = _}, Explicit, arg) ->
-        (match Env.find (snd (Bindings.find env cname)) with
-        | Some (Var id) ->
-            {expr with v = App (id, Explicit, (expand define_toplevel env arg))}
-        | Some _ -> todo (Some expr.pos)
-        | None -> (match Name.basename cname with
-            | Some "let" -> expand_let define_toplevel env expr.pos arg
-            | Some "include" -> expand_include env arg
-            | Some "require" -> expand_require define_toplevel env expr.pos arg
-            | _ -> failwith ("unbound: " ^ Name.to_string cname
-                ^ " at " ^ Util.span_to_string expr.pos)))
-    | App (callee, plicity, args) ->
-        {expr with v = App (expand define_toplevel env callee
-            , plicity, expand define_toplevel env args)}*)
+    | App exprs ->
+        (match (parse_appseq env exprs).v with
+        | App exprs ->
+            let len = Vector.length exprs in
+            if len >= 2 then begin
+                match (Vector.get exprs 0).v with
+                | Var cname ->
+                    (match Env.find (snd (Bindings.find env cname)) with
+                    | Some (Var _) ->
+                        {expr with v = App (Vector.map (expand define_toplevel env) exprs)}
+                    | Some _ -> todo (Some expr.pos)
+                    | None -> (match Name.basename cname with
+                        (*| Some "let" -> expand_let define_toplevel env expr.pos arg
+                        | Some "include" -> expand_include env arg
+                        | Some "require" -> expand_require define_toplevel env expr.pos arg*)
+                        | _ -> failwith ("unbound: " ^ Name.to_string cname
+                            ^ " at " ^ Util.span_to_string expr.pos)))
+
+                | _ -> {expr with v = App (Vector.map (expand define_toplevel env) exprs)}
+            end else todo (Some expr.pos)
+        | _ -> todo (Some expr.pos))
 
     | PrimApp (Include, args) ->
         expand_include env args
