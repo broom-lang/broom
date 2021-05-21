@@ -298,14 +298,30 @@ module Make
                             | Def _ -> (stmts, {expr with v = Tuple Vector.empty})
                         end else (stmts, {expr with v = Tuple Vector.empty}) in
 
-                    let (defs, env) = check_rec ctrs env defs in
+                    let (defs, env) = check_rec ctrs env (fun _ _ -> ()) defs in
                     let {TS.term = body; eff} = typeof ctrs env body in
 
                     {term = FExpr.at expr.pos body.typ (FExpr.letrec defs body); eff}
 
                 | _ -> todo (Some expr.pos) ~msg: "add error message"
             end else todo (Some expr.pos) ~msg: "add error message"
-        | PrimApp (Module, _) -> todo (Some expr.pos)
+        | PrimApp (Module, args) ->
+            if Vector.length args = 1 then begin
+                match (Vector.get args 0).v with
+                | Record defs ->
+                    let fields = CCVector.create () in
+                    let row = Stdlib.ref T.EmptyRow in
+                    let add_var span ({FExpr.name; vtyp; plicity = _} as var) =
+                        CCVector.push fields (name, FExpr.at span vtyp (FExpr.use var));
+                        Stdlib.(row := With {base = !row; label = name; field = vtyp}) in
+                    let (defs, _) = check_rec ctrs env add_var defs in
+
+                    let typ = Stdlib.(T.Record !row) in
+                    let body = FExpr.at expr.pos typ (FExpr.record (Vector.build fields)) in
+                    {term = FExpr.at expr.pos typ (FExpr.letrec defs body); eff = EmptyRow}
+
+                | _ -> todo (Some expr.pos) ~msg: "add error message"
+            end else todo (Some expr.pos) ~msg: "add error message"
 
         | PrimApp (Interface, _) -> typeof_proxy ctrs env expr
 
@@ -482,8 +498,9 @@ module Make
 
 (* # Definitions *)
 
-    and analyze_def ctrs env pat =
-        let (pat, env, _) = typeof_pat ctrs false true env Explicit pat in
+    and analyze_def ctrs env add_var pat =
+        let (pat, env, vars) = typeof_pat ctrs false true env Explicit pat in
+        Vector.iter (add_var pat.ppos) vars;
         (pat, env)
 
     (* FIXME: generate abstract types, abstract type generation effect: *)
@@ -496,7 +513,7 @@ module Make
         (* Type patters and push scope: *)
         let pats = CCVector.create () in
         let env = Vector.fold (fun env (_, pat, _) ->
-            let (pat, env) = analyze_def ctrs env pat in
+            let (pat, env) = analyze_def ctrs env (fun _ _ -> ()) pat in
             CCVector.push pats pat;
             env
         ) env defs in
@@ -533,12 +550,12 @@ module Make
         ) env in
         (Vector.build stmts', env)
 
-    and check_rec ctrs env (stmts : AStmt.t Vector.t) =
+    and check_rec ctrs env add_var (stmts : AStmt.t Vector.t) =
         (* Type patters and push scope: *)
         let pats = CCVector.create () in
         let env = Vector.fold (fun env -> function 
             | AStmt.Def (_, pat, _) ->
-                let (pat, env) = analyze_def ctrs env pat in
+                let (pat, env) = analyze_def ctrs env add_var pat in
                 CCVector.push pats pat;
                 env
             | Expr expr -> todo (Some expr.pos) ~msg: "add error message"
