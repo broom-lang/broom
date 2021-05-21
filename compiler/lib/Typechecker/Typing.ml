@@ -20,10 +20,15 @@ module Make
     (Constraints : TS.CONSTRAINTS)
     (Kinding : TS.KINDING)
 = struct
+
+(* # Constants *)
+
     let const_typ (c : Const.t) = T.Prim (match c with
         | Unit -> Unit
         | Int _ -> Int
         | String _ -> String)
+
+(* # Primops *)
 
     type op_typ =
         | Primop of Primop.t * T.t Vector.t * T.t Vector.t * T.t * T.t
@@ -145,6 +150,8 @@ module Make
                 , Vector.empty, Vector.of_list [T.Prim Int; T.Prim Int]
                 , T.EmptyRow, Vector.of_list [T.Prim Unit; Prim Unit] )
 
+(* # Patterns *)
+
     let rec typeof_pat ctrs is_global is_fwd env (plicity : plicity) (pat : AExpr.t) =
         match pat.v with
         | Ann (pat, typ) ->
@@ -203,6 +210,8 @@ module Make
             let f_expr = Coercer.reify pat.ppos sub coerce in
             (FExpr.pat_at pat.ppos super (View (f_expr, pat)), env, vars)
         | None -> (pat, env, vars)
+
+(* # Expressions *)
 
     let rec typeof ctrs env (expr : AExpr.t) : FExpr.t typing = match expr.v with
         | Fn clauses | ImpliFn clauses ->
@@ -411,8 +420,7 @@ module Make
             {term = FExpr.at expr.pos typ (FExpr.const c); eff = EmptyRow}
 
         | PiT _ | ImpliT _ | TupleT _ | RecordT _ | VariantT _ | RowT _ | PrimT _ ->
-            let {TS.typ = carrie; kind = _} = Kinding.elaborate ctrs env expr in
-            {term = FExpr.at expr.pos (Proxy carrie) (FExpr.proxy carrie); eff = EmptyRow}
+            typeof_proxy ctrs env expr
 
         | Wild _ -> bug (Some expr.pos) ~msg: "_-expression reached typechecker"
 
@@ -428,6 +436,12 @@ module Make
         let {TS.term = body; eff = body_eff} = check ctrs env codomain body in
         ignore (Constraints.unify ctrs body.pos env body_eff eff);
         {pat; body}
+
+    and typeof_proxy ctrs env expr =
+        let {TS.typ = carrie; kind = _} = Kinding.elaborate ctrs env expr in
+        {TS.term = FExpr.at expr.pos (Proxy carrie) (FExpr.proxy carrie); eff = EmptyRow}
+
+(* # Definitions *)
 
     and check_defs ctrs env defs =
         let pats = CCVector.create () in
@@ -446,6 +460,10 @@ module Make
             |> Stream.from |> Stream.into (Vector.sink ()) in
         (defs, env)
 
+(* # Top-level APIs *)
+
+(* ## Programs *)
+
     let check_program errors ctrs {Ast.Program.span = _; defs; body} =
         let env = Env.with_error_handler Env.empty
             (fun error -> errors := error :: !errors) in
@@ -454,6 +472,8 @@ module Make
         let {TS.term = main; eff} = check ctrs env (Prim Unit) body in
 
         {TS.term = {Fc.Program.type_fns = Env.type_fns env; defs; main}; eff}
+
+(* ## REPL Interactions *)
 
     let check_interactive_stmt : ctrs -> Env.t -> FStmt.t CCVector.vector -> AStmt.t -> Env.t * eff
     = fun ctrs env stmts' -> function
