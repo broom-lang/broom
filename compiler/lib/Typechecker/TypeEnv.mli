@@ -24,7 +24,7 @@ val implicits : t -> FExpr.var Streaming.Stream.t
 val push_row : t -> (FExpr.var Vector.t * T.t * Ast.Expr.t) CCVector.ro_vector -> t
 val force_typ : (t -> Ast.Expr.t -> T.t * T.kind)
     -> (span -> t -> T.t -> T.t -> unit)
-    -> t -> span -> Name.t -> unit
+    -> t -> span -> Name.t -> T.t
 
 val push_existential : t -> t * T.ov list Transactional.Ref.t
 val generate : t -> T.def -> T.ov

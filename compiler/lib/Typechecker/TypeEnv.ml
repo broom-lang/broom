@@ -84,7 +84,7 @@ let push_val is_global (env : t) (var : var) =
         | Some ns -> {env with namespace = Some (Namespace.add ns var)}
         | None -> unreachable None
     else match env.scopes with
-        | Vals bindings :: scopes' ->
+        | Vals bindings :: scopes' -> (* FIXME: prevent duplicates: *)
             {env with scopes = Vals (Name.Map.add var.name var bindings) :: scopes'}
         | scopes ->
             {env with scopes = Vals (Name.Map.singleton var.name var) :: scopes}
@@ -152,14 +152,16 @@ let force_typ elaborate subtype (env : t) span name =
                     let (_, rhs) = reabstract env rhs in
                     subtype span env rhs lhs;
                     binding := BlackT {typ = rhs; kind};
-                    ()
+                    rhs
                 | GreyT -> bug (Some span) ~msg: "`Env.find_rhst` found `GreyT` binding"
-                | BlackT _ -> ())
+                | BlackT {typ; _} -> typ)
             | None -> find scopes')
 
         | (Hoisting _ | Rigid _) :: scopes -> find scopes
 
-        | [] -> report_error env ({v = Unbound name; pos = span}) in
+        | [] ->
+            report_error env ({v = Unbound name; pos = span});
+            Uv (uv env false (some_type_kind env false)) in
     find env.scopes
 
 let scope_vars = function

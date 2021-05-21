@@ -159,6 +159,51 @@ module Make
                 let {TS.typ = row; kind = _} = elab_row env typ.pos decls in
                 {typ = Record row; kind = T.aType}
 
+            | PrimApp (Interface, args) ->
+                if Vector.length args = 1 then begin
+                    match (Vector.get args 0).v with
+                    | RecordT decls ->
+                        (* Get pattern types and variables and push them to env: *)
+                        let decls' = CCVector.create () in
+                        let env = Vector.fold (fun env -> function
+                            | ADecl.Decl (_, pat, typ) ->
+                                let (pat, env, vars) = Typing.typeof_pat ctrs false false env Explicit pat in
+                                CCVector.push decls' (vars, pat, typ);
+                                env
+
+                            | Def (_, pat, expr) ->
+                                let (pat, env, vars) = Typing.typeof_pat ctrs false false env Explicit pat in
+                                (* `foo = expr` -> `foo : __typeOf expr`: *)
+                                let typ = {expr with v = AExpr.PrimApp (TypeOf, Vector.singleton expr)} in
+                                CCVector.push decls' (vars, pat, typ);
+                                env
+
+                            | Type typ -> todo (Some typ.pos)
+                        ) env decls in
+
+                        let row = Stdlib.ref T.EmptyRow in
+                        decls' |> CCVector.iter (fun (vars, (pat : FExpr.pat), (typ : AExpr.t)) ->
+                            if Vector.length vars > 0 then
+                                (* Get variable types and row them up: *)
+                                vars |> Vector.iter (fun {FExpr.name; _} ->
+                                    let field = Env.force_typ (fun env typ ->
+                                            let {TS.typ; kind} = elab env typ in
+                                            (typ, kind))
+                                        (fun span env sub super -> ignore (Constraints.subtype ctrs span env sub super))
+                                        env typ.pos (Vector.get vars 0).FExpr.name in
+                                    Stdlib.(row := T.With {base = !row; label = name; field}))
+                            else begin
+                                (* `typ <: pat.ptyp`: *)
+                                let span = (fst pat.ppos, snd typ.pos) in
+                                let {TS.typ; kind = _} = elab env typ in
+                                ignore (Constraints.subtype ctrs span env typ pat.ptyp)
+                            end);
+
+                        {TS.typ = T.Record Stdlib.(!row); kind = T.aType}
+
+                    | _ -> todo (Some typ.pos) ~msg: "add error message"
+                end else todo (Some typ.pos) ~msg: "add error message"
+
             | VariantT decls ->
                 let {TS.typ = row; kind = _} = elab_row env typ.pos decls in
                 {typ = Variant row; kind = T.aType}
@@ -197,31 +242,6 @@ module Make
                 | _ -> bug (Some pos) ~msg: "bad record type field reached typechecker"
             ) EmptyRow decls in
             {typ = row; kind = kindof_F ctrs pos env row}
-
-        (*and analyze_decl env = function
-            | ADecl.Decl (_, pat, typ) ->
-                let (pat, env, vars) = Typing.typeof_pat ctrs false false env Explicit pat in
-                (pat, env, vars, typ)
-
-            | Def (_, pat, expr) ->
-                let (pat, env, vars) = Typing.typeof_pat ctrs false false env Explicit pat in
-                let expr' = AExpr.PrimApp (TypeOf, Vector.singleton expr) in
-                (pat, env, vars, {expr with v = expr'})
-
-            | Type typ -> todo (Some typ.pos)
-
-        and elaborate_decl env (vars, lhs, rhs) decl =
-            let span = ADecl.pos decl in
-            if Vector.length vars > 0
-            then Env.force_typ (fun env typ ->
-                    let {TS.typ; kind} = elab env typ in
-                    (typ, kind))
-                (fun span env sub super -> ignore (Constraints.subtype ctrs span env sub super))
-                env span (Vector.get vars 0).FExpr.name
-            else begin
-                let {TS.typ = rhs; kind = _} = elab env rhs in
-                ignore (Constraints.subtype ctrs span env rhs lhs)
-            end*)
 
         and check env kind ({Util.pos = span; _} as typ) =
             let {TS.typ; kind = kind'} = elab env typ in

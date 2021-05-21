@@ -1,3 +1,5 @@
+(* FIXME: Prevent duplicates *)
+
 type typ = Fc.Type.t
 type var = Fc.Term.Expr.var
 

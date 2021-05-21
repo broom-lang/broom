@@ -5,6 +5,7 @@ module Stmt = Fc.Term.Stmt
 type expr = Expr.t
 type pat = Expr.pat
 
+(* FIXME: Prevent duplicates *)
 module Env = struct
     module Scope = struct
         type t = Value.t Name.Hashtbl.t

@@ -13,6 +13,7 @@ type fixity = Infix | Prefix | Postfix
 
 (* # Environment (Name -> Value) *)
 
+(* FIXME: Prevent duplicates *)
 module Env : sig
     type value =
         | Var of expr
@@ -35,6 +36,7 @@ end
 
 (* # Bindings (Name + Scopes -> Alphatized Name) *)
 
+(* FIXME: Prevent duplicates *)
 (* OPTIMIZE: distribute to scopes, like Racket: *)
 module Bindings = struct
     type binding' = Name.t

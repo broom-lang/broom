@@ -263,7 +263,8 @@ module Make
 
         | PrimApp (Explicitly, _) -> todo (Some expr.pos)
         | PrimApp ((Include | Require), _) -> todo (Some expr.pos)
-        | PrimApp ((Let | Module | Interface), _) -> todo (Some expr.pos)
+        | PrimApp ((Let | Module), _) -> todo (Some expr.pos)
+        | PrimApp (Interface, _) -> typeof_proxy ctrs env expr
 
         | PrimApp (op, args) ->
             let check_iargs universals eff iargs =
