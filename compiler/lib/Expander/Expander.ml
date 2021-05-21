@@ -1,3 +1,4 @@
+open Streaming
 open Asserts
 
 open Ast
@@ -6,6 +7,9 @@ type clause = Expr.clause
 type def = Stmt.def
 type stmt = Stmt.t
 type broompath = string list
+
+(* TODO: `with`, `where`, `without` equivalents for __module and __interface
+ * (`extends`, `override`?) *)
 
 module Make (StringHashtbl : Hashtbl.S with type key = string) = struct
 
@@ -156,12 +160,6 @@ let parse_appseq env exprs =
 (* # Expressions *)
 
 let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
-    (*| Let (defs, body) ->
-        let (defs, env) = expand_defs' define_toplevel env (Vector1.to_vector defs) in
-        let body = expand define_toplevel env body in
-        (match Vector1.of_vector defs with
-        | Some defs -> {expr with v = Let (defs, body)}
-        | None -> body)*)
     | Fn clauses ->
         {expr with v = Expr.Fn (Vector.map (expand_clause define_toplevel env) clauses)}
     | ImpliFn clauses ->
@@ -189,7 +187,8 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
     | PrimApp (Require, args) ->
         expand_require define_toplevel env expr.pos args
         |> expand define_toplevel env
-    | PrimApp ((Do | Let | Module | Interface | Explicitly), _) -> todo (Some expr.pos)
+    | PrimApp (Let, args) -> expand_let define_toplevel env expr.pos args
+    | PrimApp ((Do | Module | Interface | Explicitly), _) -> todo (Some expr.pos)
 
     | PiT {domain; eff; codomain} ->
         let (domain, env) = expand_pat define_toplevel ignore env domain in
@@ -202,7 +201,7 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
         {expr with v = ImpliT {domain; codomain}}
 
     | Record stmts ->
-        (* TODO: Field punning (tricky because the naive translation `letrec x = x in {x = x}` makes no sense) *)
+        (* TODO: Field punning *)
         let vars = CCVector.create () in
         let stmts = expand_stmts define_toplevel (CCVector.push vars) env stmts in
         {expr with v = Record stmts}
@@ -248,25 +247,30 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
 
 (* # Special Forms *)
 
-(*and expand_let define_toplevel env pos (arg : expr) = match arg.v with
-    | Record stmts ->
-        let defs = Stream.from (Vector.to_source stmts)
-            |> Stream.take_while (function Stmt.Def _ -> true | Expr _ -> false)
-            |> Stream.map (function
-                | Stmt.Def (span, pat, expr) -> (span, pat, expr)
-                | Expr expr -> unreachable (Some expr.pos))
-            |> Stream.into (Vector.sink ()) in
-        if Vector.length defs = Vector.length stmts - 1
-        then match Vector.get stmts (Vector.length stmts - 1) with
-            | Expr body ->
-                let (defs, env) = expand_defs' define_toplevel env defs in
-                let body = expand define_toplevel env body in
-                (match Vector1.of_vector defs with
-                | Some defs -> {pos; v = Let (defs, body)}
-                | None -> body)
-            | _ -> failwith "dangling stmts in `let`"
-        else todo (Some pos)
-    | _ -> failwith "non-record `let` arg"*)
+and expand_let define_toplevel env pos args =
+    if Vector.length args = 1 then begin
+        match (Vector.get args 0).v with
+        | Record stmts ->
+            let defs = Stream.from (Vector.to_source stmts)
+                |> Stream.take_while (function Stmt.Def _ -> true | Expr _ -> false)
+                |> Stream.map (function
+                    | Stmt.Def (span, pat, expr) -> (span, pat, expr)
+                    | Expr expr -> unreachable (Some expr.pos))
+                |> Stream.into (Vector.sink ()) in
+
+            if Vector.length defs = Vector.length stmts - 1
+            then match Vector.get stmts (Vector.length stmts - 1) with
+                | Expr body ->
+                    let (defs, env) = expand_defs' define_toplevel env defs in
+                    let body = expand define_toplevel env body in
+
+                    let stmts = Vector.append defs (Vector.singleton (Stmt.Expr body)) in
+                    let arg = {Util.pos; v = Expr.Record stmts} in
+                    {pos; v = PrimApp (Let, Vector.singleton arg)}
+                | _ -> failwith "dangling stmts in `let`"
+            else todo (Some pos)
+        | _ -> failwith "non-record `let` arg"
+    end else todo (Some pos) ~msg: "error message"
 
 and expand_include env args =
     match Vector.length args with
@@ -376,16 +380,20 @@ and expand_def_pat define_toplevel report_def env pos pat expr =
 and expand_def define_toplevel env pos pat expr =
     (pos, pat, expand define_toplevel env expr)
 
-(*and expand_defs' define_toplevel env defs =
+and expand_defs' define_toplevel env defs =
     let defs' = CCVector.create () in
     let env = Vector.fold (fun env (span, pat, expr) ->
         let (def', env) = expand_def_pat define_toplevel ignore env span pat expr in
         CCVector.push defs' def';
         env
     ) env defs in
-    defs' |> CCVector.map_in_place (fun (span, pat, expr) ->
-        expand_def define_toplevel env span pat expr);
-    (Vector.build defs', env)*)
+
+    let defs = defs'
+        |> Vector.build (* OPTIMIZE *)
+        |> Vector.map (fun (span, pat, expr) ->
+            let (span, pat, expr) = expand_def define_toplevel env span pat expr in
+            Stmt.Def (span, pat, expr)) in
+    (defs, env)
 
 (* # Statements *)
 

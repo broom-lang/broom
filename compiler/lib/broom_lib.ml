@@ -10,8 +10,7 @@ end
 
 module SedlexMenhir = SedlexMenhir
 
-module Parse = struct
-    let program filename input =
+module Parse = struct let program filename input =
         try
             SedlexMenhir.create_lexbuf filename input
             |> SedlexMenhir.sedlex_with_menhir Lexer.token Parser.program
