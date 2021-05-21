@@ -189,7 +189,8 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
         |> expand define_toplevel env
     | PrimApp (Let, args) -> expand_let define_toplevel env expr.pos args
     | PrimApp (Module, args) -> expand_module define_toplevel env expr.pos args
-    | PrimApp ((Do | Interface | Explicitly), _) -> todo (Some expr.pos)
+    | PrimApp (Interface, args) -> expand_interface define_toplevel env expr.pos args
+    | PrimApp ((Do | Explicitly), _) -> todo (Some expr.pos)
 
     | PiT {domain; eff; codomain} ->
         let (domain, env) = expand_pat define_toplevel ignore env domain in
@@ -215,14 +216,6 @@ let rec expand define_toplevel env (expr : expr) : expr = match expr.v with
             | VariantT _ -> VariantT decls
             | RowT _ -> RowT decls
             | _ -> unreachable (Some expr.pos)}
-        (*let body : expr = match typ.v with
-            | RecordT _ -> {typ with v = RecordT (Vector.build vars)}
-            | VariantT _ -> {typ with v = VariantT (Vector.build vars)}
-            | RowT _ -> {typ with v = RowT (Vector.build vars)}
-            | _ -> unreachable (Some typ.pos) in
-        (match Vector1.of_vector decls with
-        | Some decls -> {typ with v = Declare (decls, body)}
-        | None -> body)*)
 
     | Var name -> (match Env.find (snd (Bindings.find env name)) with
         | Some (Var id) -> id
@@ -279,6 +272,24 @@ and expand_module define_toplevel env span (args : Expr.t Vector.t) =
             let body : expr = {pos = span; v = Record (Vector.build vars)} in
             let stmts = Vector.append defs (Vector.singleton (Stmt.Expr body)) in
             let arg = {Util.pos = span; v = Expr.Record stmts} in
+            {Util.pos = span; v = Expr.PrimApp (Let, Vector.singleton arg)}
+        | _ -> todo (Some span)
+    end else todo (Some span)
+
+and expand_interface define_toplevel env span (args : Expr.t Vector.t) =
+    if Vector.length args = 1 then begin
+        match (Vector.get args 0).v with
+        | RecordT decls ->
+            let vars = CCVector.create () in
+            let decls = expand_decls define_toplevel (CCVector.push vars) env decls in
+            let defs = decls |> Vector.map (function
+                | Decl.Decl (span, pat, expr) -> Decl.Decl (span, pat, expr)
+                | Def (span, pat, expr) -> Def (span, pat, expr)
+                | Type _ -> failwith "non-def stmt in Record") in
+
+            let body : expr = {pos = span; v = RecordT (Vector.build vars)} in
+            let decls = Vector.append defs (Vector.singleton (Decl.Type body)) in
+            let arg = {Util.pos = span; v = Expr.RecordT decls} in
             {Util.pos = span; v = Expr.PrimApp (Let, Vector.singleton arg)}
         | _ -> todo (Some span)
     end else todo (Some span)
