@@ -4,7 +4,7 @@ type 'a with_pos = 'a Util.with_pos
 module type PRIMOP = sig
     type t =
         | Include | Require
-        | Let | Module | Interface
+        | Do | Let | Module | Interface
         | Explicitly
 
         | Pair | Fst | Snd

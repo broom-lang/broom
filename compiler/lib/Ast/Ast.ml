@@ -6,7 +6,7 @@ type 'a with_pos = 'a Util.with_pos
 module Primop = struct
     type t =
         | Include | Require
-        | Let | Module | Interface
+        | Do | Let | Module | Interface
         | Explicitly
 
         | Pair | Fst | Snd
@@ -23,6 +23,7 @@ module Primop = struct
         let open Grammar in let open Grammar.Infix in
         text "include" *> pure Include
         <|> text "require" *> pure Require
+        <|> text "do" *> pure Do
         <|> text "let" *> pure Let
         <|> text "module" *> pure Module
         <|> text "interface" *> pure Interface
@@ -57,6 +58,7 @@ module Primop = struct
     let of_string = function
         | "include" -> Some Include
         | "require" -> Some Require
+        | "do" -> Some Do
         | "let" -> Some Let
         | "module" -> Some Module
         | "interface" -> Some Interface

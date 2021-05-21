@@ -36,7 +36,7 @@ module Make
 
     let primop_typ : Ast.Primop.t -> op_typ = function
         | Include | Require
-        | Let | Module | Interface | Explicitly -> bug None
+        | Do | Let | Module | Interface | Explicitly -> bug None
 
         | Pair -> (* forall a b . (a, b) -> Pair a b *)
             Primop ( Pair
@@ -264,6 +264,28 @@ module Make
 
         | PrimApp ((Include | Require), _) -> todo (Some expr.pos) ~msg: "add error message"
 
+        | PrimApp (Do, args) ->
+            if Vector.length args = 1 then begin
+                match (Vector.get args 0).v with
+                | Record stmts ->
+                    let (stmts, body) =
+                        let len = Vector.length stmts in
+                        if len > 0 then begin
+                            match Vector.get stmts (len - 1) with
+                            | Expr expr -> (Vector.sub stmts 0 (len - 1), expr)
+                            | Def _ -> (stmts, {expr with v = Tuple Vector.empty})
+                        end else (stmts, {expr with v = Tuple Vector.empty}) in
+                    
+                    let eff = T.Uv (Env.uv env false T.aRow) in
+                    let (stmts, env) = check_stmts ctrs env eff stmts in
+                    let {TS.term = body; eff = body_eff} = typeof ctrs env body in
+                    ignore (Constraints.unify ctrs body.pos env body_eff eff);
+
+                    {term = FExpr.at expr.pos body.typ (FExpr.let' stmts body); eff}
+
+                | _ -> todo (Some expr.pos) ~msg: "add error message"
+            end else todo (Some expr.pos) ~msg: "add error message"
+
         | PrimApp (Let, args) ->
             if Vector.length args = 1 then begin
                 match (Vector.get args 0).v with
@@ -275,8 +297,10 @@ module Make
                             | Expr expr -> (Vector.sub stmts 0 (len - 1), expr)
                             | Def _ -> (stmts, {expr with v = Tuple Vector.empty})
                         end else (stmts, {expr with v = Tuple Vector.empty}) in
+
                     let (defs, env) = check_rec ctrs env defs in
                     let {TS.term = body; eff} = typeof ctrs env body in
+
                     {term = FExpr.at expr.pos body.typ (FExpr.letrec defs body); eff}
 
                 | _ -> todo (Some expr.pos) ~msg: "add error message"
@@ -487,6 +511,27 @@ module Make
         (defs, env)
 
 (* # Statements *)
+
+    and check_stmt ctrs env eff = function
+        | AStmt.Def (span, pat, expr) ->
+            let (pat, env', _) = typeof_pat ctrs false false env Explicit pat in
+            let {TS.term = expr; eff = stmt_eff} = check ctrs env pat.ptyp expr in
+            ignore (Constraints.unify ctrs expr.pos env stmt_eff eff);
+            (env', FStmt.Def (span, pat, expr))
+
+        | Expr expr ->
+            let {TS.term = expr; eff = stmt_eff} = typeof ctrs env expr in
+            ignore (Constraints.unify ctrs expr.pos env stmt_eff eff);
+            (env, Expr expr)
+
+    and check_stmts ctrs env eff stmts =
+        let stmts' = CCVector.create () in
+        let env = stmts |> Vector.fold (fun env stmt ->
+            let (env, stmt) = check_stmt ctrs env eff stmt in
+            CCVector.push stmts' stmt;
+            env
+        ) env in
+        (Vector.build stmts', env)
 
     and check_rec ctrs env (stmts : AStmt.t Vector.t) =
         (* Type patters and push scope: *)
