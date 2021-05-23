@@ -1,2 +1,2 @@
-val emit : Cfg.Program.t -> PPrint.document
+val emit : bool -> Cfg.Program.t -> PPrint.document
 

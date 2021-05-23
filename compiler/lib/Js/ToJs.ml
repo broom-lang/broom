@@ -219,7 +219,7 @@ module Js = struct
     let to_doc = PPrinter.of_grammar grammar
 end
 
-let to_js program =
+let to_js is_node program =
     let usecounts = count_uses_by_cont program in
     let is_inlineable parent var expr =
         if Expr.is_pure expr then
@@ -361,10 +361,17 @@ let to_js program =
         let cont = Program.cont program label in
         Js.Var (emit_label label, emit_fn label cont) in
 
-    Stream.from (Program.exports program)
-    |> Stream.map emit_export
+    let export_stmts = Stream.from (Program.exports program)
+        |> Stream.map emit_export in
+    if is_node
+    then begin
+        let exit = Js.Select (UseExtern "process", "exit") in
+        let start = Js.Call (emit_label (Program.main program), Vector.empty) in
+        Stream.concat export_stmts (Stream.single (Js.Expr (Call (exit, Vector.singleton start))))
+    end else export_stmts
 
-let emit program = to_js program
-    |> Stream.map (fun stmt -> Js.to_doc (Stmt stmt))
-    |> Stream.into (Sink.fold PPrint.(^^) PPrint.empty)
+let emit is_node program =
+    let stmts = Stream.into (Vector.sink ()) (to_js is_node program) in
+    let program = Js.Call (Function (Vector.empty, stmts), Vector.empty) in
+    Js.to_doc (Expr' program)
 

@@ -226,6 +226,8 @@ module Program = struct
 
     let exports program = Source.single program.main
 
+    let main {main; _} = main
+
     let cont program label = Conts.get_exn label program.conts
 
     type builder =

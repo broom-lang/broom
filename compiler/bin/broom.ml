@@ -131,7 +131,7 @@ let infile =
     C.Arg.(value & pos 0 string "" & info [] ~docv ~doc)
 
 let target =
-    let platforms = [("node", Node)] in
+    let platforms = [("node", Platform.Node)] in
     let docv = "PLATFORM" in
     let doc = "target platform" in
     C.Arg.(value & opt (enum platforms) Node & info ["t"; "target"] ~docv ~doc)

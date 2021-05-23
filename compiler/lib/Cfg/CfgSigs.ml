@@ -82,6 +82,7 @@ module type PROGRAM = sig
 
     val cont : t -> Cont.Id.t -> Cont.t
     val exports : t -> Cont.Id.t Streaming.Source.t
+    val main : t -> Cont.Id.t
 
     module Builder : sig
         val create : Fc.Type.def Vector.t -> Cont.Id.t -> builder

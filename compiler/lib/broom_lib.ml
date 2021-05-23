@@ -1,7 +1,7 @@
 module Vector = Vector (* HACK *)
 module Util = Util (* HACK *)
 
-type platform = Node
+module Platform = Platform
 
 module Ast = Ast
 module Fc = struct
@@ -112,6 +112,6 @@ module Compiler = struct
         let+ program = check_program ~debug ~path defs in
         let program = MiddleEnd.to_cfg ~debug program in
         match target with
-        | Node -> Util.pwrite output (ToJs.emit program)
+        | Platform.Node -> Util.pwrite output (ToJs.emit true program)
 end
 
