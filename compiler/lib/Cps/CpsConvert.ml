@@ -111,7 +111,9 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
             , snd main_body.pos ) in
         let codomain = main_body.typ in
         let defs = defs |> Vector.map (fun def -> Stmt.Def def) in
-        (pos, FExpr.at pos codomain (FExpr.let' defs main_body)) in
+        let stmts = Vector.append defs (Vector.singleton (Stmt.Expr main_body)) in
+        let body = FExpr.at pos (Prim Int) (FExpr.const (Int 0)) in
+        (pos, FExpr.at pos codomain (FExpr.let' stmts body)) in
 
     let rec convert parent state k env (expr : FExpr.t) = match expr.term with
         | Pair {fst; snd} ->
