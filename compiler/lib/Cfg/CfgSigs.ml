@@ -38,7 +38,7 @@ module type TRANSFER = sig
         | Match of {matchee : expr_id; clauses : clause Vector.t}
         | PrimApp of {op : Branchop.t; universals : Type.t Vector.t
             ; args : expr_id Vector.t; clauses : clause Vector.t}
-        | Return of Type.t Vector.t * expr_id Vector.t
+        | Return of Type.t Option.t * expr_id Option.t
 
     type t = {pos : span; term : t'}
 

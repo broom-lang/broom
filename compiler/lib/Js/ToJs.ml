@@ -61,7 +61,7 @@ module Js = struct
         | Var of expr * expr
         | Assign of expr * expr
         | Expr of expr
-        | Return of expr
+        | Return of expr option
         | Switch of expr * (expr option * block) Vector.t
 
     and block = stmt Vector.t
@@ -208,7 +208,7 @@ module Js = struct
                 (var_ <$> infix 4 1 equals (text "var" *> blank 1 *> expr) expr
                 <|> (assign_ <$> infix 4 1 equals expr expr)
                 <|> (expr_ <$> expr)
-                <|> (return_ <$> text "return" *> blank 1 *> expr)
+                <|> (return_ <$> text "return" *> opt (blank 1 *> expr))
                 <|> (switch_ <$> (text "switch" *> blank 1 *> parens expr <* blank 1
                     <*> braces cases)))
                 <* semi in
@@ -273,7 +273,7 @@ let to_js is_node program =
                         , emit_use v)) in
                 let body = Stream.single copy
                     |> Fun.flip Stream.concat (Stream.from (Vector.to_source assignments))
-                    |> Fun.flip Stream.concat (Stream.single (Js.Return (Use base_name)))
+                    |> Fun.flip Stream.concat (Stream.single (Js.Return (Some (Use base_name))))
                     |> Stream.into (Vector.sink ()) in
                 Call (Js.Function (Vector.empty, body), Vector.empty)
 
@@ -339,17 +339,17 @@ let to_js is_node program =
         let stmts = Vector.flat_map emit_stmt stmts in
         let transfer = match transfer.term with
             | Goto {callee; universals = _; args} ->
-                Js.Return (Call (emit_label callee, Vector.map emit_use args))
+                Js.Return (Some (Call (emit_label callee, Vector.map emit_use args)))
 
             | Jump {callee; universals = _; args} ->
-                Return (Call (emit_use callee, Vector.map emit_use args))
+                Return (Some (Call (emit_use callee, Vector.map emit_use args)))
 
             | Match {matchee; clauses} ->
                 Switch (emit_use matchee, Vector.map emit_clause clauses)
 
             | PrimApp _ -> todo (Some transfer.pos)
 
-            | Return (_, args) -> Return (Array (Vector.map emit_use args)) in
+            | Return (_, args) -> Return (Option.map emit_use args) in
         Stream.concat (Stream.from (Vector.to_source stmts)) (Stream.single transfer)
         |> Stream.into (Vector.sink ())
 

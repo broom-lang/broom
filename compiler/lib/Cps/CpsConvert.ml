@@ -472,7 +472,7 @@ let convert state_typ ({type_fns; defs; main = main_body} : Fc.Program.t) =
                 ; term = Const (Int 0)} in (* FIXME *)
         let k = FnK {pos = body.pos; domain = codomain
             ; f = fun ~parent: _ ~state: _ ~value ->
-                {pos; term = Return (Vector.singleton codomain, Vector.singleton value)} } in
+                {pos; term = Return (Some codomain, Some value)} } in
         let cont : Cont.t =
             { pos; name; universals = Vector.empty; params
             ; body = convert parent state k env body } in

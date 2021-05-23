@@ -60,7 +60,7 @@ module Transfer = struct
         | Match of {matchee : expr_id; clauses : clause Vector.t}
         | PrimApp of {op : Branchop.t; universals : Type.t Vector.t
             ; args : expr_id Vector.t; clauses : clause Vector.t}
-        | Return of Type.t Vector.t * expr_id Vector.t
+        | Return of Type.t Option.t * expr_id Option.t
 
     type t = {pos : span; term : t'}
 
@@ -106,8 +106,10 @@ module Transfer = struct
                     lbrace hardline rbrace clause_to_doc (Vector.to_list clauses))
 
         | Return (universals, args) ->
-            prefix 4 1 (string "return") (args_to_doc universals args)
-
+            prefix 4 1 (string "return")
+                (args_to_doc
+                    (Option.fold ~some: Vector.singleton ~none: Vector.empty universals)
+                    (Option.fold ~some: Vector.singleton ~none: Vector.empty args))
 
     let iter_labels f (transfer : t) = match transfer.term with
         | Goto {universals = _; callee; args = _} -> f callee
@@ -121,7 +123,7 @@ module Transfer = struct
         | Jump {universals = _; callee; args} -> f callee; Vector.iter f args
         | Match {matchee; clauses = _} -> f matchee
         | PrimApp {op = _; universals = _; args; clauses = _} -> Vector.iter f args
-        | Return (_, args) -> Vector.iter f args
+        | Return (_, args) -> Option.iter f args
 end
 
 

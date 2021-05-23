@@ -273,7 +273,7 @@ module Transfer = struct
         | Match of {matchee : expr_id; state : expr_id; clauses : clause Vector.t}
         | PrimApp of {op : Branchop.t; universals : Type.t Vector.t
             ; state : expr_id; args : expr_id Vector.t; clauses : clause Vector.t}
-        | Return of Type.t Vector.t * expr_id Vector.t
+        | Return of Type.t Option.t * expr_id Option.t
 
     type t = {pos : span; term : t'}
 
@@ -321,7 +321,10 @@ module Transfer = struct
                 lbrace hardline rbrace clause_to_doc (Vector.to_list clauses)
 
         | Return (universals, args) ->
-            prefix 4 1 (string "return") (args_to_doc universals args)
+            prefix 4 1 (string "return")
+                (args_to_doc
+                    (Option.fold ~some: Vector.singleton ~none: Vector.empty universals)
+                    (Option.fold ~some: Vector.singleton ~none: Vector.empty args))
 
     let iter_labels f (transfer : t) = match transfer.term with
         | Goto {universals = _; callee; args = _} -> f callee
@@ -336,7 +339,7 @@ module Transfer = struct
         | Match {matchee; state; clauses = _} -> f matchee; f state
         | PrimApp {op = _; universals = _; state; args; clauses = _} ->
             f state; Vector.iter f args
-        | Return (_, args) -> Vector.iter f args
+        | Return (_, args) -> Option.iter f args
 
     let map_uses f (transfer : t) =
         let term = match transfer.term with
@@ -349,7 +352,7 @@ module Transfer = struct
             | PrimApp {op; universals; args; state; clauses} ->
                 PrimApp {op; universals; args = Vector.map f args
                     ; state = f state; clauses}
-            | Return (universals, args) -> Return (universals, Vector.map f args) in
+            | Return (universals, args) -> Return (universals, Option.map f args) in
         {transfer with term}
 end
 
@@ -489,8 +492,8 @@ module Program = struct
         and visit_clause counts {Transfer.pat = _; dest} = visit_cont counts dest
 
         and visit_transfer counts {Transfer.pos = _; term} = match term with
-            | Goto {universals = _; callee = _; args}
-            | Return (_, args) -> Vector.fold visit_use counts args
+            | Goto {universals = _; callee = _; args} -> Vector.fold visit_use counts args
+            | Return (_, args) -> Option.fold ~some: (visit_use counts) ~none: counts args
             | Jump {universals = _; callee; args} ->
                 Vector.fold visit_use (visit_use counts callee) args
             | Match {matchee; state; clauses} ->

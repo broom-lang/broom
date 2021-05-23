@@ -113,7 +113,7 @@ let schedule_program program params =
                     ; args = Vector.map emit_use args}
 
             | Return (universals, args) ->
-                Return (universals, Vector.map emit_use args)
+                Return (universals, Option.map emit_use args)
 
             | Match {matchee; state; clauses} ->
                 let matchee = emit_use matchee in

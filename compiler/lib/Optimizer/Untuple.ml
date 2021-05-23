@@ -1,4 +1,5 @@
 open Streaming
+open Asserts
 
 open Cps
 module Transient = Program.Transient
@@ -107,25 +108,25 @@ let untuple_args program =
     let visited_exprs = Expr.Id.Hashtbl.create 0 in
     let visited_conts = Cont.Id.HashSet.create 0 in
 
+    let rec optimize_arg arg =
+        let expr = Builder.expr builder arg in
+        match expr.typ with
+        | Pair {fst = fst_typ; snd = snd_typ} ->
+            let fst = Builder.express builder {typ = fst_typ
+                ; pos = expr.pos; cont = expr.cont
+                ; term = PrimApp {op = Fst; universals = Vector.singleton fst_typ
+                    ; args = Vector.singleton arg}}
+                |> optimize_arg in
+            let snd = Builder.express builder {typ = snd_typ
+                ; pos = expr.pos; cont = expr.cont
+                ; term = PrimApp {op = Snd; universals = Vector.singleton snd_typ
+                    ; args = Vector.singleton arg}}
+                |> optimize_arg in
+            Stream.concat fst snd
+
+        | _ -> Stream.single arg in
+
     let rec optimize_args args =
-        let rec optimize_arg arg =
-            let expr = Builder.expr builder arg in
-            match expr.typ with
-            | Pair {fst = fst_typ; snd = snd_typ} ->
-                let fst = Builder.express builder {typ = fst_typ
-                    ; pos = expr.pos; cont = expr.cont
-                    ; term = PrimApp {op = Fst; universals = Vector.singleton fst_typ
-                        ; args = Vector.singleton arg}}
-                    |> optimize_arg in
-                let snd = Builder.express builder {typ = snd_typ
-                    ; pos = expr.pos; cont = expr.cont
-                    ; term = PrimApp {op = Snd; universals = Vector.singleton snd_typ
-                        ; args = Vector.singleton arg}}
-                    |> optimize_arg in
-                Stream.concat fst snd
-
-            | _ -> Stream.single arg in
-
         Stream.from (Vector.to_source args)
         |> Stream.flat_map (fun arg -> optimize_arg (optimize_use arg))
         |> Stream.into (Vector.sink ())
@@ -165,8 +166,15 @@ let untuple_args program =
                 Vector.iter optimize_clause clauses;
                 {transfer with term = PrimApp {op; universals; args = optimize_args args
                     ; state = optimize_use state; clauses}}
-            | Return (universals, args) ->
-                {transfer with term = Return (universals, optimize_args args)} in
+            | Return (universals, args) -> (match args with
+                | Some arg ->
+                    let args = Stream.into (Vector.sink ()) (optimize_arg arg) in
+                    {transfer with term =
+                        match Vector.length args with
+                        | 0 -> Transfer.Return (None, None)
+                        | 1 -> Return (universals, Some (Vector.get args 0))
+                        | _ -> unreachable (Some transfer.pos)}
+                | None -> transfer) in
 
         let optimize_cont {Cont.pos; name; universals; params; body} =
             let body = optimize_transfer body in
