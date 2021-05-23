@@ -168,7 +168,7 @@ let untuple_args program =
                     ; state = optimize_use state; clauses}}
             | Return (universals, args) -> (match args with
                 | Some arg ->
-                    let args = Stream.into (Vector.sink ()) (optimize_arg arg) in
+                    let args = Stream.into (Vector.sink ()) (optimize_arg (optimize_use arg)) in
                     {transfer with term =
                         match Vector.length args with
                         | 0 -> Transfer.Return (None, None)
