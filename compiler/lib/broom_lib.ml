@@ -1,6 +1,8 @@
 module Vector = Vector (* HACK *)
 module Util = Util (* HACK *)
 
+type platform = Node
+
 module Ast = Ast
 module Fc = struct
     include Fc
@@ -104,11 +106,12 @@ module Compiler = struct
 
         (eenv, ns, {TyperSigs.term = program; eff})
 
-    let compile_program ~debug ~path ~output defs =
+    let compile_program target ~debug ~path ~output defs =
         let (let+) = Fun.flip Result.map in
 
         let+ program = check_program ~debug ~path defs in
         let program = MiddleEnd.to_cfg ~debug program in
-        Util.pwrite output (ToJs.emit program)
+        match target with
+        | Node -> Util.pwrite output (ToJs.emit program)
 end
 

@@ -10,7 +10,7 @@ let prompt = name ^ "> "
 
 let eval_envs path = (Expander.Bindings.empty path, Namespace.empty)
 
-let build path debug check_only filename outfile =
+let build path debug check_only target filename outfile =
     let open PPrint in
 
     let input = open_in filename in
@@ -29,7 +29,7 @@ let build path debug check_only filename outfile =
 
             if check_only
             then Result.map ignore (Compiler.check_program ~debug ~path program)
-            else Compiler.compile_program ~debug ~path ~output program
+            else Compiler.compile_program target ~debug ~path ~output program
         ) with
         | Ok () -> ()
         | Error err ->
@@ -130,6 +130,12 @@ let infile =
     let doc = "entry point filename" in
     C.Arg.(value & pos 0 string "" & info [] ~docv ~doc)
 
+let target =
+    let platforms = [("node", Node)] in
+    let docv = "PLATFORM" in
+    let doc = "target platform" in
+    C.Arg.(value & opt (enum platforms) Node & info ["t"; "target"] ~docv ~doc)
+
 let outfile =
     let docv = "OUTFILE" in
     let doc = "output file" in
@@ -139,12 +145,12 @@ let outfile =
 
 let build_t =
     let doc = "compile program" in
-    ( C.Term.(const ignore $ (const build $ path $ debug $ const false $ infile $ outfile))
+    ( C.Term.(const ignore $ (const build $ path $ debug $ const false $ target $ infile $ outfile))
     , C.Term.info "build" ~doc )
 
 let check_t =
     let doc = "typecheck program" in
-    ( C.Term.(const ignore $ (const build $ path $ debug $ const true $ infile $ const ""))
+    ( C.Term.(const ignore $ (const build $ path $ debug $ const true $ target $ infile $ const ""))
     , C.Term.info "check" ~doc )
 
 let eval_t =
