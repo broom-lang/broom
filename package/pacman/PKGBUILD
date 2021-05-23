@@ -1,6 +1,6 @@
 # Maintainer: Pauli Jaakkola <pauli.jaakkola@iki.fi>
 pkgname=broom-git
-pkgver=r1429.6ffb5ed
+pkgver=r1432.e817d05
 pkgrel=1
 pkgdesc="A programming language with first-class modules and algebraic effects"
 arch=('x86_64')
