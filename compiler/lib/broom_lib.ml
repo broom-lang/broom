@@ -63,19 +63,22 @@ module Compiler = struct
         if debug then begin
             Util.debug_heading "Expanded AST";
             Util.pprint (Ast.Program.to_doc program ^^ hardline);
+            flush stdout
         end;
 
         let* {term = program; eff = _} =
             Typer.check_program program |> Result.map_error type_err in
         if debug then begin
             Util.debug_heading "FC from Typechecker";
-            Util.pprint (Fc.Program.to_doc program ^^ hardline)
+            Util.pprint (Fc.Program.to_doc program ^^ hardline);
+            flush stdout
         end;
 
         let+ program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
         if debug then begin
             Util.debug_heading "Nonrecursive FC";
-            Util.pprint (Fc.Program.to_doc program ^^ hardline)
+            Util.pprint (Fc.Program.to_doc program ^^ hardline);
+            flush stdout
         end;
 
         program
@@ -89,19 +92,22 @@ module Compiler = struct
             Util.debug_heading "Expanded AST";
             let doc = separate_map (semi ^^ break 1) Ast.Stmt.to_doc (Vector1.to_list stmts) in
             Util.pprint (doc ^^ hardline);
+            flush stdout
         end;
 
         let* ({TyperSigs.term = program; eff}, ns) =
             Typer.check_interactive_stmts ns stmts |> Result.map_error type_err in
         if debug then begin
             Util.debug_heading "FC from Typechecker";
-            Util.pprint (Fc.Program.to_doc program ^^ hardline)
+            Util.pprint (Fc.Program.to_doc program ^^ hardline);
+            flush stdout
         end;
 
         let+ program = FwdRefs.convert program |> Result.map_error fwd_ref_errs in
         if debug then begin
             Util.debug_heading "Nonrecursive FC";
-            Util.pprint (Fc.Program.to_doc program ^^ hardline)
+            Util.pprint (Fc.Program.to_doc program ^^ hardline);
+            flush stdout
         end;
 
         (eenv, ns, {TyperSigs.term = program; eff})
