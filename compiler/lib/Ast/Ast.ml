@@ -295,6 +295,41 @@ module rec Expr : (AstSigs.EXPR
             | Var _ | Wild _ | Const _ | PrimT _ -> term in
 
         if term' == term then expr else {expr with v = term}
+
+    let iter_clause_exprs f {params; body} = f params; f body
+
+    let iter_children f (expr : t) =
+        match expr.v with
+        | Fn clauses | ImpliFn clauses -> Vector.iter (iter_clause_exprs f) clauses
+
+        | App exprs -> Vector.iter f exprs
+
+        | PrimApp (_, exprs) -> Vector.iter f exprs
+
+        | PiT {domain; eff; codomain} ->
+            f domain; Option.iter f eff; f codomain
+
+        | ImpliT {domain; codomain} -> f domain; f codomain
+
+        | Ann (expr, typ) -> f expr; f typ
+
+        | Tuple exprs -> Vector.iter f exprs
+
+        | Focus (focusee, _) -> f focusee
+
+        | TupleT typs -> Vector.iter f typs
+
+        | Record stmts -> Vector.iter (Stmt.iter_child_exprs f) stmts
+
+        | Select (selectee, _) -> f selectee
+
+        | RecordT decls -> Vector.iter (Decl.iter_child_exprs f) decls
+
+        | VariantT decls -> Vector.iter (Decl.iter_child_exprs f) decls
+
+        | RowT decls -> Vector.iter (Decl.iter_child_exprs f) decls
+
+        | Var _ | Wild _ | Const _ | PrimT _ -> ()
 end
 
 and Stmt : (AstSigs.STMT with type expr = Expr.t) = struct
@@ -326,6 +361,10 @@ and Stmt : (AstSigs.STMT with type expr = Expr.t) = struct
         | Expr expr ->
             let expr' = f expr in
             if expr' == expr then stmt else Expr expr'
+
+    let iter_child_exprs f = function
+        | Def (_, pat, expr) -> f pat; f expr
+        | Expr expr -> f expr
 end
 
 and Decl : (AstSigs.DECL with type expr = Expr.t) = struct
@@ -362,6 +401,10 @@ and Decl : (AstSigs.DECL with type expr = Expr.t) = struct
         | Type expr ->
             let expr' = f expr in
             if expr' == expr then stmt else Type expr'
+
+    let iter_child_exprs f = function
+        | Def (_, pat, expr) | Decl (_, pat, expr) -> f pat; f expr
+        | Type expr -> f expr
 end
 
 module Program = struct

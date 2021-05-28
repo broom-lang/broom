@@ -9,7 +9,18 @@ module Key = struct
 end
 
 module Hashtbl = H.Make(Key)
-module HashMap = CCHashTrie.Make(Key)
+
+module HashMap = struct
+    include CCHashTrie.Make(Key)
+
+    let to_source kvs =
+        let gen = to_gen kvs in
+        Streaming.Source.unfold () (fun () ->
+            gen ()
+            |> Option.map (fun v -> (v, ()))
+        )
+end
+
 module HashSet = CCHashSet.Make(Key)
 module Map = Map.Make(Key)
 

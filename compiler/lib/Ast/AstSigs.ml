@@ -60,6 +60,7 @@ module type EXPR = sig
     val to_doc : t -> PPrint.document
 
     val map_children : (t -> t) -> t -> t
+    val iter_children : (t -> unit) -> t -> unit
 end
 
 module type STMT = sig
@@ -76,6 +77,7 @@ module type STMT = sig
     val to_doc : t -> PPrint.document
 
     val map_child_exprs : (expr -> expr) -> t -> t
+    val iter_child_exprs : (expr -> unit) -> t -> unit
 end
 
 module type DECL = sig
@@ -91,6 +93,7 @@ module type DECL = sig
     val pos : t -> Util.span
 
     val map_child_exprs : (expr -> expr) -> t -> t
+    val iter_child_exprs : (expr -> unit) -> t -> unit
 end
 
 module type PROGRAM = sig

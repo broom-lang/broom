@@ -14,7 +14,8 @@ module Env = TypeEnv
 type eff = T.t
 type 'a typing = 'a TyperSigs.typing
 type ctrs = Constraint.queue
-open Transactional.Ref
+module Tx = Transactional
+open Tx.Ref
 
 module Make
     (Constraints : TS.CONSTRAINTS)
@@ -152,64 +153,81 @@ module Make
 
 (* # Patterns *)
 
-    let rec typeof_pat ctrs is_global is_fwd env (plicity : plicity) (pat : AExpr.t) =
+    let bind_pat env (plicity : plicity) pat add_var =
+        let rec bind plicity (pat : AExpr.t) =
+            match pat.v with
+            | Var name -> add_var plicity pat.pos name
+            | Ann (pat, _) -> bind plicity pat
+            | Tuple _ | Record _ | Wild _ | Const _ -> AExpr.iter_children (bind plicity) pat
+            | TupleT _ | RecordT _ | VariantT _ | RowT _ | PiT _ | ImpliT _ | PrimT _ -> ()
+            | Fn _ | ImpliFn _ -> Env.report_error env {v = NonPattern pat; pos = pat.pos}
+            | Focus _ | Select _ | App _ | PrimApp _ -> todo (Some pat.pos) in
+
+        bind plicity pat
+
+    let rec typeof_bound_pat _ env (_ : plicity) (pat : AExpr.t) : FExpr.pat =
+        match pat.v with
+        | Var name ->
+            (match Env.find_val env name with
+            | Some (var, _, _) -> FExpr.pat_at pat.pos var.vtyp (VarP var)
+            | None -> bug (Some pat.pos) ~msg: "Env.find_val failed in bound pattern")
+
+        | Const c ->
+            let typ = const_typ c in
+            FExpr.pat_at pat.pos typ (ConstP c)
+
+        | _ -> todo (Some pat.pos)
+
+    and typeof_pat ctrs env scope_builder add_var (plicity : plicity) (pat : AExpr.t) : FExpr.pat =
         match pat.v with
         | Ann (pat, typ) ->
             let typ = Kinding.check ctrs env (Env.some_type_kind env false) typ in
             (* TODO: let (_, typ) = Env.reabstract env typ in*)
-            check_pat ctrs is_global is_fwd env plicity typ pat
+            check_pat ctrs env scope_builder add_var plicity typ pat
 
         | Tuple pats ->
-            let pats' = CCVector.create () in
-            let (env, vars) = pats |> Vector.fold (fun (env, vars) pat ->
-                let (pat, env, vars') = typeof_pat ctrs is_global is_fwd env plicity pat in
-                CCVector.push pats' pat;
-                (env, Vector.append vars vars')
-            ) (env, Vector.empty) in
-            let pats = Vector.build pats' in (* OPTIMIZE *)
+            let pats = pats |> Vector.map (typeof_pat ctrs env scope_builder add_var plicity) in
             let end_pos = snd pat.pos in
             let pat = pats |> Vector.fold_right (fun (acc : FExpr.pat) (pat : FExpr.pat) ->
                 let span = (fst pat.ppos, end_pos) in
                 FExpr.pat_at span (Pair {fst = pat.ptyp; snd = acc.ptyp})
                     (PairP {fst = pat; snd = acc})
             ) (FExpr.pat_at (end_pos, end_pos) (Prim Unit) (ConstP Unit)) in
-            (pat, env, vars)
+            pat
 
         | Var name ->
-            let typ = T.Uv (Env.uv env is_fwd (Env.some_type_kind env false)) in
-            let var = FExpr.var plicity name typ in
-            ( FExpr.pat_at pat.pos typ (VarP var)
-            , Env.push_val is_global env var
-            , Vector.singleton var )
+            let var = Env.NonRecScope.Builder.var env scope_builder plicity name in
+            add_var pat.pos name var;
+            FExpr.pat_at pat.pos var.vtyp (VarP var)
 
         | Wild name ->
-            let typ = T.Uv (Env.uv env is_fwd (Env.some_type_kind env false)) in
-            (FExpr.pat_at pat.pos typ (WildP name), env, Vector.empty)
+            let typ = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+            FExpr.pat_at pat.pos typ (WildP name)
 
         | Const c ->
             let typ = const_typ c in
-            (FExpr.pat_at pat.pos typ (ConstP c), env, Vector.empty)
+            FExpr.pat_at pat.pos typ (ConstP c)
 
         | PiT _ | ImpliT _ | TupleT _ | RecordT _ | VariantT _ | RowT _ | PrimT _ ->
             let {TS.typ = carrie; kind = _} = Kinding.elaborate ctrs env pat in
-            (FExpr.pat_at pat.pos (Proxy carrie) (ProxyP carrie), env, Vector.empty)
+            FExpr.pat_at pat.pos (Proxy carrie) (ProxyP carrie)
 
         | Fn _ | ImpliFn _ ->
             Env.report_error env {v = NonPattern pat; pos = pat.pos};
-            let typ = T.Uv (Env.uv env is_fwd (Env.some_type_kind env false)) in
-            (FExpr.pat_at pat.pos typ (WildP (Name.of_string "")), env, Vector.empty)
+            let typ = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+            FExpr.pat_at pat.pos typ (WildP (Name.of_string ""))
 
         | Focus _ | App _ | PrimApp _ | Select _ | Record _ ->
             todo (Some pat.pos) ~msg: "in check_pat"
 
-    and check_pat ctrs is_global is_fwd env plicity sub (pat : AExpr.t) =
-        let (pat, env, vars) = typeof_pat ctrs is_global is_fwd env plicity pat in
+    and check_pat ctrs env scope_builder add_var plicity sub (pat : AExpr.t) : FExpr.pat =
+        let pat = typeof_pat ctrs env scope_builder add_var plicity pat in
         let super = pat.ptyp in
         match Constraints.subtype ctrs pat.ppos env sub super with
         | Some coerce ->
             let f_expr = Coercer.reify pat.ppos sub coerce in
-            (FExpr.pat_at pat.ppos super (View (f_expr, pat)), env, vars)
-        | None -> (pat, env, vars)
+            FExpr.pat_at pat.ppos super (View (f_expr, pat))
+        | None -> pat
 
 (* # Expressions *)
 
@@ -320,7 +338,7 @@ module Make
                             | Def _ -> (stmts, {expr with v = Tuple Vector.empty})
                         end else (stmts, {expr with v = Tuple Vector.empty}) in
 
-                    let (defs, env) = check_rec ctrs env (fun _ _ -> ()) defs in
+                    let (defs, env) = check_rec ctrs env (fun _ _ _ -> ()) defs in
                     let {TS.term = body; eff} = typeof ctrs env body in
 
                     {term = FExpr.at expr.pos body.typ (FExpr.letrec defs body); eff}
@@ -333,9 +351,9 @@ module Make
                 | Record defs ->
                     let fields = CCVector.create () in
                     let row = Stdlib.ref T.EmptyRow in
-                    let add_var span ({FExpr.name; vtyp; plicity = _} as var) =
-                        CCVector.push fields (name, FExpr.at span vtyp (FExpr.use var));
-                        Stdlib.(row := With {base = !row; label = name; field = vtyp}) in
+                    let add_var span label ({FExpr.name = _; vtyp; plicity = _} as var) =
+                        CCVector.push fields (label, FExpr.at span vtyp (FExpr.use var));
+                        Stdlib.(row := With {base = !row; label; field = vtyp}) in
                     let (defs, _) = check_rec ctrs env add_var defs in
 
                     let typ = Stdlib.(T.Record !row) in
@@ -394,14 +412,20 @@ module Make
                         if Vector.length clauses = Vector.length codomain then
                             Stream.from (Source.zip (Vector.to_source codomain) (Vector.to_source clauses))
                                 |> Stream.map (fun (codomain, {AExpr.params; body}) ->
-                                    let (pat, env, _) = check_pat ctrs false false env Explicit codomain params in
-                                    let pat = match pat.pterm with
+                                    let scope_builder = Env.NonRecScope.Builder.create () in
+                                    let pat = check_pat ctrs env scope_builder (fun _ _ _ -> ())
+                                        Explicit codomain params in
+                                    let vpat = match pat.pterm with
                                         | VarP var -> Some var
                                         | ConstP Unit -> None
                                         | _ -> failwith "complex PrimBranch pattern" in
+                                    let scope = Env.NonRecScope.Builder.build scope_builder pat.ppos pat None in
+                                    let env = Env.push_nonrec env scope in
+
                                     let {TS.term = prim_body; eff = body_eff} = check ctrs env typ body in
                                     ignore (Constraints.unify ctrs body.pos env body_eff eff);
-                                    {FExpr.res = pat; prim_body})
+
+                                    {FExpr.res = vpat; prim_body})
                                 |> Stream.into (Vector.sink ())
                         else todo (Some clauses_expr.pos) ~msg: "add error message"
 
@@ -485,11 +509,65 @@ module Make
             {term = FExpr.at expr.pos typ (FExpr.select selectee label); eff}
 
         | Var name ->
-            let term = Env.find_val (fun env typ ->
-                    let {TS.typ; kind} = Kinding.elaborate ctrs env typ in
-                    (typ, kind))
-                (fun span env sub super -> ignore (Constraints.subtype ctrs span env sub super))
-                env expr.pos name in
+            let span = expr.pos in
+
+            (*let rec find = function
+                | Env.Vals kvs :: scopes -> (match Name.Map.find_opt name kvs with
+                    | Some var -> FExpr.at span var.vtyp (FExpr.use var)
+                    | None -> find scopes)
+
+                | (Row bindings :: scopes') as scopes ->
+                    (match Name.Map.find_opt name bindings with
+                    | Some (var, binding) ->
+                        (match !binding with
+                        | WhiteT (lhs, rhs) ->
+                            let env = {env with scopes} in
+                            binding := GreyT;
+                            let {TS.typ = rhs; kind} = Kinding.elaborate ctrs env rhs in
+                            let (_, rhs) = Env.reabstract env rhs in
+                            ignore (Constraints.subtype ctrs span env rhs lhs);
+                            binding := BlackT {typ = rhs; kind}
+                        | GreyT -> () (* TODO: really? *)
+                        | BlackT _ -> ());
+                        FExpr.at span var.vtyp (FExpr.use var)
+                    | None -> find scopes')
+
+                | (Rigid _ | Hoisting _) :: scopes -> find scopes
+
+                | [] ->
+                    (match Option.bind (Env.namespace env) (Fun.flip Namespace.find_typ name) with
+                    | Some {vtyp = typ; plicity = _; name = _} ->
+                        let namexpr = FExpr.at span (Prim String)
+                            (FExpr.const (String (Name.to_string name))) in
+                        FExpr.primapp GlobalGet (Vector.singleton typ) (Vector.singleton namexpr)
+                        |> FExpr.at span typ
+                    | None ->
+                        Env.report_error env ({v = Unbound name; pos = span});
+                        (* FIXME: levels: *)
+                        let typ = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+                        FExpr.at span typ (FExpr.use (FExpr.var Explicit name typ))) in*)
+
+            let term =
+                match Env.find_val env name with
+                | Some (var, binding, env) ->
+                    (match !binding with
+                    | Env.White {span; pat; expr} -> check_binding ctrs env binding span pat expr
+                    | Grey _ | Black _ -> ());
+                    FExpr.at span var.vtyp (FExpr.use var)
+
+                | None -> 
+                    (match Option.bind (Env.namespace env) (Fun.flip Namespace.find_typ name) with
+                    | Some {vtyp = typ; plicity = _; name = _} ->
+                        let namexpr = FExpr.at span (Prim String)
+                            (FExpr.const (String (Name.to_string name))) in
+                        FExpr.primapp GlobalGet (Vector.singleton typ) (Vector.singleton namexpr)
+                        |> FExpr.at span typ
+                    | None ->
+                        Env.report_error env ({v = Unbound name; pos = span});
+                        (* FIXME: levels: *)
+                        let typ = T.Uv (Env.uv env false (Env.some_type_kind env false)) in
+                        FExpr.at span typ (FExpr.use (FExpr.var Explicit name typ))) in
+
             {term; eff = EmptyRow}
 
         | Const c ->
@@ -507,8 +585,13 @@ module Make
         {TS.term = Coercer.apply_opt coerce expr; eff}
 
     and check_clause ctrs env plicity ~domain ~eff ~codomain {params; body} =
-        (* OPTIMIZE: Don't make vars vector to be just ignored here: *)
-        let (pat, env, _) = check_pat ctrs false false env plicity domain params in
+        let module ScopeBuilder = Env.NonRecScope.Builder in
+
+        let scope_builder = ScopeBuilder.create () in
+        let pat = check_pat ctrs env scope_builder (fun _ _ _ -> ()) plicity domain params in
+        let scope = ScopeBuilder.build scope_builder pat.ppos pat None in
+        let env = Env.push_nonrec env scope in
+
         (* FIXME: abstract type creation, type creation effect: *)
         let {TS.term = body; eff = body_eff} = check ctrs env codomain body in
         ignore (Constraints.unify ctrs body.pos env body_eff eff);
@@ -518,34 +601,44 @@ module Make
         let {TS.typ = carrie; kind = _} = Kinding.elaborate ctrs env expr in
         {TS.term = FExpr.at expr.pos (Proxy carrie) (FExpr.proxy carrie); eff = EmptyRow}
 
-(* # Definitions *)
+(* # Bindings *)
 
-    and analyze_def ctrs env add_var pat =
-        let (pat, env, vars) = typeof_pat ctrs false true env Explicit pat in
-        Vector.iter (add_var pat.ppos) vars;
-        (pat, env)
-
-    (* FIXME: generate abstract types, abstract type generation effect: *)
-    and check_def ctrs env (pat : FExpr.pat) span expr =
+    and check_binding ctrs env (binding : Env.val_binding Tx.Ref.t) span pat expr =
+        binding := Grey {span; pat; expr};
+        let pat = typeof_bound_pat ctrs env Explicit pat in
+        (* FIXME: sealing, abstract type generation effect: *)
         let {TS.term = expr; eff} = check ctrs env pat.ptyp expr in
         ignore (Constraints.unify ctrs expr.pos env eff T.EmptyRow);
-        (span, pat, expr)
+        binding := Black {span; pat; expr = Some expr}
 
+(* # Definitions *)
+ 
     and check_defs ctrs env defs =
-        (* Type patters and push scope: *)
-        let pats = CCVector.create () in
-        let env = Vector.fold (fun env (_, pat, _) ->
-            let (pat, env) = analyze_def ctrs env (fun _ _ -> ()) pat in
-            CCVector.push pats pat;
-            env
-        ) env defs in
+        let module ScopeBuilder = Env.RecScope.Builder in
 
-        (* Check expressions and their effects: *)
-        let pats = Vector.build pats in (* OPTIMIZE *)
-        let defs = Source.zip_with (fun pat (span, _, expr) ->
-                check_def ctrs env pat span expr
-            ) (Vector.to_source pats) (Vector.to_source defs)
-            |> Stream.from |> Stream.into (Vector.sink ()) in
+        (* Push variables: *)
+        let scope_builder = ScopeBuilder.create () in
+        let bindings = defs |> Vector.map (fun (span, pat, expr) ->
+            let binding = ScopeBuilder.binding scope_builder span pat expr in
+            bind_pat env Explicit pat (fun plicity _ name ->
+                ignore (ScopeBuilder.var env scope_builder binding plicity name)
+            );
+            binding
+        ) in
+        let env = Env.push_rec env (ScopeBuilder.build scope_builder) in
+
+        (* Check defs and their effects: *)
+        let defs = bindings |> Vector.map (fun binding ->
+            match !binding with
+            | Env.White {span; pat; expr} ->
+                check_binding ctrs env binding span pat expr;
+                (match !binding with
+                | Black {span; pat; expr = Some expr} -> (span, pat, expr)
+                | _ -> unreachable (Some span))
+            | Grey {span; _} -> unreachable (Some span)
+            | Black {span; pat; expr = Some expr} -> (span, pat, expr)
+            | Black {span; pat = _; expr = None} -> bug (Some span)
+        ) in
 
         (defs, env)
 
@@ -553,10 +646,17 @@ module Make
 
     and check_stmt ctrs env eff = function
         | AStmt.Def (span, pat, expr) ->
-            let (pat, env', _) = typeof_pat ctrs false false env Explicit pat in
+            let module ScopeBuilder = Env.NonRecScope.Builder in
+
+            let scope_builder = ScopeBuilder.create () in
+            let pat = typeof_pat ctrs env scope_builder (fun _ _ _ -> ()) Explicit pat in
+
+            (* FIXME: sealing, abstract type creation effect: *)
             let {TS.term = expr; eff = stmt_eff} = check ctrs env pat.ptyp expr in
             ignore (Constraints.unify ctrs expr.pos env stmt_eff eff);
-            (env', FStmt.Def (span, pat, expr))
+
+            let scope = ScopeBuilder.build scope_builder span pat (Some expr) in
+            (Env.push_nonrec env scope, FStmt.Def (span, pat, expr))
 
         | Expr expr ->
             let {TS.term = expr; eff = stmt_eff} = typeof ctrs env expr in
@@ -573,23 +673,34 @@ module Make
         (Vector.build stmts', env)
 
     and check_rec ctrs env add_var (stmts : AStmt.t Vector.t) =
-        (* Type patters and push scope: *)
-        let pats = CCVector.create () in
-        let env = Vector.fold (fun env -> function 
-            | AStmt.Def (_, pat, _) ->
-                let (pat, env) = analyze_def ctrs env add_var pat in
-                CCVector.push pats pat;
-                env
-            | Expr expr -> todo (Some expr.pos) ~msg: "add error message"
-        ) env stmts in
+        let module ScopeBuilder = Env.RecScope.Builder in
 
-        (* Check expressions and their effects: *)
-        let pats = Vector.build pats in (* OPTIMIZE *)
-        let defs = Source.zip_with (fun (pat : FExpr.pat) -> function
-                | AStmt.Def (span, _, expr) -> check_def ctrs env pat span expr
-                | Expr expr -> unreachable (Some expr.pos)
-            ) (Vector.to_source pats) (Vector.to_source stmts)
-            |> Stream.from |> Stream.into (Vector.sink ()) in
+        (* Push variables: *)
+        let scope_builder = ScopeBuilder.create () in
+        let bindings = stmts |> Vector.map (function
+            | AStmt.Def (span, pat, expr) ->
+                let binding = ScopeBuilder.binding scope_builder span pat expr in
+                bind_pat env Explicit pat (fun plicity span name ->
+                    let var = ScopeBuilder.var env scope_builder binding plicity name in
+                    add_var span name var
+                );
+                binding
+            | Expr expr -> todo (Some expr.pos) ~msg: "add error message"
+        ) in
+        let env = Env.push_rec env (ScopeBuilder.build scope_builder) in
+
+        (* Check defs and their effects: *)
+        let defs = bindings |> Vector.map (fun binding ->
+            match !binding with
+            | Env.White {span; pat; expr} ->
+                let pat = typeof_bound_pat ctrs env Explicit pat in
+                let {TS.term = expr; eff} = check ctrs env pat.ptyp expr in
+                ignore (Constraints.unify ctrs expr.pos env eff T.EmptyRow);
+                (span, pat, expr)
+            | Grey {span; _} -> unreachable (Some span)
+            | Black {span; pat; expr = Some expr} -> (span, pat, expr)
+            | Black {span; pat = _; expr = None} -> bug (Some span)
+        ) in
 
         (defs, env)
 
@@ -611,21 +722,34 @@ module Make
     let check_interactive_stmt : ctrs -> Env.t -> FStmt.t CCVector.vector -> AStmt.t -> Env.t * eff
     = fun ctrs env stmts' -> function
         | Def (span, pat, expr) ->
-            let (pat, env', vars) = typeof_pat ctrs true false env Explicit pat in
+            let module ScopeBuilder = Env.NonRecScope.Builder in
+
+            let vars = CCVector.create () in
+            let add_var _ _ var = CCVector.push vars var in
+
+            let scope_builder = ScopeBuilder.create () in
+            let pat = typeof_pat ctrs env scope_builder add_var Explicit pat in
+
+            (* FIXME: sealing, abstract type creation effect: *)
             let {TS.term = expr; eff} = check ctrs env pat.ptyp expr in
+
             CCVector.push stmts' (Def (span, pat, expr));
-            vars |> Vector.iter (fun ({FExpr.vtyp = typ; _} as var) ->
+            vars |> CCVector.iter (fun ({FExpr.vtyp = typ; _} as var) ->
                 let namexpr = FExpr.at span (Prim String)
                     (FExpr.const (String (Name.to_string var.name))) in
                 let global_init = FExpr.at span (Prim Unit)
                     (FExpr.primapp GlobalSet (Vector.singleton typ)
                         (Vector.of_array_unsafe [|namexpr; FExpr.at span typ (FExpr.use var)|])) in
                 CCVector.push stmts' (Expr global_init));
-            (env', eff)
+
+            let scope = ScopeBuilder.build scope_builder span pat (Some expr) in
+            (Env.push_nonrec env scope, eff)
 
         | Expr expr ->
             let {TS.term = expr; eff} = typeof ctrs env expr in
+
             CCVector.push stmts' (Expr expr);
+
             (env, eff)
 
     let check_interactive_stmts ns errors ctrs stmts =

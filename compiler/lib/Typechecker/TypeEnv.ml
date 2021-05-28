@@ -8,20 +8,30 @@ type span = Util.span
 module Tx = Transactional
 open Tx.Ref
 
-type 'a kinding = {typ : 'a; kind : T.kind} (* HACK *)
-
 type error_handler = TypeError.t -> unit
 
+type val_binding =
+    | White of {span : span; pat : Ast.Expr.t; expr : Ast.Expr.t}
+    | Grey of {span : span; pat : Ast.Expr.t; expr : Ast.Expr.t}
+    | Black of {span : span; pat : FExpr.pat; expr : FExpr.t option}
+
 type row_binding =
-    | WhiteT of T.t * Ast.Expr.t
-    | GreyT
-    | BlackT of T.t kinding
+    | WhiteT of {span : span; pat : Ast.Expr.t; typ : Ast.Expr.t}
+    | GreyT of span
+    | BlackT of {span : span; typ : T.t}
+
+type nonrec_scope = var Name.HashMap.t * val_binding Tx.Ref.t
+
+type rec_scope = (var * val_binding Tx.Ref.t) Name.HashMap.t
+
+type row_scope = (var * row_binding Tx.Ref.t) Name.HashMap.t
 
 type scope =
     | Hoisting of T.ov list Tx.Ref.t * T.level
     | Rigid of T.ov Vector.t
-    | Vals of var Name.Map.t
-    | Row of (var * row_binding Tx.Ref.t) Name.Map.t
+    | NonRec of nonrec_scope
+    | Rec of rec_scope
+    | Row of row_scope
 
 type t =
     { namespace : Namespace.t option
@@ -78,27 +88,21 @@ let reabstract env : T.t -> T.ov Vector.t * T.t = function
         (existentials, T.expose substitution body)
     | typ -> (Vector.empty, typ)
 
-let push_val is_global (env : t) (var : var) =
-    if is_global
-    then match env.namespace with
-        | Some ns -> {env with namespace = Some (Namespace.add ns var)}
-        | None -> unreachable None
-    else match env.scopes with
-        | Vals bindings :: scopes' -> (* FIXME: prevent duplicates: *)
-            {env with scopes = Vals (Name.Map.add var.name var bindings) :: scopes'}
-        | scopes ->
-            {env with scopes = Vals (Name.Map.singleton var.name var) :: scopes}
+let scopes (env : t) = env.scopes
 
-let push_row env decls =
-    let bindings = CCVector.fold (fun bindings (vars, lhs, rhs) ->
-        Vector.fold (fun bindings (var : FExpr.var) ->
-            Name.Map.add var.name (var, ref (WhiteT (lhs, rhs))) bindings
-        ) bindings vars
-    ) Name.Map.empty decls in
-    {env with scopes = Row bindings :: env.scopes}
+let push_nonrec (env : t) scope = {env with scopes = NonRec scope :: env.scopes}
 
-let find_val elaborate subtype (env : t) span name =
-    let rec find = function
+let push_rec (env : t) bindings = {env with scopes = Rec bindings :: env.scopes}
+
+let push_row (env : t) scope = {env with scopes = Row scope :: env.scopes}
+
+let push_param env (var : var) (pat : FExpr.pat) =
+    let scope = Name.HashMap.singleton var.name var in
+    let binding = ref (Black {span = pat.ppos; pat; expr = None}) in
+    push_nonrec env (scope, binding)
+
+let find_val (env : t) name =
+    (*let rec find = function
         | Vals kvs :: scopes -> (match Name.Map.find_opt name kvs with
             | Some var -> FExpr.at span var.vtyp (FExpr.use var)
             | None -> find scopes)
@@ -133,43 +137,35 @@ let find_val elaborate subtype (env : t) span name =
                 (* FIXME: levels: *)
                 let typ = T.Uv (uv env false (some_type_kind env false)) in
                 FExpr.at span typ (FExpr.use (FExpr.var Explicit name typ))) in
-    find env.scopes
+    find env.scopes*)
 
-let force_typ elaborate subtype (env : t) span name =
-    let rec find scopes = match scopes with
-        | Vals bindings :: scopes -> (match Name.Map.find_opt name bindings with
-            | Some _ -> bug (Some span) ~msg: "`Env.find_rhs` found `Vals` scope"
-            | None -> find scopes)
-
-        | Row bindings :: scopes' ->
-            (match Name.Map.find_opt name bindings with
-            | Some (_, binding) ->
-                (match !binding with
-                | WhiteT (lhs, rhs) ->
-                    let env = {env with scopes} in
-                    binding := GreyT;
-                    let (rhs, kind) = elaborate env rhs in
-                    let (_, rhs) = reabstract env rhs in
-                    subtype span env rhs lhs;
-                    binding := BlackT {typ = rhs; kind};
-                    rhs
-                | GreyT -> bug (Some span) ~msg: "`Env.find_rhst` found `GreyT` binding"
-                | BlackT {typ; _} -> typ)
+    let rec find scopes =
+        match scopes with
+        | NonRec (vars, binding) :: scopes' ->
+            (match Name.HashMap.get name vars with
+            | Some var -> Some (var, binding, {env with scopes = scopes})
             | None -> find scopes')
 
-        | (Hoisting _ | Rigid _) :: scopes -> find scopes
+        | Rec bindings :: scopes' ->
+            (match Name.HashMap.get name bindings with
+            | Some (var, binding) -> Some (var, binding, {env with scopes = scopes})
+            | None -> find scopes')
 
-        | [] ->
-            report_error env ({v = Unbound name; pos = span});
-            Uv (uv env false (some_type_kind env false)) in
+        | (Rigid _ | Hoisting _) :: scopes' -> find scopes'
+        | [] -> None
+        | _ -> todo None in
+
     find env.scopes
 
 let scope_vars = function
-    | Vals bindings ->
-        Stream.from (Source.seq (Name.Map.to_seq bindings))
+    | NonRec (vars, _) ->
+        Stream.from (Name.HashMap.to_source vars)
         |> Stream.map snd
+    | Rec bindings ->
+        Stream.from (Name.HashMap.to_source bindings)
+        |> Stream.map (fun (_, (var, _)) -> var)
     | Row bindings ->
-        Stream.from (Source.seq (Name.Map.to_seq bindings))
+        Stream.from (Name.HashMap.to_source bindings)
         |> Stream.map (fun (_, (var, _)) -> var)
     | Hoisting _ | Rigid _ -> Stream.empty
 
@@ -239,4 +235,110 @@ let instantiate_branch env universals domain app_eff codomain =
     , Vector.map (T.expose substitution) domain
     , T.expose substitution app_eff
     , Vector.map (T.expose substitution) codomain )
+
+type env = t
+
+module NonRecScope = struct
+    type t = nonrec_scope
+
+    (* FIXME: prevent duplicates: *)
+    module Builder = struct
+        type scope = t
+        type t =
+            { transient : CCHashTrie.Transient.t
+            ; mutable vars : var Name.HashMap.t }
+
+        let create () =
+            { transient = CCHashTrie.Transient.create ()
+            ; vars = Name.HashMap.empty }
+
+        let var env ({transient; vars} as builder) plicity name =
+            let typ = T.Uv (uv env false (some_type_kind env false)) in
+            let var = FExpr.fresh_var plicity typ in
+            builder.vars <- Name.HashMap.add_mut ~id: transient name var vars;
+            var
+
+        let build {vars; transient} span pat expr =
+            CCHashTrie.Transient.freeze transient;
+            (vars, ref (Black {span; pat; expr}))
+    end
+end
+
+module RecScope = struct
+    type t = rec_scope
+
+    (* FIXME: prevent duplicates: *)
+    module Builder = struct
+        type scope = t
+        type t =
+            { transient : CCHashTrie.Transient.t
+            ; mutable scope : scope }
+
+        let create () =
+            { transient = CCHashTrie.Transient.create ()
+            ; scope = Name.HashMap.empty }
+
+        let binding _ span pat expr = ref (White {span; pat; expr})
+
+        let var env ({transient; scope} as builder) binding plicity name =
+            let typ = T.Uv (uv env true (some_type_kind env false)) in
+            let var = FExpr.fresh_var plicity typ in
+            builder.scope <- Name.HashMap.add_mut ~id: transient name (var, binding) scope;
+            var
+
+        let build {scope; transient} =
+            CCHashTrie.Transient.freeze transient;
+
+            scope |> Name.HashMap.iter ~f: (fun _ ((var : var), _) ->
+                match var.vtyp with
+                | Uv uv ->
+                    (match !uv with
+                    | Unassigned (_, name, kind, level) ->
+                        uv := Unassigned (false, name, kind, level)
+                    | Assigned _ -> ())
+                | _ -> unreachable None
+            );
+
+            scope
+    end
+end
+
+module RowScope = struct
+    type t = row_scope
+
+    (* FIXME: prevent duplicates: *)
+    module Builder = struct
+        type scope = t
+        type t =
+            { transient : CCHashTrie.Transient.t
+            ; mutable scope : scope }
+
+        let create () =
+            { transient = CCHashTrie.Transient.create ()
+            ; scope = Name.HashMap.empty }
+
+        let binding _ span pat typ = ref (WhiteT {span; pat; typ})
+
+        let var env ({transient; scope} as builder) binding plicity name =
+            let typ = T.Uv (uv env true (some_type_kind env false)) in
+            let var = FExpr.fresh_var plicity typ in
+            builder.scope <- Name.HashMap.add_mut ~id: transient name (var, binding) scope;
+            var
+
+        let build {scope; transient} =
+            CCHashTrie.Transient.freeze transient;
+
+            scope |> Name.HashMap.iter ~f: (fun _ ((var : var), _) ->
+                match var.vtyp with
+                | Uv uv ->
+                    (match !uv with
+                    | Unassigned (_, name, kind, level) ->
+                        uv := Unassigned (false, name, kind, level)
+                    | Assigned _ -> ())
+                | _ -> unreachable None
+            );
+
+            scope
+    end
+end
 

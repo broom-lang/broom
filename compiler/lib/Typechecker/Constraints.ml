@@ -121,15 +121,14 @@ module Make (K : TS.KINDING) = struct
                 let (env, skolems, domain, codomain) =
                     Env.push_impli_skolems env universals domain codomain in
                 let param = E.fresh_var Implicit domain in
-                let env = Env.push_val false env param in
+                let pat = E.pat_at span codomain (VarP param) in
+                let env = Env.push_param env param pat in
                 let coerce_codomain = subtype ctrs span env sub codomain in
                 let universals = Vector.map (fun {T.name; kind; _} -> (name, kind)) skolems in
                 Some (match coerce_codomain with
                     | Some coerce_codomain -> Some (Coercer.coercer (fun expr ->
                         let value = Coercer.apply coerce_codomain expr in
-                        let var = E.fresh_var Explicit codomain in
-                        let pat = E.pat_at span codomain (VarP var) in
-                        let body = E.at span codomain (E.use var) in
+                        let body = E.at span codomain (E.use param) in
                         E.at span super (E.let'
                             (Vector.singleton (Stmt.Def (span, pat, value)))
                             (E.at span super (E.fn universals param body)))))

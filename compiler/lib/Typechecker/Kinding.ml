@@ -160,44 +160,49 @@ module Make
                 {typ = Record row; kind = T.aType}
 
             | PrimApp (Interface, args) ->
+                let module ScopeBuilder = Env.RowScope.Builder in
+
                 if Vector.length args = 1 then begin
                     match (Vector.get args 0).v with
                     | RecordT decls ->
-                        (* Get pattern types and variables and push them to env: *)
-                        let decls' = CCVector.create () in
-                        let env = Vector.fold (fun env -> function
-                            | ADecl.Decl (_, pat, typ) ->
-                                let (pat, env, vars) = Typing.typeof_pat ctrs false false env Explicit pat in
-                                CCVector.push decls' (vars, pat, typ);
-                                env
-
-                            | Def (_, pat, expr) ->
-                                let (pat, env, vars) = Typing.typeof_pat ctrs false false env Explicit pat in
-                                (* `foo = expr` -> `foo : __typeOf expr`: *)
-                                let typ = {expr with v = AExpr.PrimApp (TypeOf, Vector.singleton expr)} in
-                                CCVector.push decls' (vars, pat, typ);
-                                env
-
-                            | Type typ -> todo (Some typ.pos)
-                        ) env decls in
-
                         let row = Stdlib.ref T.EmptyRow in
-                        decls' |> CCVector.iter (fun (vars, (pat : FExpr.pat), (typ : AExpr.t)) ->
-                            if Vector.length vars > 0 then
-                                (* Get variable types and row them up: *)
-                                vars |> Vector.iter (fun {FExpr.name; _} ->
-                                    let field = Env.force_typ (fun env typ ->
-                                            let {TS.typ; kind} = elab env typ in
-                                            (typ, kind))
-                                        (fun span env sub super -> ignore (Constraints.subtype ctrs span env sub super))
-                                        env typ.pos (Vector.get vars 0).FExpr.name in
-                                    Stdlib.(row := T.With {base = !row; label = name; field}))
-                            else begin
-                                (* `typ <: pat.ptyp`: *)
-                                let span = (fst pat.ppos, snd typ.pos) in
+                        let add_var name typ =
+                            Stdlib.(row := T.With {base = !row; label = name; field = typ}) in
+
+                        (* Push variables: *)
+                        let scope_builder = ScopeBuilder.create () in
+                        let bindings = decls |> Vector.map (function
+                            | ADecl.Decl (span, pat, typ) ->
+                                let binding = ScopeBuilder.binding scope_builder span pat typ in
+                                Typing.bind_pat env Explicit pat (fun plicity _ name ->
+                                    let var = ScopeBuilder.var env scope_builder binding plicity name in
+                                    add_var name var.vtyp
+                                );
+                                binding
+                            | Def (span, pat, expr) ->
+                                let typ = {expr with v = AExpr.PrimApp (TypeOf, Vector.singleton expr)} in
+                                let binding = ScopeBuilder.binding scope_builder span pat typ in
+                                Typing.bind_pat env Explicit pat (fun plicity _ name ->
+                                    let var = ScopeBuilder.var env scope_builder binding plicity name in
+                                    add_var name var.vtyp
+                                );
+                                binding
+                            | Type typ -> todo (Some typ.pos)
+                        ) in
+                        let env = Env.push_row env (ScopeBuilder.build scope_builder) in
+
+                        (* Kind decls: *)
+                        bindings |> Vector.iter (fun binding ->
+                            match !binding with
+                            | Env.WhiteT {span; pat; typ} ->
+                                binding := GreyT span;
+                                let pat = Typing.typeof_bound_pat ctrs env Explicit pat in
                                 let {TS.typ; kind = _} = elab env typ in
-                                ignore (Constraints.subtype ctrs span env typ pat.ptyp)
-                            end);
+                                ignore (Constraints.subtype ctrs span env typ pat.ptyp);
+                                binding := BlackT {span; typ}
+                            | GreyT span -> unreachable (Some span)
+                            | BlackT _ -> ()
+                        );
 
                         {TS.typ = T.Record Stdlib.(!row); kind = T.aType}
 
@@ -230,9 +235,12 @@ module Make
                 {typ = carrie; kind = kindof_F ctrs typ.pos env carrie}
 
         and elab_domain env (domain : AExpr.t) =
-            let ((pat : FExpr.pat), env, _) =
-                Typing.typeof_pat ctrs false false env Explicit domain in
-            (pat.ptyp, env)
+            let module ScopeBuilder = Env.NonRecScope.Builder in
+
+            let scope_builder = ScopeBuilder.create () in
+            let pat = Typing.typeof_pat ctrs env scope_builder (fun _ _ _ -> ()) Explicit domain in
+            let scope = ScopeBuilder.build scope_builder domain.pos pat None in
+            (pat.ptyp, Env.push_nonrec env scope)
 
         and elab_row env pos decls =
             let row = Vector.fold_right (fun base -> function

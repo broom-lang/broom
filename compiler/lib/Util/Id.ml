@@ -11,7 +11,12 @@ module type S = sig
     val to_doc : t -> PPrint.document
     val grammar : t Grammar.t
 
-    module HashMap : CCHashTrie.S with type key = t
+    module HashMap : sig
+        include CCHashTrie.S with type key = t
+
+        val to_source : 'a t -> (key * 'a) Streaming.Source.t
+    end
+
     module Hashtbl : Hashtbl.S with type key = t
     module HashSet : CCHashSet.S with type elt = t
 end
@@ -39,7 +44,17 @@ module Make () = struct
     let to_string = Int.to_string
     let to_doc id = PPrint.string (to_string id)
 
-    module HashMap = CCHashTrie.Make (Key)
+    module HashMap = struct
+        include CCHashTrie.Make (Key)
+
+        let to_source kvs =
+            let gen = to_gen kvs in
+            Streaming.Source.unfold () (fun () ->
+                gen ()
+                |> Option.map (fun v -> (v, ()))
+            )
+    end
+
     module Hashtbl = Hashtbl.Make (Key)
     module HashSet = CCHashSet.Make (Key)
 end

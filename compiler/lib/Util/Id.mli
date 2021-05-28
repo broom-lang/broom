@@ -11,7 +11,12 @@ module type S = sig
     val to_doc : t -> PPrint.document
     val grammar : t Grammar.t
 
-    module HashMap : CCHashTrie.S with type key = t
+    module HashMap : sig
+        include CCHashTrie.S with type key = t
+
+        val to_source : 'a t -> (key * 'a) Streaming.Source.t
+    end
+
     module Hashtbl : Hashtbl.S with type key = t
     module HashSet : CCHashSet.S with type elt = t
 end

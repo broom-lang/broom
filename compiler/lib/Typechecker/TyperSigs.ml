@@ -1,4 +1,5 @@
 type span = Util.span
+type plicity = Util.plicity
 
 module AExpr = Ast.Expr
 module AStmt = Ast.Stmt
@@ -16,9 +17,13 @@ module type TYPING = sig
     val typeof : ctrs -> env -> AExpr.t -> FExpr.t typing
     val check : ctrs -> env -> T.t -> AExpr.t -> FExpr.t typing
 
-    (* HACK: *)
-    val typeof_pat : ctrs -> bool -> bool -> env -> Util.plicity -> AExpr.t
-        -> FExpr.pat * env * FExpr.var Vector.t
+    val bind_pat : env -> plicity -> AExpr.t
+        -> (plicity -> span -> Name.t -> unit)
+        -> unit
+    val typeof_bound_pat : ctrs -> env -> Util.plicity -> AExpr.t -> FExpr.pat
+    val typeof_pat : ctrs -> env -> TypeEnv.NonRecScope.Builder.t
+        -> (span -> Name.t -> FExpr.var -> unit)
+        -> Util.plicity -> AExpr.t -> FExpr.pat
 
     val check_program : TypeError.t list Tx.Ref.t -> ctrs -> Ast.Program.t
         -> Fc.Program.t typing
