@@ -5,9 +5,6 @@
 A programming language with first-class modules and algebraic effects.  Still
 very much a work in progress (i.e. not yet usable).
 
-You can fund (and shame) @nilern towards a release with some [Broom
-merchandise](https://www.spreadshirt.fi/shop/user/deep+beginnings/).
-
 ## (Planned) Features
 
 * Functional-first, with strict evaluation
