@@ -1,0 +1,20 @@
+grammar<'input>;
+
+use crate::pos::{Pos, Positioned};
+use crate::lexer::{self, Tok};
+
+extern {
+    type Location = Pos;
+    type Error = Positioned<lexer::Error>;
+
+    enum Tok<'input> {
+        "(" => Tok::LParen,
+        ")" => Tok::RParen,
+        Id => Tok::Id(<&'input str>)
+    }
+}
+
+pub Expr: &'input str = {
+    "(" <Expr> ")",
+    <id:Id> => id
+}

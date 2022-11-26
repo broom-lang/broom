@@ -4,8 +4,10 @@ mod lexer;
 use clap::Parser;
 use rustyline::error::ReadlineError;
 use rustyline;
+use lalrpop_util::lalrpop_mod;
 
 use lexer::Lexer;
+lalrpop_mod!(parser);
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
@@ -29,9 +31,7 @@ fn main() {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
 
-                let lexer = Lexer::new(line.as_str(), None);
-
-                for res in lexer {
+                for res in Lexer::new(line.as_str(), None) {
                     match res {
                         Ok(tok) => println!("{:?}", tok),
 
@@ -40,6 +40,12 @@ fn main() {
                             break;
                         }
                     }
+                }
+
+                match parser::ExprParser::new().parse(Lexer::new(line.as_str(), None)) {
+                    Ok(id) => println!("{}", id),
+
+                    Err(err) => eprintln!("{:?}", err)
                 }
             },
             Err(ReadlineError::Interrupted) => {

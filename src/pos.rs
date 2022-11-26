@@ -10,6 +10,10 @@ pub struct Pos {
     pub col: usize
 }
 
+impl Default for Pos {
+    fn default() -> Self { Pos {filename: None, byte: 0, line: 1, col: 1} }
+}
+
 impl Pos {
     pub fn start(filename: Option<Filename>) -> Self { Pos {filename, byte: 0, line: 1, col: 1} }
 
@@ -30,16 +34,4 @@ impl Pos {
 pub struct Positioned<T> {
     pub v: T,
     pub pos: Pos
-}
-
-#[derive(Debug)]
-pub struct Span {
-    pub start: Pos,
-    pub end: Pos
-}
-
-#[derive(Debug)]
-pub struct Spanning<T> {
-    pub v: T,
-    pub span: Span
 }
