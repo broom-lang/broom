@@ -1,5 +1,7 @@
 mod pos;
 mod lexer;
+mod ast;
+lalrpop_mod!(parser);
 
 use clap::Parser;
 use rustyline::error::ReadlineError;
@@ -7,7 +9,6 @@ use rustyline;
 use lalrpop_util::lalrpop_mod;
 
 use lexer::Lexer;
-lalrpop_mod!(parser);
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
@@ -43,7 +44,7 @@ fn main() {
                 }
 
                 match parser::ExprParser::new().parse(Lexer::new(line.as_str(), None)) {
-                    Ok(id) => println!("{}", id),
+                    Ok(id) => println!("{:?}", id),
 
                     Err(err) => eprintln!("{:?}", err)
                 }

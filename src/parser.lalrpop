@@ -2,6 +2,7 @@ grammar<'input>;
 
 use crate::pos::{Pos, Positioned};
 use crate::lexer::{self, Tok};
+use crate::ast::{Expr, SpanningExpr};
 
 extern {
     type Location = Pos;
@@ -14,7 +15,7 @@ extern {
     }
 }
 
-pub Expr: &'input str = {
+pub Expr: SpanningExpr = {
     "(" <Expr> ")",
-    <id:Id> => id
+    <start:@L> <id:Id> <end:@R> => Expr::Id(String::from(id)).spanning(start, end)
 }

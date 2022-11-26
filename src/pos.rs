@@ -35,3 +35,9 @@ pub struct Positioned<T> {
     pub v: T,
     pub pos: Pos
 }
+
+#[derive(Debug)]
+pub struct Span {
+    pub start: Pos,
+    pub end: Pos
+}
