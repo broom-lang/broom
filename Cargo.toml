@@ -10,6 +10,7 @@ build = "build.rs"
 [dependencies]
 clap = { version = "4.0.27", features = ["derive"] }
 lalrpop-util = "0.19.8"
+pretty = "0.11.3"
 rustyline = "10.0.0"
 
 [build-dependencies]

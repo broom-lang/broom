@@ -57,7 +57,7 @@ fn main() {
                 println!("\nAST\n===\n");
 
                 match parser::ExprParser::new().parse(Lexer::new(line.as_str(), None)) {
-                    Ok(id) => println!("{:?}", id),
+                    Ok(id) => println!("{}", id),
 
                     Err(err) => eprintln!("Parse error: {}", err)
                 }
