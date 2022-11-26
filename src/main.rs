@@ -18,8 +18,6 @@ const PROMPT: &'static str = "broom> ";
 const HISTORY_FILENAME: &'static str = ".broom-history.txt";
     
 fn main() {
-    let debug = Args::parse().debug;
-
     let mut rl = rustyline::Editor::<()>::new().unwrap();
 
     if rl.load_history(HISTORY_FILENAME).is_err() {
@@ -31,12 +29,12 @@ fn main() {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
 
-                let mut lexer = Lexer::new(line.as_str(), None);
+                let lexer = Lexer::new(line.as_str(), None);
 
                 for res in lexer {
                     match res {
                         Ok(tok) => println!("{:?}", tok),
-                        
+
                         Err(err) => {
                             eprintln!("{:?}", err);
                             break;
