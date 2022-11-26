@@ -6,6 +6,11 @@ use crate::pos::{Pos, Positioned, Filename};
 pub enum Tok<'a> {
     LParen,
     RParen,
+    LBrace,
+    RBrace,
+
+    Eq,
+    Semi,
 
     Id(&'a str),
 
@@ -19,6 +24,11 @@ impl<'a> Display for Tok<'a> {
         match *self {
             LParen => write!(f, "("),
             RParen => write!(f, ")"),
+            LBrace => write!(f, "{{"),
+            RBrace => write!(f, "}}"),
+
+            Eq => write!(f, "="),
+            Semi => write!(f, ";"),
 
             Id(name) => write!(f, "{}", name),
 
@@ -135,6 +145,11 @@ impl<'a> Iterator for Lexer<'a> {
         self.peek_char().map(|c| match c {
             '(' => Ok(self.singleton_char_tok(start, LParen)),
             ')' => Ok(self.singleton_char_tok(start, RParen)),
+            '{' => Ok(self.singleton_char_tok(start, LBrace)),
+            '}' => Ok(self.singleton_char_tok(start, RBrace)),
+
+            '=' => Ok(self.singleton_char_tok(start, Eq)),
+            ';' => Ok(self.singleton_char_tok(start, Semi)),
 
             c if is_initial(c) => Ok(self.lex_id(start)),
 
