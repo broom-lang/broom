@@ -12,6 +12,21 @@ pub enum Tok<'a> {
     Int(isize)
 }
 
+impl<'a> Display for Tok<'a> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        use Tok::*;
+
+        match *self {
+            LParen => write!(f, "("),
+            RParen => write!(f, ")"),
+
+            Id(name) => write!(f, "{}", name),
+
+            Int(n) => write!(f, "{}", n)
+        }
+    }
+}
+
 impl<'a> Tok<'a> {
     fn spanning(self, start: Pos, end: Pos) -> (Pos, Tok<'a>, Pos) { (start, self, end) }
 }
@@ -26,11 +41,9 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         use Error::*;
 
-        write!(f, "Lexical error: ")?;
-
         match *self {
-            UnexpectedChar(c) => write!(f, "unexpected character '{}'", c),
-            IntOverflow => write!(f, "integer constant overflows Int.t")
+            UnexpectedChar(c) => write!(f, "Unexpected character '{}'", c),
+            IntOverflow => write!(f, "Integer constant overflows Int.t")
         }
     }
 }

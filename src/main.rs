@@ -48,7 +48,7 @@ fn main() {
                         },
 
                         Err(err) => {
-                            eprintln!("{}", err);
+                            eprintln!("Lexical error: {}", err);
                             break;
                         }
                     }
@@ -59,7 +59,7 @@ fn main() {
                 match parser::ExprParser::new().parse(Lexer::new(line.as_str(), None)) {
                     Ok(id) => println!("{:?}", id),
 
-                    Err(err) => eprintln!("{:?}", err)
+                    Err(err) => eprintln!("Parse error: {}", err)
                 }
             },
             Err(ReadlineError::Interrupted) => {

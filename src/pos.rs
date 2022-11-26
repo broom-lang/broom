@@ -15,6 +15,17 @@ impl Default for Pos {
     fn default() -> Self { Pos {filename: None, byte: 0, line: 1, col: 1} }
 }
 
+impl Display for Pos {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self.filename {
+            Some(ref filename) => write!(f, "{}", filename)?,
+            None => write!(f, "<unknown>")?
+        }
+
+        write!(f, "@{}.{}", self.line, self.col)
+    }
+}
+
 impl Pos {
     pub fn start(filename: Option<Filename>) -> Self { Pos {filename, byte: 0, line: 1, col: 1} }
 
@@ -38,18 +49,7 @@ pub struct Positioned<T> {
 }
 
 impl<T: Display> Display for Positioned<T> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        self.v.fmt(f)?;
-
-        write!(f, " in ")?;
-
-        match self.pos.filename {
-            Some(ref filename) => write!(f, "{}", filename)?,
-            None => write!(f, "<unknown>")?
-        }
-
-        write!(f, " at {}:{}", self.pos.line, self.pos.col)
-    }
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result { write!(f, "{} at {}", self.v, self.pos) }
 }
 
 #[derive(Debug)]
