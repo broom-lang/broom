@@ -2,7 +2,9 @@ use crate::pos::{Pos, Span};
 
 #[derive(Debug)]
 pub enum Expr {
-    Id(String)
+    Id(String),
+
+    Int(isize)
 }
 
 #[derive(Debug)]

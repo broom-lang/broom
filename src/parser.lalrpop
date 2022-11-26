@@ -11,11 +11,15 @@ extern {
     enum Tok<'input> {
         "(" => Tok::LParen,
         ")" => Tok::RParen,
-        Id => Tok::Id(<&'input str>)
+        Id => Tok::Id(<&'input str>),
+        Int => Tok::Int(<isize>)
     }
 }
 
 pub Expr: SpanningExpr = {
     "(" <Expr> ")",
-    <start:@L> <id:Id> <end:@R> => Expr::Id(String::from(id)).spanning(start, end)
+
+    <start:@L> <id:Id> <end:@R> => Expr::Id(String::from(id)).spanning(start, end),
+
+    <start:@L> <n:Int> <end:@R> => Expr::Int(n).spanning(start, end)
 }

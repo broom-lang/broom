@@ -4,7 +4,10 @@ use crate::pos::{Pos, Positioned, Filename};
 pub enum Tok<'a> {
     LParen,
     RParen,
-    Id(&'a str)
+
+    Id(&'a str),
+
+    Int(isize)
 }
 
 impl<'a> Tok<'a> {
@@ -13,7 +16,8 @@ impl<'a> Tok<'a> {
 
 #[derive(Debug)]
 pub enum Error {
-    UnexpectedChar(char)
+    UnexpectedChar(char),
+    IntOverflow
 }
 
 impl Error {
@@ -63,6 +67,32 @@ impl<'a> Lexer<'a> {
         let start_index = start.byte;
         (start, Tok::Id(&self.chars[start_index..self.pos.byte]), self.pos.clone())
     }
+
+    fn lex_number(&mut self, start: Pos, radix: u32, first_digit: u32) -> <Self as Iterator>::Item {
+        debug_assert!(self.peek_char().unwrap().is_digit(radix));
+        self.pop_char();
+
+        let isize_radix = radix as isize;
+        let mut n = first_digit as isize;
+
+        loop {
+            match self.peek_char() {
+                Some(c) => match c.to_digit(radix) {
+                    Some(digit) => {
+                        self.pop_char();
+                        n = isize_radix.checked_mul(n).and_then(|n| n.checked_add(digit as isize))
+                            .ok_or_else(|| Error::IntOverflow.at(start.clone()))?;
+                    },
+
+                    None => break
+                },
+
+                None => break
+            }
+        }
+
+        Ok((start, Tok::Int(n), self.pos.clone()))
+    }
 }
 
 impl<'a> Iterator for Lexer<'a> {
@@ -79,6 +109,11 @@ impl<'a> Iterator for Lexer<'a> {
             ')' => Ok(self.singleton_char_tok(start, RParen)),
 
             c if is_initial(c) => Ok(self.lex_id(start)),
+
+            c if c.is_digit(10) => {
+                let radix = 10;
+                self.lex_number(start, radix, c.to_digit(radix).unwrap())
+            },
 
             c => Err(UnexpectedChar(c).at(start))
         })
