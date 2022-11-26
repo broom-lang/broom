@@ -25,7 +25,7 @@ very much a work in progress (i.e. not yet usable).
 program ::= defs
 repl_input ::= stmts
 
-stmt ::= def | expr
+stmt ::= def | expr
 stmts ::= (stmt (";" stmt)*)? ";"?
 alts ::= (stmt ("|" stmt)*)? "|"?
 
@@ -63,7 +63,7 @@ type ::=
           | "==" | "<" | "<=" | ">" | ">="
           | "+" | "-"
           | "*" | "/" | "%" ) ")"
-    | "{" ":" stmts ")"
+    | "{" ":" stmts "}"
     | "[" "|" alts "]"
     | "(" "|" alts ")"
     | "(" ":" types ")"
