@@ -32,16 +32,29 @@ fn main() {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
 
+                println!("Tokens\n======\n");
+
                 for res in Lexer::new(line.as_str(), None) {
                     match res {
-                        Ok(tok) => println!("{:?}", tok),
+                        Ok((start, tok, end)) => {
+                            print!("<{:?} in ", tok);
+
+                            match start.filename {
+                                Some(filename) => print!("{}", filename),
+                                None => print!("<unknown>")
+                            }
+
+                            println!(" at {}:{}-{}:{}>", start.line, start.col, end.line, end.col);
+                        },
 
                         Err(err) => {
-                            eprintln!("{:?}", err);
+                            eprintln!("{}", err);
                             break;
                         }
                     }
                 }
+
+                println!("\nAST\n===\n");
 
                 match parser::ExprParser::new().parse(Lexer::new(line.as_str(), None)) {
                     Ok(id) => println!("{:?}", id),

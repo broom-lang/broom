@@ -1,3 +1,5 @@
+use std::fmt::{self, Display, Formatter};
+
 use crate::pos::{Pos, Positioned, Filename};
 
 #[derive(Debug, Clone)]
@@ -18,6 +20,19 @@ impl<'a> Tok<'a> {
 pub enum Error {
     UnexpectedChar(char),
     IntOverflow
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        use Error::*;
+
+        write!(f, "Lexical error: ")?;
+
+        match *self {
+            UnexpectedChar(c) => write!(f, "unexpected character '{}'", c),
+            IntOverflow => write!(f, "integer constant overflows Int.t")
+        }
+    }
 }
 
 impl Error {

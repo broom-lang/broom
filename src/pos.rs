@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use std::fmt::{self, Display, Formatter};
 
 pub type Filename = Rc<String>;
 
@@ -34,6 +35,21 @@ impl Pos {
 pub struct Positioned<T> {
     pub v: T,
     pub pos: Pos
+}
+
+impl<T: Display> Display for Positioned<T> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        self.v.fmt(f)?;
+
+        write!(f, " in ")?;
+
+        match self.pos.filename {
+            Some(ref filename) => write!(f, "{}", filename)?,
+            None => write!(f, "<unknown>")?
+        }
+
+        write!(f, " at {}:{}", self.pos.line, self.pos.col)
+    }
 }
 
 #[derive(Debug)]
