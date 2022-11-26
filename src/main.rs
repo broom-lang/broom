@@ -21,6 +21,8 @@ const PROMPT: &'static str = "broom> ";
 const HISTORY_FILENAME: &'static str = ".broom-history.txt";
     
 fn main() {
+    let debug = Args::parse().debug;
+
     let mut rl = rustyline::Editor::<()>::new().unwrap();
 
     if rl.load_history(HISTORY_FILENAME).is_err() {
@@ -32,29 +34,31 @@ fn main() {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
 
-                println!("Tokens\n======\n");
+                if debug {
+                    println!("Tokens\n======\n");
 
-                for res in Lexer::new(line.as_str(), None) {
-                    match res {
-                        Ok((start, tok, end)) => {
-                            print!("<{:?} in ", tok);
+                    for res in Lexer::new(line.as_str(), None) {
+                        match res {
+                            Ok((start, tok, end)) => {
+                                print!("<{:?} in ", tok);
 
-                            match start.filename {
-                                Some(filename) => print!("{}", filename),
-                                None => print!("<unknown>")
+                                match start.filename {
+                                    Some(filename) => print!("{}", filename),
+                                    None => print!("<unknown>")
+                                }
+
+                                println!(" at {}:{}-{}:{}>", start.line, start.col, end.line, end.col);
+                            },
+
+                            Err(err) => {
+                                eprintln!("Lexical error: {}", err);
+                                break;
                             }
-
-                            println!(" at {}:{}-{}:{}>", start.line, start.col, end.line, end.col);
-                        },
-
-                        Err(err) => {
-                            eprintln!("Lexical error: {}", err);
-                            break;
                         }
                     }
-                }
 
-                println!("\nAST\n===\n");
+                    println!("\nAST\n===\n");
+                }
 
                 match parser::ExprParser::new().parse(Lexer::new(line.as_str(), None)) {
                     Ok(id) => println!("{}", id),
