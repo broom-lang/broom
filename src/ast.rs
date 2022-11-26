@@ -17,7 +17,7 @@ pub struct SpanningStmt {
 
 #[derive(Debug)]
 pub enum Expr {
-    Block(Vec<SpanningStmt>),
+    Record(Vec<SpanningStmt>),
 
     Id(String),
 
@@ -66,7 +66,7 @@ impl Expr {
         use Expr::*;
 
         match *self {
-            Block(ref stmts) =>
+            Record(ref stmts) =>
                 RcDoc::text("{")
                     .append(RcDoc::intersperse(
                             stmts.iter().map(|stmt| stmt.to_doc()), RcDoc::text(";").append(RcDoc::line()))

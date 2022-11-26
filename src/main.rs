@@ -2,6 +2,8 @@ mod pos;
 mod lexer;
 mod ast;
 lalrpop_mod!(parser);
+mod fast;
+mod typer;
 
 use clap::Parser;
 use rustyline::error::ReadlineError;
@@ -60,10 +62,23 @@ fn main() {
                     println!("\nAST\n===\n");
                 }
 
-                match parser::ExprParser::new().parse(Lexer::new(line.as_str(), None)) {
-                    Ok(id) => println!("{}", id),
+                let expr = match parser::ExprParser::new().parse(Lexer::new(line.as_str(), None)) {
+                    Ok(expr) => {
+                        if debug { println!("{}", expr); }
+                        expr
+                    },
 
-                    Err(err) => eprintln!("Parse error: {}", err)
+                    Err(err) => {
+                        eprintln!("Parse error: {}", err);
+                        continue
+                    }
+                };
+
+                if debug { println!("\nF-AST\n=====\n"); }
+
+                match typer::convert(expr) {
+                    Ok(expr) => println!("{} : {}", expr, expr.r#type),
+                    Err(errors) => for error in errors { eprintln!("\nType error: {}", error); }
                 }
             },
             Err(ReadlineError::Interrupted) => {

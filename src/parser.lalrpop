@@ -24,7 +24,7 @@ extern {
 }
 
 pub Expr: SpanningExpr = {
-    <start:@L> "{" <stmts:Stmts> "}" <end:@R> => Expr::Block(stmts).spanning(start, end),
+    <start:@L> "{" <stmts:Stmts> "}" <end:@R> => Expr::Record(stmts).spanning(start, end),
     "(" <Expr> ")",
 
     <start:@L> <id:Id> <end:@R> => Expr::Id(String::from(id)).spanning(start, end),
