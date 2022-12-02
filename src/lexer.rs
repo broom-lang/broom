@@ -140,6 +140,16 @@ impl<'a> Iterator for Lexer<'a> {
         use Tok::*;
         use Error::*;
 
+        loop {
+            match self.peek_char() {
+                Some(c) if c.is_whitespace() => self.pop_char(),
+
+                Some(_) => break,
+
+                None => return None
+            }
+        }
+
         let start = self.pos.clone();
 
         self.peek_char().map(|c| match c {
