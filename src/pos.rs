@@ -52,8 +52,23 @@ impl<T: Display> Display for Positioned<T> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result { write!(f, "{} at {}", self.v, self.pos) }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Span {
     pub start: Pos,
     pub end: Pos
 }
+
+impl Display for Span {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result { write!(f, "{}:{}", self.start, self.end) }
+}
+
+#[derive(Debug)]
+pub struct Spanning<T> {
+    pub v: T,
+    pub span: Span
+}
+
+impl<T: Display> Display for Spanning<T> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result { write!(f, "{} at {}", self.v, self.span) }
+}
+

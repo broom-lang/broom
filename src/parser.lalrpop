@@ -2,7 +2,7 @@ grammar<'input>;
 
 use crate::pos::{Pos, Positioned};
 use crate::lexer::{self, Tok};
-use crate::ast::{Expr, SpanningExpr, Stmt, SpanningStmt};
+use crate::cst::{Expr, SpanningExpr, Stmt, SpanningStmt};
 
 extern {
     type Location = Pos;
@@ -23,13 +23,22 @@ extern {
     }
 }
 
-pub Expr: SpanningExpr = {
+pub Expr = App;
+
+App : SpanningExpr = {
+    <start:@L> <callee:App> <arg:Nestable> <end:@R> => Expr::App(Box::new(callee), Box::new(arg)).spanning(start, end),
+
+    Nestable
+}
+
+Nestable: SpanningExpr = {
     <start:@L> "{" <stmts:Stmts> "}" <end:@R> => Expr::Record(stmts).spanning(start, end),
+    
     "(" <Expr> ")",
 
     <start:@L> <id:Id> <end:@R> => Expr::Id(String::from(id)).spanning(start, end),
 
-    <start:@L> <n:Int> <end:@R> => Expr::Int(n).spanning(start, end)
+    <start:@L> <n:Int> <end:@R> => Expr::Int(n).spanning(start, end),
 }
 
 Stmt: SpanningStmt = {

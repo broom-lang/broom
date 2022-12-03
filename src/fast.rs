@@ -1,53 +1,108 @@
-use std::rc::Rc;
-use std::fmt::{self, Display, Formatter};
+use std::iter;
 use pretty::RcDoc;
 
 use crate::pos::Span;
+use crate::compiler::{Compiler, Id};
+use crate::ftype::TypeRef;
 
-pub enum Type {
-    Int
+pub enum Stmt {
+    Def(TypedPat, TypedExpr),
+    Expr(TypedExpr)
+}
+
+pub struct SpanningStmt {
+    pub stmt: Stmt,
+    pub span: Span
 }
 
 pub enum Expr {
+    Do(Vec<SpanningStmt>, Box<TypedExpr>),
+
+    Use(Id),
+
     Int(isize)
 }
 
 pub struct TypedExpr {
     pub expr: Expr,
-    pub r#type: Rc<Type>,
+    pub r#type: TypeRef,
     pub span: Span
 }
 
-impl Display for Type {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result { self.to_doc().render_fmt(80, f) }
+pub enum Pat {
+    Id(Id),
+
+    Int(isize)
 }
 
-impl Display for Expr {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result { self.to_doc().render_fmt(80, f) }
+pub struct TypedPat {
+    pub pat: Pat,
+    pub r#type: TypeRef,
+    pub span: Span
 }
 
-impl Display for TypedExpr {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result { self.expr.fmt(f) }
-}
+impl Stmt {
+    pub fn spanning(self, span: Span) -> SpanningStmt { SpanningStmt {stmt: self, span} }
 
-impl Type {
-    fn to_doc(&self) -> RcDoc<()> {
-        use Type::*;
+    fn to_doc(&self, cmp: &Compiler) -> RcDoc<()> {
+        use Stmt::*;
 
         match *self {
-            Int => RcDoc::text("__int")
+            Def(ref pat, ref expr) =>
+                pat.to_doc(cmp)
+                    .append(RcDoc::line().append(RcDoc::text("=")))
+                    .append(RcDoc::line().append(expr.to_doc(cmp).nest(2).group())),
+
+            Expr(ref expr) => expr.to_doc(cmp)
         }
     }
+}
+
+impl SpanningStmt {
+    fn to_doc(&self, cmp: &Compiler) -> RcDoc<()> { self.stmt.to_doc(cmp) }
 }
 
 impl Expr {
-    pub fn typed(self, r#type: Rc<Type>, span: Span) -> TypedExpr { TypedExpr {expr: self, r#type, span} }
+    pub fn typed(self, r#type: TypeRef, span: Span) -> TypedExpr { TypedExpr {expr: self, r#type, span} }
 
-    fn to_doc(&self) -> RcDoc<()> {
+    fn to_doc(&self, cmp: &Compiler) -> RcDoc<()> {
         use Expr::*;
 
         match *self {
+            Do(ref stmts, ref body) =>
+                RcDoc::text("do").append(RcDoc::line()).append(RcDoc::text("{")).group()
+                    .append(RcDoc::intersperse(
+                            stmts.iter().map(|stmt| stmt.to_doc(cmp))
+                                .chain(iter::once(body.to_doc(cmp))),
+                            RcDoc::text(";").append(RcDoc::line()))
+                        .nest(1).group())
+                    .append(RcDoc::text("}")),
+
+            Use(id) => id.to_doc(cmp),
+
             Int(n) => RcDoc::as_string(n)
         }
     }
+}
+
+impl TypedExpr {
+    pub fn to_doc(&self, cmp: &Compiler) -> RcDoc<()> { self.expr.to_doc(cmp) }
+}
+
+impl Pat {
+    pub fn typed(self, r#type: TypeRef, span: Span) -> TypedPat { TypedPat {pat: self, r#type, span} }
+
+    fn to_doc(&self, cmp: &Compiler) -> RcDoc<()> {
+        use Pat::*;
+
+        match *self {
+            Id(id) => id.to_doc(cmp),
+
+            Int(n) => RcDoc::as_string(n)
+        }
+    }
+}
+
+impl TypedPat {
+    pub fn to_doc(&self, cmp: &Compiler) -> RcDoc<()> { self.pat.to_doc(cmp) }
 }

@@ -1,16 +1,25 @@
 mod pos;
+mod compiler;
 mod lexer;
-mod ast;
+mod cst;
 lalrpop_mod!(parser);
+mod ast;
+mod expander;
+mod ftype;
 mod fast;
+mod type_env;
 mod typer;
 
+use std::io::stdout;
 use clap::Parser;
 use rustyline::error::ReadlineError;
 use rustyline;
 use lalrpop_util::lalrpop_mod;
 
 use lexer::Lexer;
+use parser::ExprParser;
+use expander::expand;
+use compiler::Compiler;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
@@ -36,6 +45,8 @@ fn main() {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
 
+                let mut cmp = Compiler::new();
+
                 if debug {
                     println!("Tokens\n======\n");
 
@@ -59,10 +70,10 @@ fn main() {
                         }
                     }
 
-                    println!("\nAST\n===\n");
+                    println!("\nCST\n===\n");
                 }
 
-                let expr = match parser::ExprParser::new().parse(Lexer::new(line.as_str(), None)) {
+                let expr = match ExprParser::new().parse(Lexer::new(line.as_str(), None)) {
                     Ok(expr) => {
                         if debug { println!("{}", expr); }
                         expr
@@ -74,10 +85,32 @@ fn main() {
                     }
                 };
 
-                if debug { println!("\nF-AST\n=====\n"); }
+                if debug {
+                    println!("\nAST\n===\n");
+                }
 
-                match typer::convert(expr) {
-                    Ok(expr) => println!("{} : {}", expr, expr.r#type),
+                let expr = match expand(expr) {
+                    Ok(expr) => {
+                        if debug { println!("{}", expr); }
+                        expr
+                    },
+
+                    Err(err) => {
+                        eprintln!("Macroexpansion error: {}", err);
+                        continue
+                    }
+                };
+
+                if debug {
+                    println!("\nF-AST\n=====\n");
+                }
+
+                match typer::convert(&mut cmp, expr) {
+                    Ok(expr) => {
+                        expr.to_doc(&cmp).render(80, &mut stdout()).unwrap();
+                        println!(": {}", expr.r#type)
+                    },
+
                     Err(errors) => for error in errors { eprintln!("\nType error: {}", error); }
                 }
             },
